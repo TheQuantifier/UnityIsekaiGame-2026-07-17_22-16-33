@@ -13,20 +13,29 @@ namespace UnityIsekaiGame.Input
         [SerializeField] private string jumpActionName = "Jump";
         [SerializeField] private string sprintActionName = "Sprint";
         [SerializeField] private string interactActionName = "Interact";
+        [SerializeField] private string inventoryActionName = "Inventory";
+        [SerializeField] private string uiActionMap = "UI";
+        [SerializeField] private string cancelActionName = "Cancel";
 
         private InputAction moveAction;
         private InputAction lookAction;
         private InputAction jumpAction;
         private InputAction sprintAction;
         private InputAction interactAction;
+        private InputAction inventoryAction;
+        private InputAction cancelAction;
         private bool jumpQueued;
         private bool interactQueued;
+        private bool inventoryQueued;
+        private bool cancelQueued;
         private bool pointerLook;
+        private bool gameplayInputBlocked;
 
-        public Vector2 Move => moveAction == null ? Vector2.zero : moveAction.ReadValue<Vector2>();
-        public Vector2 Look => lookAction == null ? Vector2.zero : lookAction.ReadValue<Vector2>();
-        public bool SprintHeld => sprintAction != null && sprintAction.IsPressed();
+        public Vector2 Move => gameplayInputBlocked || moveAction == null ? Vector2.zero : moveAction.ReadValue<Vector2>();
+        public Vector2 Look => gameplayInputBlocked || lookAction == null ? Vector2.zero : lookAction.ReadValue<Vector2>();
+        public bool SprintHeld => !gameplayInputBlocked && sprintAction != null && sprintAction.IsPressed();
         public bool IsPointerLook => pointerLook;
+        public bool GameplayInputBlocked => gameplayInputBlocked;
 
         private void Awake()
         {
@@ -41,6 +50,10 @@ namespace UnityIsekaiGame.Input
             jumpAction = map.FindAction(jumpActionName, true);
             sprintAction = map.FindAction(sprintActionName, false);
             interactAction = map.FindAction(interactActionName, true);
+            inventoryAction = map.FindAction(inventoryActionName, true);
+
+            InputActionMap uiMap = inputActions.FindActionMap(uiActionMap, false);
+            cancelAction = uiMap?.FindAction(cancelActionName, false);
         }
 
         private void OnEnable()
@@ -50,6 +63,8 @@ namespace UnityIsekaiGame.Input
             EnableAction(jumpAction);
             EnableAction(sprintAction);
             EnableAction(interactAction);
+            EnableAction(inventoryAction);
+            EnableAction(cancelAction);
 
             if (jumpAction != null)
             {
@@ -59,6 +74,16 @@ namespace UnityIsekaiGame.Input
             if (interactAction != null)
             {
                 interactAction.performed += OnInteractPerformed;
+            }
+
+            if (inventoryAction != null)
+            {
+                inventoryAction.performed += OnInventoryPerformed;
+            }
+
+            if (cancelAction != null)
+            {
+                cancelAction.performed += OnCancelPerformed;
             }
 
             if (lookAction != null)
@@ -84,6 +109,18 @@ namespace UnityIsekaiGame.Input
                 interactAction.performed -= OnInteractPerformed;
             }
 
+            if (inventoryAction != null)
+            {
+                inventoryAction.performed -= OnInventoryPerformed;
+            }
+
+            if (cancelAction != null)
+            {
+                cancelAction.performed -= OnCancelPerformed;
+            }
+
+            DisableAction(cancelAction);
+            DisableAction(inventoryAction);
             DisableAction(interactAction);
             DisableAction(sprintAction);
             DisableAction(jumpAction);
@@ -93,6 +130,12 @@ namespace UnityIsekaiGame.Input
 
         public bool ConsumeJump()
         {
+            if (gameplayInputBlocked)
+            {
+                jumpQueued = false;
+                return false;
+            }
+
             if (!jumpQueued)
             {
                 return false;
@@ -104,6 +147,12 @@ namespace UnityIsekaiGame.Input
 
         public bool ConsumeInteract()
         {
+            if (gameplayInputBlocked)
+            {
+                interactQueued = false;
+                return false;
+            }
+
             if (!interactQueued)
             {
                 return false;
@@ -111,6 +160,45 @@ namespace UnityIsekaiGame.Input
 
             interactQueued = false;
             return true;
+        }
+
+        public bool ConsumeInventory()
+        {
+            if (!inventoryQueued)
+            {
+                return false;
+            }
+
+            inventoryQueued = false;
+            return true;
+        }
+
+        public bool ConsumeCancel()
+        {
+            if (!cancelQueued)
+            {
+                return false;
+            }
+
+            cancelQueued = false;
+            return true;
+        }
+
+        public void SetGameplayInputBlocked(bool blocked)
+        {
+            gameplayInputBlocked = blocked;
+            ClearGameplayActionQueues();
+        }
+
+        public void ClearGameplayActionQueues()
+        {
+            jumpQueued = false;
+            interactQueued = false;
+        }
+
+        public void ClearCancel()
+        {
+            cancelQueued = false;
         }
 
         private void OnJumpPerformed(InputAction.CallbackContext context)
@@ -121,6 +209,16 @@ namespace UnityIsekaiGame.Input
         private void OnInteractPerformed(InputAction.CallbackContext context)
         {
             interactQueued = true;
+        }
+
+        private void OnInventoryPerformed(InputAction.CallbackContext context)
+        {
+            inventoryQueued = true;
+        }
+
+        private void OnCancelPerformed(InputAction.CallbackContext context)
+        {
+            cancelQueued = true;
         }
 
         private void OnLookPerformed(InputAction.CallbackContext context)

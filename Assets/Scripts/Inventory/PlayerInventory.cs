@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 namespace UnityIsekaiGame.Inventory
@@ -10,6 +11,7 @@ namespace UnityIsekaiGame.Inventory
 
         public IReadOnlyList<InventorySlot> Slots => slots;
         public int SlotCapacity => slotCapacity;
+        public event Action InventoryChanged;
 
         private void Awake()
         {
@@ -45,6 +47,11 @@ namespace UnityIsekaiGame.Inventory
             InventoryAddStatus status = GetAddStatus(requestedQuantity, addedQuantity);
 
             LogAddResult(item, new InventoryAddResult(status, requestedQuantity, addedQuantity));
+
+            if (addedQuantity > 0)
+            {
+                InventoryChanged?.Invoke();
+            }
 
             return new InventoryAddResult(status, requestedQuantity, addedQuantity);
         }
