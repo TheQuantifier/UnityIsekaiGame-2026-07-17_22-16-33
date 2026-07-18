@@ -1,11 +1,12 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Equipment;
+using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Inventory
 {
     [CreateAssetMenu(fileName = "NewItemDefinition", menuName = "Unity Isekai Game/Inventory/Item Definition")]
-    public sealed class ItemDefinition : ScriptableObject
+    public sealed class ItemDefinition : ScriptableObject, IGameDefinition
     {
         [SerializeField] private string itemId;
         [SerializeField] private string displayName;
@@ -17,6 +18,7 @@ namespace UnityIsekaiGame.Inventory
         [SerializeField] private EquipmentData equipment;
 
         public string ItemId => itemId;
+        public string Id => itemId;
         public string DisplayName => displayName;
         public string Description => description;
         public Sprite Icon => icon;

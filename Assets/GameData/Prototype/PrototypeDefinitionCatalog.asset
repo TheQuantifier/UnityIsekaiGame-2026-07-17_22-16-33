@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88755d1b5acd4672b5aede0176ba2040, type: 3}
+  m_Name: PrototypeDefinitionCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
+  catalogId: catalog.prototype
+  contentVersion: 0.3.0-step-3
+  definitions:
+  - {fileID: 11400000, guid: 9fc1c54f96724ef8b03354950feaae17, type: 2}
+  - {fileID: 11400000, guid: 2ff53d5978448be47807e462a021d276, type: 2}
+  - {fileID: 11400000, guid: e9dd77c236b0da4418f7f02a0a091d24, type: 2}
+  - {fileID: 11400000, guid: 8d0e1f62cba2d094ab3ba8fe6fe129c1, type: 2}
+  - {fileID: 11400000, guid: 46a928a265034e3382d35caa69a2b78e, type: 2}
+  - {fileID: 11400000, guid: d7045b9bbc0f4f2f8fc1a0fb254f0e55, type: 2}
+  - {fileID: 11400000, guid: 8ed9409bc8694caeafcf85685317d0d6, type: 2}
+  - {fileID: 11400000, guid: 05c9780ae21b4903b8e17c81b325acdf, type: 2}
+  - {fileID: 11400000, guid: 78a99b7b914b44a4bee7d93e6ed99995, type: 2}
+  - {fileID: 11400000, guid: db29ec47c6a3458b87c62d9ad4e2f9ee, type: 2}

@@ -1,10 +1,12 @@
 using UnityEngine;
+using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Magic
 {
     [CreateAssetMenu(fileName = "NewSpellDefinition", menuName = "Unity Isekai Game/Magic/Spell Definition")]
-    public sealed class SpellDefinition : ScriptableObject
+    public sealed class SpellDefinition : ScriptableObject, IGameDefinition
     {
+        [SerializeField] private string spellId;
         [SerializeField] private string displayName;
         [SerializeField, Min(0f)] private float manaCost = 10f;
         [SerializeField, Min(0f)] private float cooldown = 0.5f;
@@ -14,6 +16,8 @@ namespace UnityIsekaiGame.Magic
         [SerializeField] private SpellProjectile projectilePrefab;
         [SerializeField] private Vector3 castPointOffset = new Vector3(0.2f, -0.15f, 0.4f);
 
+        public string SpellId => spellId;
+        public string Id => spellId;
         public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName;
         public float ManaCost => manaCost;
         public float Cooldown => cooldown;

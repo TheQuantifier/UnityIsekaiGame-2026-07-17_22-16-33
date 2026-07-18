@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 670bdc6734594c808b4254232d3ed8a5, type: 3}
   m_Name: HeavyArcaneBolt
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Magic.SpellDefinition
+  spellId: spell.heavy-arcane-bolt
   displayName: Heavy Arcane Bolt
   manaCost: 35
   cooldown: 1.25

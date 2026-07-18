@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 670bdc6734594c808b4254232d3ed8a5, type: 3}
   m_Name: ArcaneBolt
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Magic.SpellDefinition
+  spellId: spell.arcane-bolt
   displayName: Arcane Bolt
   manaCost: 20
   cooldown: 0.65

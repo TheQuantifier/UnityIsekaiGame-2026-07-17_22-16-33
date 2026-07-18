@@ -53,6 +53,8 @@ Runtime state is owned by components or runtime instances:
 
 Stable IDs identify authored definitions and objective targets. They must not be derived from GameObject names.
 
+Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. See `Documentation/GameDefinitionAndStableIdGuidelines.md` for the current stable-ID format, migration rules, and catalog workflow.
+
 Current ID families:
 
 - Item IDs: `ItemDefinition.ItemId`

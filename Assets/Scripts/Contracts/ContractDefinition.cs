@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Contracts
 {
     [CreateAssetMenu(fileName = "Contract", menuName = "Unity Isekai Game/Contracts/Contract")]
-    public sealed class ContractDefinition : ScriptableObject
+    public sealed class ContractDefinition : ScriptableObject, IGameDefinition
     {
         [SerializeField] private string contractId;
         [SerializeField] private string displayTitle;
@@ -16,6 +17,8 @@ namespace UnityIsekaiGame.Contracts
         [SerializeField] private string expirationPlaceholder;
 
         public string ContractId => contractId;
+        public string Id => contractId;
+        public string DisplayName => DisplayTitle;
         public string DisplayTitle => displayTitle;
         public string Description => description;
         public string RequesterName => requesterName;

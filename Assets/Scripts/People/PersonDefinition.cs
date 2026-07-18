@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.People
 {
     [CreateAssetMenu(fileName = "Person", menuName = "Unity Isekai Game/People/Person")]
-    public sealed class PersonDefinition : ScriptableObject
+    public sealed class PersonDefinition : ScriptableObject, IGameDefinition
     {
         [SerializeField] private string personId;
         [SerializeField] private string displayName;
@@ -18,6 +19,7 @@ namespace UnityIsekaiGame.People
         [SerializeField] private PersonImportance importance = PersonImportance.Standard;
 
         public string PersonId => personId;
+        public string Id => personId;
         public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName;
         public string Title => title;
         public string ShortDescription => shortDescription;
