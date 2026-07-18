@@ -257,6 +257,11 @@ namespace UnityIsekaiGame.GameData
                 report.AddWarning($"Item definition '{item.DisplayName}' is non-stackable but reports a maximum stack size of {item.MaximumStackSize}; non-stackable items should behave as size 1 stacks.");
             }
 
+            if (item is IItemInstancePolicy instancePolicy)
+            {
+                ValidateItemInstancePolicy(item, instancePolicy, report);
+            }
+
             bool inEquipmentCategory = ItemTaxonomyUtility.IsEquipment(item);
             bool inWeaponCategory = ItemTaxonomyUtility.IsWeapon(item);
             bool inArmorCategory = ItemTaxonomyUtility.IsArmor(item);
@@ -299,6 +304,33 @@ namespace UnityIsekaiGame.GameData
                 {
                     report.AddWarning($"Item definition '{item.DisplayName}' is categorized as consumable but has no use effects.");
                 }
+            }
+        }
+
+        private static void ValidateItemInstancePolicy(
+            IInventoryItemDefinition item,
+            IItemInstancePolicy instancePolicy,
+            DefinitionValidationReport report)
+        {
+            if (item == null || instancePolicy == null)
+            {
+                return;
+            }
+
+            if (!System.Enum.IsDefined(typeof(ItemInstanceMode), instancePolicy.InstanceMode))
+            {
+                report.AddError($"Item definition '{item.DisplayName}' has an invalid item instance mode '{instancePolicy.InstanceMode}'.");
+                return;
+            }
+
+            if (instancePolicy.InstanceMode == ItemInstanceMode.AlwaysInstanced && item.Stackable)
+            {
+                report.AddWarning($"Item definition '{item.DisplayName}' is always-instanced but is configured as stackable. Stateful items should normally use size 1 stacks until inventory instances are implemented.");
+            }
+
+            if (instancePolicy.InstanceMode != ItemInstanceMode.DefinitionOnly && item.MaximumStackSize > 1)
+            {
+                report.AddWarning($"Item definition '{item.DisplayName}' allows item instances with maximum stack size {item.MaximumStackSize}. Future stateful instances should not share indistinguishable stacks.");
             }
         }
 

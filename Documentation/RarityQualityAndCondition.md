@@ -39,7 +39,7 @@ Runtime or saveable instance data belongs outside shared assets:
 - future custom names;
 - future unique serial identity.
 
-`ItemInstanceMetadata` is the first small runtime model for optional quality and condition. It is serializable, has no UI or scene dependency, clamps condition values to `0..1`, and does not mutate shared definitions.
+`ItemInstanceMetadata` is the runtime model for optional quality and condition. Step 3.5 places it inside `ItemInstance` for future persisted state. It is serializable, has no UI or scene dependency, clamps condition values to `0..1`, copies safely, and does not mutate shared definitions.
 
 ## Definition Architecture
 
@@ -113,7 +113,7 @@ Current inventory stacking is preserved:
 
 Future item instances with materially different runtime state should not share one indistinguishable stack. Different quality, condition, enchantments, ownership, custom names, or unique serial identity can eventually prevent stacking.
 
-`CanShareDefinitionOnlyStack` documents the current baseline but is not wired into `PlayerInventory` yet.
+`CanShareDefinitionOnlyStack` documents the current baseline. Step 3.5 adds `ItemInstanceStackingPolicy` for future instance-aware compatibility, but neither policy is wired into `PlayerInventory` yet.
 
 ## Creating New Assets
 
@@ -131,4 +131,4 @@ Step 3.4 does not implement durability loss, repairs, broken-equipment behavior,
 
 ## Future Integration
 
-Feature 3.5 should choose the next runtime ownership boundary before changing behavior. Recommended next steps are a real item-instance identity model, instance-aware stack compatibility, save/load shape for item instance metadata, condition-driven repairs/durability, and keeping rarity metadata separate from loot probability tables.
+Feature 3.5 adds item-instance identity, an item-instance save-data shape, restoration through `DefinitionRegistry`, and instance-aware stack compatibility policy. Future work should wire those models into inventory/equipment only after save/load ownership is explicit.

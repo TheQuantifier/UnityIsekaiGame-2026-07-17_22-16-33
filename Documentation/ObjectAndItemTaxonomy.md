@@ -15,7 +15,7 @@ Runtime state remains separate:
 - Static definition: `item.prototype-sword`
 - Runtime equipment state: one equipped sword reference
 
-Step 3.3 does not add a generalized runtime item-instance system. Current inventory and equipment state still reference `ItemDefinition` assets directly. Feature 3.4 adds static item rarity and a small runtime metadata foundation for future quality and condition. Per-instance data such as quality, condition, enchantments, ownership, or unique identity should stay as runtime state around stable definition IDs.
+Step 3.3 does not add a generalized runtime item-instance system. Current inventory and equipment state still reference `ItemDefinition` assets directly. Feature 3.4 adds static item rarity and a small runtime metadata foundation for future quality and condition. Feature 3.5 adds `ItemInstance` and save-data foundations while preserving current stack-based inventory behavior.
 
 ## Selected Architecture
 
@@ -135,7 +135,7 @@ Stackability is static item-definition data:
 - rarity is static metadata and does not affect stack equality;
 - future quality, condition, enchantments, ownership, custom names, or unique serial identity should prevent sharing one indistinguishable stack when item instances are introduced.
 
-No unique-item or instance-aware stack behavior exists yet.
+`ItemInstanceStackingPolicy` now documents future instance-aware rules, but production inventory still uses definition-reference stacking.
 
 ## Equipment Integration
 
@@ -234,6 +234,7 @@ Definition validation now checks item taxonomy rules:
 - item rarity references must be included in the catalog when assigned;
 - missing item rarity is a compatibility warning;
 - quality and condition remain runtime instance metadata, not static item-definition fields.
+- item-instance identity and save data resolve definitions by stable IDs through the shared registry.
 
 The validator reports but does not mutate assets.
 
@@ -261,8 +262,8 @@ The validator reports but does not mutate assets.
 ## Known Limitations
 
 - Rarity exists as static metadata only; it does not alter loot, value, stats, or stack behavior.
-- Quality and condition have a runtime metadata foundation but are not stored in current inventory slots.
-- No durability, value, weight, ownership, or full per-instance item data exists yet.
+- Quality and condition have a runtime metadata foundation and can be carried by `ItemInstance`, but current inventory slots do not store item instances.
+- No durability, value, weight, ownership, or full inventory-instance migration exists yet.
 - No crafting, harvesting, procedural loot generation, shop filtering, or economy behavior exists yet.
 - No item filtering UI exists yet.
 - `Prototype Iron Ore` is catalog content only; it is not spawned in the prototype scene.
@@ -275,6 +276,8 @@ Feature 3.4 layers rarity, quality, and condition foundations on top of this tax
 Later systems can add:
 
 - durability and condition;
+- inventory/equipment storage of `ItemInstance`;
+- serialized inventory and equipment entries;
 - crafting materials and recipes;
 - resource gathering;
 - procedural loot rules;
