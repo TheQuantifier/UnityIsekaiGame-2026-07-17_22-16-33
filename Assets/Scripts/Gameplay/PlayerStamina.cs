@@ -119,6 +119,37 @@ namespace UnityIsekaiGame.Gameplay
             return result;
         }
 
+        public bool CanSpend(float amount)
+        {
+            return amount <= 0f || stamina.CanSpend(amount);
+        }
+
+        public VitalChangeResult Spend(float amount, string reason)
+        {
+            if (amount <= 0f)
+            {
+                return VitalChangeResult.Success(0f, 0f, "No stamina spent.");
+            }
+
+            VitalChangeResult result = stamina.Spend(amount, "Stamina");
+            if (!result.Succeeded)
+            {
+                exhausted = stamina.IsEmpty;
+                return result;
+            }
+
+            regenerationBlockedUntil = Time.time + regenerationDelay;
+            if (stamina.IsEmpty)
+            {
+                exhausted = true;
+            }
+
+            string message = string.IsNullOrWhiteSpace(reason)
+                ? result.Message
+                : $"{reason} spent {result.ChangedAmount:0.#} stamina.";
+            return VitalChangeResult.Success(result.RequestedAmount, result.ChangedAmount, message);
+        }
+
         private void Regenerate(float deltaTime)
         {
             if (regenerationPerSecond <= 0f || Time.time < regenerationBlockedUntil || stamina.IsAtMaximum)

@@ -12,6 +12,7 @@ namespace UnityIsekaiGame.Input
         [SerializeField] private string lookActionName = "Look";
         [SerializeField] private string jumpActionName = "Jump";
         [SerializeField] private string sprintActionName = "Sprint";
+        [SerializeField] private string attackActionName = "Attack";
         [SerializeField] private string interactActionName = "Interact";
         [SerializeField] private string inventoryActionName = "Inventory";
         [SerializeField] private string uiActionMap = "UI";
@@ -23,12 +24,14 @@ namespace UnityIsekaiGame.Input
         private InputAction lookAction;
         private InputAction jumpAction;
         private InputAction sprintAction;
+        private InputAction attackAction;
         private InputAction interactAction;
         private InputAction inventoryAction;
         private InputAction cancelAction;
         private InputAction navigateAction;
         private InputAction inventoryUseAction;
         private bool jumpQueued;
+        private bool attackQueued;
         private bool interactQueued;
         private bool inventoryQueued;
         private bool cancelQueued;
@@ -55,6 +58,7 @@ namespace UnityIsekaiGame.Input
             lookAction = map.FindAction(lookActionName, true);
             jumpAction = map.FindAction(jumpActionName, true);
             sprintAction = map.FindAction(sprintActionName, false);
+            attackAction = map.FindAction(attackActionName, false);
             interactAction = map.FindAction(interactActionName, true);
             inventoryAction = map.FindAction(inventoryActionName, true);
 
@@ -70,6 +74,7 @@ namespace UnityIsekaiGame.Input
             EnableAction(lookAction);
             EnableAction(jumpAction);
             EnableAction(sprintAction);
+            EnableAction(attackAction);
             EnableAction(interactAction);
             EnableAction(inventoryAction);
             EnableAction(cancelAction);
@@ -84,6 +89,11 @@ namespace UnityIsekaiGame.Input
             if (interactAction != null)
             {
                 interactAction.performed += OnInteractPerformed;
+            }
+
+            if (attackAction != null)
+            {
+                attackAction.performed += OnAttackPerformed;
             }
 
             if (inventoryAction != null)
@@ -129,6 +139,11 @@ namespace UnityIsekaiGame.Input
                 interactAction.performed -= OnInteractPerformed;
             }
 
+            if (attackAction != null)
+            {
+                attackAction.performed -= OnAttackPerformed;
+            }
+
             if (inventoryAction != null)
             {
                 inventoryAction.performed -= OnInventoryPerformed;
@@ -154,6 +169,7 @@ namespace UnityIsekaiGame.Input
             DisableAction(cancelAction);
             DisableAction(inventoryAction);
             DisableAction(interactAction);
+            DisableAction(attackAction);
             DisableAction(sprintAction);
             DisableAction(jumpAction);
             DisableAction(lookAction);
@@ -191,6 +207,23 @@ namespace UnityIsekaiGame.Input
             }
 
             interactQueued = false;
+            return true;
+        }
+
+        public bool ConsumeAttack()
+        {
+            if (gameplayInputBlocked)
+            {
+                attackQueued = false;
+                return false;
+            }
+
+            if (!attackQueued)
+            {
+                return false;
+            }
+
+            attackQueued = false;
             return true;
         }
 
@@ -248,6 +281,7 @@ namespace UnityIsekaiGame.Input
         public void ClearGameplayActionQueues()
         {
             jumpQueued = false;
+            attackQueued = false;
             interactQueued = false;
         }
 
@@ -270,6 +304,11 @@ namespace UnityIsekaiGame.Input
         private void OnInteractPerformed(InputAction.CallbackContext context)
         {
             interactQueued = true;
+        }
+
+        private void OnAttackPerformed(InputAction.CallbackContext context)
+        {
+            attackQueued = true;
         }
 
         private void OnInventoryPerformed(InputAction.CallbackContext context)

@@ -30,6 +30,7 @@ namespace UnityIsekaiGame.Inventory
         private void OnValidate()
         {
             maximumStackSize = Mathf.Max(1, maximumStackSize);
+            equipment?.Validate();
         }
     }
 }
