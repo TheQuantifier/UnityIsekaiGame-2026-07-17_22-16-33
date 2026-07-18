@@ -139,6 +139,7 @@ GameObject:
   - component: {fileID: 343134188}
   - component: {fileID: 343134187}
   - component: {fileID: 343134189}
+  - component: {fileID: 343134190}
   m_Layer: 0
   m_Name: Prototype Player
   m_TagString: Player
@@ -208,6 +209,7 @@ MonoBehaviour:
   attackActionName: Attack
   interactActionName: Interact
   inventoryActionName: Inventory
+  prototypeResetActionName: PrototypeReset
   uiActionMap: UI
   cancelActionName: Cancel
   navigateActionName: Navigate
@@ -309,7 +311,7 @@ MonoBehaviour:
   maximumHealth: 100
   startingHealth: 100
   stats: {fileID: 343134187}
-  input: {fileID: 0}
+  input: {fileID: 100003}
 --- !u!114 &100008
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2131,6 +2133,29 @@ MonoBehaviour:
     attackCooldown: 0.65
     staminaCost: 5
     hitRadius: 0.3
+--- !u!114 &343134190
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d516550001c941d3b1606550ebeca596, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Gameplay.PrototypeTestController
+  input: {fileID: 100003}
+  player: {fileID: 100001}
+  playerHealth: {fileID: 100007}
+  playerStamina: {fileID: 100009}
+  playerMana: {fileID: 100008}
+  playerMeleeCombat: {fileID: 343134189}
+  playerSpawnPoint: {fileID: 438627171}
+  prototypeEnemy: {fileID: 1145515528}
+  enemyHealth: {fileID: 1145515524}
+  enemyAttack: {fileID: 1145515523}
+  enemyController: {fileID: 1145515522}
 --- !u!1 &368595341
 GameObject:
   m_ObjectHideFlags: 0
@@ -2653,6 +2678,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 433932174}
   m_CullTransparentMesh: 1
+--- !u!1 &438627170
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 438627171}
+  m_Layer: 0
+  m_Name: Prototype Player Spawn
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &438627171
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 438627170}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: -4}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &471864190
 GameObject:
   m_ObjectHideFlags: 0
@@ -9158,6 +9214,7 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1180429085}
+  - {fileID: 2011711704}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -9564,6 +9621,100 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2011711703
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2011711704}
+  - component: {fileID: 2011711707}
+  - component: {fileID: 2011711706}
+  - component: {fileID: 2011711705}
+  m_Layer: 0
+  m_Name: Prototype HUD Message
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &2011711704
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2011711703}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1902013391}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 1}
+  m_AnchorMax: {x: 0.5, y: 1}
+  m_AnchoredPosition: {x: 0, y: -24}
+  m_SizeDelta: {x: 520, y: 52}
+  m_Pivot: {x: 0.5, y: 1}
+--- !u!114 &2011711705
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2011711703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3d09d66a62a460c987fb699959863c8, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.UI.PrototypeHudMessageView
+  label: {fileID: 2011711706}
+  messageDuration: 2.5
+--- !u!114 &2011711706
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2011711703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f7201a12d95ffc409449d95f23cf332, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Text
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 0.95, b: 0.72, a: 1}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_FontData:
+    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
+    m_FontSize: 22
+    m_FontStyle: 0
+    m_BestFit: 0
+    m_MinSize: 10
+    m_MaxSize: 40
+    m_Alignment: 4
+    m_AlignByGeometry: 0
+    m_RichText: 1
+    m_HorizontalOverflow: 0
+    m_VerticalOverflow: 0
+    m_LineSpacing: 1
+  m_Text:
+--- !u!222 &2011711707
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2011711703}
+  m_CullTransparentMesh: 1
 --- !u!1 &2012315473
 GameObject:
   m_ObjectHideFlags: 0
@@ -10793,3 +10944,4 @@ SceneRoots:
   - {fileID: 1984587702}
   - {fileID: 1071627480}
   - {fileID: 1145515528}
+  - {fileID: 438627171}

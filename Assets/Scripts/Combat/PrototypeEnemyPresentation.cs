@@ -15,6 +15,7 @@ namespace UnityIsekaiGame.Combat
         [SerializeField, Min(0.01f)] private float hitFlashDuration = 0.12f;
 
         private Coroutine flashRoutine;
+        private float previousHealth = -1f;
 
         private void Awake()
         {
@@ -29,6 +30,7 @@ namespace UnityIsekaiGame.Combat
             }
 
             SetColor(normalColor);
+            previousHealth = health == null ? -1f : health.CurrentHealth;
             Refresh();
         }
 
@@ -40,6 +42,7 @@ namespace UnityIsekaiGame.Combat
                 health.Defeated += OnDefeated;
             }
 
+            previousHealth = health == null ? -1f : health.CurrentHealth;
             Refresh();
         }
 
@@ -59,9 +62,17 @@ namespace UnityIsekaiGame.Combat
 
         private void OnHealthChanged(float currentHealth, float maximumHealth)
         {
-            if (health != null && !health.IsDefeated)
+            bool tookDamage = previousHealth >= 0f && currentHealth < previousHealth;
+            previousHealth = currentHealth;
+
+            if (tookDamage && health != null && !health.IsDefeated)
             {
                 FlashHitColor();
+            }
+
+            if (!tookDamage && health != null && !health.IsDefeated && flashRoutine == null)
+            {
+                SetColor(normalColor);
             }
 
             Refresh();

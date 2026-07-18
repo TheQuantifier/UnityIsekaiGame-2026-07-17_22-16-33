@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Interaction;
 
 namespace UnityIsekaiGame.Inventory
@@ -35,6 +36,7 @@ namespace UnityIsekaiGame.Inventory
             if (result.AddedAll)
             {
                 Debug.Log($"Collected all {result.AddedQuantity} x {item.ItemId} from {name}.");
+                PrototypeHudMessageBus.Show($"Picked up {result.AddedQuantity} x {item.DisplayName}");
                 CompletePickup();
                 return;
             }
@@ -43,10 +45,12 @@ namespace UnityIsekaiGame.Inventory
             {
                 quantity = result.RemainingQuantity;
                 Debug.Log($"Partial pickup from {name}. {quantity} x {item.ItemId} remain in the world.");
+                PrototypeHudMessageBus.Show($"Picked up {result.AddedQuantity} x {item.DisplayName}. Inventory full.");
                 return;
             }
 
             Debug.Log($"Inventory full. {name} remains in the world with {quantity} x {item.ItemId}.");
+            PrototypeHudMessageBus.Show("Inventory full");
         }
 
         private static PlayerInventory FindInventory(GameObject interactor)

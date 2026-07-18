@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.Gameplay;
 
 namespace UnityIsekaiGame.Combat
 {
@@ -52,6 +53,7 @@ namespace UnityIsekaiGame.Combat
             {
                 defeated = true;
                 Defeated?.Invoke();
+                PrototypeHudMessageBus.Show($"{name} defeated");
             }
 
             string message = defeatedNow
@@ -59,6 +61,13 @@ namespace UnityIsekaiGame.Combat
                 : $"{name} took {changedAmount:0.#} damage. Health: {currentHealth:0.#} / {maximumHealth:0.#}.";
             Debug.Log(message);
             return DamageResult.Success(damageInfo.RawAmount, changedAmount, defeatedNow, message);
+        }
+
+        public void ResetToMaximum()
+        {
+            defeated = false;
+            currentHealth = maximumHealth;
+            HealthChanged?.Invoke(currentHealth, maximumHealth);
         }
     }
 }

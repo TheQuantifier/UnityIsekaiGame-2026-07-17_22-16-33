@@ -107,6 +107,11 @@ namespace UnityIsekaiGame.Combat
             return Resolve(result);
         }
 
+        public void ResetCooldown()
+        {
+            nextAttackTime = 0f;
+        }
+
         private MeleeAttackResult PerformHitTest(MeleeWeaponData weapon, float damageAmount)
         {
             Vector3 origin = attackOrigin.position;

@@ -1,6 +1,8 @@
 using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 namespace UnityIsekaiGame.Input
 {
@@ -15,6 +17,7 @@ namespace UnityIsekaiGame.Input
         [SerializeField] private string attackActionName = "Attack";
         [SerializeField] private string interactActionName = "Interact";
         [SerializeField] private string inventoryActionName = "Inventory";
+        [SerializeField] private string prototypeResetActionName = "PrototypeReset";
         [SerializeField] private string uiActionMap = "UI";
         [SerializeField] private string cancelActionName = "Cancel";
         [SerializeField] private string navigateActionName = "Navigate";
@@ -27,6 +30,7 @@ namespace UnityIsekaiGame.Input
         private InputAction attackAction;
         private InputAction interactAction;
         private InputAction inventoryAction;
+        private InputAction prototypeResetAction;
         private InputAction cancelAction;
         private InputAction navigateAction;
         private InputAction inventoryUseAction;
@@ -34,6 +38,7 @@ namespace UnityIsekaiGame.Input
         private bool attackQueued;
         private bool interactQueued;
         private bool inventoryQueued;
+        private bool prototypeResetQueued;
         private bool cancelQueued;
         private bool inventoryUseQueued;
         private Vector2 inventoryNavigateQueued;
@@ -62,6 +67,7 @@ namespace UnityIsekaiGame.Input
             attackAction = map.FindAction(attackActionName, false);
             interactAction = map.FindAction(interactActionName, true);
             inventoryAction = map.FindAction(inventoryActionName, true);
+            prototypeResetAction = map.FindAction(prototypeResetActionName, false);
 
             InputActionMap uiMap = inputActions.FindActionMap(uiActionMap, false);
             cancelAction = uiMap?.FindAction(cancelActionName, false);
@@ -78,6 +84,7 @@ namespace UnityIsekaiGame.Input
             EnableAction(attackAction);
             EnableAction(interactAction);
             EnableAction(inventoryAction);
+            EnableAction(prototypeResetAction);
             EnableAction(cancelAction);
             EnableAction(navigateAction);
             EnableAction(inventoryUseAction);
@@ -100,6 +107,11 @@ namespace UnityIsekaiGame.Input
             if (inventoryAction != null)
             {
                 inventoryAction.performed += OnInventoryPerformed;
+            }
+
+            if (prototypeResetAction != null)
+            {
+                prototypeResetAction.performed += OnPrototypeResetPerformed;
             }
 
             if (cancelAction != null)
@@ -150,6 +162,11 @@ namespace UnityIsekaiGame.Input
                 inventoryAction.performed -= OnInventoryPerformed;
             }
 
+            if (prototypeResetAction != null)
+            {
+                prototypeResetAction.performed -= OnPrototypeResetPerformed;
+            }
+
             if (cancelAction != null)
             {
                 cancelAction.performed -= OnCancelPerformed;
@@ -168,6 +185,7 @@ namespace UnityIsekaiGame.Input
             DisableAction(inventoryUseAction);
             DisableAction(navigateAction);
             DisableAction(cancelAction);
+            DisableAction(prototypeResetAction);
             DisableAction(inventoryAction);
             DisableAction(interactAction);
             DisableAction(attackAction);
@@ -236,6 +254,17 @@ namespace UnityIsekaiGame.Input
             }
 
             inventoryQueued = false;
+            return true;
+        }
+
+        public bool ConsumePrototypeReset()
+        {
+            if (!prototypeResetQueued)
+            {
+                return false;
+            }
+
+            prototypeResetQueued = false;
             return true;
         }
 
@@ -323,6 +352,16 @@ namespace UnityIsekaiGame.Input
             inventoryQueued = true;
         }
 
+        private void OnPrototypeResetPerformed(InputAction.CallbackContext context)
+        {
+            if (IsTypingInUiField())
+            {
+                return;
+            }
+
+            prototypeResetQueued = true;
+        }
+
         private void OnCancelPerformed(InputAction.CallbackContext context)
         {
             cancelQueued = true;
@@ -357,6 +396,12 @@ namespace UnityIsekaiGame.Input
             {
                 action.Disable();
             }
+        }
+
+        private static bool IsTypingInUiField()
+        {
+            GameObject selected = EventSystem.current == null ? null : EventSystem.current.currentSelectedGameObject;
+            return selected != null && selected.GetComponent<InputField>() != null;
         }
     }
 }

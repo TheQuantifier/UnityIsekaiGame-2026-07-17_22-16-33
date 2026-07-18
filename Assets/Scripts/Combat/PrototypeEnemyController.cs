@@ -68,6 +68,11 @@ namespace UnityIsekaiGame.Combat
             transform.position += direction * step;
         }
 
+        public void ResetControllerState()
+        {
+            // The prototype controller is currently stateless; this method keeps reset orchestration explicit.
+        }
+
         private void FaceTarget(Vector3 toTarget)
         {
             if (toTarget.sqrMagnitude <= 0.0001f)

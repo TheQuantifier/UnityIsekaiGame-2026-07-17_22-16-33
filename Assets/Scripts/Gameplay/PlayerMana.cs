@@ -90,6 +90,12 @@ namespace UnityIsekaiGame.Gameplay
             return mana.Restore(amount, "Mana");
         }
 
+        public void RestoreToMaximum()
+        {
+            regenerationBlockedUntil = 0f;
+            mana.SetCurrent(mana.MaximumValue);
+        }
+
         private void OnManaChanged(float current, float maximum)
         {
             ManaChanged?.Invoke(current, maximum);

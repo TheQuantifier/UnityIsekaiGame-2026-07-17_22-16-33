@@ -80,6 +80,11 @@ namespace UnityIsekaiGame.Combat
             return Resolve(result);
         }
 
+        public void ResetCooldown()
+        {
+            nextAttackTime = 0f;
+        }
+
         private float GetPlanarDistanceTo(Transform target)
         {
             return GetPlanarDirectionOffset(target).magnitude;

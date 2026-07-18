@@ -112,6 +112,13 @@ namespace UnityIsekaiGame.Gameplay
             return currentHealth - previousHealth;
         }
 
+        public void ResetToMaximum()
+        {
+            defeated = false;
+            input?.SetDefeatedInputBlocked(false);
+            SetHealth(effectiveMaximumHealth);
+        }
+
         private void SetHealth(int value)
         {
             int clampedHealth = Mathf.Clamp(value, 0, effectiveMaximumHealth);
@@ -129,6 +136,7 @@ namespace UnityIsekaiGame.Gameplay
                 input?.SetDefeatedInputBlocked(true);
                 Defeated?.Invoke();
                 Debug.Log("Player defeated. Prototype gameplay input is blocked.");
+                PrototypeHudMessageBus.Show("Defeated - Press R to reset");
             }
         }
 

@@ -86,7 +86,7 @@ namespace UnityIsekaiGame.UI
                 string healthText = health == null ? "Health: -- / --" : $"Health: {health.CurrentHealth} / {health.MaximumHealth}";
                 string staminaText = stamina == null ? "Stamina: -- / --" : $"Stamina: {stamina.CurrentStamina:0} / {stamina.MaximumStamina:0}";
                 string manaText = mana == null ? "Mana: -- / --" : $"Mana: {mana.CurrentMana:0} / {mana.MaximumMana:0}";
-                string defeatedText = health != null && health.IsDefeated ? "\nDefeated" : string.Empty;
+                string defeatedText = health != null && health.IsDefeated ? "\nDefeated - Press R to reset" : string.Empty;
                 label.text = $"{healthText}\n{staminaText}\n{manaText}{defeatedText}";
             }
         }

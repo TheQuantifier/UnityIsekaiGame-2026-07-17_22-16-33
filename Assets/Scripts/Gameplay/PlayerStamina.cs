@@ -119,6 +119,14 @@ namespace UnityIsekaiGame.Gameplay
             return result;
         }
 
+        public void RestoreToMaximum()
+        {
+            exhausted = false;
+            sprintingThisFrame = false;
+            regenerationBlockedUntil = 0f;
+            stamina.SetCurrent(stamina.MaximumValue);
+        }
+
         public bool CanSpend(float amount)
         {
             return amount <= 0f || stamina.CanSpend(amount);
