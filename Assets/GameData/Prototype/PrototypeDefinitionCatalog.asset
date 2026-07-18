@@ -15,6 +15,22 @@ MonoBehaviour:
   catalogId: catalog.prototype
   contentVersion: 0.3.0-step-3
   definitions:
+  - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
+  - {fileID: 11400000, guid: 6afd94d3e57d4226a5c8be8ca8000420, type: 2}
+  - {fileID: 11400000, guid: ce77021ece00412087b7942af526bf9f, type: 2}
+  - {fileID: 11400000, guid: e6d021bd7a30487590cc7fd1b3248878, type: 2}
+  - {fileID: 11400000, guid: 8e018dcbe98745a7b8f2bce9e939cfb0, type: 2}
+  - {fileID: 11400000, guid: 5160facd955146fc8a0e1dbc39b120bf, type: 2}
+  - {fileID: 11400000, guid: ef349bf882fb4658bba8236ebc29f3a2, type: 2}
+  - {fileID: 11400000, guid: 115c3270adcf4ac0bc313b74d1c4e8ee, type: 2}
+  - {fileID: 11400000, guid: c2af780e1dfa4d56ac0db2b74aa64ce9, type: 2}
+  - {fileID: 11400000, guid: bbafd9a5c2184102ba5682e7ed93829e, type: 2}
+  - {fileID: 11400000, guid: df0054e4a4374b2f8ed05e4917ae9182, type: 2}
+  - {fileID: 11400000, guid: 97dbdde00b704771a90d78bab3dbeb7c, type: 2}
+  - {fileID: 11400000, guid: eac27d0065b44f969205af5ca702cbe7, type: 2}
+  - {fileID: 11400000, guid: 03ff46bc67384aa4abda15daaa390259, type: 2}
+  - {fileID: 11400000, guid: 14268cc42f1e4520a42b58aac03c1143, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
   - {fileID: 11400000, guid: 9fc1c54f96724ef8b03354950feaae17, type: 2}
   - {fileID: 11400000, guid: 2ff53d5978448be47807e462a021d276, type: 2}
   - {fileID: 11400000, guid: e9dd77c236b0da4418f7f02a0a091d24, type: 2}

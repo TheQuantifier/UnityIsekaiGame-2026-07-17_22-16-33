@@ -23,6 +23,7 @@ namespace UnityIsekaiGame.GameData
 
             HashSet<ScriptableObject> seenAssets = new HashSet<ScriptableObject>();
             Dictionary<string, IGameDefinition> definitionsById = new Dictionary<string, IGameDefinition>();
+            List<IGameDefinition> definitions = new List<IGameDefinition>();
             IReadOnlyList<ScriptableObject> assets = catalog.DefinitionAssets;
 
             for (int i = 0; i < assets.Count; i++)
@@ -47,6 +48,8 @@ namespace UnityIsekaiGame.GameData
                     continue;
                 }
 
+                definitions.Add(definition);
+
                 DefinitionIdValidationResult idResult = DefinitionIdValidator.Validate(definition.Id, $"{definition.GetType().Name} '{asset.name}' ID");
                 foreach (DefinitionIdValidationMessage message in idResult.Messages)
                 {
@@ -70,6 +73,8 @@ namespace UnityIsekaiGame.GameData
                     }
                 }
             }
+
+            DefinitionClassificationValidator.ValidateCatalogDefinitions(definitions, definitionsById, report);
 
             return report;
         }

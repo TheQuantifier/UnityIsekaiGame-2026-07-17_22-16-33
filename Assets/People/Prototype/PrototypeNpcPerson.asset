@@ -17,6 +17,10 @@ MonoBehaviour:
   title: Quest Giver
   shortDescription: Prototype-only NPC used to verify person identity, dialogue, and quest flow.
   portrait: {fileID: 0}
+  primaryCategory: {fileID: 11400000, guid: ef349bf882fb4658bba8236ebc29f3a2, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 14268cc42f1e4520a42b58aac03c1143, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
   roleTags:
   - quest_giver
   factionIdPlaceholder:

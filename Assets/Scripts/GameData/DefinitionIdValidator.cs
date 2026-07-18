@@ -98,7 +98,7 @@ namespace UnityIsekaiGame.GameData
                 result.Add(DefinitionIdValidationSeverity.Error, $"{prefix} contains repeated separators.");
             }
 
-            if (!id.Contains("."))
+            if (!id.Contains(".") && !IsReservedRootId(id))
             {
                 result.Add(DefinitionIdValidationSeverity.Warning, $"{prefix} is valid but has no namespace/domain prefix. Prefer IDs like item.health-potion for new content.");
             }
@@ -174,6 +174,20 @@ namespace UnityIsekaiGame.GameData
         private static bool IsSeparator(char character)
         {
             return character == '.' || character == '-' || character == '_';
+        }
+
+        private static bool IsReservedRootId(string id)
+        {
+            return id == "object"
+                || id == "item"
+                || id == "ability"
+                || id == "being"
+                || id == "person"
+                || id == "place"
+                || id == "faction"
+                || id == "quest"
+                || id == "contract"
+                || id == "profession";
         }
     }
 }
