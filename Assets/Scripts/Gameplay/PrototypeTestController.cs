@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Input;
+using UnityIsekaiGame.Loot;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -17,6 +18,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private EnemyHealth enemyHealth;
         [SerializeField] private EnemyMeleeAttack enemyAttack;
         [SerializeField] private PrototypeEnemyController enemyController;
+        [SerializeField] private EnemyLootDrop enemyLootDrop;
 
         private Vector3 fallbackPlayerSpawnPosition;
         private Quaternion fallbackPlayerSpawnRotation;
@@ -73,6 +75,11 @@ namespace UnityIsekaiGame.Gameplay
             if (enemyController == null && prototypeEnemy != null)
             {
                 enemyController = prototypeEnemy.GetComponent<PrototypeEnemyController>();
+            }
+
+            if (enemyLootDrop == null && prototypeEnemy != null)
+            {
+                enemyLootDrop = prototypeEnemy.GetComponent<EnemyLootDrop>();
             }
 
             fallbackPlayerSpawnPosition = player == null ? Vector3.zero : player.position;
@@ -137,6 +144,7 @@ namespace UnityIsekaiGame.Gameplay
 
             enemyAttack?.ResetCooldown();
             enemyController?.ResetControllerState();
+            enemyLootDrop?.ResetLootState();
             enemyHealth?.ResetToMaximum();
         }
     }

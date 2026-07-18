@@ -2156,6 +2156,7 @@ MonoBehaviour:
   enemyHealth: {fileID: 1145515524}
   enemyAttack: {fileID: 1145515523}
   enemyController: {fileID: 1145515522}
+  enemyLootDrop: {fileID: 1145515529}
 --- !u!1 &368595341
 GameObject:
   m_ObjectHideFlags: 0
@@ -5280,6 +5281,7 @@ GameObject:
   - component: {fileID: 1145515523}
   - component: {fileID: 1145515522}
   - component: {fileID: 1145515521}
+  - component: {fileID: 1145515529}
   m_Layer: 0
   m_Name: Prototype Enemy
   m_TagString: Untagged
@@ -5451,6 +5453,25 @@ Transform:
   - {fileID: 2063679467}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1145515529
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1145515520}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 42f4500714f241a0a75c9d98d8fc3d9c, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Loot.EnemyLootDrop
+  enemyHealth: {fileID: 1145515524}
+  lootTable: {fileID: 11400000, guid: b6924978040045c5b51ca558680169cb, type: 2}
+  dropOrigin: {fileID: 1145515528}
+  spawnRadius: 1.4
+  colliderClearance: 0.5
+  spawnHeightOffset: 0.25
+  pickupMaterial: {fileID: 2100000, guid: 31e61da06a904f3bbc54f09fa0bafca0, type: 2}
 --- !u!1 &1180429084
 GameObject:
   m_ObjectHideFlags: 0

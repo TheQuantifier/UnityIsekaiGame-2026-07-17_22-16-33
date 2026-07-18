@@ -12,9 +12,19 @@ namespace UnityIsekaiGame.Inventory
 
         public string InteractionPrompt => item == null ? "Pick up" : $"Pick up {quantity} x {item.DisplayName}";
 
+        public int Quantity => quantity;
+        public ItemDefinition Item => item;
+
         private void OnValidate()
         {
             quantity = Mathf.Max(1, quantity);
+        }
+
+        public void Configure(ItemDefinition itemDefinition, int pickupQuantity, bool disableWhenCollected = false)
+        {
+            item = itemDefinition;
+            quantity = Mathf.Max(1, pickupQuantity);
+            disableOnCollected = disableWhenCollected;
         }
 
         public bool CanInteract(in InteractionContext context)
