@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.People;
 
 namespace UnityIsekaiGame.Quests
 {
     [CreateAssetMenu(fileName = "Quest", menuName = "Unity Isekai Game/Quests/Quest")]
-    public sealed class QuestDefinition : ScriptableObject
+    public sealed class QuestDefinition : ScriptableObject, IGameDefinition
     {
         [SerializeField] private string questId;
         [SerializeField] private string title;
@@ -27,6 +28,8 @@ namespace UnityIsekaiGame.Quests
         [SerializeField] private bool canAbandon = true;
 
         public string QuestId => questId;
+        public string Id => questId;
+        public string DisplayName => Title;
         public string Title => string.IsNullOrWhiteSpace(title) ? "Untitled Quest" : title;
         public string Summary => summary;
         public string DetailedDescription => detailedDescription;
