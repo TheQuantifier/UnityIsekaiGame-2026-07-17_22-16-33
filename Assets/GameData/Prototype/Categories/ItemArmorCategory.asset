@@ -15,6 +15,6 @@ MonoBehaviour:
   categoryId: item.armor
   displayName: Armor
   description: Item category for armor.
-  parentCategory: {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
+  parentCategory: {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
   domain: 2
   sortOrder: 120

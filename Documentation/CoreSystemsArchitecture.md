@@ -53,7 +53,7 @@ Runtime state is owned by components or runtime instances:
 
 Stable IDs identify authored definitions and objective targets. They must not be derived from GameObject names.
 
-Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. Step 3.2 adds registered `CategoryDefinition` and `TagDefinition` assets plus opt-in classification interfaces for metadata-only category/tag assignment. See `Documentation/GameDefinitionAndStableIdGuidelines.md` and `Documentation/CategoryAndTagSystem.md` for the current stable-ID, catalog, and classification workflows.
+Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. Step 3.2 adds registered `CategoryDefinition` and `TagDefinition` assets plus opt-in classification interfaces for metadata-only category/tag assignment. Step 3.3 adds object/item taxonomy interfaces and item capability validation while keeping stack, use, and equipment behavior data-driven. See `Documentation/GameDefinitionAndStableIdGuidelines.md`, `Documentation/CategoryAndTagSystem.md`, and `Documentation/ObjectAndItemTaxonomy.md` for the current stable-ID, catalog, classification, and item taxonomy workflows.
 
 Current ID families:
 

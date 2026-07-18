@@ -109,6 +109,11 @@ namespace UnityIsekaiGame.GameData
                 ValidateAssignedTags(definition, tagged.Tags, expectedDomain, definitionsById, report);
             }
 
+            if (definition is IInventoryItemDefinition item)
+            {
+                ValidateInventoryItem(item, report);
+            }
+
             if (definition is ILegacyStringTaggedDefinition legacyStringTagged)
             {
                 ValidateLegacyTags(definition, legacyStringTagged, report);
@@ -198,6 +203,68 @@ namespace UnityIsekaiGame.GameData
                 if (!string.IsNullOrWhiteSpace(legacyTags[i]))
                 {
                     report.AddWarning($"{owner.GetType().Name} '{owner.DisplayName}' still has legacy raw {legacyStringTagged.LegacyTagLabel} tag '{legacyTags[i]}'. Prefer typed TagDefinition references for new content.");
+                }
+            }
+        }
+
+        private static void ValidateInventoryItem(IInventoryItemDefinition item, DefinitionValidationReport report)
+        {
+            if (item.PrimaryCategory == null)
+            {
+                report.AddError($"Item definition '{item.DisplayName}' is missing a primary item category.");
+            }
+
+            if (item.Stackable && item.MaximumStackSize < 1)
+            {
+                report.AddError($"Item definition '{item.DisplayName}' is stackable but has a maximum stack size below 1.");
+            }
+
+            if (!item.Stackable && item.MaximumStackSize != 1)
+            {
+                report.AddWarning($"Item definition '{item.DisplayName}' is non-stackable but reports a maximum stack size of {item.MaximumStackSize}; non-stackable items should behave as size 1 stacks.");
+            }
+
+            bool inEquipmentCategory = ItemTaxonomyUtility.IsEquipment(item);
+            bool inWeaponCategory = ItemTaxonomyUtility.IsWeapon(item);
+            bool inArmorCategory = ItemTaxonomyUtility.IsArmor(item);
+            bool inConsumableCategory = ItemTaxonomyUtility.IsConsumable(item);
+
+            if ((inEquipmentCategory || inWeaponCategory || inArmorCategory)
+                && item is IEquippableItemDefinition equippableInCategory
+                && !equippableInCategory.IsEquippable)
+            {
+                report.AddWarning($"Item definition '{item.DisplayName}' is categorized as equipment but has no equip capability.");
+            }
+
+            if (item is IEquippableItemDefinition equippable
+                && equippable.IsEquippable
+                && !inEquipmentCategory
+                && !inWeaponCategory
+                && !inArmorCategory)
+            {
+                report.AddWarning($"Item definition '{item.DisplayName}' is equippable but is not in the item.equipment, item.weapon, or item.armor category hierarchy.");
+            }
+
+            if (item is IUsableItemDefinition usable)
+            {
+                if (usable.IsUsable && usable.UseEffectCount <= 0)
+                {
+                    report.AddError($"Item definition '{item.DisplayName}' is usable but has no use effects.");
+                }
+
+                if (usable.HasMissingUseEffect)
+                {
+                    report.AddError($"Item definition '{item.DisplayName}' has a missing use effect reference.");
+                }
+
+                if (usable.IsUsable && !inConsumableCategory)
+                {
+                    report.AddWarning($"Item definition '{item.DisplayName}' has use effects but is not categorized under item.consumable.");
+                }
+
+                if (inConsumableCategory && !usable.IsUsable)
+                {
+                    report.AddWarning($"Item definition '{item.DisplayName}' is categorized as consumable but has no use effects.");
                 }
             }
         }

@@ -114,6 +114,8 @@ It includes representative top-level prototype definitions for items, spells, th
 
 Step 3.2 also registers category and tag definitions in the same catalog. Categories and tags are ordinary static definitions with stable IDs, but classification data is exposed through optional interfaces rather than by expanding `IGameDefinition`.
 
+Step 3.3 adds object and item taxonomy interfaces on top of the same catalog. Item definitions remain registered static definitions, while inventory quantities, equipped state, and future per-instance item state remain runtime data.
+
 `PersonRegistry` remains separate. It tracks currently loaded `PersonIdentity` scene instances, while the definition catalog tracks static `PersonDefinition` assets.
 
 ## Creating A New Definition Type

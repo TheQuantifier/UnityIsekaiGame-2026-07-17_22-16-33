@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
-  m_Name: ItemWeaponCategory
+  m_Name: ItemKeyCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: item.weapon
-  displayName: Weapon
-  description: Item category for weapons.
-  parentCategory: {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
+  categoryId: item.key
+  displayName: Key
+  description: Item category for keys and access tokens.
+  parentCategory: {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   domain: 2
-  sortOrder: 110
+  sortOrder: 180

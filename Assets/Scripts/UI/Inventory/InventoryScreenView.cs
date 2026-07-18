@@ -1,8 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityIsekaiGame.Equipment;
+using CategoryDefinition = UnityIsekaiGame.GameData.CategoryDefinition;
+using InventorySlot = UnityIsekaiGame.Inventory.InventorySlot;
+using ItemDefinition = UnityIsekaiGame.Inventory.ItemDefinition;
+using TagDefinition = UnityIsekaiGame.GameData.TagDefinition;
 
 namespace UnityIsekaiGame.UI.Inventory
 {
@@ -15,6 +20,9 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private Button useButton;
         [SerializeField] private Button equipButton;
         [SerializeField] private Button unequipButton;
+        [SerializeField] private GameObject selectedItemDetailsRoot;
+        [SerializeField] private Text selectedItemHeaderText;
+        [SerializeField] private Text selectedItemDetailsText;
         [SerializeField] private GameObject inventoryContentRoot;
         [SerializeField] private GameObject characterContentRoot;
         [SerializeField] private GameObject spellsContentRoot;
@@ -118,7 +126,7 @@ namespace UnityIsekaiGame.UI.Inventory
             ApplyActiveSection();
         }
 
-        public void Render(IReadOnlyList<UnityIsekaiGame.Inventory.InventorySlot> slots)
+        public void Render(IReadOnlyList<InventorySlot> slots)
         {
             if (slotViews == null)
             {
@@ -139,6 +147,26 @@ namespace UnityIsekaiGame.UI.Inventory
                 }
 
                 slotViews[i].RenderEmpty();
+            }
+        }
+
+        public void RenderSelectedItemDetails(InventorySlot slot)
+        {
+            EnsureItemDetailsPanel();
+
+            if (selectedItemDetailsRoot != null)
+            {
+                selectedItemDetailsRoot.SetActive(true);
+            }
+
+            if (selectedItemHeaderText != null)
+            {
+                selectedItemHeaderText.text = InventoryItemDetailsFormatter.GetHeader(slot);
+            }
+
+            if (selectedItemDetailsText != null)
+            {
+                selectedItemDetailsText.text = InventoryItemDetailsFormatter.Format(slot);
             }
         }
 
@@ -324,12 +352,273 @@ namespace UnityIsekaiGame.UI.Inventory
             }
         }
 
+        private void EnsureItemDetailsPanel()
+        {
+            if (selectedItemHeaderText != null && selectedItemDetailsText != null)
+            {
+                return;
+            }
+
+            Transform parent = inventoryContentRoot == null ? transform : inventoryContentRoot.transform;
+            Font font = feedbackText == null ? null : feedbackText.font;
+            if (font == null)
+            {
+                font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            }
+
+            selectedItemDetailsRoot = selectedItemDetailsRoot == null
+                ? CreateDetailsRoot(parent)
+                : selectedItemDetailsRoot;
+
+            if (selectedItemHeaderText == null)
+            {
+                selectedItemHeaderText = CreateDetailsText("Header", selectedItemDetailsRoot.transform, font, 18, FontStyle.Bold, TextAnchor.UpperLeft);
+                RectTransform rectTransform = selectedItemHeaderText.rectTransform;
+                rectTransform.anchorMin = new Vector2(0f, 1f);
+                rectTransform.anchorMax = new Vector2(1f, 1f);
+                rectTransform.pivot = new Vector2(0.5f, 1f);
+                rectTransform.offsetMin = new Vector2(12f, -44f);
+                rectTransform.offsetMax = new Vector2(-12f, -10f);
+            }
+
+            if (selectedItemDetailsText == null)
+            {
+                selectedItemDetailsText = CreateDetailsText("Details", selectedItemDetailsRoot.transform, font, 14, FontStyle.Normal, TextAnchor.UpperLeft);
+                RectTransform rectTransform = selectedItemDetailsText.rectTransform;
+                rectTransform.anchorMin = new Vector2(0f, 0f);
+                rectTransform.anchorMax = new Vector2(1f, 1f);
+                rectTransform.offsetMin = new Vector2(12f, 12f);
+                rectTransform.offsetMax = new Vector2(-12f, -50f);
+            }
+        }
+
+        private static GameObject CreateDetailsRoot(Transform parent)
+        {
+            GameObject root = new GameObject("Selected Item Details", typeof(RectTransform), typeof(Image));
+            root.transform.SetParent(parent, false);
+
+            RectTransform rectTransform = root.GetComponent<RectTransform>();
+            rectTransform.anchorMin = new Vector2(0.52f, 0.02f);
+            rectTransform.anchorMax = new Vector2(0.98f, 0.36f);
+            rectTransform.offsetMin = Vector2.zero;
+            rectTransform.offsetMax = Vector2.zero;
+
+            Image image = root.GetComponent<Image>();
+            image.color = new Color(0.06f, 0.08f, 0.09f, 0.92f);
+
+            return root;
+        }
+
+        private static Text CreateDetailsText(string name, Transform parent, Font font, int fontSize, FontStyle fontStyle, TextAnchor alignment)
+        {
+            GameObject textObject = new GameObject(name, typeof(RectTransform), typeof(Text));
+            textObject.transform.SetParent(parent, false);
+
+            Text text = textObject.GetComponent<Text>();
+            text.font = font;
+            text.fontSize = fontSize;
+            text.fontStyle = fontStyle;
+            text.alignment = alignment;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.color = Color.white;
+
+            return text;
+        }
+
         private enum InventoryMenuSection
         {
             Inventory,
             Character,
             Spells,
             Contracts
+        }
+    }
+
+    public static class InventoryItemDetailsFormatter
+    {
+        public static string GetHeader(InventorySlot slot)
+        {
+            ItemDefinition item = slot == null || slot.IsEmpty ? null : slot.Item;
+            if (item == null)
+            {
+                return "No item selected";
+            }
+
+            return string.IsNullOrWhiteSpace(item.DisplayName) ? item.ItemId : item.DisplayName;
+        }
+
+        public static string Format(InventorySlot slot)
+        {
+            ItemDefinition item = slot == null || slot.IsEmpty ? null : slot.Item;
+            if (item == null)
+            {
+                return "Select an inventory slot to inspect item type, tags, stack size, and stats.";
+            }
+
+            StringBuilder builder = new StringBuilder();
+            AppendLine(builder, "ID", string.IsNullOrWhiteSpace(item.ItemId) ? "Unassigned" : item.ItemId);
+            AppendLine(builder, "Type", GetCategoryName(item.PrimaryCategory));
+            AppendLine(builder, "Tags", FormatTags(item.Tags));
+            AppendLine(builder, "Quantity", slot.Quantity.ToString());
+            AppendLine(builder, "Stack", item.Stackable ? $"Stackable, max {item.MaximumStackSize}" : "Not stackable");
+            AppendLine(builder, "Capability", FormatCapabilities(item));
+
+            if (!string.IsNullOrWhiteSpace(item.Description))
+            {
+                builder.AppendLine();
+                builder.AppendLine(item.Description);
+            }
+
+            AppendUseDetails(builder, item);
+            AppendEquipmentDetails(builder, item.Equipment);
+
+            return builder.ToString().TrimEnd();
+        }
+
+        private static void AppendUseDetails(StringBuilder builder, ItemDefinition item)
+        {
+            if (item == null || !item.IsUsable)
+            {
+                return;
+            }
+
+            builder.AppendLine();
+            AppendLine(builder, "Use Effects", $"{item.UseEffectCount} configured");
+
+            if (item.HasMissingUseEffect)
+            {
+                AppendLine(builder, "Use Warning", "Missing effect reference");
+            }
+        }
+
+        private static void AppendEquipmentDetails(StringBuilder builder, EquipmentData equipment)
+        {
+            if (equipment == null || !equipment.Equippable)
+            {
+                return;
+            }
+
+            builder.AppendLine();
+            AppendLine(builder, "Equip Slot", SplitPascalCase(equipment.SlotType.ToString()));
+            AppendLine(builder, "Stats", FormatStats(equipment.StatModifiers));
+
+            if (equipment.MeleeWeapon != null && equipment.MeleeWeapon.IsWeapon)
+            {
+                AppendLine(builder, "Attack", equipment.MeleeWeapon.AttackName);
+                AppendLine(builder, "Damage", FormatNumber(equipment.MeleeWeapon.BaseDamage));
+                AppendLine(builder, "Range", FormatNumber(equipment.MeleeWeapon.AttackRange));
+                AppendLine(builder, "Cooldown", $"{FormatNumber(equipment.MeleeWeapon.AttackCooldown)}s");
+                AppendLine(builder, "Stamina Cost", FormatNumber(equipment.MeleeWeapon.StaminaCost));
+            }
+        }
+
+        private static string FormatCapabilities(ItemDefinition item)
+        {
+            bool usable = item != null && item.IsUsable;
+            bool equippable = item != null && item.IsEquippable;
+
+            if (usable && equippable)
+            {
+                return "Usable, equippable";
+            }
+
+            if (usable)
+            {
+                return "Usable";
+            }
+
+            if (equippable)
+            {
+                return "Equippable";
+            }
+
+            return "Inventory item";
+        }
+
+        private static string FormatStats(StatModifiers stats)
+        {
+            List<string> parts = new List<string>();
+            AddStat(parts, "Max Health", stats.MaximumHealth);
+            AddStat(parts, "Max Stamina", stats.MaximumStamina);
+            AddStat(parts, "Max Mana", stats.MaximumMana);
+            AddStat(parts, "Attack", stats.AttackPower);
+            AddStat(parts, "Defense", stats.Defense);
+
+            return parts.Count == 0 ? "None" : string.Join(", ", parts);
+        }
+
+        private static void AddStat(List<string> parts, string label, float value)
+        {
+            if (value == 0f)
+            {
+                return;
+            }
+
+            string sign = value > 0f ? "+" : string.Empty;
+            parts.Add($"{label} {sign}{FormatNumber(value)}");
+        }
+
+        private static string FormatTags(IReadOnlyList<TagDefinition> tags)
+        {
+            if (tags == null || tags.Count == 0)
+            {
+                return "None";
+            }
+
+            List<string> names = new List<string>();
+            for (int i = 0; i < tags.Count; i++)
+            {
+                if (tags[i] != null)
+                {
+                    names.Add(tags[i].DisplayName);
+                }
+            }
+
+            return names.Count == 0 ? "None" : string.Join(", ", names);
+        }
+
+        private static string GetCategoryName(CategoryDefinition category)
+        {
+            if (category == null)
+            {
+                return "Uncategorized";
+            }
+
+            return category.DisplayName;
+        }
+
+        private static void AppendLine(StringBuilder builder, string label, string value)
+        {
+            builder.Append(label);
+            builder.Append(": ");
+            builder.AppendLine(value);
+        }
+
+        private static string FormatNumber(float value)
+        {
+            return value.ToString("0.##");
+        }
+
+        private static string SplitPascalCase(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new StringBuilder(value.Length + 4);
+            for (int i = 0; i < value.Length; i++)
+            {
+                if (i > 0 && char.IsUpper(value[i]) && !char.IsWhiteSpace(value[i - 1]))
+                {
+                    builder.Append(' ');
+                }
+
+                builder.Append(value[i]);
+            }
+
+            return builder.ToString();
         }
     }
 }

@@ -6,7 +6,7 @@ using UnityIsekaiGame.GameData;
 namespace UnityIsekaiGame.Inventory
 {
     [CreateAssetMenu(fileName = "NewItemDefinition", menuName = "Unity Isekai Game/Inventory/Item Definition")]
-    public sealed class ItemDefinition : ScriptableObject, IGameDefinition, ICategorizableDefinition, ITaggedDefinition
+    public sealed class ItemDefinition : ScriptableObject, IInventoryItemDefinition, IUsableItemDefinition, IEquippableItemDefinition
     {
         [SerializeField] private string itemId;
         [SerializeField] private string displayName;
@@ -31,6 +31,27 @@ namespace UnityIsekaiGame.Inventory
         public int MaximumStackSize => stackable ? Mathf.Max(1, maximumStackSize) : 1;
         public IReadOnlyList<ItemUseEffect> UseEffects => useEffects;
         public bool IsUsable => useEffects != null && useEffects.Length > 0;
+        public int UseEffectCount => useEffects == null ? 0 : useEffects.Length;
+        public bool HasMissingUseEffect
+        {
+            get
+            {
+                if (useEffects == null)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < useEffects.Length; i++)
+                {
+                    if (useEffects[i] == null)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
         public EquipmentData Equipment => equipment;
         public bool IsEquippable => equipment != null && equipment.Equippable;
 

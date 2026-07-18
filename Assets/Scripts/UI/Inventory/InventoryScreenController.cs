@@ -267,6 +267,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 ClampSelection();
                 view.SetSelectedSlot(selectedSlotIndex);
                 view.SetSelectedEquipmentSlot(selectedEquipmentSlot);
+                view.RenderSelectedItemDetails(inventory.GetSlot(selectedSlotIndex));
                 UpdateEquipmentActions();
             }
 
@@ -354,6 +355,7 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 view.SetSelectedSlot(selectedSlotIndex);
                 view.SetFeedback(string.Empty);
+                view.RenderSelectedItemDetails(inventory == null ? null : inventory.GetSlot(selectedSlotIndex));
                 UpdateEquipmentActions();
             }
         }
@@ -390,6 +392,7 @@ namespace UnityIsekaiGame.UI.Inventory
             selectedSlotIndex = Mathf.Clamp(selectedSlotIndex + delta, 0, view.SlotCount - 1);
             view.SetSelectedSlot(selectedSlotIndex);
             view.SetFeedback(string.Empty);
+            view.RenderSelectedItemDetails(inventory == null ? null : inventory.GetSlot(selectedSlotIndex));
             UpdateEquipmentActions();
         }
 

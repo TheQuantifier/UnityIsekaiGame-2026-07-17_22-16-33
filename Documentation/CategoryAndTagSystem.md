@@ -114,15 +114,27 @@ The current prototype hierarchy is intentionally small:
 
 ```text
 item
-  item.weapon
-  item.armor
+  item.equipment
+    item.weapon
+    item.armor
+    item.accessory
   item.consumable
+  item.material
+  item.ingredient
+  item.tool
+  item.trade-good
+  item.key
+  item.quest-item
+  item.book
+  item.miscellaneous
 ability
   ability.spell
 person
 quest
 contract
 ```
+
+`Documentation/ObjectAndItemTaxonomy.md` is authoritative for the item branch of the category tree.
 
 ## Stable IDs
 
