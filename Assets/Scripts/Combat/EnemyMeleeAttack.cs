@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.Gameplay;
 
 namespace UnityIsekaiGame.Combat
 {
@@ -33,6 +34,7 @@ namespace UnityIsekaiGame.Combat
         public bool CanAttack(Transform target)
         {
             return target != null
+                && !PrototypeGameplayModalState.IsModalActive
                 && (health == null || !health.IsDefeated)
                 && Time.time >= nextAttackTime
                 && GetPlanarDistanceTo(target) <= attackRange;
@@ -43,6 +45,11 @@ namespace UnityIsekaiGame.Combat
             if (target == null)
             {
                 return Resolve(DamageResult.Failure(damage, "Enemy attack has no target."));
+            }
+
+            if (PrototypeGameplayModalState.IsModalActive)
+            {
+                return Resolve(DamageResult.Failure(damage, "Enemy attack is paused by a modal screen."));
             }
 
             if (health != null && health.IsDefeated)

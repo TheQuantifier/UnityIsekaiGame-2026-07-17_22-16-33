@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityIsekaiGame.Gameplay;
 
 namespace UnityIsekaiGame.Interaction
 {
@@ -19,6 +20,12 @@ namespace UnityIsekaiGame.Interaction
         {
             if (detector == null || promptView == null)
             {
+                return;
+            }
+
+            if (PrototypeGameplayModalState.IsModalActive)
+            {
+                promptView.Hide();
                 return;
             }
 

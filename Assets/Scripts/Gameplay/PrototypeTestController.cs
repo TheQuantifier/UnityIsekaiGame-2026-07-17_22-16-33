@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Dialogue;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Loot;
 using UnityIsekaiGame.Magic;
@@ -15,6 +16,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PlayerMana playerMana;
         [SerializeField] private PlayerMeleeCombat playerMeleeCombat;
         [SerializeField] private PlayerSpellcaster playerSpellcaster;
+        [SerializeField] private DialogueController dialogueController;
         [SerializeField] private Transform playerSpawnPoint;
         [SerializeField] private Transform prototypeEnemy;
         [SerializeField] private EnemyHealth enemyHealth;
@@ -64,6 +66,11 @@ namespace UnityIsekaiGame.Gameplay
                 playerSpellcaster = player.GetComponent<PlayerSpellcaster>();
             }
 
+            if (dialogueController == null)
+            {
+                dialogueController = FindAnyObjectByType<DialogueController>();
+            }
+
             if (prototypeEnemy == null && enemyHealth != null)
             {
                 prototypeEnemy = enemyHealth.transform;
@@ -105,6 +112,7 @@ namespace UnityIsekaiGame.Gameplay
 
         public void ResetPrototypeState()
         {
+            dialogueController?.EndDialogue();
             ResetPlayerPosition();
             playerHealth?.ResetToMaximum();
             playerStamina?.RestoreToMaximum();

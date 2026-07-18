@@ -83,6 +83,11 @@ namespace UnityIsekaiGame.UI.Inventory
 
             if (input.ConsumeInventory())
             {
+                if (!isOpen && input.GameplayInputBlocked)
+                {
+                    return;
+                }
+
                 SetOpen(!isOpen);
                 return;
             }

@@ -29,6 +29,7 @@ namespace UnityIsekaiGame.Input
         [SerializeField] private string cancelActionName = "Cancel";
         [SerializeField] private string navigateActionName = "Navigate";
         [SerializeField] private string inventoryUseActionName = "InventoryUse";
+        [SerializeField] private string dialogueAdvanceActionName = "DialogueAdvance";
 
         private InputAction moveAction;
         private InputAction lookAction;
@@ -48,6 +49,7 @@ namespace UnityIsekaiGame.Input
         private InputAction cancelAction;
         private InputAction navigateAction;
         private InputAction inventoryUseAction;
+        private InputAction dialogueAdvanceAction;
         private bool jumpQueued;
         private bool attackQueued;
         private bool castPrimarySpellQueued;
@@ -58,6 +60,7 @@ namespace UnityIsekaiGame.Input
         private bool prototypeResetQueued;
         private bool cancelQueued;
         private bool inventoryUseQueued;
+        private bool dialogueAdvanceQueued;
         private Vector2 inventoryNavigateQueued;
         private bool pointerLook;
         private bool gameplayInputBlocked;
@@ -97,6 +100,7 @@ namespace UnityIsekaiGame.Input
             cancelAction = uiMap?.FindAction(cancelActionName, false);
             navigateAction = uiMap?.FindAction(navigateActionName, false);
             inventoryUseAction = uiMap?.FindAction(inventoryUseActionName, false);
+            dialogueAdvanceAction = uiMap?.FindAction(dialogueAdvanceActionName, false);
         }
 
         private void OnEnable()
@@ -119,6 +123,7 @@ namespace UnityIsekaiGame.Input
             EnableAction(cancelAction);
             EnableAction(navigateAction);
             EnableAction(inventoryUseAction);
+            EnableAction(dialogueAdvanceAction);
 
             if (jumpAction != null)
             {
@@ -165,6 +170,11 @@ namespace UnityIsekaiGame.Input
             if (inventoryUseAction != null)
             {
                 inventoryUseAction.performed += OnInventoryUsePerformed;
+            }
+
+            if (dialogueAdvanceAction != null)
+            {
+                dialogueAdvanceAction.performed += OnDialogueAdvancePerformed;
             }
 
             if (lookAction != null)
@@ -227,6 +237,12 @@ namespace UnityIsekaiGame.Input
                 inventoryUseAction.performed -= OnInventoryUsePerformed;
             }
 
+            if (dialogueAdvanceAction != null)
+            {
+                dialogueAdvanceAction.performed -= OnDialogueAdvancePerformed;
+            }
+
+            DisableAction(dialogueAdvanceAction);
             DisableAction(inventoryUseAction);
             DisableAction(navigateAction);
             DisableAction(cancelAction);
@@ -364,6 +380,12 @@ namespace UnityIsekaiGame.Input
 
         public bool ConsumePrototypeReset()
         {
+            if (gameplayInputBlocked)
+            {
+                prototypeResetQueued = false;
+                return false;
+            }
+
             if (!prototypeResetQueued)
             {
                 return false;
@@ -393,6 +415,22 @@ namespace UnityIsekaiGame.Input
 
             inventoryUseQueued = false;
             return true;
+        }
+
+        public bool ConsumeDialogueAdvance()
+        {
+            if (!dialogueAdvanceQueued)
+            {
+                return false;
+            }
+
+            dialogueAdvanceQueued = false;
+            return true;
+        }
+
+        public bool ConsumeDialogueCancel()
+        {
+            return ConsumeCancel();
         }
 
         public bool ConsumeInventoryNavigate(out Vector2 direction)
@@ -438,6 +476,11 @@ namespace UnityIsekaiGame.Input
         {
             inventoryUseQueued = false;
             inventoryNavigateQueued = Vector2.zero;
+        }
+
+        public void ClearDialogueActions()
+        {
+            dialogueAdvanceQueued = false;
         }
 
         private void OnJumpPerformed(InputAction.CallbackContext context)
@@ -539,6 +582,14 @@ namespace UnityIsekaiGame.Input
         private void OnInventoryUsePerformed(InputAction.CallbackContext context)
         {
             inventoryUseQueued = true;
+        }
+
+        private void OnDialogueAdvancePerformed(InputAction.CallbackContext context)
+        {
+            if (!IsTypingInUiField())
+            {
+                dialogueAdvanceQueued = true;
+            }
         }
 
         private void OnLookPerformed(InputAction.CallbackContext context)
