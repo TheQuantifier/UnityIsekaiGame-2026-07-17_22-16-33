@@ -4,7 +4,9 @@ using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.UI.Contracts;
+using UnityIsekaiGame.UI.Quests;
 
 namespace UnityIsekaiGame.UI.Inventory
 {
@@ -15,9 +17,11 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private PlayerEquipment equipment;
         [SerializeField] private PlayerSpellLoadout spellLoadout;
         [SerializeField] private PlayerContractJournal contractJournal;
+        [SerializeField] private PlayerQuestLog questLog;
         [SerializeField] private InventoryScreenView view;
         [SerializeField] private SpellManagementView spellManagementView;
         [SerializeField] private ContractJournalView contractJournalView;
+        [SerializeField] private QuestJournalView questJournalView;
         [SerializeField] private GameObject itemUser;
         [SerializeField, Min(1)] private int columns = 4;
 
@@ -28,6 +32,7 @@ namespace UnityIsekaiGame.UI.Inventory
         private EquipmentSlotType selectedEquipmentSlot;
         private int selectedKnownSpellIndex;
         private int selectedContractIndex;
+        private int selectedQuestIndex;
 
         private void Awake()
         {
@@ -44,6 +49,11 @@ namespace UnityIsekaiGame.UI.Inventory
             if (contractJournal == null && inventory != null)
             {
                 contractJournal = inventory.GetComponent<PlayerContractJournal>();
+            }
+
+            if (questLog == null && inventory != null)
+            {
+                questLog = inventory.GetComponent<PlayerQuestLog>();
             }
 
             if (itemUser == null && inventory != null)
@@ -64,6 +74,11 @@ namespace UnityIsekaiGame.UI.Inventory
             if (contractJournalView != null)
             {
                 contractJournalView.Initialize(SelectContract, AbandonSelectedContract, ClaimSelectedContractReward);
+            }
+
+            if (questJournalView != null)
+            {
+                questJournalView.Initialize(SelectQuest, AbandonSelectedQuest, ClaimSelectedQuestReward);
             }
 
             Close(false);
@@ -91,6 +106,11 @@ namespace UnityIsekaiGame.UI.Inventory
             if (contractJournal != null)
             {
                 contractJournal.JournalChanged += Refresh;
+            }
+
+            if (questLog != null)
+            {
+                questLog.QuestLogChanged += Refresh;
             }
         }
 
@@ -157,6 +177,11 @@ namespace UnityIsekaiGame.UI.Inventory
                 contractJournal.JournalChanged -= Refresh;
             }
 
+            if (questLog != null)
+            {
+                questLog.QuestLogChanged -= Refresh;
+            }
+
             if (isOpen)
             {
                 Close(true);
@@ -172,6 +197,14 @@ namespace UnityIsekaiGame.UI.Inventory
             }
 
             Close(true);
+        }
+
+        public void CloseForPrototypeReset()
+        {
+            if (isOpen)
+            {
+                Close(true);
+            }
         }
 
         private void Open()
@@ -247,6 +280,12 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 ClampContractSelection();
                 contractJournalView.Render(contractJournal == null ? null : contractJournal.Contracts, selectedContractIndex);
+            }
+
+            if (questJournalView != null)
+            {
+                ClampQuestSelection();
+                questJournalView.Render(questLog == null ? null : questLog.Quests, selectedQuestIndex);
             }
         }
 
@@ -476,6 +515,49 @@ namespace UnityIsekaiGame.UI.Inventory
             }
 
             return contractJournal.Contracts[selectedContractIndex];
+        }
+
+        private void SelectQuest(int questIndex)
+        {
+            selectedQuestIndex = Mathf.Max(0, questIndex);
+            questJournalView?.SetFeedback(string.Empty);
+            Refresh();
+        }
+
+        private void AbandonSelectedQuest()
+        {
+            QuestInstance quest = GetSelectedQuest();
+            QuestOperationResult result = questLog == null
+                ? QuestOperationResult.Failure("No quest log found.")
+                : questLog.AbandonQuest(quest);
+            questJournalView?.SetFeedback(result.Message);
+            Refresh();
+        }
+
+        private void ClaimSelectedQuestReward()
+        {
+            QuestInstance quest = GetSelectedQuest();
+            QuestOperationResult result = questLog == null
+                ? QuestOperationResult.Failure("No quest log found.")
+                : questLog.ClaimReward(quest);
+            questJournalView?.SetFeedback(result.Message);
+            Refresh();
+        }
+
+        private void ClampQuestSelection()
+        {
+            int questCount = questLog == null || questLog.Quests == null ? 0 : questLog.Quests.Count;
+            selectedQuestIndex = questCount <= 0 ? 0 : Mathf.Clamp(selectedQuestIndex, 0, questCount - 1);
+        }
+
+        private QuestInstance GetSelectedQuest()
+        {
+            if (questLog == null || selectedQuestIndex < 0 || selectedQuestIndex >= questLog.Quests.Count)
+            {
+                return null;
+            }
+
+            return questLog.Quests[selectedQuestIndex];
         }
     }
 }

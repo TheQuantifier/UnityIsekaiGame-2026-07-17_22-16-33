@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3a613c071eef4e589851a7dc8c75827f, type: 3}
   m_Name: PrototypeDialogueEnd
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Dialogue.DialogueNodeDefinition
-  speakerName: Prototype Guide
-  dialogueText: That is enough for now. Come back if you want to test the conversation again.
+  speakerName: Prototype NPC
+  dialogueText: Check the Journal tab for A Strange Disturbance. Return to me after the enemy is defeated.
   portrait: {fileID: 0}
   nextNodes: []
   choices: []

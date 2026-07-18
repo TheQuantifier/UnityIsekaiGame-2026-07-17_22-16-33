@@ -5,6 +5,7 @@ using UnityIsekaiGame.Dialogue;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Loot;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.UI.Inventory;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -18,6 +19,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PlayerMeleeCombat playerMeleeCombat;
         [SerializeField] private PlayerSpellcaster playerSpellcaster;
         [SerializeField] private DialogueController dialogueController;
+        [SerializeField] private InventoryScreenController inventoryScreenController;
         [SerializeField] private Transform playerSpawnPoint;
         [SerializeField] private Transform prototypeEnemy;
         [SerializeField] private EnemyHealth enemyHealth;
@@ -73,6 +75,11 @@ namespace UnityIsekaiGame.Gameplay
                 dialogueController = FindAnyObjectByType<DialogueController>();
             }
 
+            if (inventoryScreenController == null)
+            {
+                inventoryScreenController = FindAnyObjectByType<InventoryScreenController>();
+            }
+
             if (prototypeEnemy == null && enemyHealth != null)
             {
                 prototypeEnemy = enemyHealth.transform;
@@ -120,6 +127,7 @@ namespace UnityIsekaiGame.Gameplay
         public void ResetPrototypeState()
         {
             dialogueController?.EndDialogue();
+            inventoryScreenController?.CloseForPrototypeReset();
             ResetPlayerPosition();
             playerHealth?.ResetToMaximum();
             playerStamina?.RestoreToMaximum();

@@ -13,14 +13,14 @@ MonoBehaviour:
   m_Name: PrototypePlayerQuestion
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Dialogue.DialogueNodeDefinition
   speakerName: Player
-  dialogueText: I need my bearings. What should I ask first?
+  dialogueText: What should I do first?
   portrait: {fileID: 0}
   nextNodes: []
   choices:
-  - choiceText: Ask about this world.
+  - choiceText: Ask where to investigate.
     destination: {fileID: 11400000, guid: 68fc69b923a6421282fd5dd2ae955796, type: 2}
     conditionKey:
-  - choiceText: Ask about nearby danger.
+  - choiceText: Ask what danger is nearby.
     destination: {fileID: 11400000, guid: 05903d49c37249d3a725b9a90d481ce6, type: 2}
     conditionKey:
   endsConversation: 0

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Quests;
 
 namespace UnityIsekaiGame.Contracts
 {
@@ -8,6 +9,7 @@ namespace UnityIsekaiGame.Contracts
         [SerializeField] private EnemyHealth health;
         [SerializeField] private ContractObjectiveTarget target;
         [SerializeField] private PlayerContractJournal journal;
+        [SerializeField] private PlayerQuestLog questLog;
 
         private bool reportedDefeat;
 
@@ -26,6 +28,11 @@ namespace UnityIsekaiGame.Contracts
             if (journal == null)
             {
                 journal = FindAnyObjectByType<PlayerContractJournal>();
+            }
+
+            if (questLog == null)
+            {
+                questLog = FindAnyObjectByType<PlayerQuestLog>();
             }
         }
 
@@ -59,6 +66,7 @@ namespace UnityIsekaiGame.Contracts
 
             reportedDefeat = true;
             journal?.RecordDefeat(target);
+            questLog?.RecordDefeat(target);
         }
     }
 }

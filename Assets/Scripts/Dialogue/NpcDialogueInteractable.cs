@@ -1,4 +1,5 @@
 using UnityEngine;
+using System;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Interaction;
@@ -12,6 +13,7 @@ namespace UnityIsekaiGame.Dialogue
         [SerializeField] private DialogueNodeDefinition startingNode;
 
         public string InteractionPrompt => interactionPrompt;
+        public event Action<NpcDialogueInteractable> DialogueStarted;
 
         private void Awake()
         {
@@ -47,6 +49,11 @@ namespace UnityIsekaiGame.Dialogue
 
             DialogueOperationResult result = dialogueController.StartDialogue(startingNode);
             Debug.Log(result.Message);
+            if (result.Succeeded)
+            {
+                DialogueStarted?.Invoke(this);
+            }
+
             if (!result.Succeeded)
             {
                 PrototypeHudMessageBus.Show(result.Message);

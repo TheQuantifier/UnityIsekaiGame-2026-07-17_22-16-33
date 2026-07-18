@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3a613c071eef4e589851a7dc8c75827f, type: 3}
   m_Name: PrototypeWorldAnswer
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Dialogue.DialogueNodeDefinition
-  speakerName: Prototype Guide
-  dialogueText: This test field stands in for a much larger world. For now, use it to verify core systems.
+  speakerName: Prototype NPC
+  dialogueText: Walk to the disturbance site near the enemy. Reaching that area should advance the quest objective.
   portrait: {fileID: 0}
   nextNodes:
   - {fileID: 11400000, guid: 8fa094a853dd4b8db54e8292023b388d, type: 2}

@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3a613c071eef4e589851a7dc8c75827f, type: 3}
   m_Name: PrototypeDangerAnswer
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Dialogue.DialogueNodeDefinition
-  speakerName: Prototype Guide
-  dialogueText: The training enemy nearby is dangerous enough for testing. It will pause while this dialogue is open.
+  speakerName: Prototype NPC
+  dialogueText: Defeat the prototype enemy after investigating the disturbance, then return to me to complete the quest.
   portrait: {fileID: 0}
   nextNodes:
   - {fileID: 11400000, guid: 8fa094a853dd4b8db54e8292023b388d, type: 2}
