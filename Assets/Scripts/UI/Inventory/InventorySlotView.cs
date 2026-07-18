@@ -1,14 +1,21 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace UnityIsekaiGame.UI.Inventory
 {
-    public sealed class InventorySlotView : MonoBehaviour
+    public sealed class InventorySlotView : MonoBehaviour, IPointerClickHandler
     {
+        [SerializeField] private Image backgroundImage;
         [SerializeField] private Image iconImage;
         [SerializeField] private Text itemNameText;
         [SerializeField] private Text quantityText;
         [SerializeField] private string emptyLabel = "Empty";
+        [SerializeField] private Color normalColor = new Color(0.18f, 0.2f, 0.22f, 0.95f);
+        [SerializeField] private Color selectedColor = new Color(0.35f, 0.52f, 0.68f, 0.95f);
+
+        private int slotIndex = -1;
+        private System.Action<int> selected;
 
         private void Awake()
         {
@@ -68,10 +75,41 @@ namespace UnityIsekaiGame.UI.Inventory
             }
         }
 
+        public void Initialize(int index, System.Action<int> onSelected)
+        {
+            slotIndex = index;
+            selected = onSelected;
+            ResolveBackgroundImage();
+        }
+
+        public void SetSelected(bool isSelected)
+        {
+            ResolveBackgroundImage();
+
+            if (backgroundImage != null)
+            {
+                backgroundImage.color = isSelected ? selectedColor : normalColor;
+            }
+        }
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            selected?.Invoke(slotIndex);
+        }
+
         private void ApplyTextLayout()
         {
+            ResolveBackgroundImage();
             ConfigureNameText();
             ConfigureQuantityText();
+        }
+
+        private void ResolveBackgroundImage()
+        {
+            if (backgroundImage == null)
+            {
+                backgroundImage = GetComponent<Image>();
+            }
         }
 
         private void ConfigureNameText()

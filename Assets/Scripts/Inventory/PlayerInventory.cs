@@ -1,5 +1,5 @@
-using System.Collections.Generic;
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace UnityIsekaiGame.Inventory
@@ -54,6 +54,58 @@ namespace UnityIsekaiGame.Inventory
             }
 
             return new InventoryAddResult(status, requestedQuantity, addedQuantity);
+        }
+
+        public ItemUseResult UseItem(int slotIndex, GameObject user)
+        {
+            EnsureSlotCapacity();
+
+            if (slotIndex < 0 || slotIndex >= slots.Count)
+            {
+                return ItemUseResult.Failure("No inventory slot selected.");
+            }
+
+            InventorySlot slot = slots[slotIndex];
+            if (slot == null || slot.IsEmpty)
+            {
+                return ItemUseResult.Failure("Selected slot is empty.");
+            }
+
+            ItemDefinition item = slot.Item;
+            if (item == null || !item.IsUsable)
+            {
+                string itemName = item == null ? "Item" : item.DisplayName;
+                return ItemUseResult.Failure($"{itemName} cannot be used.");
+            }
+
+            ItemUseContext context = new ItemUseContext(user, this, slotIndex, item);
+            IReadOnlyList<ItemUseEffect> effects = item.UseEffects;
+
+            for (int i = 0; i < effects.Count; i++)
+            {
+                ItemUseEffect effect = effects[i];
+                if (effect == null)
+                {
+                    return ItemUseResult.Failure($"{item.DisplayName} has a missing use effect.");
+                }
+
+                if (!effect.CanUse(in context, out string failureReason))
+                {
+                    return ItemUseResult.Failure(string.IsNullOrWhiteSpace(failureReason) ? $"{item.DisplayName} cannot be used right now." : failureReason);
+                }
+            }
+
+            for (int i = 0; i < effects.Count; i++)
+            {
+                effects[i].Apply(in context);
+            }
+
+            slot.Remove(1);
+            InventoryChanged?.Invoke();
+
+            string message = $"Used {item.DisplayName}.";
+            Debug.Log(message);
+            return ItemUseResult.Success(message);
         }
 
         private int AddToExistingStacks(ItemDefinition item, int remainingQuantity)

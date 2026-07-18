@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace UnityIsekaiGame.Inventory
@@ -11,6 +12,7 @@ namespace UnityIsekaiGame.Inventory
         [SerializeField] private Sprite icon;
         [SerializeField] private bool stackable = true;
         [SerializeField, Min(1)] private int maximumStackSize = 1;
+        [SerializeField] private ItemUseEffect[] useEffects;
 
         public string ItemId => itemId;
         public string DisplayName => displayName;
@@ -18,6 +20,8 @@ namespace UnityIsekaiGame.Inventory
         public Sprite Icon => icon;
         public bool Stackable => stackable;
         public int MaximumStackSize => stackable ? Mathf.Max(1, maximumStackSize) : 1;
+        public IReadOnlyList<ItemUseEffect> UseEffects => useEffects;
+        public bool IsUsable => useEffects != null && useEffects.Length > 0;
 
         private void OnValidate()
         {

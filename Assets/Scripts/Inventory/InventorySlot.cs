@@ -59,5 +59,21 @@ namespace UnityIsekaiGame.Inventory
             item = null;
             quantity = 0;
         }
+
+        internal bool Remove(int amount)
+        {
+            if (amount <= 0 || IsEmpty)
+            {
+                return false;
+            }
+
+            quantity = Mathf.Max(0, quantity - amount);
+            if (quantity == 0)
+            {
+                item = null;
+            }
+
+            return true;
+        }
     }
 }

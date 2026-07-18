@@ -14,7 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Inventory.ItemDefinition
   itemId: health_potion
   displayName: Health Potion
-  description: Restores health when item use is implemented.
+  description: Restores 25 health when used.
   icon: {fileID: 0}
   stackable: 1
   maximumStackSize: 10
+  useEffects:
+  - {fileID: 11400000, guid: 35859a5d34e32b643939a990147ef00f, type: 2}

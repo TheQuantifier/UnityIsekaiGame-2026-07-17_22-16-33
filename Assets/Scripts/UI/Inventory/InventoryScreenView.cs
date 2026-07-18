@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace UnityIsekaiGame.UI.Inventory
 {
@@ -7,6 +9,10 @@ namespace UnityIsekaiGame.UI.Inventory
     {
         [SerializeField] private CanvasGroup canvasGroup;
         [SerializeField] private InventorySlotView[] slotViews;
+        [SerializeField] private Text feedbackText;
+        [SerializeField] private Button useButton;
+
+        private Action useSelected;
 
         private void Awake()
         {
@@ -14,6 +20,30 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 canvasGroup = GetComponent<CanvasGroup>();
             }
+        }
+
+        public int SlotCount => slotViews == null ? 0 : slotViews.Length;
+
+        public void Initialize(Action<int> onSlotSelected, Action onUseSelected)
+        {
+            if (slotViews != null)
+            {
+                for (int i = 0; i < slotViews.Length; i++)
+                {
+                    if (slotViews[i] != null)
+                    {
+                        slotViews[i].Initialize(i, onSlotSelected);
+                    }
+                }
+            }
+
+            if (useButton != null)
+            {
+                useButton.onClick.RemoveListener(InvokeUseSelected);
+                useButton.onClick.AddListener(InvokeUseSelected);
+            }
+
+            useSelected = onUseSelected;
         }
 
         public void Render(IReadOnlyList<UnityIsekaiGame.Inventory.InventorySlot> slots)
@@ -40,6 +70,30 @@ namespace UnityIsekaiGame.UI.Inventory
             }
         }
 
+        public void SetSelectedSlot(int selectedIndex)
+        {
+            if (slotViews == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < slotViews.Length; i++)
+            {
+                if (slotViews[i] != null)
+                {
+                    slotViews[i].SetSelected(i == selectedIndex);
+                }
+            }
+        }
+
+        public void SetFeedback(string message)
+        {
+            if (feedbackText != null)
+            {
+                feedbackText.text = message;
+            }
+        }
+
         public void Show()
         {
             SetVisible(true);
@@ -61,6 +115,11 @@ namespace UnityIsekaiGame.UI.Inventory
             canvasGroup.alpha = visible ? 1f : 0f;
             canvasGroup.interactable = visible;
             canvasGroup.blocksRaycasts = visible;
+        }
+
+        private void InvokeUseSelected()
+        {
+            useSelected?.Invoke();
         }
     }
 }
