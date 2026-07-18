@@ -7,6 +7,8 @@ namespace UnityIsekaiGame.UI
     public sealed class HealthReadoutView : MonoBehaviour
     {
         [SerializeField] private PlayerHealth health;
+        [SerializeField] private PlayerStamina stamina;
+        [SerializeField] private PlayerMana mana;
         [SerializeField] private Text label;
 
         private void Awake()
@@ -26,6 +28,16 @@ namespace UnityIsekaiGame.UI
                 health.HealthChanged += OnHealthChanged;
             }
 
+            if (stamina != null)
+            {
+                stamina.StaminaChanged += OnStaminaChanged;
+            }
+
+            if (mana != null)
+            {
+                mana.ManaChanged += OnManaChanged;
+            }
+
             Refresh();
         }
 
@@ -35,26 +47,46 @@ namespace UnityIsekaiGame.UI
             {
                 health.HealthChanged -= OnHealthChanged;
             }
+
+            if (stamina != null)
+            {
+                stamina.StaminaChanged -= OnStaminaChanged;
+            }
+
+            if (mana != null)
+            {
+                mana.ManaChanged -= OnManaChanged;
+            }
         }
 
         private void OnHealthChanged(int currentHealth, int maximumHealth)
         {
-            SetText(currentHealth, maximumHealth);
+            Refresh();
+        }
+
+        private void OnStaminaChanged(float currentStamina, float maximumStamina)
+        {
+            Refresh();
+        }
+
+        private void OnManaChanged(float currentMana, float maximumMana)
+        {
+            Refresh();
         }
 
         private void Refresh()
         {
-            if (health != null)
-            {
-                SetText(health.CurrentHealth, health.MaximumHealth);
-            }
+            SetText();
         }
 
-        private void SetText(int currentHealth, int maximumHealth)
+        private void SetText()
         {
             if (label != null)
             {
-                label.text = $"Health: {currentHealth} / {maximumHealth}";
+                string healthText = health == null ? "Health: -- / --" : $"Health: {health.CurrentHealth} / {health.MaximumHealth}";
+                string staminaText = stamina == null ? "Stamina: -- / --" : $"Stamina: {stamina.CurrentStamina:0} / {stamina.MaximumStamina:0}";
+                string manaText = mana == null ? "Mana: -- / --" : $"Mana: {mana.CurrentMana:0} / {mana.MaximumMana:0}";
+                label.text = $"{healthText}\n{staminaText}\n{manaText}";
             }
         }
     }
