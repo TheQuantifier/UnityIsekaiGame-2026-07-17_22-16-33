@@ -41,6 +41,8 @@
 
 # Visual Studio cache directory
 .vs/
+# Local VS Code workspace preferences; keep launch/extensions available for shared config.
+.vscode/settings.json
 
 # Gradle cache directory
 .gradle/
@@ -106,3 +108,6 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Unity AI Assistant local/user package state
+/ProjectSettings/Packages/com.unity.ai.assistant/
