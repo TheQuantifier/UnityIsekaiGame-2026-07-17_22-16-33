@@ -12,12 +12,15 @@ namespace UnityIsekaiGame.Input
         [SerializeField] private string lookActionName = "Look";
         [SerializeField] private string jumpActionName = "Jump";
         [SerializeField] private string sprintActionName = "Sprint";
+        [SerializeField] private string interactActionName = "Interact";
 
         private InputAction moveAction;
         private InputAction lookAction;
         private InputAction jumpAction;
         private InputAction sprintAction;
+        private InputAction interactAction;
         private bool jumpQueued;
+        private bool interactQueued;
         private bool pointerLook;
 
         public Vector2 Move => moveAction == null ? Vector2.zero : moveAction.ReadValue<Vector2>();
@@ -37,6 +40,7 @@ namespace UnityIsekaiGame.Input
             lookAction = map.FindAction(lookActionName, true);
             jumpAction = map.FindAction(jumpActionName, true);
             sprintAction = map.FindAction(sprintActionName, false);
+            interactAction = map.FindAction(interactActionName, true);
         }
 
         private void OnEnable()
@@ -45,10 +49,16 @@ namespace UnityIsekaiGame.Input
             EnableAction(lookAction);
             EnableAction(jumpAction);
             EnableAction(sprintAction);
+            EnableAction(interactAction);
 
             if (jumpAction != null)
             {
                 jumpAction.performed += OnJumpPerformed;
+            }
+
+            if (interactAction != null)
+            {
+                interactAction.performed += OnInteractPerformed;
             }
 
             if (lookAction != null)
@@ -69,6 +79,12 @@ namespace UnityIsekaiGame.Input
                 lookAction.performed -= OnLookPerformed;
             }
 
+            if (interactAction != null)
+            {
+                interactAction.performed -= OnInteractPerformed;
+            }
+
+            DisableAction(interactAction);
             DisableAction(sprintAction);
             DisableAction(jumpAction);
             DisableAction(lookAction);
@@ -86,9 +102,25 @@ namespace UnityIsekaiGame.Input
             return true;
         }
 
+        public bool ConsumeInteract()
+        {
+            if (!interactQueued)
+            {
+                return false;
+            }
+
+            interactQueued = false;
+            return true;
+        }
+
         private void OnJumpPerformed(InputAction.CallbackContext context)
         {
             jumpQueued = true;
+        }
+
+        private void OnInteractPerformed(InputAction.CallbackContext context)
+        {
+            interactQueued = true;
         }
 
         private void OnLookPerformed(InputAction.CallbackContext context)
