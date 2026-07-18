@@ -15,6 +15,7 @@ namespace UnityIsekaiGame.Input
         [SerializeField] private string jumpActionName = "Jump";
         [SerializeField] private string sprintActionName = "Sprint";
         [SerializeField] private string attackActionName = "Attack";
+        [SerializeField] private string castPrimarySpellActionName = "CastPrimarySpell";
         [SerializeField] private string interactActionName = "Interact";
         [SerializeField] private string inventoryActionName = "Inventory";
         [SerializeField] private string prototypeResetActionName = "PrototypeReset";
@@ -28,6 +29,7 @@ namespace UnityIsekaiGame.Input
         private InputAction jumpAction;
         private InputAction sprintAction;
         private InputAction attackAction;
+        private InputAction castPrimarySpellAction;
         private InputAction interactAction;
         private InputAction inventoryAction;
         private InputAction prototypeResetAction;
@@ -36,6 +38,7 @@ namespace UnityIsekaiGame.Input
         private InputAction inventoryUseAction;
         private bool jumpQueued;
         private bool attackQueued;
+        private bool castPrimarySpellQueued;
         private bool interactQueued;
         private bool inventoryQueued;
         private bool prototypeResetQueued;
@@ -65,6 +68,7 @@ namespace UnityIsekaiGame.Input
             jumpAction = map.FindAction(jumpActionName, true);
             sprintAction = map.FindAction(sprintActionName, false);
             attackAction = map.FindAction(attackActionName, false);
+            castPrimarySpellAction = map.FindAction(castPrimarySpellActionName, false);
             interactAction = map.FindAction(interactActionName, true);
             inventoryAction = map.FindAction(inventoryActionName, true);
             prototypeResetAction = map.FindAction(prototypeResetActionName, false);
@@ -82,6 +86,7 @@ namespace UnityIsekaiGame.Input
             EnableAction(jumpAction);
             EnableAction(sprintAction);
             EnableAction(attackAction);
+            EnableAction(castPrimarySpellAction);
             EnableAction(interactAction);
             EnableAction(inventoryAction);
             EnableAction(prototypeResetAction);
@@ -102,6 +107,11 @@ namespace UnityIsekaiGame.Input
             if (attackAction != null)
             {
                 attackAction.performed += OnAttackPerformed;
+            }
+
+            if (castPrimarySpellAction != null)
+            {
+                castPrimarySpellAction.performed += OnCastPrimarySpellPerformed;
             }
 
             if (inventoryAction != null)
@@ -157,6 +167,11 @@ namespace UnityIsekaiGame.Input
                 attackAction.performed -= OnAttackPerformed;
             }
 
+            if (castPrimarySpellAction != null)
+            {
+                castPrimarySpellAction.performed -= OnCastPrimarySpellPerformed;
+            }
+
             if (inventoryAction != null)
             {
                 inventoryAction.performed -= OnInventoryPerformed;
@@ -188,6 +203,7 @@ namespace UnityIsekaiGame.Input
             DisableAction(prototypeResetAction);
             DisableAction(inventoryAction);
             DisableAction(interactAction);
+            DisableAction(castPrimarySpellAction);
             DisableAction(attackAction);
             DisableAction(sprintAction);
             DisableAction(jumpAction);
@@ -243,6 +259,23 @@ namespace UnityIsekaiGame.Input
             }
 
             attackQueued = false;
+            return true;
+        }
+
+        public bool ConsumeCastPrimarySpell()
+        {
+            if (GameplayInputBlocked)
+            {
+                castPrimarySpellQueued = false;
+                return false;
+            }
+
+            if (!castPrimarySpellQueued)
+            {
+                return false;
+            }
+
+            castPrimarySpellQueued = false;
             return true;
         }
 
@@ -318,6 +351,7 @@ namespace UnityIsekaiGame.Input
         {
             jumpQueued = false;
             attackQueued = false;
+            castPrimarySpellQueued = false;
             interactQueued = false;
         }
 
@@ -345,6 +379,16 @@ namespace UnityIsekaiGame.Input
         private void OnAttackPerformed(InputAction.CallbackContext context)
         {
             attackQueued = true;
+        }
+
+        private void OnCastPrimarySpellPerformed(InputAction.CallbackContext context)
+        {
+            if (IsTypingInUiField())
+            {
+                return;
+            }
+
+            castPrimarySpellQueued = true;
         }
 
         private void OnInventoryPerformed(InputAction.CallbackContext context)
