@@ -124,12 +124,12 @@ namespace UnityIsekaiGame.UI
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             view?.Show();
-            view?.Render(node);
+            view?.Render(node, dialogueController.GetSpeakerName(node), dialogueController.GetPortrait(node));
         }
 
         private void OnNodeChanged(DialogueNodeDefinition node)
         {
-            view?.Render(node);
+            view?.Render(node, dialogueController.GetSpeakerName(node), dialogueController.GetPortrait(node));
         }
 
         private void OnDialogueEnded()

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.People;
 
 namespace UnityIsekaiGame.Quests
 {
@@ -13,6 +14,7 @@ namespace UnityIsekaiGame.Quests
         [SerializeField, TextArea(2, 4)] private string summary;
         [SerializeField, TextArea(3, 8)] private string detailedDescription;
         [SerializeField] private QuestCategory category = QuestCategory.SideQuest;
+        [SerializeField] private PersonDefinition questGiver;
         [SerializeField] private string questGiverId;
         [SerializeField] private string questGiverDisplayName;
         [SerializeField] private QuestStageDefinition[] stages;
@@ -27,8 +29,13 @@ namespace UnityIsekaiGame.Quests
         public string Summary => summary;
         public string DetailedDescription => detailedDescription;
         public QuestCategory Category => category;
-        public string QuestGiverId => questGiverId;
-        public string QuestGiverDisplayName => questGiverDisplayName;
+        public PersonDefinition QuestGiver => questGiver;
+        public string QuestGiverId => questGiver == null ? questGiverId : questGiver.PersonId;
+        public string QuestGiverDisplayName => questGiver == null
+            ? questGiverDisplayName
+            : string.IsNullOrWhiteSpace(questGiver.Title)
+                ? questGiver.DisplayName
+                : $"{questGiver.DisplayName}, {questGiver.Title}";
         public IReadOnlyList<QuestStageDefinition> Stages => stages ?? Array.Empty<QuestStageDefinition>();
         public ContractRewardDefinition Reward => reward;
         public IReadOnlyList<string> PrerequisiteQuestIds => prerequisiteQuestIds ?? Array.Empty<string>();

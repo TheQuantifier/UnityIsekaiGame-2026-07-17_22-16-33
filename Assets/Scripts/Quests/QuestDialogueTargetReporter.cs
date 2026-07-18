@@ -1,22 +1,32 @@
 using UnityEngine;
 using UnityIsekaiGame.Dialogue;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.People;
 
 namespace UnityIsekaiGame.Quests
 {
-    public sealed class QuestDialogueTargetReporter : MonoBehaviour
+    public sealed class QuestDialogueTargetReporter : MonoBehaviour, IQuestProvider
     {
         [SerializeField] private NpcDialogueInteractable dialogueInteractable;
+        [SerializeField] private PersonIdentity personIdentity;
         [SerializeField] private PlayerQuestLog questLog;
         [SerializeField] private string talkTargetId;
         [SerializeField] private QuestDefinition offeredQuest;
         [SerializeField] private bool offerQuestOnTalk = true;
+
+        public PersonIdentity PersonIdentity => personIdentity;
+        public string QuestProviderId => ResolvePersonId();
 
         private void Awake()
         {
             if (dialogueInteractable == null)
             {
                 dialogueInteractable = GetComponent<NpcDialogueInteractable>();
+            }
+
+            if (personIdentity == null)
+            {
+                personIdentity = GetComponent<PersonIdentity>();
             }
 
             if (questLog == null)
@@ -57,7 +67,24 @@ namespace UnityIsekaiGame.Quests
                 }
             }
 
-            QuestObjectiveSignalBus.ReportTalk(talkTargetId);
+            string personId = ResolvePersonId();
+            if (string.IsNullOrWhiteSpace(personId))
+            {
+                Debug.LogWarning($"{name} cannot report quest dialogue because it has no person ID.");
+                return;
+            }
+
+            QuestObjectiveSignalBus.ReportTalk(personId);
+        }
+
+        private string ResolvePersonId()
+        {
+            if (personIdentity != null && personIdentity.HasValidIdentity)
+            {
+                return personIdentity.PersonId;
+            }
+
+            return talkTargetId;
         }
     }
 }

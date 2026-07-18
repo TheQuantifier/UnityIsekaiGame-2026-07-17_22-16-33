@@ -3,20 +3,31 @@ using System;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Interaction;
+using UnityIsekaiGame.People;
 
 namespace UnityIsekaiGame.Dialogue
 {
-    public sealed class NpcDialogueInteractable : MonoBehaviour, IInteractable
+    public sealed class NpcDialogueInteractable : MonoBehaviour, IInteractable, IDialogueParticipant
     {
         [SerializeField] private string interactionPrompt = "Talk";
+        [SerializeField] private PersonIdentity personIdentity;
         [SerializeField] private DialogueController dialogueController;
         [SerializeField] private DialogueNodeDefinition startingNode;
 
-        public string InteractionPrompt => interactionPrompt;
+        public string InteractionPrompt => personIdentity != null && personIdentity.HasValidIdentity
+            ? $"Talk to {personIdentity.DisplayName}"
+            : interactionPrompt;
+        public PersonIdentity PersonIdentity => personIdentity;
+        public string DialogueDisplayName => personIdentity == null ? string.Empty : personIdentity.DisplayName;
         public event Action<NpcDialogueInteractable> DialogueStarted;
 
         private void Awake()
         {
+            if (personIdentity == null)
+            {
+                personIdentity = GetComponent<PersonIdentity>();
+            }
+
             if (dialogueController == null)
             {
                 dialogueController = FindAnyObjectByType<DialogueController>();
@@ -47,7 +58,7 @@ namespace UnityIsekaiGame.Dialogue
                 return;
             }
 
-            DialogueOperationResult result = dialogueController.StartDialogue(startingNode);
+            DialogueOperationResult result = dialogueController.StartDialogue(startingNode, DialogueDisplayName, personIdentity == null ? null : personIdentity.Portrait);
             Debug.Log(result.Message);
             if (result.Succeeded)
             {

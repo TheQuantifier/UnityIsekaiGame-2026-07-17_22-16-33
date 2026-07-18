@@ -11910,6 +11910,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1413055602}
+  - component: {fileID: 1413055604}
   - component: {fileID: 1413055601}
   - component: {fileID: 1413055600}
   - component: {fileID: 1413055599}
@@ -11922,6 +11923,19 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &1413055604
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1413055597}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 51d33026554847888dd6d6324afd7029, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.People.PersonIdentity
+  definition: {fileID: 11400000, guid: d7045b9bbc0f4f2f8fc1a0fb254f0e55, type: 2}
 --- !u!114 &1413055598
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11935,6 +11949,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Dialogue.NpcDialogueInteractable
   interactionPrompt: Talk to Prototype NPC
+  personIdentity: {fileID: 1413055604}
   dialogueController: {fileID: 604495670}
   startingNode: {fileID: 11400000, guid: 5fdc3ab2e36f4293b2eae9b2f0365454, type: 2}
 --- !u!23 &1413055599
@@ -12045,6 +12060,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Quests.QuestDialogueTargetReporter
   dialogueInteractable: {fileID: 1413055598}
+  personIdentity: {fileID: 1413055604}
   questLog: {fileID: 343134195}
   talkTargetId: prototype_npc
   offeredQuest: {fileID: 11400000, guid: 8ed9409bc8694caeafcf85685317d0d6, type: 2}

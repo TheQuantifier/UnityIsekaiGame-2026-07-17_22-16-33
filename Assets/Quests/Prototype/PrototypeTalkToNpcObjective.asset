@@ -13,4 +13,5 @@ MonoBehaviour:
   m_Name: PrototypeTalkToNpcObjective
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Quests.TalkObjectiveDefinition
   description: Speak with the prototype NPC.
+  talkTargetPerson: {fileID: 11400000, guid: d7045b9bbc0f4f2f8fc1a0fb254f0e55, type: 2}
   talkTargetId: prototype_npc

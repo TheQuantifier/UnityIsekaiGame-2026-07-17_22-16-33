@@ -1,14 +1,17 @@
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.People;
 
 namespace UnityIsekaiGame.Quests
 {
     [CreateAssetMenu(fileName = "TalkObjective", menuName = "Unity Isekai Game/Quests/Objectives/Talk")]
     public sealed class TalkObjectiveDefinition : ContractObjectiveDefinition
     {
+        [SerializeField] private PersonDefinition talkTargetPerson;
         [SerializeField] private string talkTargetId;
 
-        public string TalkTargetId => talkTargetId;
+        public string TalkTargetId => talkTargetPerson == null ? talkTargetId : talkTargetPerson.PersonId;
+        public PersonDefinition TalkTargetPerson => talkTargetPerson;
 
         public override ContractObjectiveInstance CreateInstance(ContractObjectiveContext context)
         {

@@ -17,6 +17,7 @@ MonoBehaviour:
   summary: Help the prototype NPC investigate a strange disturbance.
   detailedDescription: Prototype-only side quest used to verify staged quest progress, dialogue targets, location triggers, enemy defeat objectives, and quest rewards.
   category: 1
+  questGiver: {fileID: 11400000, guid: d7045b9bbc0f4f2f8fc1a0fb254f0e55, type: 2}
   questGiverId: prototype_npc
   questGiverDisplayName: Prototype NPC
   stages:

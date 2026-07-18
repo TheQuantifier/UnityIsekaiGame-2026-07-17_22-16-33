@@ -1,0 +1,32 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace UnityIsekaiGame.People
+{
+    public sealed class PersonIdentity : MonoBehaviour
+    {
+        [SerializeField] private PersonDefinition definition;
+
+        public PersonDefinition Definition => definition;
+        public string PersonId => definition == null ? string.Empty : definition.PersonId;
+        public string DisplayName => definition == null ? name : definition.DisplayName;
+        public string Title => definition == null ? string.Empty : definition.Title;
+        public string ShortDescription => definition == null ? string.Empty : definition.ShortDescription;
+        public Sprite Portrait => definition == null ? null : definition.Portrait;
+        public IReadOnlyList<string> RoleTags => definition == null ? System.Array.Empty<string>() : definition.RoleTags;
+        public string FactionIdPlaceholder => definition == null ? string.Empty : definition.FactionIdPlaceholder;
+        public string SettlementIdPlaceholder => definition == null ? string.Empty : definition.SettlementIdPlaceholder;
+        public PersonImportance Importance => definition == null ? PersonImportance.Background : definition.Importance;
+        public bool HasValidIdentity => definition != null && definition.HasValidPersonId;
+
+        private void OnEnable()
+        {
+            PersonRegistry.Register(this);
+        }
+
+        private void OnDisable()
+        {
+            PersonRegistry.Unregister(this);
+        }
+    }
+}

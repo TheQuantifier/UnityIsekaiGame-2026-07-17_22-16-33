@@ -6,6 +6,8 @@ namespace UnityIsekaiGame.Dialogue
     public sealed class DialogueController : MonoBehaviour
     {
         private DialogueNodeDefinition currentNode;
+        private string activeParticipantDisplayName;
+        private Sprite activeParticipantPortrait;
         private bool isActive;
 
         public bool IsActive => isActive;
@@ -17,6 +19,11 @@ namespace UnityIsekaiGame.Dialogue
         public event Action DialogueEnded;
 
         public DialogueOperationResult StartDialogue(DialogueNodeDefinition startingNode)
+        {
+            return StartDialogue(startingNode, null, null);
+        }
+
+        public DialogueOperationResult StartDialogue(DialogueNodeDefinition startingNode, string participantDisplayName, Sprite participantPortrait)
         {
             if (isActive)
             {
@@ -30,9 +37,41 @@ namespace UnityIsekaiGame.Dialogue
 
             isActive = true;
             currentNode = startingNode;
+            activeParticipantDisplayName = participantDisplayName;
+            activeParticipantPortrait = participantPortrait;
             DialogueStarted?.Invoke(currentNode);
             NodeChanged?.Invoke(currentNode);
             return DialogueOperationResult.Success("Dialogue started.");
+        }
+
+        public string GetSpeakerName(DialogueNodeDefinition node)
+        {
+            if (node == null)
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(activeParticipantDisplayName) && node.SpeakerName != "Player")
+            {
+                return activeParticipantDisplayName;
+            }
+
+            return node.SpeakerName;
+        }
+
+        public Sprite GetPortrait(DialogueNodeDefinition node)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+
+            if (activeParticipantPortrait != null && node.SpeakerName != "Player")
+            {
+                return activeParticipantPortrait;
+            }
+
+            return node.Portrait;
         }
 
         public DialogueOperationResult Advance()
@@ -119,6 +158,8 @@ namespace UnityIsekaiGame.Dialogue
 
             isActive = false;
             currentNode = null;
+            activeParticipantDisplayName = null;
+            activeParticipantPortrait = null;
             DialogueEnded?.Invoke();
         }
     }

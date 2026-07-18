@@ -43,6 +43,11 @@ namespace UnityIsekaiGame.UI
 
         public void Render(DialogueNodeDefinition node)
         {
+            Render(node, node == null ? string.Empty : node.SpeakerName, node == null ? null : node.Portrait);
+        }
+
+        public void Render(DialogueNodeDefinition node, string speakerName, Sprite portrait)
+        {
             if (node == null)
             {
                 ClearChoices();
@@ -51,7 +56,7 @@ namespace UnityIsekaiGame.UI
 
             if (speakerLabel != null)
             {
-                speakerLabel.text = node.SpeakerName;
+                speakerLabel.text = string.IsNullOrWhiteSpace(speakerName) ? node.SpeakerName : speakerName;
             }
 
             if (dialogueText != null)
@@ -61,8 +66,8 @@ namespace UnityIsekaiGame.UI
 
             if (portraitImage != null)
             {
-                portraitImage.sprite = node.Portrait;
-                portraitImage.enabled = node.Portrait != null;
+                portraitImage.sprite = portrait;
+                portraitImage.enabled = portrait != null;
             }
 
             RenderChoices(node.Choices);
