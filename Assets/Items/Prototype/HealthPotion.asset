@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 389db4201f024a3895f7c81a530a3538, type: 3}
+  m_Name: HealthPotion
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Inventory.ItemDefinition
+  itemId: health_potion
+  displayName: Health Potion
+  description: Restores health when item use is implemented.
+  icon: {fileID: 0}
+  stackable: 1
+  maximumStackSize: 10

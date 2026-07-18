@@ -6,6 +6,7 @@ namespace UnityIsekaiGame.Interaction
     public sealed class CameraInteractionDetector : MonoBehaviour
     {
         [SerializeField] private PlayerInputReader input;
+        [SerializeField] private GameObject interactor;
         [SerializeField] private Transform rayOrigin;
         [SerializeField, Min(0.1f)] private float maxDistance = 3f;
         [SerializeField] private LayerMask interactionMask = ~0;
@@ -25,6 +26,11 @@ namespace UnityIsekaiGame.Interaction
 
         private void Awake()
         {
+            if (interactor == null)
+            {
+                interactor = gameObject;
+            }
+
             if (rayOrigin == null)
             {
                 rayOrigin = transform;
@@ -68,7 +74,7 @@ namespace UnityIsekaiGame.Interaction
                 return;
             }
 
-            InteractionContext context = new InteractionContext(gameObject, rayOrigin, hit);
+            InteractionContext context = new InteractionContext(interactor, rayOrigin, hit);
             if (!interactable.CanInteract(context))
             {
                 return;
@@ -80,7 +86,7 @@ namespace UnityIsekaiGame.Interaction
 
         private InteractionContext CreateContext()
         {
-            return new InteractionContext(gameObject, rayOrigin, currentHit);
+            return new InteractionContext(interactor, rayOrigin, currentHit);
         }
     }
 }
