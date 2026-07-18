@@ -1,13 +1,16 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Magic
 {
     [CreateAssetMenu(fileName = "NewSpellDefinition", menuName = "Unity Isekai Game/Magic/Spell Definition")]
-    public sealed class SpellDefinition : ScriptableObject, IGameDefinition
+    public sealed class SpellDefinition : ScriptableObject, IGameDefinition, ICategorizableDefinition, ITaggedDefinition
     {
         [SerializeField] private string spellId;
         [SerializeField] private string displayName;
+        [SerializeField] private CategoryDefinition primaryCategory;
+        [SerializeField] private TagDefinition[] tags;
         [SerializeField, Min(0f)] private float manaCost = 10f;
         [SerializeField, Min(0f)] private float cooldown = 0.5f;
         [SerializeField, Min(0f)] private float baseDamage = 10f;
@@ -19,6 +22,9 @@ namespace UnityIsekaiGame.Magic
         public string SpellId => spellId;
         public string Id => spellId;
         public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName;
+        public CategoryDefinition PrimaryCategory => primaryCategory;
+        public CategoryDomain ClassificationDomain => CategoryDomain.Ability;
+        public IReadOnlyList<TagDefinition> Tags => tags ?? System.Array.Empty<TagDefinition>();
         public float ManaCost => manaCost;
         public float Cooldown => cooldown;
         public float BaseDamage => baseDamage;

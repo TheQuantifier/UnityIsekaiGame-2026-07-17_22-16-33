@@ -16,6 +16,10 @@ MonoBehaviour:
   displayName: Health Potion
   description: Restores 25 health when used.
   icon: {fileID: 0}
+  primaryCategory: {fileID: 11400000, guid: e6d021bd7a30487590cc7fd1b3248878, type: 2}
+  tags:
+  - {fileID: 11400000, guid: bbafd9a5c2184102ba5682e7ed93829e, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
   stackable: 1
   maximumStackSize: 10
   useEffects:

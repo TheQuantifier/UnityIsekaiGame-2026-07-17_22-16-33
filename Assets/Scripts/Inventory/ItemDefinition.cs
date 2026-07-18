@@ -6,12 +6,14 @@ using UnityIsekaiGame.GameData;
 namespace UnityIsekaiGame.Inventory
 {
     [CreateAssetMenu(fileName = "NewItemDefinition", menuName = "Unity Isekai Game/Inventory/Item Definition")]
-    public sealed class ItemDefinition : ScriptableObject, IGameDefinition
+    public sealed class ItemDefinition : ScriptableObject, IGameDefinition, ICategorizableDefinition, ITaggedDefinition
     {
         [SerializeField] private string itemId;
         [SerializeField] private string displayName;
         [SerializeField, TextArea] private string description;
         [SerializeField] private Sprite icon;
+        [SerializeField] private CategoryDefinition primaryCategory;
+        [SerializeField] private TagDefinition[] tags;
         [SerializeField] private bool stackable = true;
         [SerializeField, Min(1)] private int maximumStackSize = 1;
         [SerializeField] private ItemUseEffect[] useEffects;
@@ -22,6 +24,9 @@ namespace UnityIsekaiGame.Inventory
         public string DisplayName => displayName;
         public string Description => description;
         public Sprite Icon => icon;
+        public CategoryDefinition PrimaryCategory => primaryCategory;
+        public CategoryDomain ClassificationDomain => CategoryDomain.Item;
+        public IReadOnlyList<TagDefinition> Tags => tags ?? System.Array.Empty<TagDefinition>();
         public bool Stackable => stackable;
         public int MaximumStackSize => stackable ? Mathf.Max(1, maximumStackSize) : 1;
         public IReadOnlyList<ItemUseEffect> UseEffects => useEffects;

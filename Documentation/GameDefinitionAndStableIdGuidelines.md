@@ -112,6 +112,8 @@ The prototype catalog lives at:
 
 It includes representative top-level prototype definitions for items, spells, the prototype NPC, the staged quest, and prototype contracts.
 
+Step 3.2 also registers category and tag definitions in the same catalog. Categories and tags are ordinary static definitions with stable IDs, but classification data is exposed through optional interfaces rather than by expanding `IGameDefinition`.
+
 `PersonRegistry` remains separate. It tracks currently loaded `PersonIdentity` scene instances, while the definition catalog tracks static `PersonDefinition` assets.
 
 ## Creating A New Definition Type
@@ -123,7 +125,7 @@ It includes representative top-level prototype definitions for items, spells, th
 5. Add the asset to an explicit `DefinitionCatalog` when it should be globally resolvable.
 6. Run `Tools/Game Data/Validate Definitions`.
 
-Do not add category, rarity, faction, prefab, icon, value, or other domain-specific fields to `IGameDefinition`.
+Do not add rarity, faction, prefab, icon, value, or other domain-specific fields to `IGameDefinition`. Category and tag metadata should use the optional classification interfaces described in `Documentation/CategoryAndTagSystem.md`.
 
 ## Creating A New Definition Asset
 
@@ -165,4 +167,4 @@ Those systems are not implemented in Step 3.1.
 - Existing item, person, quest, and contract IDs are valid legacy IDs but do not use the preferred domain prefix.
 - `SpellDefinition` gained an additive `spellId` field; existing prototype spell assets were assigned IDs.
 - There is no global project catalog bootstrap yet. Runtime systems should receive or create registries explicitly from configured catalogs.
-- Dialogue nodes, objective definitions, rewards, places, species, factions, tags, rarity, quality, condition, abilities, and effects are outside this feature.
+- Dialogue nodes, objective definitions, rewards, places, species, factions, rarity, quality, condition, generalized abilities, and effects are outside this feature.

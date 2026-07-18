@@ -23,6 +23,15 @@ namespace UnityIsekaiGame.Tests
             Assert.That(result.WarningCount, Is.EqualTo(1));
         }
 
+        [Test]
+        public void Validate_AcceptsReservedTaxonomyRootWithoutNamespaceWarning()
+        {
+            DefinitionIdValidationResult result = DefinitionIdValidator.Validate("item");
+
+            Assert.That(result.IsValid, Is.True, result.GetSummary());
+            Assert.That(result.WarningCount, Is.Zero);
+        }
+
         [TestCase(null)]
         [TestCase("")]
         [TestCase("   ")]

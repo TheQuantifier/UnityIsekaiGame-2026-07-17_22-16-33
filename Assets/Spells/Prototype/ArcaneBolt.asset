@@ -14,6 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Magic.SpellDefinition
   spellId: spell.arcane-bolt
   displayName: Arcane Bolt
+  primaryCategory: {fileID: 11400000, guid: 5160facd955146fc8a0e1dbc39b120bf, type: 2}
+  tags:
+  - {fileID: 11400000, guid: eac27d0065b44f969205af5ca702cbe7, type: 2}
+  - {fileID: 11400000, guid: 03ff46bc67384aa4abda15daaa390259, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
   manaCost: 20
   cooldown: 0.65
   baseDamage: 18
