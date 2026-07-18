@@ -36,6 +36,60 @@ namespace UnityIsekaiGame.Tests
             return tag;
         }
 
+        public static RarityDefinition CreateRarity(
+            string id,
+            string displayName,
+            int rank,
+            bool isDefault = false)
+        {
+            RarityDefinition rarity = ScriptableObject.CreateInstance<RarityDefinition>();
+            SerializedObject serializedRarity = new SerializedObject(rarity);
+            serializedRarity.FindProperty("rarityId").stringValue = id;
+            serializedRarity.FindProperty("displayName").stringValue = displayName;
+            serializedRarity.FindProperty("rank").intValue = rank;
+            serializedRarity.FindProperty("defaultRarity").boolValue = isDefault;
+            serializedRarity.ApplyModifiedPropertiesWithoutUndo();
+            return rarity;
+        }
+
+        public static QualityDefinition CreateQuality(
+            string id,
+            string displayName,
+            int rank,
+            bool isDefault = false)
+        {
+            QualityDefinition quality = ScriptableObject.CreateInstance<QualityDefinition>();
+            SerializedObject serializedQuality = new SerializedObject(quality);
+            serializedQuality.FindProperty("qualityId").stringValue = id;
+            serializedQuality.FindProperty("displayName").stringValue = displayName;
+            serializedQuality.FindProperty("rank").intValue = rank;
+            serializedQuality.FindProperty("defaultQuality").boolValue = isDefault;
+            serializedQuality.ApplyModifiedPropertiesWithoutUndo();
+            return quality;
+        }
+
+        public static ConditionDefinition CreateCondition(
+            string id,
+            string displayName,
+            int rank,
+            float minimumNormalized,
+            float maximumNormalized,
+            bool unusable = false,
+            bool isDefault = false)
+        {
+            ConditionDefinition condition = ScriptableObject.CreateInstance<ConditionDefinition>();
+            SerializedObject serializedCondition = new SerializedObject(condition);
+            serializedCondition.FindProperty("conditionId").stringValue = id;
+            serializedCondition.FindProperty("displayName").stringValue = displayName;
+            serializedCondition.FindProperty("rank").intValue = rank;
+            serializedCondition.FindProperty("minimumNormalized").floatValue = minimumNormalized;
+            serializedCondition.FindProperty("maximumNormalized").floatValue = maximumNormalized;
+            serializedCondition.FindProperty("unusable").boolValue = unusable;
+            serializedCondition.FindProperty("defaultCondition").boolValue = isDefault;
+            serializedCondition.ApplyModifiedPropertiesWithoutUndo();
+            return condition;
+        }
+
         public static DefinitionCatalog CreateCatalog(params ScriptableObject[] definitions)
         {
             DefinitionCatalog catalog = ScriptableObject.CreateInstance<DefinitionCatalog>();

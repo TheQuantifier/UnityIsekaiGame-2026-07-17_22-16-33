@@ -29,6 +29,7 @@ namespace UnityIsekaiGame.UI.Inventory
         private bool previousCursorVisible;
         private bool isOpen;
         private int selectedSlotIndex;
+        private int hoveredSlotIndex = -1;
         private EquipmentSlotType selectedEquipmentSlot;
         private int selectedKnownSpellIndex;
         private int selectedContractIndex;
@@ -63,7 +64,7 @@ namespace UnityIsekaiGame.UI.Inventory
 
             if (view != null)
             {
-                view.Initialize(SelectSlot, UseSelectedItem, SelectEquipmentSlot, EquipSelectedItem, UnequipSelectedEquipment);
+                view.Initialize(SelectSlot, UseSelectedItem, SelectEquipmentSlot, EquipSelectedItem, UnequipSelectedEquipment, HoverSlot);
             }
 
             if (spellManagementView != null)
@@ -267,7 +268,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 ClampSelection();
                 view.SetSelectedSlot(selectedSlotIndex);
                 view.SetSelectedEquipmentSlot(selectedEquipmentSlot);
-                view.RenderSelectedItemDetails(inventory.GetSlot(selectedSlotIndex));
+                RenderHoveredSlotDetails();
                 UpdateEquipmentActions();
             }
 
@@ -355,7 +356,7 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 view.SetSelectedSlot(selectedSlotIndex);
                 view.SetFeedback(string.Empty);
-                view.RenderSelectedItemDetails(inventory == null ? null : inventory.GetSlot(selectedSlotIndex));
+                RenderHoveredSlotDetails();
                 UpdateEquipmentActions();
             }
         }
@@ -370,6 +371,40 @@ namespace UnityIsekaiGame.UI.Inventory
                 view.SetFeedback(string.Empty);
                 UpdateEquipmentActions();
             }
+        }
+
+        private void HoverSlot(int slotIndex, bool hovering)
+        {
+            if (view == null || inventory == null)
+            {
+                return;
+            }
+
+            if (hovering)
+            {
+                hoveredSlotIndex = slotIndex;
+                RenderHoveredSlotDetails();
+                return;
+            }
+
+            if (hoveredSlotIndex == slotIndex)
+            {
+                hoveredSlotIndex = -1;
+            }
+
+            RenderHoveredSlotDetails();
+        }
+
+        private void RenderHoveredSlotDetails()
+        {
+            if (view == null || inventory == null || hoveredSlotIndex < 0)
+            {
+                view?.RenderSelectedItemDetails(null);
+                return;
+            }
+
+            InventorySlot hoveredSlot = inventory.GetSlot(hoveredSlotIndex);
+            view.RenderSelectedItemDetails(hoveredSlot, includeDescription: true);
         }
 
         private void MoveSelection(Vector2 direction)
@@ -392,7 +427,7 @@ namespace UnityIsekaiGame.UI.Inventory
             selectedSlotIndex = Mathf.Clamp(selectedSlotIndex + delta, 0, view.SlotCount - 1);
             view.SetSelectedSlot(selectedSlotIndex);
             view.SetFeedback(string.Empty);
-            view.RenderSelectedItemDetails(inventory == null ? null : inventory.GetSlot(selectedSlotIndex));
+            RenderHoveredSlotDetails();
             UpdateEquipmentActions();
         }
 

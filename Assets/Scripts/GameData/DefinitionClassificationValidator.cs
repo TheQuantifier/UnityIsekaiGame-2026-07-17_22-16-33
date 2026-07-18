@@ -30,6 +30,9 @@ namespace UnityIsekaiGame.GameData
 
                 ValidateDefinitionClassification(definition, definitionsById, report);
             }
+
+            ValidateRankedDefinitions(definitions, report);
+            ValidateConditionRanges(definitions, report);
         }
 
         private static void ValidateCategory(
@@ -114,9 +117,39 @@ namespace UnityIsekaiGame.GameData
                 ValidateInventoryItem(item, report);
             }
 
+            if (definition is IHasRarity rarityOwner)
+            {
+                ValidateRarityReference(definition, rarityOwner, definitionsById, report);
+            }
+
             if (definition is ILegacyStringTaggedDefinition legacyStringTagged)
             {
                 ValidateLegacyTags(definition, legacyStringTagged, report);
+            }
+        }
+
+        private static void ValidateRarityReference(
+            IGameDefinition owner,
+            IHasRarity rarityOwner,
+            IReadOnlyDictionary<string, IGameDefinition> definitionsById,
+            DefinitionValidationReport report)
+        {
+            if (owner == null || rarityOwner == null)
+            {
+                return;
+            }
+
+            RarityDefinition rarity = rarityOwner.Rarity;
+            if (rarity == null)
+            {
+                report.AddWarning($"{owner.GetType().Name} '{owner.DisplayName}' has no rarity assigned. Rarity is optional for compatibility but should be set for new content.");
+                return;
+            }
+
+            if (!definitionsById.TryGetValue(rarity.Id, out IGameDefinition rarityDefinition)
+                || rarityDefinition is not RarityDefinition)
+            {
+                report.AddError($"{owner.GetType().Name} '{owner.DisplayName}' references rarity '{rarity.Id}', which is not in the configured catalog.");
             }
         }
 
@@ -267,6 +300,210 @@ namespace UnityIsekaiGame.GameData
                     report.AddWarning($"Item definition '{item.DisplayName}' is categorized as consumable but has no use effects.");
                 }
             }
+        }
+
+        private static void ValidateRankedDefinitions(IReadOnlyList<IGameDefinition> definitions, DefinitionValidationReport report)
+        {
+            ValidateRarityDefinitions(definitions, report);
+            ValidateQualityDefinitions(definitions, report);
+            ValidateConditionDefinitions(definitions, report);
+        }
+
+        private static void ValidateRarityDefinitions(IReadOnlyList<IGameDefinition> definitions, DefinitionValidationReport report)
+        {
+            Dictionary<int, RarityDefinition> ranks = new Dictionary<int, RarityDefinition>();
+            bool defaultSeen = false;
+
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                if (definitions[i] is not RarityDefinition rarity)
+                {
+                    continue;
+                }
+
+                if (!rarity.Id.StartsWith("rarity."))
+                {
+                    report.AddWarning($"Rarity '{rarity.Id}' should use the 'rarity.' namespace prefix.");
+                }
+
+                if (rarity.Rank < 0)
+                {
+                    report.AddError($"Rarity '{rarity.Id}' has a negative rank.");
+                }
+
+                if (ranks.TryGetValue(rarity.Rank, out RarityDefinition existing))
+                {
+                    report.AddError($"Rarity rank {rarity.Rank} is used by both '{existing.Id}' and '{rarity.Id}'.");
+                }
+                else
+                {
+                    ranks.Add(rarity.Rank, rarity);
+                }
+
+                if (rarity.IsDefault)
+                {
+                    if (defaultSeen)
+                    {
+                        report.AddError($"Multiple rarity definitions are marked as default; '{rarity.Id}' is an extra default.");
+                    }
+
+                    defaultSeen = true;
+                }
+            }
+        }
+
+        private static void ValidateQualityDefinitions(IReadOnlyList<IGameDefinition> definitions, DefinitionValidationReport report)
+        {
+            Dictionary<int, QualityDefinition> ranks = new Dictionary<int, QualityDefinition>();
+            bool defaultSeen = false;
+
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                if (definitions[i] is not QualityDefinition quality)
+                {
+                    continue;
+                }
+
+                if (!quality.Id.StartsWith("quality."))
+                {
+                    report.AddWarning($"Quality '{quality.Id}' should use the 'quality.' namespace prefix.");
+                }
+
+                if (quality.Rank < 0)
+                {
+                    report.AddError($"Quality '{quality.Id}' has a negative rank.");
+                }
+
+                if (ranks.TryGetValue(quality.Rank, out QualityDefinition existing))
+                {
+                    report.AddError($"Quality rank {quality.Rank} is used by both '{existing.Id}' and '{quality.Id}'.");
+                }
+                else
+                {
+                    ranks.Add(quality.Rank, quality);
+                }
+
+                if (quality.IsDefault)
+                {
+                    if (defaultSeen)
+                    {
+                        report.AddError($"Multiple quality definitions are marked as default; '{quality.Id}' is an extra default.");
+                    }
+
+                    defaultSeen = true;
+                }
+            }
+        }
+
+        private static void ValidateConditionDefinitions(IReadOnlyList<IGameDefinition> definitions, DefinitionValidationReport report)
+        {
+            Dictionary<int, ConditionDefinition> ranks = new Dictionary<int, ConditionDefinition>();
+            bool defaultSeen = false;
+
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                if (definitions[i] is not ConditionDefinition condition)
+                {
+                    continue;
+                }
+
+                if (!condition.Id.StartsWith("condition."))
+                {
+                    report.AddWarning($"Condition '{condition.Id}' should use the 'condition.' namespace prefix.");
+                }
+
+                if (condition.Rank < 0)
+                {
+                    report.AddError($"Condition '{condition.Id}' has a negative rank.");
+                }
+
+                if (ranks.TryGetValue(condition.Rank, out ConditionDefinition existing))
+                {
+                    report.AddError($"Condition rank {condition.Rank} is used by both '{existing.Id}' and '{condition.Id}'.");
+                }
+                else
+                {
+                    ranks.Add(condition.Rank, condition);
+                }
+
+                if (condition.IsDefault)
+                {
+                    if (defaultSeen)
+                    {
+                        report.AddError($"Multiple condition definitions are marked as default; '{condition.Id}' is an extra default.");
+                    }
+
+                    defaultSeen = true;
+                }
+            }
+        }
+
+        private static void ValidateConditionRanges(IReadOnlyList<IGameDefinition> definitions, DefinitionValidationReport report)
+        {
+            List<ConditionDefinition> conditions = new List<ConditionDefinition>();
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                if (definitions[i] is ConditionDefinition condition)
+                {
+                    conditions.Add(condition);
+                    ValidateConditionRange(condition, report);
+                }
+            }
+
+            if (conditions.Count == 0)
+            {
+                return;
+            }
+
+            conditions.Sort(CompareConditionRanges);
+            const float epsilon = 0.0001f;
+            float expectedMinimum = 0f;
+
+            for (int i = 0; i < conditions.Count; i++)
+            {
+                ConditionDefinition condition = conditions[i];
+
+                if (condition.MinimumNormalized > expectedMinimum + epsilon)
+                {
+                    report.AddError($"Condition ranges have a gap from {expectedMinimum:0.###} to {condition.MinimumNormalized:0.###} before '{condition.Id}'.");
+                }
+
+                if (condition.MinimumNormalized < expectedMinimum - epsilon)
+                {
+                    report.AddError($"Condition range '{condition.Id}' overlaps a previous condition range near {condition.MinimumNormalized:0.###}.");
+                }
+
+                expectedMinimum = condition.MaximumNormalized;
+            }
+
+            if (expectedMinimum < 1f - epsilon)
+            {
+                report.AddError($"Condition ranges have a gap from {expectedMinimum:0.###} to 1.");
+            }
+        }
+
+        private static void ValidateConditionRange(ConditionDefinition condition, DefinitionValidationReport report)
+        {
+            if (condition.MinimumNormalized < 0f || condition.MinimumNormalized > 1f)
+            {
+                report.AddError($"Condition '{condition.Id}' minimum normalized value must be between 0 and 1.");
+            }
+
+            if (condition.MaximumNormalized < 0f || condition.MaximumNormalized > 1f)
+            {
+                report.AddError($"Condition '{condition.Id}' maximum normalized value must be between 0 and 1.");
+            }
+
+            if (condition.MinimumNormalized > condition.MaximumNormalized)
+            {
+                report.AddError($"Condition '{condition.Id}' minimum normalized value is greater than its maximum.");
+            }
+        }
+
+        private static int CompareConditionRanges(ConditionDefinition left, ConditionDefinition right)
+        {
+            int minimumComparison = left.MinimumNormalized.CompareTo(right.MinimumNormalized);
+            return minimumComparison != 0 ? minimumComparison : left.Rank.CompareTo(right.Rank);
         }
     }
 }

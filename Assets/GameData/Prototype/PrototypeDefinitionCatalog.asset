@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.3.0-step-3
+  contentVersion: 0.3.4-step-3
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -41,6 +41,22 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 03ff46bc67384aa4abda15daaa390259, type: 2}
   - {fileID: 11400000, guid: 14268cc42f1e4520a42b58aac03c1143, type: 2}
   - {fileID: 11400000, guid: e5be8b436490435e82ffad358874362c, type: 2}
+  - {fileID: 11400000, guid: d4b0d27a07fa46c085d39f87ffff6cbb, type: 2}
+  - {fileID: 11400000, guid: 0fd091c93e054c37bcc9c68b5b04cd19, type: 2}
+  - {fileID: 11400000, guid: b7da72b8c72548219e52a6d4162fe731, type: 2}
+  - {fileID: 11400000, guid: 792fa691c77045efb5ff5f23249f04ff, type: 2}
+  - {fileID: 11400000, guid: e703d415949a4fc1ace74f2875b6a145, type: 2}
+  - {fileID: 11400000, guid: 92445b271f2a49a5979961d831de4bd8, type: 2}
+  - {fileID: 11400000, guid: 18ecf6652b89439faf3abeae97d38b9e, type: 2}
+  - {fileID: 11400000, guid: 652a96b793c44bbe8e94774c2fee7b00, type: 2}
+  - {fileID: 11400000, guid: d97f24bce25047fab2457c97a6637c13, type: 2}
+  - {fileID: 11400000, guid: 55d3b024e1cc4e62a33ad36462e70b99, type: 2}
+  - {fileID: 11400000, guid: 7353e76d204c407f902d842b53fee1d3, type: 2}
+  - {fileID: 11400000, guid: 167074feafc2498eadcfd8c350edc3c4, type: 2}
+  - {fileID: 11400000, guid: 466aba5f40d4414b9bdc741550eef25b, type: 2}
+  - {fileID: 11400000, guid: 528ca7f6f42d441f908e8397fcf64a2f, type: 2}
+  - {fileID: 11400000, guid: 91b6a04d8c6745419de9ab021bd23c88, type: 2}
+  - {fileID: 11400000, guid: 9a8c7b2bf85b4aacbda026c1ad770294, type: 2}
   - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
   - {fileID: 11400000, guid: 9fc1c54f96724ef8b03354950feaae17, type: 2}
   - {fileID: 11400000, guid: 2ff53d5978448be47807e462a021d276, type: 2}

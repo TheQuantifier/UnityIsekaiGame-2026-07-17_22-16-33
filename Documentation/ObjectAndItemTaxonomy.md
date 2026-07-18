@@ -15,7 +15,7 @@ Runtime state remains separate:
 - Static definition: `item.prototype-sword`
 - Runtime equipment state: one equipped sword reference
 
-Step 3.3 does not add a generalized runtime item-instance system. Current inventory and equipment state still reference `ItemDefinition` assets directly. Future per-instance data such as condition, quality, enchantments, ownership, or unique identity should be added as runtime state around stable definition IDs.
+Step 3.3 does not add a generalized runtime item-instance system. Current inventory and equipment state still reference `ItemDefinition` assets directly. Feature 3.4 adds static item rarity and a small runtime metadata foundation for future quality and condition. Per-instance data such as quality, condition, enchantments, ownership, or unique identity should stay as runtime state around stable definition IDs.
 
 ## Selected Architecture
 
@@ -117,6 +117,7 @@ Current item capabilities are:
 - stackable item: uses `stackable` and `maximumStackSize`;
 - usable item: has configured `ItemUseEffect` assets;
 - equippable item: has `EquipmentData` with `Equippable`;
+- rarity metadata: optional static `RarityDefinition` reference on `ItemDefinition`;
 - world-pickup item: represented by `WorldItemPickup`;
 - lootable item: referenced by `LootEntry`.
 
@@ -131,8 +132,10 @@ Stackability is static item-definition data:
 - invalid stack sizes are clamped in `ItemDefinition.OnValidate`;
 - inventory stack identity still uses the item definition reference;
 - categories and tags do not affect stack equality.
+- rarity is static metadata and does not affect stack equality;
+- future quality, condition, enchantments, ownership, custom names, or unique serial identity should prevent sharing one indistinguishable stack when item instances are introduced.
 
-No unique-item stack behavior exists yet.
+No unique-item or instance-aware stack behavior exists yet.
 
 ## Equipment Integration
 
@@ -205,6 +208,7 @@ Object and item definitions use the shared `DefinitionCatalog`.
 Rules:
 
 - registered item definitions implement `IGameDefinition`;
+- rarity, quality, and condition definitions are registered alongside other definition assets;
 - new item IDs should be namespaced;
 - existing legacy IDs remain compatible;
 - duplicate IDs are detected globally;
@@ -227,6 +231,9 @@ Definition validation now checks item taxonomy rules:
 - usable items outside `item.consumable` are warnings;
 - consumable-categorized items without use effects are warnings;
 - category and tag references must be included in the catalog.
+- item rarity references must be included in the catalog when assigned;
+- missing item rarity is a compatibility warning;
+- quality and condition remain runtime instance metadata, not static item-definition fields.
 
 The validator reports but does not mutate assets.
 
@@ -253,7 +260,9 @@ The validator reports but does not mutate assets.
 
 ## Known Limitations
 
-- No rarity, quality, condition, durability, value, weight, ownership, or per-instance item data exists yet.
+- Rarity exists as static metadata only; it does not alter loot, value, stats, or stack behavior.
+- Quality and condition have a runtime metadata foundation but are not stored in current inventory slots.
+- No durability, value, weight, ownership, or full per-instance item data exists yet.
 - No crafting, harvesting, procedural loot generation, shop filtering, or economy behavior exists yet.
 - No item filtering UI exists yet.
 - `Prototype Iron Ore` is catalog content only; it is not spawned in the prototype scene.
@@ -261,7 +270,7 @@ The validator reports but does not mutate assets.
 
 ## Future Extensions
 
-Feature 3.4 can layer rarity, quality, and condition foundations on top of this taxonomy.
+Feature 3.4 layers rarity, quality, and condition foundations on top of this taxonomy. See `Documentation/RarityQualityAndCondition.md`.
 
 Later systems can add:
 

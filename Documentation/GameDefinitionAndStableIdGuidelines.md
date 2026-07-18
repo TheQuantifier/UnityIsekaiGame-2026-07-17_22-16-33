@@ -116,6 +116,8 @@ Step 3.2 also registers category and tag definitions in the same catalog. Catego
 
 Step 3.3 adds object and item taxonomy interfaces on top of the same catalog. Item definitions remain registered static definitions, while inventory quantities, equipped state, and future per-instance item state remain runtime data.
 
+Step 3.4 adds `RarityDefinition`, `QualityDefinition`, and `ConditionDefinition` as ordinary catalog definitions. Rarity may be referenced by static definitions through `IHasRarity`; quality and condition are available for future runtime instance metadata and should not be stored as mutable state on shared ScriptableObject assets.
+
 `PersonRegistry` remains separate. It tracks currently loaded `PersonIdentity` scene instances, while the definition catalog tracks static `PersonDefinition` assets.
 
 ## Creating A New Definition Type
@@ -127,7 +129,7 @@ Step 3.3 adds object and item taxonomy interfaces on top of the same catalog. It
 5. Add the asset to an explicit `DefinitionCatalog` when it should be globally resolvable.
 6. Run `Tools/Game Data/Validate Definitions`.
 
-Do not add rarity, faction, prefab, icon, value, or other domain-specific fields to `IGameDefinition`. Category and tag metadata should use the optional classification interfaces described in `Documentation/CategoryAndTagSystem.md`.
+Do not add rarity, faction, prefab, icon, value, or other domain-specific fields to `IGameDefinition`. Category, tag, and rarity metadata should use optional interfaces such as `ICategorizableDefinition`, `ITaggedDefinition`, and `IHasRarity`.
 
 ## Creating A New Definition Asset
 
@@ -169,4 +171,5 @@ Those systems are not implemented in Step 3.1.
 - Existing item, person, quest, and contract IDs are valid legacy IDs but do not use the preferred domain prefix.
 - `SpellDefinition` gained an additive `spellId` field; existing prototype spell assets were assigned IDs.
 - There is no global project catalog bootstrap yet. Runtime systems should receive or create registries explicitly from configured catalogs.
-- Dialogue nodes, objective definitions, rewards, places, species, factions, rarity, quality, condition, generalized abilities, and effects are outside this feature.
+- Dialogue nodes, objective definitions, rewards, places, species, factions, generalized abilities, and effects are outside this feature.
+- Rarity, quality, and condition exist as definition foundations only. They do not yet drive loot probability, item stats, repairs, economy, save/load, or inventory-instance behavior.

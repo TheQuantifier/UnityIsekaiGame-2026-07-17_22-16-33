@@ -12,7 +12,10 @@ The major rule is separation between static definitions and runtime state. Scrip
 
 Static data lives in ScriptableObjects and should not be mutated during play:
 
-- `ItemDefinition`: stable item ID, display text, icon, stack rules, equipment data, use effects.
+- `ItemDefinition`: stable item ID, display text, icon, static rarity, stack rules, equipment data, use effects.
+- `RarityDefinition`: static scarcity or narrative-significance metadata.
+- `QualityDefinition`: possible craftsmanship or generated-excellence levels for future item instances.
+- `ConditionDefinition`: named normalized physical-state bands for future item instances.
 - `ItemUseEffect` assets: reusable item-use behavior configuration such as health restoration amount.
 - `SpellDefinition`: spell ID/name, mana cost, cooldown, range, projectile prefab, damage.
 - `DialogueNodeDefinition`: authored dialogue text, speaker fallback, choices, next nodes, portrait fallback.
@@ -36,6 +39,7 @@ Runtime state is owned by components or runtime instances:
 - `CameraInteractionDetector` owns the current raycast target; interactables own their own behavior.
 - `PlayerInventory` owns slot contents and quantities.
 - `InventorySlot` is runtime slot state, not static item data.
+- `ItemInstanceMetadata` is a serializable runtime foundation for optional item quality and condition, but current inventory slots do not store it yet.
 - `PlayerEquipment` owns equipped items by equipment slot.
 - `PlayerStats` combines base values with equipment modifiers.
 - `PlayerHealth`, `PlayerStamina`, and `PlayerMana` own current vital values and resource timing.
@@ -53,7 +57,7 @@ Runtime state is owned by components or runtime instances:
 
 Stable IDs identify authored definitions and objective targets. They must not be derived from GameObject names.
 
-Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. Step 3.2 adds registered `CategoryDefinition` and `TagDefinition` assets plus opt-in classification interfaces for metadata-only category/tag assignment. Step 3.3 adds object/item taxonomy interfaces and item capability validation while keeping stack, use, and equipment behavior data-driven. See `Documentation/GameDefinitionAndStableIdGuidelines.md`, `Documentation/CategoryAndTagSystem.md`, and `Documentation/ObjectAndItemTaxonomy.md` for the current stable-ID, catalog, classification, and item taxonomy workflows.
+Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. Step 3.2 adds registered `CategoryDefinition` and `TagDefinition` assets plus opt-in classification interfaces for metadata-only category/tag assignment. Step 3.3 adds object/item taxonomy interfaces and item capability validation while keeping stack, use, and equipment behavior data-driven. Step 3.4 adds distinct rarity, quality, and condition definitions, optional static item rarity, and standalone runtime item-instance metadata without migrating inventory slots. See `Documentation/GameDefinitionAndStableIdGuidelines.md`, `Documentation/CategoryAndTagSystem.md`, `Documentation/ObjectAndItemTaxonomy.md`, and `Documentation/RarityQualityAndCondition.md` for the current stable-ID, catalog, classification, item taxonomy, and item-state metadata workflows.
 
 Current ID families:
 

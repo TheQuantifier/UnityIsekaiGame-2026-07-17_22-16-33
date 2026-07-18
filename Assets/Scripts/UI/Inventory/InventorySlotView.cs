@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 namespace UnityIsekaiGame.UI.Inventory
 {
-    public sealed class InventorySlotView : MonoBehaviour, IPointerClickHandler
+    public sealed class InventorySlotView : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
     {
         [SerializeField] private Image backgroundImage;
         [SerializeField] private Image iconImage;
@@ -16,6 +16,7 @@ namespace UnityIsekaiGame.UI.Inventory
 
         private int slotIndex = -1;
         private System.Action<int> selected;
+        private System.Action<int, bool> hovered;
 
         private void Awake()
         {
@@ -75,10 +76,11 @@ namespace UnityIsekaiGame.UI.Inventory
             }
         }
 
-        public void Initialize(int index, System.Action<int> onSelected)
+        public void Initialize(int index, System.Action<int> onSelected, System.Action<int, bool> onHovered = null)
         {
             slotIndex = index;
             selected = onSelected;
+            hovered = onHovered;
             ResolveBackgroundImage();
         }
 
@@ -95,6 +97,16 @@ namespace UnityIsekaiGame.UI.Inventory
         public void OnPointerClick(PointerEventData eventData)
         {
             selected?.Invoke(slotIndex);
+        }
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            hovered?.Invoke(slotIndex, true);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            hovered?.Invoke(slotIndex, false);
         }
 
         private void ApplyTextLayout()

@@ -53,7 +53,7 @@ namespace UnityIsekaiGame.UI.Inventory
 
         public int SlotCount => slotViews == null ? 0 : slotViews.Length;
 
-        public void Initialize(Action<int> onSlotSelected, Action onUseSelected, Action<EquipmentSlotType> onEquipmentSlotSelected = null, Action onEquipSelected = null, Action onUnequipSelected = null)
+        public void Initialize(Action<int> onSlotSelected, Action onUseSelected, Action<EquipmentSlotType> onEquipmentSlotSelected = null, Action onEquipSelected = null, Action onUnequipSelected = null, Action<int, bool> onSlotHovered = null)
         {
             if (slotViews != null)
             {
@@ -61,7 +61,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 {
                     if (slotViews[i] != null)
                     {
-                        slotViews[i].Initialize(i, onSlotSelected);
+                        slotViews[i].Initialize(i, onSlotSelected, onSlotHovered);
                     }
                 }
             }
@@ -150,8 +150,18 @@ namespace UnityIsekaiGame.UI.Inventory
             }
         }
 
-        public void RenderSelectedItemDetails(InventorySlot slot)
+        public void RenderSelectedItemDetails(InventorySlot slot, bool includeDescription = false)
         {
+            if (slot == null || slot.IsEmpty || slot.Item == null)
+            {
+                if (selectedItemDetailsRoot != null)
+                {
+                    selectedItemDetailsRoot.SetActive(false);
+                }
+
+                return;
+            }
+
             EnsureItemDetailsPanel();
 
             if (selectedItemDetailsRoot != null)
@@ -166,7 +176,7 @@ namespace UnityIsekaiGame.UI.Inventory
 
             if (selectedItemDetailsText != null)
             {
-                selectedItemDetailsText.text = InventoryItemDetailsFormatter.Format(slot);
+                selectedItemDetailsText.text = InventoryItemDetailsFormatter.FormatDetails(slot, includeDescription);
             }
         }
 
@@ -448,7 +458,7 @@ namespace UnityIsekaiGame.UI.Inventory
             return string.IsNullOrWhiteSpace(item.DisplayName) ? item.ItemId : item.DisplayName;
         }
 
-        public static string Format(InventorySlot slot)
+        public static string FormatDetails(InventorySlot slot, bool includeDescription = false)
         {
             ItemDefinition item = slot == null || slot.IsEmpty ? null : slot.Item;
             if (item == null)
@@ -459,12 +469,13 @@ namespace UnityIsekaiGame.UI.Inventory
             StringBuilder builder = new StringBuilder();
             AppendLine(builder, "ID", string.IsNullOrWhiteSpace(item.ItemId) ? "Unassigned" : item.ItemId);
             AppendLine(builder, "Type", GetCategoryName(item.PrimaryCategory));
+            AppendLine(builder, "Rarity", item.Rarity == null ? "Unassigned" : item.Rarity.DisplayName);
             AppendLine(builder, "Tags", FormatTags(item.Tags));
             AppendLine(builder, "Quantity", slot.Quantity.ToString());
             AppendLine(builder, "Stack", item.Stackable ? $"Stackable, max {item.MaximumStackSize}" : "Not stackable");
             AppendLine(builder, "Capability", FormatCapabilities(item));
 
-            if (!string.IsNullOrWhiteSpace(item.Description))
+            if (includeDescription && !string.IsNullOrWhiteSpace(item.Description))
             {
                 builder.AppendLine();
                 builder.AppendLine(item.Description);
