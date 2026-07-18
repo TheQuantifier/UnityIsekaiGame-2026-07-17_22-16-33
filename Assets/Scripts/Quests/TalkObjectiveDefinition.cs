@@ -8,6 +8,7 @@ namespace UnityIsekaiGame.Quests
     public sealed class TalkObjectiveDefinition : ContractObjectiveDefinition
     {
         [SerializeField] private PersonDefinition talkTargetPerson;
+        [Tooltip("Legacy fallback used only when Talk Target Person is not assigned.")]
         [SerializeField] private string talkTargetId;
 
         public string TalkTargetId => talkTargetPerson == null ? talkTargetId : talkTargetPerson.PersonId;

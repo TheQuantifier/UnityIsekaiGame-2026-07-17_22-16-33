@@ -10,6 +10,7 @@ namespace UnityIsekaiGame.Quests
         [SerializeField] private NpcDialogueInteractable dialogueInteractable;
         [SerializeField] private PersonIdentity personIdentity;
         [SerializeField] private PlayerQuestLog questLog;
+        [Tooltip("Legacy fallback used only when Person Identity is missing or invalid.")]
         [SerializeField] private string talkTargetId;
         [SerializeField] private QuestDefinition offeredQuest;
         [SerializeField] private bool offerQuestOnTalk = true;

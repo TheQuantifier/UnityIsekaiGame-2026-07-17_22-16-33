@@ -15,7 +15,9 @@ namespace UnityIsekaiGame.Quests
         [SerializeField, TextArea(3, 8)] private string detailedDescription;
         [SerializeField] private QuestCategory category = QuestCategory.SideQuest;
         [SerializeField] private PersonDefinition questGiver;
+        [Tooltip("Legacy fallback used only when Quest Giver is not assigned.")]
         [SerializeField] private string questGiverId;
+        [Tooltip("Legacy fallback used only when Quest Giver is not assigned.")]
         [SerializeField] private string questGiverDisplayName;
         [SerializeField] private QuestStageDefinition[] stages;
         [SerializeField] private ContractRewardDefinition reward;

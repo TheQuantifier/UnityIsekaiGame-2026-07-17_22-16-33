@@ -1,0 +1,211 @@
+# Core Systems Architecture
+
+This document records the Step 2 prototype architecture as of the core systems closeout. It is practical project documentation, not final game design or lore.
+
+## Step 2 System Overview
+
+The prototype is a first-person Unity 6.5 URP RPG sandbox. The current scene validates movement, interaction, inventory, item use, vitals, equipment, combat, enemy behavior, loot, magic, spell loadout, dialogue, contracts, quests, HUD feedback, reset controls, and NPC person identity.
+
+The major rule is separation between static definitions and runtime state. ScriptableObjects describe authored data. MonoBehaviours and runtime instances own player/enemy/session state.
+
+## Static Definitions
+
+Static data lives in ScriptableObjects and should not be mutated during play:
+
+- `ItemDefinition`: stable item ID, display text, icon, stack rules, equipment data, use effects.
+- `ItemUseEffect` assets: reusable item-use behavior configuration such as health restoration amount.
+- `SpellDefinition`: spell ID/name, mana cost, cooldown, range, projectile prefab, damage.
+- `DialogueNodeDefinition`: authored dialogue text, speaker fallback, choices, next nodes, portrait fallback.
+- `ContractDefinition`: contract ID, title, requester text, objectives, rewards.
+- `ContractObjectiveDefinition`: collect, delivery, defeat, and reusable objective configuration.
+- `QuestDefinition`: quest ID, giver, category, stages, prerequisites, rewards.
+- `QuestStageDefinition`: ordered quest stage metadata and objective definitions.
+- `TalkObjectiveDefinition` and `ReachLocationObjectiveDefinition`: quest objective configuration.
+- `ContractRewardDefinition`: item reward configuration shared by contracts and quests.
+- `PersonDefinition`: stable person ID, display name, title, role tags, metadata placeholders.
+- `PlayerMovementSettings`: first-person movement tuning.
+
+Static definitions may reference other definitions, but they must not store inventory quantities, current health, objective progress, reward claim state, cooldowns, dialogue progress, active registry data, or spawned-world state.
+
+## Runtime State Owners
+
+Runtime state is owned by components or runtime instances:
+
+- `PlayerInputReader` owns input action queues and gameplay-blocking flags.
+- `FirstPersonCharacterMotor` and `FirstPersonCameraLook` consume abstracted input and never own UI state.
+- `CameraInteractionDetector` owns the current raycast target; interactables own their own behavior.
+- `PlayerInventory` owns slot contents and quantities.
+- `InventorySlot` is runtime slot state, not static item data.
+- `PlayerEquipment` owns equipped items by equipment slot.
+- `PlayerStats` combines base values with equipment modifiers.
+- `PlayerHealth`, `PlayerStamina`, and `PlayerMana` own current vital values and resource timing.
+- `PlayerMeleeCombat`, `PlayerSpellcaster`, and projectile instances own combat/cooldown state.
+- `EnemyHealth`, `PrototypeEnemyController`, and `EnemyMeleeAttack` own enemy runtime combat state.
+- `EnemyLootDrop` owns whether the current enemy defeat has already rolled loot.
+- `DialogueController` owns the active dialogue node and active participant display override.
+- `ContractInstance` owns contract progress, completion, abandonment, and reward claim state.
+- `QuestInstance` owns quest state, current stage, current objective instances, and reward claim state.
+- `PlayerContractJournal` and `PlayerQuestLog` own active runtime collections for contracts and quests.
+- `PersonIdentity` represents a currently loaded scene presence for a static `PersonDefinition`.
+- `PersonRegistry` owns only currently loaded active person identities.
+
+## Stable ID Conventions
+
+Stable IDs identify authored definitions and objective targets. They must not be derived from GameObject names.
+
+Current ID families:
+
+- Item IDs: `ItemDefinition.ItemId`
+- Spell IDs: `SpellDefinition`
+- Contract IDs: `ContractDefinition.ContractId`
+- Quest IDs: `QuestDefinition.QuestId`
+- Quest stage IDs: `QuestStageDefinition.StageId`
+- Person IDs: `PersonDefinition.PersonId`
+- Talk objective IDs: `TalkObjectiveDefinition.TalkTargetId`, preferably resolved from `PersonDefinition`
+- Location IDs: `ReachLocationObjectiveDefinition.LocationId` and `QuestReachLocationReporter`
+- Contract delivery destination IDs: `DeliveryObjectiveDefinition.DestinationId`
+- Defeat target categories: `ContractObjectiveTarget.TargetCategory`
+
+The current code safely rejects empty quest/contract IDs when starting entries. Person identities warn when missing or duplicated while active in the loaded scene.
+
+## Identity Migration
+
+`PersonDefinition` is now the authoritative identity source for NPC people. `Prototype Dialogue NPC` has a `PersonIdentity` assigned to `PrototypeNpcPerson`.
+
+Dialogue and quests use person identity where practical:
+
+- `NpcDialogueInteractable` gets prompt/speaker display from `PersonIdentity`.
+- `QuestDialogueTargetReporter` reports Talk objectives using `PersonIdentity.PersonId`.
+- `QuestDefinition` can reference a `PersonDefinition` quest giver.
+- `TalkObjectiveDefinition` can reference a `PersonDefinition` target.
+
+The old string fields remain as serialized fallback paths:
+
+- `QuestDefinition.questGiverId`
+- `QuestDefinition.questGiverDisplayName`
+- `TalkObjectiveDefinition.talkTargetId`
+- `QuestDialogueTargetReporter.talkTargetId`
+
+These are retained temporarily for backward compatibility with existing serialized assets. New quest/person content should assign `PersonDefinition` references.
+
+## Unified Menu And Modal Model
+
+The Tab menu is owned by `InventoryScreenController` and `InventoryScreenView`. It is currently the shared player menu shell, with pages for Inventory, Character, Spells, and Journal. Page views render data and request actions; they do not own global cursor lock or gameplay blocking.
+
+While the shared menu is open:
+
+- cursor is unlocked and visible;
+- gameplay input is blocked through `PlayerInputReader`;
+- movement, look, attack, spellcasting, and world interaction are prevented;
+- inventory UI actions remain available.
+
+Dialogue is a separate modal controlled by `DialogueScreenController`. It also blocks gameplay through `PlayerInputReader` and marks `PrototypeGameplayModalState` so interactions and enemy behavior pause while dialogue is active.
+
+The reset controller closes dialogue and the shared menu explicitly before restoring gameplay input.
+
+## Quests Versus Contracts
+
+Quests and contracts are intentionally separate high-level systems.
+
+Quests:
+
+- represent narrative or world-progression tasks;
+- can have stages;
+- can use prerequisites;
+- live in `PlayerQuestLog`;
+- use `QuestInstance` runtime state;
+- display giver information through person metadata when available.
+
+Contracts:
+
+- represent formal task/reward jobs;
+- do not currently use staged narrative flow;
+- live in `PlayerContractJournal`;
+- use `ContractInstance` runtime state.
+
+Shared pieces:
+
+- `ContractObjectiveDefinition` and `ContractObjectiveInstance` are reused by both systems.
+- `ContractRewardDefinition` is reused by both systems.
+- Defeat, collect, delivery, talk, and reach-location objectives are composed into higher-level systems.
+
+One system should not claim rewards or complete runtime state owned by the other.
+
+## Rewards
+
+Quest and contract rewards currently grant item rewards only. Both systems:
+
+- require the runtime entry to be completed before claiming;
+- check inventory capacity before granting;
+- leave reward state unclaimed if inventory cannot accept the full reward;
+- transition to `RewardClaimed` after successful grant;
+- prevent duplicate claims by requiring the state to be exactly `Completed`.
+
+No currency, reputation, experience, or mixed reward transaction system exists yet.
+
+## Prototype Reset Contract
+
+Normal prototype reset is explicit and does not reload the scene.
+
+Reset currently:
+
+- ends active dialogue;
+- closes the shared menu;
+- returns the player to the configured spawn transform;
+- restores health, stamina, and mana to maximum;
+- clears melee and spell cooldowns;
+- clears defeated input blocking and queued gameplay actions;
+- returns the enemy to its start transform;
+- resets enemy attack cooldown and pursuit state;
+- resets enemy defeat reporting;
+- resets enemy loot-drop state for future defeats;
+- restores enemy health to maximum;
+- preserves inventory contents;
+- preserves equipment;
+- preserves active/completed quest state;
+- preserves active/completed contract state;
+- preserves reward-claim state;
+- preserves person identity and registry state.
+
+Development-only quest reset helpers remain separate from normal reset.
+
+## Prototype Scene Contents
+
+The prototype scene intentionally contains:
+
+- `Prototype Player`
+- `Prototype Player Spawn`
+- `Prototype Ground`
+- `Directional Light`
+- `Global Volume`
+- `Prototype Enemy`
+- `Prototype Dialogue NPC`
+- `Prototype Quest Investigation Area` as an invisible trigger
+- potion, sword, and helmet pickups
+- inventory/dialogue/HUD/enemy health/interaction prompt canvases
+- `Dialogue Controller`
+- `EventSystem`
+
+Removed visual clutter should not be reintroduced unless it is needed for a specific system test.
+
+## Step 3 Extension Points
+
+The current architecture is ready for these Step 3 directions without merging systems together:
+
+- save/load snapshots for inventory, equipment, vitals, quests, contracts, spell loadout, and person references;
+- richer item categories and loot tables;
+- proper quest markers and navigation;
+- NPC factions, shops, schedules, and reputation as optional capabilities on top of `PersonIdentity`;
+- character progression and stat growth;
+- improved combat abilities and enemy variety;
+- controller/VR interaction adapters using the existing interaction abstractions;
+- more complete modal management if multiple UI layers become active at once.
+
+## Known Prototype Limitations
+
+- There is no save/load system yet.
+- The quest location trigger is invisible.
+- Contracts still use simple requester string data; person-linked contracts are a future adapter.
+- Some legacy string identity fields remain for safe serialized fallback.
+- No automated Unity play-mode tests exist yet; manual regression is the current verification path.
+- Debug/HUD messages are intentionally prototype-level and may be noisy during repeated testing.
