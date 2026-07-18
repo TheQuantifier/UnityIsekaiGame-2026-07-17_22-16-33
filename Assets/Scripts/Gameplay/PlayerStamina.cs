@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.Equipment;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -10,6 +11,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField, Min(0f)] private float regenerationPerSecond = 15f;
         [SerializeField, Min(0f)] private float regenerationDelay = 1f;
         [SerializeField, Min(0f)] private float restartThreshold = 20f;
+        [SerializeField] private PlayerStats stats;
 
         private float regenerationBlockedUntil;
         private bool exhausted;
@@ -22,6 +24,16 @@ namespace UnityIsekaiGame.Gameplay
 
         private void Awake()
         {
+            if (stats == null)
+            {
+                stats = GetComponent<PlayerStats>();
+            }
+
+            if (stats != null)
+            {
+                stamina.SetMaximum(stats.MaximumStamina);
+            }
+
             stamina.Initialize();
             exhausted = stamina.IsEmpty;
         }
@@ -29,11 +41,21 @@ namespace UnityIsekaiGame.Gameplay
         private void OnEnable()
         {
             stamina.ValueChanged += OnStaminaChanged;
+
+            if (stats != null)
+            {
+                stats.StatsChanged += OnStatsChanged;
+            }
         }
 
         private void OnDisable()
         {
             stamina.ValueChanged -= OnStaminaChanged;
+
+            if (stats != null)
+            {
+                stats.StatsChanged -= OnStatsChanged;
+            }
         }
 
         private void LateUpdate()
@@ -115,6 +137,15 @@ namespace UnityIsekaiGame.Gameplay
         private void OnStaminaChanged(float current, float maximum)
         {
             StaminaChanged?.Invoke(current, maximum);
+        }
+
+        private void OnStatsChanged()
+        {
+            stamina.SetMaximum(stats.MaximumStamina);
+            if (exhausted && CurrentStamina > restartThreshold)
+            {
+                exhausted = false;
+            }
         }
     }
 }

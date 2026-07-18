@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.Equipment;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -8,6 +9,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private VitalResource mana = new VitalResource();
         [SerializeField, Min(0f)] private float regenerationPerSecond = 8f;
         [SerializeField, Min(0f)] private float regenerationDelay = 1.5f;
+        [SerializeField] private PlayerStats stats;
 
         private float regenerationBlockedUntil;
 
@@ -17,17 +19,37 @@ namespace UnityIsekaiGame.Gameplay
 
         private void Awake()
         {
+            if (stats == null)
+            {
+                stats = GetComponent<PlayerStats>();
+            }
+
+            if (stats != null)
+            {
+                mana.SetMaximum(stats.MaximumMana);
+            }
+
             mana.Initialize();
         }
 
         private void OnEnable()
         {
             mana.ValueChanged += OnManaChanged;
+
+            if (stats != null)
+            {
+                stats.StatsChanged += OnStatsChanged;
+            }
         }
 
         private void OnDisable()
         {
             mana.ValueChanged -= OnManaChanged;
+
+            if (stats != null)
+            {
+                stats.StatsChanged -= OnStatsChanged;
+            }
         }
 
         private void Update()
@@ -71,6 +93,11 @@ namespace UnityIsekaiGame.Gameplay
         private void OnManaChanged(float current, float maximum)
         {
             ManaChanged?.Invoke(current, maximum);
+        }
+
+        private void OnStatsChanged()
+        {
+            mana.SetMaximum(stats.MaximumMana);
         }
     }
 }

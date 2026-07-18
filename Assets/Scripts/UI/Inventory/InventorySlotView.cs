@@ -121,12 +121,12 @@ namespace UnityIsekaiGame.UI.Inventory
 
             itemNameText.horizontalOverflow = HorizontalWrapMode.Wrap;
             itemNameText.verticalOverflow = VerticalWrapMode.Truncate;
-            itemNameText.alignment = TextAnchor.UpperLeft;
+            itemNameText.alignment = TextAnchor.MiddleCenter;
 
             RectTransform rectTransform = itemNameText.rectTransform;
-            rectTransform.anchorMin = new Vector2(0f, 0.48f);
+            rectTransform.anchorMin = new Vector2(0f, 0.42f);
             rectTransform.anchorMax = new Vector2(1f, 1f);
-            rectTransform.offsetMin = new Vector2(78f, 8f);
+            rectTransform.offsetMin = new Vector2(8f, 8f);
             rectTransform.offsetMax = new Vector2(-8f, -8f);
         }
 

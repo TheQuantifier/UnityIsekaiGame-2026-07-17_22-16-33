@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.Equipment;
 
 namespace UnityIsekaiGame.Inventory
 {
@@ -13,6 +14,7 @@ namespace UnityIsekaiGame.Inventory
         [SerializeField] private bool stackable = true;
         [SerializeField, Min(1)] private int maximumStackSize = 1;
         [SerializeField] private ItemUseEffect[] useEffects;
+        [SerializeField] private EquipmentData equipment;
 
         public string ItemId => itemId;
         public string DisplayName => displayName;
@@ -22,6 +24,8 @@ namespace UnityIsekaiGame.Inventory
         public int MaximumStackSize => stackable ? Mathf.Max(1, maximumStackSize) : 1;
         public IReadOnlyList<ItemUseEffect> UseEffects => useEffects;
         public bool IsUsable => useEffects != null && useEffects.Length > 0;
+        public EquipmentData Equipment => equipment;
+        public bool IsEquippable => equipment != null && equipment.Equippable;
 
         private void OnValidate()
         {

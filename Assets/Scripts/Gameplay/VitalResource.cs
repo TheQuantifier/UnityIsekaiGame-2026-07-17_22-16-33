@@ -78,5 +78,18 @@ namespace UnityIsekaiGame.Gameplay
             currentValue = clampedValue;
             ValueChanged?.Invoke(currentValue, maximumValue);
         }
+
+        public void SetMaximum(float value)
+        {
+            float clampedMaximum = Mathf.Max(1f, value);
+            if (Mathf.Approximately(maximumValue, clampedMaximum))
+            {
+                return;
+            }
+
+            maximumValue = clampedMaximum;
+            currentValue = Mathf.Clamp(currentValue, 0f, maximumValue);
+            ValueChanged?.Invoke(currentValue, maximumValue);
+        }
     }
 }

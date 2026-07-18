@@ -56,6 +56,46 @@ namespace UnityIsekaiGame.Inventory
             return new InventoryAddResult(status, requestedQuantity, addedQuantity);
         }
 
+        public InventorySlot GetSlot(int slotIndex)
+        {
+            EnsureSlotCapacity();
+            return slotIndex >= 0 && slotIndex < slots.Count ? slots[slotIndex] : null;
+        }
+
+        public bool CanAddItem(ItemDefinition item, int quantity)
+        {
+            return GetAddableQuantity(item, quantity) >= quantity;
+        }
+
+        public bool CanAddItemAfterRemovingFromSlot(ItemDefinition item, int quantity, int removeSlotIndex, int removeQuantity)
+        {
+            return GetAddableQuantity(item, quantity, removeSlotIndex, removeQuantity) >= quantity;
+        }
+
+        public bool RemoveItemAt(int slotIndex, int quantity)
+        {
+            EnsureSlotCapacity();
+
+            if (slotIndex < 0 || slotIndex >= slots.Count || quantity <= 0)
+            {
+                return false;
+            }
+
+            InventorySlot slot = slots[slotIndex];
+            if (slot == null || slot.IsEmpty || slot.Quantity < quantity)
+            {
+                return false;
+            }
+
+            bool removed = slot.Remove(quantity);
+            if (removed)
+            {
+                InventoryChanged?.Invoke();
+            }
+
+            return removed;
+        }
+
         public ItemUseResult UseItem(int slotIndex, GameObject user)
         {
             EnsureSlotCapacity();
@@ -126,6 +166,88 @@ namespace UnityIsekaiGame.Inventory
             }
 
             return remainingQuantity;
+        }
+
+        private int GetAddableQuantity(ItemDefinition item, int quantity, int removeSlotIndex = -1, int removeQuantity = 0)
+        {
+            if (item == null || quantity <= 0)
+            {
+                return 0;
+            }
+
+            EnsureSlotCapacity();
+
+            int remainingQuantity = quantity;
+            bool createsEmptySlot = false;
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlot slot = slots[i];
+                if (slot == null || slot.IsEmpty)
+                {
+                    createsEmptySlot = true;
+                    continue;
+                }
+
+                int simulatedQuantity = slot.Quantity;
+                ItemDefinition simulatedItem = slot.Item;
+
+                if (i == removeSlotIndex)
+                {
+                    simulatedQuantity = Mathf.Max(0, simulatedQuantity - removeQuantity);
+                    if (simulatedQuantity == 0)
+                    {
+                        simulatedItem = null;
+                        createsEmptySlot = true;
+                    }
+                }
+
+                if (simulatedItem == null)
+                {
+                    continue;
+                }
+
+                if (item.Stackable && simulatedItem == item)
+                {
+                    remainingQuantity -= Mathf.Min(remainingQuantity, Mathf.Max(0, item.MaximumStackSize - simulatedQuantity));
+                }
+
+                if (remainingQuantity <= 0)
+                {
+                    return quantity;
+                }
+            }
+
+            if (!createsEmptySlot)
+            {
+                return quantity - remainingQuantity;
+            }
+
+            foreach (InventorySlot slot in slots)
+            {
+                if (remainingQuantity <= 0)
+                {
+                    break;
+                }
+
+                if (slot != null && !slot.IsEmpty)
+                {
+                    continue;
+                }
+
+                remainingQuantity -= Mathf.Min(remainingQuantity, item.MaximumStackSize);
+            }
+
+            if (remainingQuantity > 0 && removeSlotIndex >= 0 && removeSlotIndex < slots.Count)
+            {
+                InventorySlot removedFromSlot = slots[removeSlotIndex];
+                if (removedFromSlot != null && removedFromSlot.Quantity <= removeQuantity)
+                {
+                    remainingQuantity -= Mathf.Min(remainingQuantity, item.MaximumStackSize);
+                }
+            }
+
+            return quantity - Mathf.Max(0, remainingQuantity);
         }
 
         private int AddToNewStacks(ItemDefinition item, int remainingQuantity)

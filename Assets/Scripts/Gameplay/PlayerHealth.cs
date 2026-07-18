@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.Equipment;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -7,18 +8,42 @@ namespace UnityIsekaiGame.Gameplay
     {
         [SerializeField, Min(1)] private int maximumHealth = 100;
         [SerializeField, Min(0)] private int startingHealth;
+        [SerializeField] private PlayerStats stats;
 
         private int currentHealth;
+        private int effectiveMaximumHealth;
 
         public int CurrentHealth => currentHealth;
-        public int MaximumHealth => maximumHealth;
-        public bool IsAtMaximum => currentHealth >= maximumHealth;
+        public int MaximumHealth => effectiveMaximumHealth;
+        public bool IsAtMaximum => currentHealth >= effectiveMaximumHealth;
         public event Action<int, int> HealthChanged;
 
         private void Awake()
         {
-            currentHealth = startingHealth > 0 ? Mathf.Min(startingHealth, maximumHealth) : maximumHealth;
-            HealthChanged?.Invoke(currentHealth, maximumHealth);
+            if (stats == null)
+            {
+                stats = GetComponent<PlayerStats>();
+            }
+
+            effectiveMaximumHealth = GetConfiguredMaximumHealth();
+            currentHealth = startingHealth > 0 ? Mathf.Min(startingHealth, effectiveMaximumHealth) : effectiveMaximumHealth;
+            HealthChanged?.Invoke(currentHealth, effectiveMaximumHealth);
+        }
+
+        private void OnEnable()
+        {
+            if (stats != null)
+            {
+                stats.StatsChanged += OnStatsChanged;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (stats != null)
+            {
+                stats.StatsChanged -= OnStatsChanged;
+            }
         }
 
         private void OnValidate()
@@ -53,14 +78,31 @@ namespace UnityIsekaiGame.Gameplay
 
         private void SetHealth(int value)
         {
-            int clampedHealth = Mathf.Clamp(value, 0, maximumHealth);
+            int clampedHealth = Mathf.Clamp(value, 0, effectiveMaximumHealth);
             if (currentHealth == clampedHealth)
             {
                 return;
             }
 
             currentHealth = clampedHealth;
-            HealthChanged?.Invoke(currentHealth, maximumHealth);
+            HealthChanged?.Invoke(currentHealth, effectiveMaximumHealth);
+        }
+
+        private void OnStatsChanged()
+        {
+            int previousMaximum = effectiveMaximumHealth;
+            effectiveMaximumHealth = GetConfiguredMaximumHealth();
+            currentHealth = Mathf.Clamp(currentHealth, 0, effectiveMaximumHealth);
+
+            if (previousMaximum != effectiveMaximumHealth)
+            {
+                HealthChanged?.Invoke(currentHealth, effectiveMaximumHealth);
+            }
+        }
+
+        private int GetConfiguredMaximumHealth()
+        {
+            return Mathf.Max(1, Mathf.RoundToInt(stats == null ? maximumHealth : stats.MaximumHealth));
         }
     }
 }
