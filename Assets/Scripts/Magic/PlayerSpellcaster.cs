@@ -12,12 +12,13 @@ namespace UnityIsekaiGame.Magic
         [SerializeField] private PlayerMana mana;
         [SerializeField] private PlayerHealth health;
         [SerializeField] private Transform castOrigin;
+        [SerializeField] private PlayerSpellLoadout loadout;
         [SerializeField] private SpellDefinition primarySpell;
         [SerializeField] private LayerMask aimMask = ~0;
         [SerializeField] private QueryTriggerInteraction aimTriggerInteraction = QueryTriggerInteraction.Ignore;
 
         private readonly List<SpellProjectile> activeProjectiles = new List<SpellProjectile>();
-        private float nextCastTime;
+        private readonly Dictionary<SpellDefinition, float> cooldowns = new Dictionary<SpellDefinition, float>();
 
         private void Awake()
         {
@@ -36,6 +37,11 @@ namespace UnityIsekaiGame.Magic
                 health = GetComponent<PlayerHealth>();
             }
 
+            if (loadout == null)
+            {
+                loadout = GetComponent<PlayerSpellLoadout>();
+            }
+
             if (castOrigin == null && Camera.main != null)
             {
                 castOrigin = Camera.main.transform;
@@ -52,36 +58,37 @@ namespace UnityIsekaiGame.Magic
 
         public SpellCastResult TryCastPrimarySpell()
         {
-            SpellCastResult validation = ValidateCast();
+            SpellDefinition spell = GetCurrentSpell();
+            SpellCastResult validation = ValidateCast(spell);
             if (!validation.Succeeded)
             {
                 ReportFailure(validation.Message);
                 return validation;
             }
 
-            VitalChangeResult manaSpend = mana.Spend(primarySpell.ManaCost);
+            VitalChangeResult manaSpend = mana.Spend(spell.ManaCost);
             if (!manaSpend.Succeeded)
             {
                 ReportFailure(manaSpend.Message);
                 return SpellCastResult.Failure(manaSpend.Message);
             }
 
-            SpellProjectile projectile = SpawnProjectile(primarySpell);
+            SpellProjectile projectile = SpawnProjectile(spell);
             if (projectile == null)
             {
-                mana.Restore(primarySpell.ManaCost);
+                mana.Restore(spell.ManaCost);
                 return SpellCastResult.Failure("Invalid projectile configuration.");
             }
 
-            nextCastTime = Time.time + primarySpell.Cooldown;
-            string message = $"Cast {primarySpell.DisplayName}.";
+            cooldowns[spell] = Time.time + spell.Cooldown;
+            string message = $"Cast {spell.DisplayName}.";
             Debug.Log(message);
             return SpellCastResult.Success(message);
         }
 
         public void ResetSpellcasting()
         {
-            nextCastTime = 0f;
+            cooldowns.Clear();
             for (int i = activeProjectiles.Count - 1; i >= 0; i--)
             {
                 SpellProjectile projectile = activeProjectiles[i];
@@ -95,9 +102,9 @@ namespace UnityIsekaiGame.Magic
             activeProjectiles.Clear();
         }
 
-        private SpellCastResult ValidateCast()
+        private SpellCastResult ValidateCast(SpellDefinition spell)
         {
-            if (primarySpell == null)
+            if (spell == null)
             {
                 return SpellCastResult.Failure("No spell assigned.");
             }
@@ -112,9 +119,9 @@ namespace UnityIsekaiGame.Magic
                 return SpellCastResult.Failure("Cannot cast while defeated.");
             }
 
-            if (Time.time < nextCastTime)
+            if (cooldowns.TryGetValue(spell, out float nextCastTime) && Time.time < nextCastTime)
             {
-                return SpellCastResult.Failure($"{primarySpell.DisplayName} is on cooldown.");
+                return SpellCastResult.Failure($"{spell.DisplayName} is on cooldown.");
             }
 
             if (mana == null)
@@ -122,12 +129,12 @@ namespace UnityIsekaiGame.Magic
                 return SpellCastResult.Failure("No mana source assigned.");
             }
 
-            if (!mana.CanSpend(primarySpell.ManaCost))
+            if (!mana.CanSpend(spell.ManaCost))
             {
                 return SpellCastResult.Failure("Not enough mana.");
             }
 
-            if (castOrigin == null || primarySpell.ProjectilePrefab == null)
+            if (castOrigin == null || spell.ProjectilePrefab == null)
             {
                 return SpellCastResult.Failure("Invalid projectile configuration.");
             }
@@ -164,6 +171,11 @@ namespace UnityIsekaiGame.Magic
 
             Vector3 direction = aimPoint - spawnPosition;
             return direction.sqrMagnitude > 0.0001f ? direction.normalized : castOrigin.forward;
+        }
+
+        private SpellDefinition GetCurrentSpell()
+        {
+            return loadout == null ? primarySpell : loadout.SelectedSpell;
         }
 
         private void HandleProjectileCompleted(SpellProjectile projectile)

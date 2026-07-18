@@ -16,6 +16,12 @@ namespace UnityIsekaiGame.Input
         [SerializeField] private string sprintActionName = "Sprint";
         [SerializeField] private string attackActionName = "Attack";
         [SerializeField] private string castPrimarySpellActionName = "CastPrimarySpell";
+        [SerializeField] private string selectSpellSlot1ActionName = "SelectSpellSlot1";
+        [SerializeField] private string selectSpellSlot2ActionName = "SelectSpellSlot2";
+        [SerializeField] private string selectSpellSlot3ActionName = "SelectSpellSlot3";
+        [SerializeField] private string selectSpellSlot4ActionName = "SelectSpellSlot4";
+        [SerializeField] private string previousSpellActionName = "PreviousSpell";
+        [SerializeField] private string nextSpellActionName = "NextSpell";
         [SerializeField] private string interactActionName = "Interact";
         [SerializeField] private string inventoryActionName = "Inventory";
         [SerializeField] private string prototypeResetActionName = "PrototypeReset";
@@ -30,6 +36,12 @@ namespace UnityIsekaiGame.Input
         private InputAction sprintAction;
         private InputAction attackAction;
         private InputAction castPrimarySpellAction;
+        private InputAction selectSpellSlot1Action;
+        private InputAction selectSpellSlot2Action;
+        private InputAction selectSpellSlot3Action;
+        private InputAction selectSpellSlot4Action;
+        private InputAction previousSpellAction;
+        private InputAction nextSpellAction;
         private InputAction interactAction;
         private InputAction inventoryAction;
         private InputAction prototypeResetAction;
@@ -39,6 +51,8 @@ namespace UnityIsekaiGame.Input
         private bool jumpQueued;
         private bool attackQueued;
         private bool castPrimarySpellQueued;
+        private int queuedSpellSlotSelection = -1;
+        private int queuedSpellCycleDirection;
         private bool interactQueued;
         private bool inventoryQueued;
         private bool prototypeResetQueued;
@@ -69,6 +83,12 @@ namespace UnityIsekaiGame.Input
             sprintAction = map.FindAction(sprintActionName, false);
             attackAction = map.FindAction(attackActionName, false);
             castPrimarySpellAction = map.FindAction(castPrimarySpellActionName, false);
+            selectSpellSlot1Action = map.FindAction(selectSpellSlot1ActionName, false);
+            selectSpellSlot2Action = map.FindAction(selectSpellSlot2ActionName, false);
+            selectSpellSlot3Action = map.FindAction(selectSpellSlot3ActionName, false);
+            selectSpellSlot4Action = map.FindAction(selectSpellSlot4ActionName, false);
+            previousSpellAction = map.FindAction(previousSpellActionName, false);
+            nextSpellAction = map.FindAction(nextSpellActionName, false);
             interactAction = map.FindAction(interactActionName, true);
             inventoryAction = map.FindAction(inventoryActionName, true);
             prototypeResetAction = map.FindAction(prototypeResetActionName, false);
@@ -87,6 +107,12 @@ namespace UnityIsekaiGame.Input
             EnableAction(sprintAction);
             EnableAction(attackAction);
             EnableAction(castPrimarySpellAction);
+            EnableAction(selectSpellSlot1Action);
+            EnableAction(selectSpellSlot2Action);
+            EnableAction(selectSpellSlot3Action);
+            EnableAction(selectSpellSlot4Action);
+            EnableAction(previousSpellAction);
+            EnableAction(nextSpellAction);
             EnableAction(interactAction);
             EnableAction(inventoryAction);
             EnableAction(prototypeResetAction);
@@ -113,6 +139,8 @@ namespace UnityIsekaiGame.Input
             {
                 castPrimarySpellAction.performed += OnCastPrimarySpellPerformed;
             }
+
+            SubscribeSpellSelectionActions();
 
             if (inventoryAction != null)
             {
@@ -172,6 +200,8 @@ namespace UnityIsekaiGame.Input
                 castPrimarySpellAction.performed -= OnCastPrimarySpellPerformed;
             }
 
+            UnsubscribeSpellSelectionActions();
+
             if (inventoryAction != null)
             {
                 inventoryAction.performed -= OnInventoryPerformed;
@@ -203,6 +233,12 @@ namespace UnityIsekaiGame.Input
             DisableAction(prototypeResetAction);
             DisableAction(inventoryAction);
             DisableAction(interactAction);
+            DisableAction(nextSpellAction);
+            DisableAction(previousSpellAction);
+            DisableAction(selectSpellSlot4Action);
+            DisableAction(selectSpellSlot3Action);
+            DisableAction(selectSpellSlot2Action);
+            DisableAction(selectSpellSlot1Action);
             DisableAction(castPrimarySpellAction);
             DisableAction(attackAction);
             DisableAction(sprintAction);
@@ -279,6 +315,42 @@ namespace UnityIsekaiGame.Input
             return true;
         }
 
+        public bool ConsumeSpellSlotSelection(out int slotIndex)
+        {
+            slotIndex = queuedSpellSlotSelection;
+            if (GameplayInputBlocked)
+            {
+                queuedSpellSlotSelection = -1;
+                return false;
+            }
+
+            if (queuedSpellSlotSelection < 0)
+            {
+                return false;
+            }
+
+            queuedSpellSlotSelection = -1;
+            return true;
+        }
+
+        public bool ConsumeSpellCycle(out int direction)
+        {
+            direction = queuedSpellCycleDirection;
+            if (GameplayInputBlocked)
+            {
+                queuedSpellCycleDirection = 0;
+                return false;
+            }
+
+            if (queuedSpellCycleDirection == 0)
+            {
+                return false;
+            }
+
+            queuedSpellCycleDirection = 0;
+            return true;
+        }
+
         public bool ConsumeInventory()
         {
             if (!inventoryQueued)
@@ -352,6 +424,8 @@ namespace UnityIsekaiGame.Input
             jumpQueued = false;
             attackQueued = false;
             castPrimarySpellQueued = false;
+            queuedSpellSlotSelection = -1;
+            queuedSpellCycleDirection = 0;
             interactQueued = false;
         }
 
@@ -389,6 +463,52 @@ namespace UnityIsekaiGame.Input
             }
 
             castPrimarySpellQueued = true;
+        }
+
+        private void OnSelectSpellSlot1Performed(InputAction.CallbackContext context)
+        {
+            QueueSpellSlotSelection(0);
+        }
+
+        private void OnSelectSpellSlot2Performed(InputAction.CallbackContext context)
+        {
+            QueueSpellSlotSelection(1);
+        }
+
+        private void OnSelectSpellSlot3Performed(InputAction.CallbackContext context)
+        {
+            QueueSpellSlotSelection(2);
+        }
+
+        private void OnSelectSpellSlot4Performed(InputAction.CallbackContext context)
+        {
+            QueueSpellSlotSelection(3);
+        }
+
+        private void OnPreviousSpellPerformed(InputAction.CallbackContext context)
+        {
+            QueueSpellCycle(-1);
+        }
+
+        private void OnNextSpellPerformed(InputAction.CallbackContext context)
+        {
+            QueueSpellCycle(1);
+        }
+
+        private void QueueSpellSlotSelection(int slotIndex)
+        {
+            if (!IsTypingInUiField())
+            {
+                queuedSpellSlotSelection = slotIndex;
+            }
+        }
+
+        private void QueueSpellCycle(int direction)
+        {
+            if (!IsTypingInUiField())
+            {
+                queuedSpellCycleDirection = direction;
+            }
         }
 
         private void OnInventoryPerformed(InputAction.CallbackContext context)
@@ -439,6 +559,72 @@ namespace UnityIsekaiGame.Input
             if (action != null)
             {
                 action.Disable();
+            }
+        }
+
+        private void SubscribeSpellSelectionActions()
+        {
+            if (selectSpellSlot1Action != null)
+            {
+                selectSpellSlot1Action.performed += OnSelectSpellSlot1Performed;
+            }
+
+            if (selectSpellSlot2Action != null)
+            {
+                selectSpellSlot2Action.performed += OnSelectSpellSlot2Performed;
+            }
+
+            if (selectSpellSlot3Action != null)
+            {
+                selectSpellSlot3Action.performed += OnSelectSpellSlot3Performed;
+            }
+
+            if (selectSpellSlot4Action != null)
+            {
+                selectSpellSlot4Action.performed += OnSelectSpellSlot4Performed;
+            }
+
+            if (previousSpellAction != null)
+            {
+                previousSpellAction.performed += OnPreviousSpellPerformed;
+            }
+
+            if (nextSpellAction != null)
+            {
+                nextSpellAction.performed += OnNextSpellPerformed;
+            }
+        }
+
+        private void UnsubscribeSpellSelectionActions()
+        {
+            if (selectSpellSlot1Action != null)
+            {
+                selectSpellSlot1Action.performed -= OnSelectSpellSlot1Performed;
+            }
+
+            if (selectSpellSlot2Action != null)
+            {
+                selectSpellSlot2Action.performed -= OnSelectSpellSlot2Performed;
+            }
+
+            if (selectSpellSlot3Action != null)
+            {
+                selectSpellSlot3Action.performed -= OnSelectSpellSlot3Performed;
+            }
+
+            if (selectSpellSlot4Action != null)
+            {
+                selectSpellSlot4Action.performed -= OnSelectSpellSlot4Performed;
+            }
+
+            if (previousSpellAction != null)
+            {
+                previousSpellAction.performed -= OnPreviousSpellPerformed;
+            }
+
+            if (nextSpellAction != null)
+            {
+                nextSpellAction.performed -= OnNextSpellPerformed;
             }
         }
 

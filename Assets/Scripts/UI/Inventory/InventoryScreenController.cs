@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Magic;
 
 namespace UnityIsekaiGame.UI.Inventory
 {
@@ -10,7 +11,9 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private PlayerInputReader input;
         [SerializeField] private PlayerInventory inventory;
         [SerializeField] private PlayerEquipment equipment;
+        [SerializeField] private PlayerSpellLoadout spellLoadout;
         [SerializeField] private InventoryScreenView view;
+        [SerializeField] private SpellManagementView spellManagementView;
         [SerializeField] private GameObject itemUser;
         [SerializeField, Min(1)] private int columns = 4;
 
@@ -19,12 +22,18 @@ namespace UnityIsekaiGame.UI.Inventory
         private bool isOpen;
         private int selectedSlotIndex;
         private EquipmentSlotType selectedEquipmentSlot;
+        private int selectedKnownSpellIndex;
 
         private void Awake()
         {
             if (equipment == null && inventory != null)
             {
                 equipment = inventory.GetComponent<PlayerEquipment>();
+            }
+
+            if (spellLoadout == null && inventory != null)
+            {
+                spellLoadout = inventory.GetComponent<PlayerSpellLoadout>();
             }
 
             if (itemUser == null && inventory != null)
@@ -35,6 +44,11 @@ namespace UnityIsekaiGame.UI.Inventory
             if (view != null)
             {
                 view.Initialize(SelectSlot, UseSelectedItem, SelectEquipmentSlot, EquipSelectedItem, UnequipSelectedEquipment);
+            }
+
+            if (spellManagementView != null)
+            {
+                spellManagementView.Initialize(SelectKnownSpell, AssignSelectedSpellToSlot, ClearSpellSlot);
             }
 
             Close(false);
@@ -51,6 +65,12 @@ namespace UnityIsekaiGame.UI.Inventory
             if (equipment != null)
             {
                 equipment.EquipmentChanged += Refresh;
+            }
+
+            if (spellLoadout != null)
+            {
+                spellLoadout.SlotChanged += OnSpellSlotChanged;
+                spellLoadout.ActiveSlotChanged += OnActiveSpellSlotChanged;
             }
         }
 
@@ -99,6 +119,12 @@ namespace UnityIsekaiGame.UI.Inventory
             if (equipment != null)
             {
                 equipment.EquipmentChanged -= Refresh;
+            }
+
+            if (spellLoadout != null)
+            {
+                spellLoadout.SlotChanged -= OnSpellSlotChanged;
+                spellLoadout.ActiveSlotChanged -= OnActiveSpellSlotChanged;
             }
 
             if (isOpen)
@@ -179,6 +205,12 @@ namespace UnityIsekaiGame.UI.Inventory
                 view.SetSelectedSlot(selectedSlotIndex);
                 view.SetSelectedEquipmentSlot(selectedEquipmentSlot);
                 UpdateEquipmentActions();
+            }
+
+            if (spellManagementView != null)
+            {
+                ClampKnownSpellSelection();
+                spellManagementView.Render(spellLoadout, selectedKnownSpellIndex);
             }
         }
 
@@ -309,6 +341,62 @@ namespace UnityIsekaiGame.UI.Inventory
             bool canUnequip = selectedEquipment != null && !selectedEquipment.IsEmpty;
 
             view.SetEquipmentActions(canEquip, canUnequip);
+        }
+
+        private void SelectKnownSpell(int knownSpellIndex)
+        {
+            selectedKnownSpellIndex = Mathf.Max(0, knownSpellIndex);
+            if (view != null)
+            {
+                view.SetFeedback(string.Empty);
+            }
+
+            Refresh();
+        }
+
+        private void AssignSelectedSpellToSlot(int slotIndex)
+        {
+            if (!isOpen || spellLoadout == null)
+            {
+                return;
+            }
+
+            SpellDefinition spell = selectedKnownSpellIndex >= 0 && selectedKnownSpellIndex < spellLoadout.KnownSpells.Count
+                ? spellLoadout.KnownSpells[selectedKnownSpellIndex]
+                : null;
+            SpellLoadoutOperationResult result = spellLoadout.AssignSpell(slotIndex, spell);
+            Debug.Log(result.Message);
+            view?.SetFeedback(result.Message);
+            Refresh();
+        }
+
+        private void ClearSpellSlot(int slotIndex)
+        {
+            if (!isOpen || spellLoadout == null)
+            {
+                return;
+            }
+
+            SpellLoadoutOperationResult result = spellLoadout.ClearSlot(slotIndex);
+            Debug.Log(result.Message);
+            view?.SetFeedback(result.Message);
+            Refresh();
+        }
+
+        private void ClampKnownSpellSelection()
+        {
+            int knownCount = spellLoadout == null || spellLoadout.KnownSpells == null ? 0 : spellLoadout.KnownSpells.Count;
+            selectedKnownSpellIndex = knownCount <= 0 ? 0 : Mathf.Clamp(selectedKnownSpellIndex, 0, knownCount - 1);
+        }
+
+        private void OnSpellSlotChanged(SpellLoadoutSlotChangedEventArgs args)
+        {
+            Refresh();
+        }
+
+        private void OnActiveSpellSlotChanged(int slotIndex, SpellDefinition spell)
+        {
+            Refresh();
         }
     }
 }

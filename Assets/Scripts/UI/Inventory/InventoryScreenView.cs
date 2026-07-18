@@ -15,10 +15,22 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private Button useButton;
         [SerializeField] private Button equipButton;
         [SerializeField] private Button unequipButton;
+        [SerializeField] private GameObject inventoryContentRoot;
+        [SerializeField] private GameObject characterContentRoot;
+        [SerializeField] private GameObject spellsContentRoot;
+        [SerializeField] private Button inventoryMenuButton;
+        [SerializeField] private Button characterMenuButton;
+        [SerializeField] private Button spellsMenuButton;
+        [SerializeField] private Image inventoryMenuButtonImage;
+        [SerializeField] private Image characterMenuButtonImage;
+        [SerializeField] private Image spellsMenuButtonImage;
+        [SerializeField] private Color inactiveMenuColor = new Color(0.12f, 0.14f, 0.16f, 0.95f);
+        [SerializeField] private Color activeMenuColor = new Color(0.2f, 0.42f, 0.55f, 1f);
 
         private Action useSelected;
         private Action equipSelected;
         private Action unequipSelected;
+        private InventoryMenuSection activeSection = InventoryMenuSection.Inventory;
 
         private void Awake()
         {
@@ -74,8 +86,27 @@ namespace UnityIsekaiGame.UI.Inventory
                 unequipButton.onClick.AddListener(InvokeUnequipSelected);
             }
 
+            if (inventoryMenuButton != null)
+            {
+                inventoryMenuButton.onClick.RemoveListener(ShowInventorySection);
+                inventoryMenuButton.onClick.AddListener(ShowInventorySection);
+            }
+
+            if (characterMenuButton != null)
+            {
+                characterMenuButton.onClick.RemoveListener(ShowCharacterSection);
+                characterMenuButton.onClick.AddListener(ShowCharacterSection);
+            }
+
+            if (spellsMenuButton != null)
+            {
+                spellsMenuButton.onClick.RemoveListener(ShowSpellsSection);
+                spellsMenuButton.onClick.AddListener(ShowSpellsSection);
+            }
+
             equipSelected = onEquipSelected;
             unequipSelected = onUnequipSelected;
+            ApplyActiveSection();
         }
 
         public void Render(IReadOnlyList<UnityIsekaiGame.Inventory.InventorySlot> slots)
@@ -175,6 +206,7 @@ namespace UnityIsekaiGame.UI.Inventory
 
         public void Show()
         {
+            ApplyActiveSection();
             SetVisible(true);
         }
 
@@ -209,6 +241,68 @@ namespace UnityIsekaiGame.UI.Inventory
         private void InvokeUnequipSelected()
         {
             unequipSelected?.Invoke();
+        }
+
+        private void ShowInventorySection()
+        {
+            activeSection = InventoryMenuSection.Inventory;
+            ApplyActiveSection();
+        }
+
+        private void ShowSpellsSection()
+        {
+            activeSection = InventoryMenuSection.Spells;
+            ApplyActiveSection();
+        }
+
+        private void ShowCharacterSection()
+        {
+            activeSection = InventoryMenuSection.Character;
+            ApplyActiveSection();
+        }
+
+        private void ApplyActiveSection()
+        {
+            bool inventoryActive = activeSection == InventoryMenuSection.Inventory;
+            bool characterActive = activeSection == InventoryMenuSection.Character;
+            bool spellsActive = activeSection == InventoryMenuSection.Spells;
+
+            if (inventoryContentRoot != null)
+            {
+                inventoryContentRoot.SetActive(inventoryActive);
+            }
+
+            if (characterContentRoot != null)
+            {
+                characterContentRoot.SetActive(characterActive);
+            }
+
+            if (spellsContentRoot != null)
+            {
+                spellsContentRoot.SetActive(spellsActive);
+            }
+
+            if (inventoryMenuButtonImage != null)
+            {
+                inventoryMenuButtonImage.color = inventoryActive ? activeMenuColor : inactiveMenuColor;
+            }
+
+            if (characterMenuButtonImage != null)
+            {
+                characterMenuButtonImage.color = characterActive ? activeMenuColor : inactiveMenuColor;
+            }
+
+            if (spellsMenuButtonImage != null)
+            {
+                spellsMenuButtonImage.color = spellsActive ? activeMenuColor : inactiveMenuColor;
+            }
+        }
+
+        private enum InventoryMenuSection
+        {
+            Inventory,
+            Character,
+            Spells
         }
     }
 }
