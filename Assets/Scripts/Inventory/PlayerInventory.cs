@@ -96,6 +96,55 @@ namespace UnityIsekaiGame.Inventory
             return removed;
         }
 
+        public int CountItem(ItemDefinition item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            EnsureSlotCapacity();
+            int count = 0;
+            foreach (InventorySlot slot in slots)
+            {
+                if (slot != null && !slot.IsEmpty && slot.Item == item)
+                {
+                    count += slot.Quantity;
+                }
+            }
+
+            return count;
+        }
+
+        public bool RemoveItem(ItemDefinition item, int quantity)
+        {
+            if (item == null || quantity <= 0 || CountItem(item) < quantity)
+            {
+                return false;
+            }
+
+            int remaining = quantity;
+            foreach (InventorySlot slot in slots)
+            {
+                if (remaining <= 0)
+                {
+                    break;
+                }
+
+                if (slot == null || slot.IsEmpty || slot.Item != item)
+                {
+                    continue;
+                }
+
+                int toRemove = Mathf.Min(remaining, slot.Quantity);
+                slot.Remove(toRemove);
+                remaining -= toRemove;
+            }
+
+            InventoryChanged?.Invoke();
+            return true;
+        }
+
         public ItemUseResult UseItem(int slotIndex, GameObject user)
         {
             EnsureSlotCapacity();

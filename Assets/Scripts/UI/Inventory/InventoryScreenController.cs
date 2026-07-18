@@ -1,8 +1,10 @@
 using UnityEngine;
 using UnityIsekaiGame.Equipment;
+using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.UI.Contracts;
 
 namespace UnityIsekaiGame.UI.Inventory
 {
@@ -12,8 +14,10 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private PlayerInventory inventory;
         [SerializeField] private PlayerEquipment equipment;
         [SerializeField] private PlayerSpellLoadout spellLoadout;
+        [SerializeField] private PlayerContractJournal contractJournal;
         [SerializeField] private InventoryScreenView view;
         [SerializeField] private SpellManagementView spellManagementView;
+        [SerializeField] private ContractJournalView contractJournalView;
         [SerializeField] private GameObject itemUser;
         [SerializeField, Min(1)] private int columns = 4;
 
@@ -23,6 +27,7 @@ namespace UnityIsekaiGame.UI.Inventory
         private int selectedSlotIndex;
         private EquipmentSlotType selectedEquipmentSlot;
         private int selectedKnownSpellIndex;
+        private int selectedContractIndex;
 
         private void Awake()
         {
@@ -34,6 +39,11 @@ namespace UnityIsekaiGame.UI.Inventory
             if (spellLoadout == null && inventory != null)
             {
                 spellLoadout = inventory.GetComponent<PlayerSpellLoadout>();
+            }
+
+            if (contractJournal == null && inventory != null)
+            {
+                contractJournal = inventory.GetComponent<PlayerContractJournal>();
             }
 
             if (itemUser == null && inventory != null)
@@ -49,6 +59,11 @@ namespace UnityIsekaiGame.UI.Inventory
             if (spellManagementView != null)
             {
                 spellManagementView.Initialize(SelectKnownSpell, AssignSelectedSpellToSlot, ClearSpellSlot);
+            }
+
+            if (contractJournalView != null)
+            {
+                contractJournalView.Initialize(SelectContract, AbandonSelectedContract, ClaimSelectedContractReward);
             }
 
             Close(false);
@@ -71,6 +86,11 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 spellLoadout.SlotChanged += OnSpellSlotChanged;
                 spellLoadout.ActiveSlotChanged += OnActiveSpellSlotChanged;
+            }
+
+            if (contractJournal != null)
+            {
+                contractJournal.JournalChanged += Refresh;
             }
         }
 
@@ -130,6 +150,11 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 spellLoadout.SlotChanged -= OnSpellSlotChanged;
                 spellLoadout.ActiveSlotChanged -= OnActiveSpellSlotChanged;
+            }
+
+            if (contractJournal != null)
+            {
+                contractJournal.JournalChanged -= Refresh;
             }
 
             if (isOpen)
@@ -216,6 +241,12 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 ClampKnownSpellSelection();
                 spellManagementView.Render(spellLoadout, selectedKnownSpellIndex);
+            }
+
+            if (contractJournalView != null)
+            {
+                ClampContractSelection();
+                contractJournalView.Render(contractJournal == null ? null : contractJournal.Contracts, selectedContractIndex);
             }
         }
 
@@ -402,6 +433,49 @@ namespace UnityIsekaiGame.UI.Inventory
         private void OnActiveSpellSlotChanged(int slotIndex, SpellDefinition spell)
         {
             Refresh();
+        }
+
+        private void SelectContract(int contractIndex)
+        {
+            selectedContractIndex = Mathf.Max(0, contractIndex);
+            contractJournalView?.SetFeedback(string.Empty);
+            Refresh();
+        }
+
+        private void AbandonSelectedContract()
+        {
+            ContractInstance contract = GetSelectedContract();
+            ContractOperationResult result = contractJournal == null
+                ? ContractOperationResult.Failure("No contract journal found.")
+                : contractJournal.AbandonContract(contract);
+            contractJournalView?.SetFeedback(result.Message);
+            Refresh();
+        }
+
+        private void ClaimSelectedContractReward()
+        {
+            ContractInstance contract = GetSelectedContract();
+            ContractOperationResult result = contractJournal == null
+                ? ContractOperationResult.Failure("No contract journal found.")
+                : contractJournal.ClaimReward(contract);
+            contractJournalView?.SetFeedback(result.Message);
+            Refresh();
+        }
+
+        private void ClampContractSelection()
+        {
+            int contractCount = contractJournal == null || contractJournal.Contracts == null ? 0 : contractJournal.Contracts.Count;
+            selectedContractIndex = contractCount <= 0 ? 0 : Mathf.Clamp(selectedContractIndex, 0, contractCount - 1);
+        }
+
+        private ContractInstance GetSelectedContract()
+        {
+            if (contractJournal == null || selectedContractIndex < 0 || selectedContractIndex >= contractJournal.Contracts.Count)
+            {
+                return null;
+            }
+
+            return contractJournal.Contracts[selectedContractIndex];
         }
     }
 }

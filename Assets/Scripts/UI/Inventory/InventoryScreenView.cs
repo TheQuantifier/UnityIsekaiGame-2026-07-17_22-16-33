@@ -18,12 +18,15 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private GameObject inventoryContentRoot;
         [SerializeField] private GameObject characterContentRoot;
         [SerializeField] private GameObject spellsContentRoot;
+        [SerializeField] private GameObject contractsContentRoot;
         [SerializeField] private Button inventoryMenuButton;
         [SerializeField] private Button characterMenuButton;
         [SerializeField] private Button spellsMenuButton;
+        [SerializeField] private Button contractsMenuButton;
         [SerializeField] private Image inventoryMenuButtonImage;
         [SerializeField] private Image characterMenuButtonImage;
         [SerializeField] private Image spellsMenuButtonImage;
+        [SerializeField] private Image contractsMenuButtonImage;
         [SerializeField] private Color inactiveMenuColor = new Color(0.12f, 0.14f, 0.16f, 0.95f);
         [SerializeField] private Color activeMenuColor = new Color(0.2f, 0.42f, 0.55f, 1f);
 
@@ -102,6 +105,12 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 spellsMenuButton.onClick.RemoveListener(ShowSpellsSection);
                 spellsMenuButton.onClick.AddListener(ShowSpellsSection);
+            }
+
+            if (contractsMenuButton != null)
+            {
+                contractsMenuButton.onClick.RemoveListener(ShowContractsSection);
+                contractsMenuButton.onClick.AddListener(ShowContractsSection);
             }
 
             equipSelected = onEquipSelected;
@@ -261,11 +270,18 @@ namespace UnityIsekaiGame.UI.Inventory
             ApplyActiveSection();
         }
 
+        private void ShowContractsSection()
+        {
+            activeSection = InventoryMenuSection.Contracts;
+            ApplyActiveSection();
+        }
+
         private void ApplyActiveSection()
         {
             bool inventoryActive = activeSection == InventoryMenuSection.Inventory;
             bool characterActive = activeSection == InventoryMenuSection.Character;
             bool spellsActive = activeSection == InventoryMenuSection.Spells;
+            bool contractsActive = activeSection == InventoryMenuSection.Contracts;
 
             if (inventoryContentRoot != null)
             {
@@ -282,6 +298,11 @@ namespace UnityIsekaiGame.UI.Inventory
                 spellsContentRoot.SetActive(spellsActive);
             }
 
+            if (contractsContentRoot != null)
+            {
+                contractsContentRoot.SetActive(contractsActive);
+            }
+
             if (inventoryMenuButtonImage != null)
             {
                 inventoryMenuButtonImage.color = inventoryActive ? activeMenuColor : inactiveMenuColor;
@@ -296,13 +317,19 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 spellsMenuButtonImage.color = spellsActive ? activeMenuColor : inactiveMenuColor;
             }
+
+            if (contractsMenuButtonImage != null)
+            {
+                contractsMenuButtonImage.color = contractsActive ? activeMenuColor : inactiveMenuColor;
+            }
         }
 
         private enum InventoryMenuSection
         {
             Inventory,
             Character,
-            Spells
+            Spells,
+            Contracts
         }
     }
 }

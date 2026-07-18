@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Dialogue;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Loot;
@@ -22,6 +23,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private EnemyHealth enemyHealth;
         [SerializeField] private EnemyMeleeAttack enemyAttack;
         [SerializeField] private PrototypeEnemyController enemyController;
+        [SerializeField] private EnemyContractTargetReporter enemyContractTargetReporter;
         [SerializeField] private EnemyLootDrop enemyLootDrop;
 
         private Vector3 fallbackPlayerSpawnPosition;
@@ -89,6 +91,11 @@ namespace UnityIsekaiGame.Gameplay
             if (enemyController == null && prototypeEnemy != null)
             {
                 enemyController = prototypeEnemy.GetComponent<PrototypeEnemyController>();
+            }
+
+            if (enemyContractTargetReporter == null && prototypeEnemy != null)
+            {
+                enemyContractTargetReporter = prototypeEnemy.GetComponent<EnemyContractTargetReporter>();
             }
 
             if (enemyLootDrop == null && prototypeEnemy != null)
@@ -160,6 +167,7 @@ namespace UnityIsekaiGame.Gameplay
 
             enemyAttack?.ResetCooldown();
             enemyController?.ResetControllerState();
+            enemyContractTargetReporter?.ResetReporter();
             enemyLootDrop?.ResetLootState();
             enemyHealth?.ResetToMaximum();
         }
