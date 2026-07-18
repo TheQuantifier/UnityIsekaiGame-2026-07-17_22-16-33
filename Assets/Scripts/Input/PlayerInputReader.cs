@@ -39,12 +39,13 @@ namespace UnityIsekaiGame.Input
         private Vector2 inventoryNavigateQueued;
         private bool pointerLook;
         private bool gameplayInputBlocked;
+        private bool defeatedInputBlocked;
 
-        public Vector2 Move => gameplayInputBlocked || moveAction == null ? Vector2.zero : moveAction.ReadValue<Vector2>();
-        public Vector2 Look => gameplayInputBlocked || lookAction == null ? Vector2.zero : lookAction.ReadValue<Vector2>();
-        public bool SprintHeld => !gameplayInputBlocked && sprintAction != null && sprintAction.IsPressed();
+        public Vector2 Move => GameplayInputBlocked || moveAction == null ? Vector2.zero : moveAction.ReadValue<Vector2>();
+        public Vector2 Look => GameplayInputBlocked || lookAction == null ? Vector2.zero : lookAction.ReadValue<Vector2>();
+        public bool SprintHeld => !GameplayInputBlocked && sprintAction != null && sprintAction.IsPressed();
         public bool IsPointerLook => pointerLook;
-        public bool GameplayInputBlocked => gameplayInputBlocked;
+        public bool GameplayInputBlocked => gameplayInputBlocked || defeatedInputBlocked;
 
         private void Awake()
         {
@@ -178,7 +179,7 @@ namespace UnityIsekaiGame.Input
 
         public bool ConsumeJump()
         {
-            if (gameplayInputBlocked)
+            if (GameplayInputBlocked)
             {
                 jumpQueued = false;
                 return false;
@@ -195,7 +196,7 @@ namespace UnityIsekaiGame.Input
 
         public bool ConsumeInteract()
         {
-            if (gameplayInputBlocked)
+            if (GameplayInputBlocked)
             {
                 interactQueued = false;
                 return false;
@@ -212,7 +213,7 @@ namespace UnityIsekaiGame.Input
 
         public bool ConsumeAttack()
         {
-            if (gameplayInputBlocked)
+            if (GameplayInputBlocked)
             {
                 attackQueued = false;
                 return false;
@@ -275,6 +276,12 @@ namespace UnityIsekaiGame.Input
         public void SetGameplayInputBlocked(bool blocked)
         {
             gameplayInputBlocked = blocked;
+            ClearGameplayActionQueues();
+        }
+
+        public void SetDefeatedInputBlocked(bool blocked)
+        {
+            defeatedInputBlocked = blocked;
             ClearGameplayActionQueues();
         }
 
