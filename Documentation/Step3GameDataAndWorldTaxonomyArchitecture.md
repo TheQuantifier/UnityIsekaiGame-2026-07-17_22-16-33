@@ -81,4 +81,4 @@ The prototype scene uses the Step 3 data through these representative paths:
 
 Step 3 is ready to serve as the static data foundation for Step 4. Remaining prototype warnings are known legacy-content warnings, mostly old item IDs and broad root taxonomy IDs.
 
-Step 4 now begins with `PersistenceService`, a versioned save envelope, explicit participant registration, and prototype-only save/load proof. See `Documentation/PersistenceServiceFoundation.md` and `Documentation/Step4PersistenceRoadmap.md`. Future Step 4 features should add one runtime owner at a time on top of these definitions.
+Step 4 now has `PersistenceService`, a versioned save envelope, explicit participant registration, and player-scoped inventory/equipment persistence. See `Documentation/PersistenceServiceFoundation.md`, `Documentation/PlayerInventoryAndEquipmentPersistence.md`, and `Documentation/Step4PersistenceRoadmap.md`. Future Step 4 features should add one runtime owner at a time on top of these definitions.

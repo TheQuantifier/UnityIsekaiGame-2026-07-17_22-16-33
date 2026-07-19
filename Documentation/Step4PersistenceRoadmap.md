@@ -41,6 +41,10 @@ Shared-world state should be saved by server checkpoints, region unloads, author
 
 Future offline-world progression can be modeled through server simulation, scheduled catch-up, or explicit region progression rules. It should not be hidden inside local client save files.
 
-## Feature 4.2 Recommendation
+## Feature 4.2 Status
 
-Feature 4.2 should add inventory and equipment participants first. Those participants should be `Player` scoped with an owner ID. Existing inventory and equipment save DTOs already support validate-before-replace restore through `DefinitionRegistry`, making them the best next integration target.
+Feature 4.2 adds a combined `player.inventory-equipment` participant. It is `Player` scoped, owned by `local-player` in the prototype, required for current prototype saves, and preserves inventory slot contents, definition-only stacks, stateful item-instance IDs, quality/condition metadata, and equipped item identity.
+
+The participant validates inventory and equipment together before commit so one item instance cannot appear in both inventory and equipment. It does not persist current vitals, statuses, quests, contracts, position, scene state, world pickups, enemies, or shared-world state.
+
+Feature 4.3 should restore current stats/vitals after equipment has rebuilt max-stat modifiers. This ordering keeps equipment-derived maximums authoritative before current health, mana, or stamina values are applied.

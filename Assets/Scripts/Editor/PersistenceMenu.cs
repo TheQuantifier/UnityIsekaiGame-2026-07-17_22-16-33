@@ -1,13 +1,18 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using UnityIsekaiGame.Equipment;
+using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.Inventory;
 
 namespace UnityIsekaiGame.Editor
 {
     public static class PersistenceMenu
     {
+        private const string PrototypeCatalogPath = "Assets/GameData/Prototype/PrototypeDefinitionCatalog.asset";
+
         [MenuItem("Tools/Persistence/Save Prototype Slot")]
         public static void SavePrototypeSlot()
         {
@@ -149,6 +154,7 @@ namespace UnityIsekaiGame.Editor
             PrototypePersistenceServiceBehaviour service = Object.FindAnyObjectByType<PrototypePersistenceServiceBehaviour>();
             if (service != null)
             {
+                ConfigurePrototypePlayerPersistence(service);
                 service.EnsureInitialized();
                 return service;
             }
@@ -161,9 +167,23 @@ namespace UnityIsekaiGame.Editor
 
             GameObject root = new GameObject("Prototype Persistence");
             service = root.AddComponent<PrototypePersistenceServiceBehaviour>();
+            ConfigurePrototypePlayerPersistence(service);
             service.EnsureInitialized();
             Debug.Log("Created scene-local Prototype Persistence runtime root for testing.");
             return service;
+        }
+
+        private static void ConfigurePrototypePlayerPersistence(PrototypePersistenceServiceBehaviour service)
+        {
+            if (service == null)
+            {
+                return;
+            }
+
+            DefinitionCatalog catalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(PrototypeCatalogPath);
+            PlayerInventory inventory = Object.FindAnyObjectByType<PlayerInventory>();
+            PlayerEquipment equipment = inventory == null ? Object.FindAnyObjectByType<PlayerEquipment>() : inventory.GetComponent<PlayerEquipment>();
+            service.ConfigurePlayerPersistence(catalog, inventory, equipment);
         }
     }
 }

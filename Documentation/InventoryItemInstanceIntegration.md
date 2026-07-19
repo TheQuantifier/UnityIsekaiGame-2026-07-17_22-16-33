@@ -7,3 +7,5 @@ Definition-only stack APIs remain for ordinary stackable content. `PlayerInvento
 Inventory and equipment save DTOs record either definition stacks or stateful instances. Restore validates all entries before replacing live state.
 
 Feature 3.7 ability execution contexts can optionally carry a source `ItemDefinition` and `ItemInstance`, but abilities do not mutate quality, condition, or item identity yet.
+
+Feature 4.2 wraps the existing inventory/equipment DTOs in one player-scoped persistence participant. The combined participant preserves definition stacks and exact stateful equipment identity across local save/load, and rejects payloads where the same persistent item-instance ID appears in both inventory and equipment.

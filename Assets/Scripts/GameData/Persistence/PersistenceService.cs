@@ -393,6 +393,12 @@ namespace UnityIsekaiGame.GameData.Persistence
                     continue;
                 }
 
+                if (!ValidateRuntimeParticipantRecord(participant, record, out string ownershipFailure))
+                {
+                    DiscardPrepared(prepared);
+                    return PersistenceLoadResult.Failure(PersistenceLoadStatus.ParticipantPrepareFailed, slotId, path, ownershipFailure);
+                }
+
                 PersistenceParticipantPrepareResult prepare = participant.PreparePayload(record.payloadJson, record.participantSchemaVersion);
                 if (prepare == null || !prepare.Succeeded)
                 {
@@ -508,6 +514,11 @@ namespace UnityIsekaiGame.GameData.Persistence
                     continue;
                 }
 
+                if (!ValidateRuntimeParticipantRecord(participant, record, out string ownershipFailure))
+                {
+                    return PersistenceValidationResult.Failure(PersistenceValidationStatus.ParticipantPrepareFailed, slotId, path, ownershipFailure);
+                }
+
                 PersistenceParticipantPrepareResult prepare = participant.PreparePayload(record.payloadJson, record.participantSchemaVersion);
                 if (prepare == null || !prepare.Succeeded)
                 {
@@ -588,6 +599,32 @@ namespace UnityIsekaiGame.GameData.Persistence
             }
 
             return records;
+        }
+
+        private static bool ValidateRuntimeParticipantRecord(IPersistenceParticipant participant, SaveParticipantRecord record, out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (participant == null || record == null)
+            {
+                failureReason = "Cannot validate a missing persistence participant record.";
+                return false;
+            }
+
+            if (record.persistenceScope != (int)participant.Scope)
+            {
+                failureReason = $"Participant '{participant.ParticipantKey}' expected scope {participant.Scope} but save record has {(PersistenceScope)record.persistenceScope}.";
+                return false;
+            }
+
+            string expectedOwner = participant.OwnerId ?? string.Empty;
+            string savedOwner = record.ownerId ?? string.Empty;
+            if (!string.Equals(savedOwner, expectedOwner, StringComparison.Ordinal))
+            {
+                failureReason = $"Participant '{participant.ParticipantKey}' expected owner '{expectedOwner}' but save record has owner '{savedOwner}'.";
+                return false;
+            }
+
+            return true;
         }
 
         public static string ComputeChecksum(GameSaveEnvelope envelope)
