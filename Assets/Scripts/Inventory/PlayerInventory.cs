@@ -505,6 +505,34 @@ namespace UnityIsekaiGame.Inventory
             return ItemUseResult.Success(message);
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public void DevelopmentClearInventory()
+        {
+            EnsureSlotCapacity();
+            for (int i = 0; i < slots.Count; i++)
+            {
+                slots[i]?.Clear();
+            }
+
+            InventoryChanged?.Invoke();
+        }
+
+        public int DevelopmentOccupiedSlotCount()
+        {
+            EnsureSlotCapacity();
+            int count = 0;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                if (slots[i] != null && !slots[i].IsEmpty)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+#endif
+
         private int AddToExistingStacks(ItemDefinition item, int remainingQuantity)
         {
             foreach (InventorySlot slot in slots)

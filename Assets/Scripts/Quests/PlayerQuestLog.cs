@@ -254,6 +254,14 @@ namespace UnityIsekaiGame.Quests
             return true;
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public void DevelopmentClearQuestLog()
+        {
+            ClearAllQuests();
+            QuestLogChanged?.Invoke();
+        }
+#endif
+
         private void ClearAllQuests()
         {
             foreach (QuestInstance quest in quests)

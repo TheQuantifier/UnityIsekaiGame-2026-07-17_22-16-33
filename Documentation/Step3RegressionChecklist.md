@@ -11,6 +11,7 @@ Use this checklist before merging Step 3 data or taxonomy changes.
 - Unity batchmode import/compile
 - Unity EditMode tests, with a generated test result XML before claiming pass/fail counts
 - `Tools > Game Data > Validate Definitions`
+- In editor/development builds, open the Tab menu Test Lab and run `Diagnostics`.
 - duplicate `.meta` GUID scan
 - missing asset reference scan
 - missing script scan
@@ -60,6 +61,7 @@ Use this checklist before merging Step 3 data or taxonomy changes.
 16. Use the contract board. Confirm it opens as a menu, unlocks the cursor, blocks movement/look/combat, and lets contracts be clicked/selected.
 17. Accept and progress a prototype contract. Confirm contract journal behavior and reward claiming still work.
 18. Use the reset control. Confirm health, stamina, mana, enemy state, menus, input locks, statuses, and cooldowns reset as expected while inventory, equipment, quest state, and contract state remain where designed.
+19. Open the Tab menu Test Lab page in an editor/development build. Confirm Diagnostics runs, selector cycle buttons change definitions, non-destructive actions apply immediately, destructive actions require a second press, and leaving the Tab menu restores normal controls.
 
 ## Content Authoring Checks
 

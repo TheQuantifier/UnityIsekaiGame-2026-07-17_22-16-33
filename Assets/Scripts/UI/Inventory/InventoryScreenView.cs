@@ -7,6 +7,9 @@ using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+using UnityIsekaiGame.Development;
+#endif
 using CategoryDefinition = UnityIsekaiGame.GameData.CategoryDefinition;
 using ItemInstance = UnityIsekaiGame.GameData.ItemInstance;
 using InventorySlot = UnityIsekaiGame.Inventory.InventorySlot;
@@ -35,14 +38,24 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private Text statusReadoutText;
         [SerializeField] private GameObject spellsContentRoot;
         [SerializeField] private GameObject contractsContentRoot;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        [SerializeField] private GameObject testLabContentRoot;
+        [SerializeField] private PrototypeTestLabView testLabView;
+#endif
         [SerializeField] private Button inventoryMenuButton;
         [SerializeField] private Button characterMenuButton;
         [SerializeField] private Button spellsMenuButton;
         [SerializeField] private Button contractsMenuButton;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        [SerializeField] private Button testLabMenuButton;
+#endif
         [SerializeField] private Image inventoryMenuButtonImage;
         [SerializeField] private Image characterMenuButtonImage;
         [SerializeField] private Image spellsMenuButtonImage;
         [SerializeField] private Image contractsMenuButtonImage;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        [SerializeField] private Image testLabMenuButtonImage;
+#endif
         [SerializeField] private Color inactiveMenuColor = new Color(0.12f, 0.14f, 0.16f, 0.95f);
         [SerializeField] private Color activeMenuColor = new Color(0.2f, 0.42f, 0.55f, 1f);
 
@@ -129,10 +142,33 @@ namespace UnityIsekaiGame.UI.Inventory
                 contractsMenuButton.onClick.AddListener(ShowContractsSection);
             }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            EnsureTestLabMenuObjects();
+            if (testLabMenuButton != null)
+            {
+                testLabMenuButton.onClick.RemoveListener(ShowTestLabSection);
+                testLabMenuButton.onClick.AddListener(ShowTestLabSection);
+            }
+#endif
+
             equipSelected = onEquipSelected;
             unequipSelected = onUnequipSelected;
             ApplyActiveSection();
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public void InitializeTestLab(PrototypeTestLabService service)
+        {
+            EnsureTestLabMenuObjects();
+            testLabView?.Initialize(service);
+            ApplyActiveSection();
+        }
+
+        public void RefreshTestLab()
+        {
+            testLabView?.Refresh();
+        }
+#endif
 
         public void Render(IReadOnlyList<InventorySlot> slots)
         {
@@ -353,12 +389,23 @@ namespace UnityIsekaiGame.UI.Inventory
             ApplyActiveSection();
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private void ShowTestLabSection()
+        {
+            activeSection = InventoryMenuSection.TestLab;
+            ApplyActiveSection();
+        }
+#endif
+
         private void ApplyActiveSection()
         {
             bool inventoryActive = activeSection == InventoryMenuSection.Inventory;
             bool characterActive = activeSection == InventoryMenuSection.Character;
             bool spellsActive = activeSection == InventoryMenuSection.Spells;
             bool contractsActive = activeSection == InventoryMenuSection.Contracts;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            bool testLabActive = activeSection == InventoryMenuSection.TestLab;
+#endif
 
             if (inventoryContentRoot != null)
             {
@@ -380,6 +427,13 @@ namespace UnityIsekaiGame.UI.Inventory
                 contractsContentRoot.SetActive(contractsActive);
             }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (testLabContentRoot != null)
+            {
+                testLabContentRoot.SetActive(testLabActive);
+            }
+#endif
+
             if (inventoryMenuButtonImage != null)
             {
                 inventoryMenuButtonImage.color = inventoryActive ? activeMenuColor : inactiveMenuColor;
@@ -399,7 +453,73 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 contractsMenuButtonImage.color = contractsActive ? activeMenuColor : inactiveMenuColor;
             }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (testLabMenuButtonImage != null)
+            {
+                testLabMenuButtonImage.color = testLabActive ? activeMenuColor : inactiveMenuColor;
+            }
+#endif
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private void EnsureTestLabMenuObjects()
+        {
+            Font font = feedbackText == null ? null : feedbackText.font;
+            if (font == null)
+            {
+                font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            }
+
+            if (testLabMenuButton == null)
+            {
+                Transform buttonParent = contractsMenuButton == null ? transform : contractsMenuButton.transform.parent;
+                GameObject buttonObject = new GameObject("Test Lab Menu Button", typeof(RectTransform), typeof(Image), typeof(Button));
+                buttonObject.transform.SetParent(buttonParent, false);
+                testLabMenuButtonImage = buttonObject.GetComponent<Image>();
+                testLabMenuButtonImage.color = inactiveMenuColor;
+                testLabMenuButton = buttonObject.GetComponent<Button>();
+
+                Text label = CreateDetailsText("Label", buttonObject.transform, font, 14, FontStyle.Bold, TextAnchor.MiddleCenter);
+                RectTransform labelRect = label.rectTransform;
+                labelRect.anchorMin = Vector2.zero;
+                labelRect.anchorMax = Vector2.one;
+                labelRect.offsetMin = new Vector2(6f, 2f);
+                labelRect.offsetMax = new Vector2(-6f, -2f);
+                label.text = "Test Lab";
+
+                LayoutElement layout = buttonObject.AddComponent<LayoutElement>();
+                layout.preferredWidth = contractsMenuButton == null ? 110f : ((RectTransform)contractsMenuButton.transform).rect.width;
+                layout.preferredHeight = contractsMenuButton == null ? 36f : ((RectTransform)contractsMenuButton.transform).rect.height;
+            }
+
+            if (testLabContentRoot == null)
+            {
+                Transform contentParent = contractsContentRoot == null ? transform : contractsContentRoot.transform.parent;
+                testLabContentRoot = new GameObject("Test Lab Content", typeof(RectTransform));
+                testLabContentRoot.transform.SetParent(contentParent, false);
+                RectTransform rectTransform = testLabContentRoot.GetComponent<RectTransform>();
+                rectTransform.anchorMin = Vector2.zero;
+                rectTransform.anchorMax = Vector2.one;
+                rectTransform.offsetMin = Vector2.zero;
+                rectTransform.offsetMax = Vector2.zero;
+            }
+
+            if (testLabView == null)
+            {
+                testLabView = testLabContentRoot.GetComponent<PrototypeTestLabView>();
+                if (testLabView == null)
+                {
+                    testLabView = testLabContentRoot.AddComponent<PrototypeTestLabView>();
+                }
+            }
+
+            if (testLabMenuButtonImage == null && testLabMenuButton != null)
+            {
+                testLabMenuButtonImage = testLabMenuButton.GetComponent<Image>();
+            }
+        }
+#endif
 
         private void EnsureItemDetailsPanel()
         {
@@ -558,7 +678,10 @@ namespace UnityIsekaiGame.UI.Inventory
             Inventory,
             Character,
             Spells,
-            Contracts
+            Contracts,
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            TestLab
+#endif
         }
     }
 
