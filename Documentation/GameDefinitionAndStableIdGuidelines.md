@@ -77,6 +77,8 @@ Examples for new content:
 - `stat.attack-power`
 - `being.person`
 - `actor-profile.player-prototype`
+- `place.settlement.prototype-town`
+- `place.poi.disturbance-site`
 - `person.prototype-npc`
 - `quest.strange-disturbance`
 - `contract.prototype-elimination`

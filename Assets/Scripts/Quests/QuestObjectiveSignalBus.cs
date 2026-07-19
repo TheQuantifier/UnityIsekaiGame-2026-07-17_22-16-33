@@ -1,4 +1,5 @@
 using System;
+using UnityIsekaiGame.Places;
 
 namespace UnityIsekaiGame.Quests
 {
@@ -20,6 +21,14 @@ namespace UnityIsekaiGame.Quests
             if (!string.IsNullOrWhiteSpace(locationId))
             {
                 ReachedLocation?.Invoke(locationId);
+            }
+        }
+
+        public static void ReportReachLocation(PlaceDefinition place)
+        {
+            if (place != null)
+            {
+                ReportReachLocation(place.Id);
             }
         }
     }

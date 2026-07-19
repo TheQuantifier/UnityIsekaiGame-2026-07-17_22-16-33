@@ -16,6 +16,7 @@ namespace UnityIsekaiGame.People
         public IReadOnlyList<string> RoleTags => definition == null ? System.Array.Empty<string>() : definition.RoleTags;
         public string FactionIdPlaceholder => definition == null ? string.Empty : definition.FactionIdPlaceholder;
         public string SettlementIdPlaceholder => definition == null ? string.Empty : definition.SettlementIdPlaceholder;
+        public string HomePlaceId => definition == null || definition.HomePlace == null ? string.Empty : definition.HomePlace.Id;
         public PersonImportance Importance => definition == null ? PersonImportance.Background : definition.Importance;
         public bool HasValidIdentity => definition != null && definition.HasValidPersonId;
 

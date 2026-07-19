@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Beings;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Places;
 
 namespace UnityIsekaiGame.People
 {
@@ -18,6 +19,7 @@ namespace UnityIsekaiGame.People
         [SerializeField] private TagDefinition[] tags;
         [SerializeField] private BeingDefinition beingDefinition;
         [SerializeField] private ActorProfileDefinition actorProfile;
+        [SerializeField] private PlaceDefinition homePlace;
         [SerializeField] private string[] roleTags;
         [SerializeField] private string factionIdPlaceholder;
         [SerializeField] private string settlementIdPlaceholder;
@@ -34,6 +36,7 @@ namespace UnityIsekaiGame.People
         public IReadOnlyList<TagDefinition> Tags => tags ?? Array.Empty<TagDefinition>();
         public BeingDefinition BeingDefinition => beingDefinition;
         public ActorProfileDefinition ActorProfile => actorProfile;
+        public PlaceDefinition HomePlace => homePlace;
         public IReadOnlyList<string> RoleTags => roleTags ?? Array.Empty<string>();
         public IReadOnlyList<string> LegacyTags => RoleTags;
         public string LegacyTagLabel => "role";
@@ -65,6 +68,12 @@ namespace UnityIsekaiGame.People
                 {
                     report.AddWarning($"PersonDefinition '{DisplayName}' references being '{beingDefinition.Id}' but actor profile '{actorProfile.Id}' references being '{actorProfile.BeingDefinition.Id}'.");
                 }
+            }
+
+            if (homePlace != null
+                && (!definitionsById.TryGetValue(homePlace.Id, out IGameDefinition place) || !(place is PlaceDefinition)))
+            {
+                report.AddError($"PersonDefinition '{DisplayName}' references home place '{homePlace.Id}', which is not in the configured catalog.");
             }
         }
     }

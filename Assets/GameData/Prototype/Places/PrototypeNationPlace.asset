@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88184fb44b3f497899f1f83d98edd495, type: 3}
+  m_Name: PrototypeNationPlace
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Places.PlaceDefinition
+  placeId: place.nation.prototype
+  displayName: Prototype Nation
+  description: Prototype-only nation-level place definition.
+  primaryCategory: {fileID: 11400000, guid: 6950eaa41e4b4f2dbaa73429571cc4c1, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  icon: {fileID: 0}
+  parentPlace: {fileID: 11400000, guid: 4819e29845be4c3182c93abbd1130f0f, type: 2}
+  placeKind: 2
+  sceneKey: 
+  mapLabel: 
+  showOnMapByDefault: 0
+  normalizedMapPosition: {x: 0.5, y: 0.5}
+  controllingFactionIdPlaceholder: 
+  dangerLevel: 0
+  discoveryMode: 0

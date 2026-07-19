@@ -12,6 +12,8 @@ Feature 3.10 adds static actor taxonomy without merging runtime actor state into
 
 `ActorStats` owns runtime base values, runtime modifiers, and calculated values for one loaded actor. Equipment and statuses continue to apply modifiers through `RuntimeStatCollection`.
 
+Location remains separate from being and actor profile data. A being type may later gain habitat metadata, but `ActorProfileDefinition` does not describe where an actor lives or currently is. Static home/workplace information belongs on person/place-facing systems, and current runtime location belongs in future runtime location state.
+
 No generic `ActorIdentity` component was introduced. The least disruptive model is:
 
 - `ActorStats` owns the optional `ActorProfileDefinition` reference for actors with runtime stats.
