@@ -119,6 +119,8 @@ While the shared menu is open:
 
 Dialogue is a separate modal controlled by `DialogueScreenController`. It also blocks gameplay through `PlayerInputReader` and marks `PrototypeGameplayModalState` so interactions and enemy behavior pause while dialogue is active.
 
+In editor and development builds, the same Tab menu can expose a `Test Lab` page. The Test Lab is development tooling, not gameplay UI. It uses the existing Tab menu input blocking and cursor ownership, calls runtime systems through `PrototypeTestLabService`, and provides centralized prototype actions for inventory, equipment, vitals, statuses, combat, quests, contracts, persistence, scenarios, and diagnostics. See `Documentation/PrototypeSystemsTestLab.md`.
+
 The reset controller closes dialogue and the shared menu explicitly before restoring gameplay input.
 
 ## Quests Versus Contracts

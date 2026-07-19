@@ -109,6 +109,7 @@ Step 4 persistence foundation documentation lives in `Documentation/PersistenceS
 Player inventory/equipment persistence is documented in `Documentation/PlayerInventoryAndEquipmentPersistence.md`.
 Player stats/vitals/status persistence is documented in `Documentation/PlayerStatsVitalsStatusPersistence.md`.
 Quest and contract persistence is documented in `Documentation/QuestAndContractPersistence.md`.
+The editor/development-build Prototype Systems Test Lab is documented in `Documentation/PrototypeSystemsTestLab.md`.
 
 ### Inventory Item Instance Save Foundation
 

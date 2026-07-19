@@ -228,6 +228,14 @@ namespace UnityIsekaiGame.Contracts
             return true;
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public void DevelopmentClearContractJournal()
+        {
+            ClearAllContracts();
+            JournalChanged?.Invoke();
+        }
+#endif
+
         private int GetActiveCount()
         {
             int count = 0;

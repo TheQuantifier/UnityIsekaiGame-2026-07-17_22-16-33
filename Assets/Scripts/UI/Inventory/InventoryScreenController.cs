@@ -1,3 +1,4 @@
+using UnityIsekaiGame.Combat;
 using UnityEngine;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Contracts;
@@ -5,10 +6,18 @@ using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Contracts;
 using UnityIsekaiGame.UI.Quests;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+using UnityIsekaiGame.Development;
+#endif
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace UnityIsekaiGame.UI.Inventory
 {
@@ -31,6 +40,13 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private QuestJournalView questJournalView;
         [SerializeField] private GameObject itemUser;
         [SerializeField, Min(1)] private int columns = 4;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        [Header("Development Test Lab")]
+        [SerializeField] private DefinitionCatalog testLabDefinitionCatalog;
+        [SerializeField] private PrototypePersistenceServiceBehaviour testLabPersistence;
+
+        private PrototypeTestLabService testLabService;
+#endif
 
         private CursorLockMode previousLockState;
         private bool previousCursorVisible;
@@ -90,6 +106,10 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 questJournalView.Initialize(SelectQuest, AbandonSelectedQuest, ClaimSelectedQuestReward);
             }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            InitializeTestLab();
+#endif
 
             Close(false);
             Refresh();
@@ -303,6 +323,10 @@ namespace UnityIsekaiGame.UI.Inventory
                 ClampQuestSelection();
                 questJournalView.Render(questLog == null ? null : questLog.Quests, selectedQuestIndex);
             }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            view?.RefreshTestLab();
+#endif
         }
 
         public void UseSelectedItem()
@@ -727,5 +751,92 @@ namespace UnityIsekaiGame.UI.Inventory
         {
             Refresh();
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private void InitializeTestLab()
+        {
+            if (view == null)
+            {
+                return;
+            }
+
+            testLabService ??= new PrototypeTestLabService();
+            DefinitionCatalog catalog = ResolveTestLabCatalog();
+            PrototypePersistenceServiceBehaviour persistence = ResolveTestLabPersistence(catalog);
+            EnemyHealth enemyHealth = UnityEngine.Object.FindAnyObjectByType<EnemyHealth>();
+            Transform playerTransform = itemUser == null ? inventory == null ? null : inventory.transform : itemUser.transform;
+            Transform enemyTransform = enemyHealth == null ? null : enemyHealth.transform;
+
+            testLabService.Configure(new PrototypeTestLabContext
+            {
+                DefinitionCatalog = catalog,
+                Inventory = inventory,
+                Equipment = equipment,
+                PlayerStats = playerStats,
+                PlayerHealth = playerHealth,
+                PlayerMana = playerMana,
+                PlayerStamina = playerStamina,
+                PlayerStatuses = statusEffects,
+                Spellcaster = playerTransform == null ? null : playerTransform.GetComponentInParent<PlayerSpellcaster>(),
+                SpellLoadout = spellLoadout,
+                QuestLog = questLog,
+                ContractJournal = contractJournal,
+                TestController = UnityEngine.Object.FindAnyObjectByType<PrototypeTestController>(),
+                Persistence = persistence,
+                PlayerTransform = playerTransform,
+                EnemyHealth = enemyHealth,
+                EnemyController = enemyTransform == null ? null : enemyTransform.GetComponent<PrototypeEnemyController>(),
+                EnemyAttack = enemyTransform == null ? null : enemyTransform.GetComponent<EnemyMeleeAttack>(),
+                EnemyStatuses = enemyTransform == null ? null : enemyTransform.GetComponent<StatusEffectController>(),
+                EnemyTransform = enemyTransform
+            });
+
+            view.InitializeTestLab(testLabService);
+        }
+
+        private DefinitionCatalog ResolveTestLabCatalog()
+        {
+            if (testLabDefinitionCatalog != null)
+            {
+                return testLabDefinitionCatalog;
+            }
+
+#if UNITY_EDITOR
+            testLabDefinitionCatalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>("Assets/GameData/Prototype/PrototypeDefinitionCatalog.asset");
+#endif
+            return testLabDefinitionCatalog;
+        }
+
+        private PrototypePersistenceServiceBehaviour ResolveTestLabPersistence(DefinitionCatalog catalog)
+        {
+            if (testLabPersistence == null)
+            {
+                testLabPersistence = UnityEngine.Object.FindAnyObjectByType<PrototypePersistenceServiceBehaviour>();
+            }
+
+            if (testLabPersistence == null && Application.isPlaying)
+            {
+                GameObject persistenceObject = new GameObject("Prototype Persistence Service");
+                testLabPersistence = persistenceObject.AddComponent<PrototypePersistenceServiceBehaviour>();
+            }
+
+            if (testLabPersistence != null)
+            {
+                testLabPersistence.ConfigurePlayerPersistence(
+                    catalog,
+                    inventory,
+                    equipment,
+                    playerStats,
+                    playerHealth,
+                    playerMana,
+                    playerStamina,
+                    statusEffects,
+                    questLog,
+                    contractJournal);
+            }
+
+            return testLabPersistence;
+        }
+#endif
     }
 }

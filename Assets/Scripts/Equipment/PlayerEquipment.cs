@@ -246,6 +246,19 @@ namespace UnityIsekaiGame.Equipment
             return EquipmentRestoreResult.Success();
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public void DevelopmentClearEquipment()
+        {
+            EnsureSlots();
+            for (int i = 0; i < slots.Count; i++)
+            {
+                slots[i]?.Clear();
+            }
+
+            EquipmentChanged?.Invoke();
+        }
+#endif
+
         private void EnsureSlots()
         {
             slots ??= new List<EquipmentSlotState>();
