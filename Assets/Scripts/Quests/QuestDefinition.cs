@@ -2,13 +2,14 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.People;
 
 namespace UnityIsekaiGame.Quests
 {
     [CreateAssetMenu(fileName = "Quest", menuName = "Unity Isekai Game/Quests/Quest")]
-    public sealed class QuestDefinition : ScriptableObject, IGameDefinition
+    public sealed class QuestDefinition : ScriptableObject, IGameDefinition, IDefinitionCatalogValidationParticipant
     {
         [SerializeField] private string questId;
         [SerializeField] private string title;
@@ -16,6 +17,8 @@ namespace UnityIsekaiGame.Quests
         [SerializeField, TextArea(3, 8)] private string detailedDescription;
         [SerializeField] private QuestCategory category = QuestCategory.SideQuest;
         [SerializeField] private PersonDefinition questGiver;
+        [SerializeField] private FactionDefinition questSourceFaction;
+        [SerializeField] private FactionDefinition relatedFaction;
         [Tooltip("Legacy fallback used only when Quest Giver is not assigned.")]
         [SerializeField] private string questGiverId;
         [Tooltip("Legacy fallback used only when Quest Giver is not assigned.")]
@@ -35,6 +38,9 @@ namespace UnityIsekaiGame.Quests
         public string DetailedDescription => detailedDescription;
         public QuestCategory Category => category;
         public PersonDefinition QuestGiver => questGiver;
+        public FactionDefinition QuestSourceFaction => questSourceFaction;
+        public FactionDefinition RelatedFaction => relatedFaction;
+        public string QuestSourceDisplayName => questSourceFaction == null ? QuestGiverDisplayName : questSourceFaction.DisplayName;
         public string QuestGiverId => questGiver == null ? questGiverId : questGiver.PersonId;
         public string QuestGiverDisplayName => questGiver == null
             ? questGiverDisplayName
@@ -47,5 +53,51 @@ namespace UnityIsekaiGame.Quests
         public bool Repeatable => repeatable;
         public bool HiddenUntilDiscovered => hiddenUntilDiscovered;
         public bool CanAbandon => canAbandon;
+
+        public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            if (definitionsById == null || report == null)
+            {
+                return;
+            }
+
+            ValidatePersonReference(questGiver, nameof(QuestGiver), definitionsById, report);
+            ValidateFactionReference(questSourceFaction, nameof(QuestSourceFaction), definitionsById, report);
+            ValidateFactionReference(relatedFaction, nameof(RelatedFaction), definitionsById, report);
+        }
+
+        private void ValidatePersonReference(
+            PersonDefinition person,
+            string label,
+            IReadOnlyDictionary<string, IGameDefinition> definitionsById,
+            DefinitionValidationReport report)
+        {
+            if (person == null)
+            {
+                return;
+            }
+
+            if (!definitionsById.TryGetValue(person.Id, out IGameDefinition found) || found is not PersonDefinition)
+            {
+                report.AddError($"QuestDefinition '{Title}' references {label} '{person.Id}', which is not in the configured catalog.");
+            }
+        }
+
+        private void ValidateFactionReference(
+            FactionDefinition faction,
+            string label,
+            IReadOnlyDictionary<string, IGameDefinition> definitionsById,
+            DefinitionValidationReport report)
+        {
+            if (faction == null)
+            {
+                return;
+            }
+
+            if (!definitionsById.TryGetValue(faction.Id, out IGameDefinition found) || found is not FactionDefinition)
+            {
+                report.AddError($"QuestDefinition '{Title}' references {label} '{faction.Id}', which is not in the configured catalog.");
+            }
+        }
     }
 }

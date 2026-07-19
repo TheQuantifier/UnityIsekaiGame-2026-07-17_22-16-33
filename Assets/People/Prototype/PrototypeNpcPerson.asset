@@ -24,6 +24,9 @@ MonoBehaviour:
   beingDefinition: {fileID: 11400000, guid: 83c94b51705a4b43aa317ea3d808e24f, type: 2}
   actorProfile: {fileID: 0}
   homePlace: {fileID: 11400000, guid: f1cccd051a484f3c85af0dcb2be313ff, type: 2}
+  primaryFaction: {fileID: 11400000, guid: 70bb165840944ae696f652b7a5f99744, type: 2}
+  publicRoleTitle: Guild Representative
+  leadershipOfFaction: {fileID: 0}
   roleTags:
   - quest_giver
   factionIdPlaceholder:

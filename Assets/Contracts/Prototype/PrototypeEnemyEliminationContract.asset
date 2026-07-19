@@ -15,6 +15,10 @@ MonoBehaviour:
   contractId: prototype_enemy_elimination
   displayTitle: Prototype Enemy Elimination
   description: Defeat the prototype enemy once after accepting this contract.
+  requesterPerson: {fileID: 0}
+  requesterFaction: {fileID: 11400000, guid: 70bb165840944ae696f652b7a5f99744, type: 2}
+  postingFaction: {fileID: 11400000, guid: 70bb165840944ae696f652b7a5f99744, type: 2}
+  approvingOrganizationPlaceholder:
   requesterName: Prototype Contract Board
   recommendedRank: Prototype
   objectives:

@@ -15,6 +15,10 @@ MonoBehaviour:
   contractId: prototype_potion_delivery
   displayTitle: Prototype Potion Delivery
   description: Deliver one Health Potion to the prototype delivery crate.
+  requesterPerson: {fileID: 0}
+  requesterFaction: {fileID: 11400000, guid: 7e01f3a42a04430c94c818e54228d964, type: 2}
+  postingFaction: {fileID: 11400000, guid: 7e01f3a42a04430c94c818e54228d964, type: 2}
+  approvingOrganizationPlaceholder:
   requesterName: Prototype Contract Board
   recommendedRank: Prototype
   objectives:

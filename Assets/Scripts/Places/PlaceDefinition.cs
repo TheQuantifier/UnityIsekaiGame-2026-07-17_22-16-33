@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Places
@@ -20,6 +21,7 @@ namespace UnityIsekaiGame.Places
         [SerializeField] private string mapLabel;
         [SerializeField] private bool showOnMapByDefault;
         [SerializeField] private Vector2 normalizedMapPosition = new Vector2(0.5f, 0.5f);
+        [SerializeField] private FactionDefinition defaultGoverningFaction;
         [SerializeField] private string controllingFactionIdPlaceholder;
         [SerializeField] private PlaceDangerLevel dangerLevel = PlaceDangerLevel.Unknown;
         [SerializeField] private PlaceDiscoveryMode discoveryMode = PlaceDiscoveryMode.KnownByDefault;
@@ -38,6 +40,7 @@ namespace UnityIsekaiGame.Places
         public string MapLabel => string.IsNullOrWhiteSpace(mapLabel) ? DisplayName : mapLabel;
         public bool ShowOnMapByDefault => showOnMapByDefault;
         public Vector2 NormalizedMapPosition => normalizedMapPosition;
+        public FactionDefinition DefaultGoverningFaction => defaultGoverningFaction;
         public string ControllingFactionIdPlaceholder => controllingFactionIdPlaceholder;
         public PlaceDangerLevel DangerLevel => dangerLevel;
         public PlaceDiscoveryMode DiscoveryMode => discoveryMode;
@@ -86,6 +89,12 @@ namespace UnityIsekaiGame.Places
             if (!string.IsNullOrWhiteSpace(sceneKey) && sceneKey.IndexOfAny(System.IO.Path.GetInvalidPathChars()) >= 0)
             {
                 report.AddError($"PlaceDefinition '{DisplayName}' has an invalid scene key '{sceneKey}'.");
+            }
+
+            if (defaultGoverningFaction != null
+                && (!definitionsById.TryGetValue(defaultGoverningFaction.Id, out IGameDefinition faction) || faction is not FactionDefinition))
+            {
+                report.AddError($"PlaceDefinition '{DisplayName}' references default governing faction '{defaultGoverningFaction.Id}', which is not in the configured catalog.");
             }
 
             if (float.IsNaN(normalizedMapPosition.x)

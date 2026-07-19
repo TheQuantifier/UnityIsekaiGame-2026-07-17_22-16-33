@@ -22,6 +22,7 @@ Examples:
 - `QuestInstance`: quest definition reference plus current stage, objective state, and reward state.
 - `ContractInstance`: contract definition reference plus objective progress and reward state.
 - `PersonIdentity`: currently loaded scene presence for a static `PersonDefinition`.
+- Future faction state: faction definition reference plus mutable leadership, memberships, ranks, reputation, law, diplomacy, and owned resources.
 
 ScriptableObject definitions must not store mutable runtime gameplay state.
 
@@ -80,6 +81,8 @@ Examples for new content:
 - `place.settlement.prototype-town`
 - `place.poi.disturbance-site`
 - `person.prototype-npc`
+- `faction.guild.adventurers`
+- `faction.kingdom.prototype`
 - `quest.strange-disturbance`
 - `contract.prototype-elimination`
 

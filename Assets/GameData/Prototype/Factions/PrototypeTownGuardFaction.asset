@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1af761e81c7421cb653a9c34b730877, type: 3}
+  m_Name: PrototypeTownGuardFaction
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Factions.FactionDefinition
+  factionId: faction.guard.prototype-town
+  displayName: Prototype Town Guard
+  description: Prototype-only local guard organization parented under the prototype kingdom.
+  primaryCategory: {fileID: 11400000, guid: 27a8afdccff34e5b88a6d47bfa702091, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 24913325812e4a9e878f22f01dca5b2c, type: 2}
+  - {fileID: 11400000, guid: 0384e6baae874ed69d4118cfb6adaa14, type: 2}
+  - {fileID: 11400000, guid: e1a0084395594246817ec0a1444abeaa, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  icon: {fileID: 0}
+  kind: 5
+  parentFaction: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+  homePlace: {fileID: 11400000, guid: f1cccd051a484f3c85af0dcb2be313ff, type: 2}
+  headquartersPlace: {fileID: 0}
+  defaultJurisdictionPlace: {fileID: 11400000, guid: f1cccd051a484f3c85af0dcb2be313ff, type: 2}
+  foundingPlace: {fileID: 0}
+  defaultLeader: {fileID: 0}
+  authority: 1184
+  visibility: 0
+  presentationColor: {r: 0.56, g: 0.59, b: 0.66, a: 1}
+  culturePlaceholder: 
+  foundingMetadataPlaceholder: 

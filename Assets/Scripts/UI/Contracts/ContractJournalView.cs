@@ -127,7 +127,7 @@ namespace UnityIsekaiGame.UI.Contracts
             {
                 descriptionLabel.text = contract?.Definition == null
                     ? "Accept a prototype contract from the board."
-                    : $"{contract.Definition.RequesterName}\n{contract.Definition.Description}\nState: {contract.State}";
+                    : $"{contract.Definition.RequesterDisplayName}\n{contract.Definition.Description}\nState: {contract.State}";
             }
 
             if (objectiveLabel != null)
