@@ -5,7 +5,9 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Persistence;
+using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.Contracts;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -20,14 +22,18 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PlayerMana playerMana;
         [SerializeField] private PlayerStamina playerStamina;
         [SerializeField] private StatusEffectController statusEffectController;
+        [SerializeField] private PlayerQuestLog playerQuestLog;
+        [SerializeField] private PlayerContractJournal playerContractJournal;
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
+        [SerializeField] private bool registerPlayerQuestContract = true;
         [SerializeField] private string prototypeSlotId = PersistenceService.PrototypeSlotId;
 
         private PersistenceService service;
         private PrototypePersistenceStateParticipant participant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
+        private PlayerQuestContractPersistenceParticipant questContractParticipant;
         private DefinitionRegistry definitionRegistry;
 
         public PersistenceService Service => service;
@@ -58,6 +64,12 @@ namespace UnityIsekaiGame.Gameplay
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
                 statsVitalsStatusParticipant = null;
             }
+
+            if (service != null && questContractParticipant != null)
+            {
+                service.UnregisterParticipant(questContractParticipant);
+                questContractParticipant = null;
+            }
         }
 
         public void ConfigurePlayerPersistence(
@@ -68,7 +80,9 @@ namespace UnityIsekaiGame.Gameplay
             PlayerHealth health,
             PlayerMana mana,
             PlayerStamina stamina,
-            StatusEffectController statusController)
+            StatusEffectController statusController,
+            PlayerQuestLog questLog,
+            PlayerContractJournal contractJournal)
         {
             definitionCatalog = catalog;
             playerInventory = inventory;
@@ -78,6 +92,8 @@ namespace UnityIsekaiGame.Gameplay
             playerMana = mana;
             playerStamina = stamina;
             statusEffectController = statusController;
+            playerQuestLog = questLog;
+            playerContractJournal = contractJournal;
             definitionRegistry = null;
         }
 
@@ -107,6 +123,7 @@ namespace UnityIsekaiGame.Gameplay
 
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
+            EnsurePlayerQuestContractParticipant();
         }
 
         public PersistenceSaveResult SavePrototypeSlot()
@@ -255,6 +272,16 @@ namespace UnityIsekaiGame.Gameplay
             {
                 statusEffectController = playerRoot == null ? Object.FindAnyObjectByType<StatusEffectController>() : playerRoot.GetComponent<StatusEffectController>();
             }
+
+            if (playerQuestLog == null)
+            {
+                playerQuestLog = playerRoot == null ? Object.FindAnyObjectByType<PlayerQuestLog>() : playerRoot.GetComponent<PlayerQuestLog>();
+            }
+
+            if (playerContractJournal == null)
+            {
+                playerContractJournal = playerRoot == null ? Object.FindAnyObjectByType<PlayerContractJournal>() : playerRoot.GetComponent<PlayerContractJournal>();
+            }
         }
 
         private void EnsurePlayerStatsVitalsStatusParticipant()
@@ -291,6 +318,41 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 statsVitalsStatusParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerQuestContractParticipant()
+        {
+            if (!registerPlayerQuestContract || questContractParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerQuestLog == null || playerContractJournal == null || playerInventory == null)
+            {
+                Debug.LogWarning("Player quest/contract persistence participant was not registered because the prototype player quest log, contract journal, or inventory is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player quest/contract persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            questContractParticipant = new PlayerQuestContractPersistenceParticipant(
+                playerQuestLog,
+                playerContractJournal,
+                playerInventory,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(questContractParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                questContractParticipant = null;
             }
         }
 

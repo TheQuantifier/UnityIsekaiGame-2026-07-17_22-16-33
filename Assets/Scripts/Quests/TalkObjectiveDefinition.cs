@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.People;
 
 namespace UnityIsekaiGame.Quests
@@ -40,6 +41,11 @@ namespace UnityIsekaiGame.Quests
             base.Activate();
         }
 
+        public override void ActivateForRestore()
+        {
+            QuestObjectiveSignalBus.TalkedTo += OnTalkedTo;
+        }
+
         public override void Deactivate()
         {
             QuestObjectiveSignalBus.TalkedTo -= OnTalkedTo;
@@ -59,6 +65,18 @@ namespace UnityIsekaiGame.Quests
 
             currentProgress = 1;
             NotifyProgressChanged();
+        }
+
+        public override bool TryRestoreFromSaveData(ObjectiveProgressSaveData saveData, out string failureReason)
+        {
+            if (!ValidateCommonSaveData(saveData, out failureReason))
+            {
+                return false;
+            }
+
+            currentProgress = Mathf.Clamp(saveData.currentProgress, 0, RequiredProgress);
+            RestoreCompleted(saveData.completed);
+            return true;
         }
     }
 }

@@ -208,6 +208,8 @@ Feature 4.2 adds another required prototype participant: `player.inventory-equip
 
 Feature 4.3 adds `player.stats-vitals-status`. It is player-scoped, owned by `local-player`, loads after inventory/equipment, restores save-eligible statuses, and then restores current Health, Mana, and Stamina.
 
+Feature 4.4 adds `player.quests-contracts`. It is player-scoped, owned by `local-player`, loads after stats/vitals/statuses, and restores personal quest log and accepted contract journal state.
+
 ## Player State Versus World State
 
 Player-state saves and shared-world saves must remain separable.

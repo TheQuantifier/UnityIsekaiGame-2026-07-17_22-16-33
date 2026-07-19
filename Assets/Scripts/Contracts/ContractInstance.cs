@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Persistence;
 
 namespace UnityIsekaiGame.Contracts
 {
@@ -10,11 +11,12 @@ namespace UnityIsekaiGame.Contracts
         private readonly PlayerInventory inventory;
         private ContractState state;
 
-        public ContractInstance(ContractDefinition definition, ContractObjectiveContext context)
+        public ContractInstance(ContractDefinition definition, ContractObjectiveContext context, string runtimeInstanceId = null)
         {
             Definition = definition;
             inventory = context.Inventory;
             state = ContractState.Active;
+            RuntimeInstanceId = string.IsNullOrWhiteSpace(runtimeInstanceId) ? Guid.NewGuid().ToString("D") : runtimeInstanceId;
 
             if (definition != null)
             {
@@ -35,6 +37,7 @@ namespace UnityIsekaiGame.Contracts
         }
 
         public ContractDefinition Definition { get; }
+        public string RuntimeInstanceId { get; }
         public ContractState State => state;
         public IReadOnlyList<ContractObjectiveInstance> Objectives => objectives;
         public bool IsActive => state == ContractState.Active;
@@ -165,10 +168,147 @@ namespace UnityIsekaiGame.Contracts
             DeactivateObjectives();
         }
 
+        public ContractInstanceSaveData CreateSaveData()
+        {
+            ContractInstanceSaveData saveData = new ContractInstanceSaveData
+            {
+                contractDefinitionId = Definition == null ? string.Empty : Definition.ContractId,
+                runtimeInstanceId = RuntimeInstanceId,
+                state = state
+            };
+
+            for (int i = 0; i < objectives.Count; i++)
+            {
+                string objectiveId = objectives[i].Definition == null ? string.Empty : objectives[i].Definition.ObjectiveId;
+                saveData.objectives.Add(objectives[i].CreateSaveData(i, objectiveId));
+            }
+
+            return saveData;
+        }
+
+        public static bool TryRestoreFromSaveData(
+            ContractDefinition definition,
+            ContractInstanceSaveData saveData,
+            ContractObjectiveContext context,
+            out ContractInstance instance,
+            out string failureReason)
+        {
+            instance = null;
+            failureReason = string.Empty;
+            if (definition == null)
+            {
+                failureReason = "Contract definition is missing.";
+                return false;
+            }
+
+            if (saveData == null)
+            {
+                failureReason = "Contract save data is missing.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(saveData.runtimeInstanceId) || !Guid.TryParseExact(saveData.runtimeInstanceId, "D", out _))
+            {
+                failureReason = $"Contract '{definition.ContractId}' has an invalid runtime instance ID.";
+                return false;
+            }
+
+            if (!Enum.IsDefined(typeof(ContractState), saveData.state))
+            {
+                failureReason = $"Contract '{definition.ContractId}' has invalid state '{saveData.state}'.";
+                return false;
+            }
+
+            ContractInstance restored = new ContractInstance(definition, context, saveData.runtimeInstanceId);
+            if (!restored.TryRestoreObjectives(saveData, out failureReason))
+            {
+                restored.Dispose();
+                return false;
+            }
+
+            restored.state = saveData.state;
+            if (restored.state == ContractState.Active)
+            {
+                restored.ActivateForRestore();
+            }
+            else
+            {
+                restored.DeactivateObjectives();
+            }
+
+            instance = restored;
+            return true;
+        }
+
         private void OnObjectiveProgressChanged(ContractObjectiveInstance objective)
         {
             ProgressChanged?.Invoke(this);
             EvaluateCompletion();
+        }
+
+        private bool TryRestoreObjectives(ContractInstanceSaveData saveData, out string failureReason)
+        {
+            failureReason = string.Empty;
+            IReadOnlyList<ObjectiveProgressSaveData> entries = saveData.objectives == null ? Array.Empty<ObjectiveProgressSaveData>() : saveData.objectives;
+            if (entries.Count != objectives.Count)
+            {
+                failureReason = $"Contract '{Definition.ContractId}' expected {objectives.Count} objective entries but save has {entries.Count}.";
+                return false;
+            }
+
+            Dictionary<string, ContractObjectiveInstance> objectivesById = new Dictionary<string, ContractObjectiveInstance>();
+            for (int i = 0; i < objectives.Count; i++)
+            {
+                string objectiveId = objectives[i].Definition == null ? string.Empty : objectives[i].Definition.ObjectiveId;
+                if (string.IsNullOrWhiteSpace(objectiveId) || objectivesById.ContainsKey(objectiveId))
+                {
+                    failureReason = $"Contract '{Definition.ContractId}' has invalid objective ID '{objectiveId}'.";
+                    return false;
+                }
+
+                objectivesById.Add(objectiveId, objectives[i]);
+            }
+
+            HashSet<string> restoredObjectiveIds = new HashSet<string>();
+            for (int i = 0; i < entries.Count; i++)
+            {
+                ObjectiveProgressSaveData entry = entries[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.objectiveId))
+                {
+                    failureReason = $"Contract '{Definition.ContractId}' has missing objective ID.";
+                    return false;
+                }
+
+                if (!restoredObjectiveIds.Add(entry.objectiveId))
+                {
+                    failureReason = $"Contract '{Definition.ContractId}' save has duplicate objective ID '{entry.objectiveId}'.";
+                    return false;
+                }
+
+                if (!objectivesById.TryGetValue(entry.objectiveId, out ContractObjectiveInstance objective))
+                {
+                    failureReason = $"Contract '{Definition.ContractId}' could not resolve saved objective ID '{entry.objectiveId}'.";
+                    return false;
+                }
+
+                if (!objective.TryRestoreFromSaveData(entry, out failureReason))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void ActivateForRestore()
+        {
+            foreach (ContractObjectiveInstance objective in objectives)
+            {
+                if (!objective.IsComplete)
+                {
+                    objective.ActivateForRestore();
+                }
+            }
         }
 
         private void OnObjectiveCompleted(ContractObjectiveInstance objective)

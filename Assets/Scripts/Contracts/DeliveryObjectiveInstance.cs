@@ -1,4 +1,5 @@
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Persistence;
 
 namespace UnityIsekaiGame.Contracts
 {
@@ -55,6 +56,18 @@ namespace UnityIsekaiGame.Contracts
         public override void RefreshProgress()
         {
             NotifyProgressChanged();
+        }
+
+        public override bool TryRestoreFromSaveData(ObjectiveProgressSaveData saveData, out string failureReason)
+        {
+            if (!ValidateCommonSaveData(saveData, out failureReason))
+            {
+                return false;
+            }
+
+            deliveredQuantity = System.Math.Min(saveData.currentProgress, RequiredProgress);
+            RestoreCompleted(saveData.completed);
+            return true;
         }
     }
 }

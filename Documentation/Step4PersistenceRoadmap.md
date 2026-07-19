@@ -54,3 +54,9 @@ Feature 4.3 restores current stats/vitals after equipment has rebuilt max-stat m
 Feature 4.3 adds `player.stats-vitals-status` after inventory/equipment in the load order. It persists current Health, Mana, Stamina, actor-profile validation metadata, and save-eligible active statuses. Status modifiers and resistance modifiers rebuild from restored statuses rather than raw modifier save data.
 
 Defeated prototype saves are rejected. Timed statuses restore with saved remaining duration; offline elapsed time is not applied yet.
+
+## Feature 4.4 Status
+
+Feature 4.4 adds `player.quests-contracts` after inventory/equipment and stats/vitals/statuses. It persists personal quests, accepted contracts, current quest stage, active objective progress, runtime instance IDs, and reward-claim state. Schema version 2 restores quest stages and quest/contract objectives by authored stable IDs instead of array position; schema version 1 is rejected rather than migrated.
+
+Current objective keys use authored stage/objective indexes with stage ID validation where authored. Future content should add stable objective IDs before reordering shipped quest or contract objectives.

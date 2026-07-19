@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Places;
 
 namespace UnityIsekaiGame.Quests
@@ -41,6 +42,11 @@ namespace UnityIsekaiGame.Quests
             base.Activate();
         }
 
+        public override void ActivateForRestore()
+        {
+            QuestObjectiveSignalBus.ReachedLocation += OnReachedLocation;
+        }
+
         public override void Deactivate()
         {
             QuestObjectiveSignalBus.ReachedLocation -= OnReachedLocation;
@@ -60,6 +66,18 @@ namespace UnityIsekaiGame.Quests
 
             currentProgress = 1;
             NotifyProgressChanged();
+        }
+
+        public override bool TryRestoreFromSaveData(ObjectiveProgressSaveData saveData, out string failureReason)
+        {
+            if (!ValidateCommonSaveData(saveData, out failureReason))
+            {
+                return false;
+            }
+
+            currentProgress = Mathf.Clamp(saveData.currentProgress, 0, RequiredProgress);
+            RestoreCompleted(saveData.completed);
+            return true;
         }
     }
 }

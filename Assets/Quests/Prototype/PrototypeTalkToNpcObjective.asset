@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2dd0d1fe645c433db4d195c4d7040310, type: 3}
   m_Name: PrototypeTalkToNpcObjective
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Quests.TalkObjectiveDefinition
+  objectiveId: talk_to_npc
   description: Speak with the prototype NPC.
   talkTargetPerson: {fileID: 11400000, guid: d7045b9bbc0f4f2f8fc1a0fb254f0e55, type: 2}
   talkTargetId: prototype_npc

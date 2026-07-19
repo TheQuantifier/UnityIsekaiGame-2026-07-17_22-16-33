@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Persistence;
 
 namespace UnityIsekaiGame.Contracts
 {
@@ -142,6 +144,90 @@ namespace UnityIsekaiGame.Contracts
             return null;
         }
 
+        public List<ContractInstanceSaveData> CreateSaveData()
+        {
+            List<ContractInstanceSaveData> saveData = new List<ContractInstanceSaveData>(contracts.Count);
+            for (int i = 0; i < contracts.Count; i++)
+            {
+                saveData.Add(contracts[i].CreateSaveData());
+            }
+
+            return saveData;
+        }
+
+        public bool TryRestoreFromSaveData(IReadOnlyList<ContractInstanceSaveData> saveData, DefinitionRegistry registry, out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (registry == null)
+            {
+                failureReason = "Definition registry is missing for contract restore.";
+                return false;
+            }
+
+            List<ContractInstance> restored = new List<ContractInstance>();
+            HashSet<string> runtimeIds = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> contractIds = new HashSet<string>(StringComparer.Ordinal);
+            int activeCount = 0;
+            IReadOnlyList<ContractInstanceSaveData> entries = saveData ?? Array.Empty<ContractInstanceSaveData>();
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                ContractInstanceSaveData entry = entries[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.contractDefinitionId))
+                {
+                    failureReason = "Contract save entry is missing a contract definition ID.";
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                if (!runtimeIds.Add(entry.runtimeInstanceId))
+                {
+                    failureReason = $"Duplicate contract runtime instance ID '{entry.runtimeInstanceId}'.";
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                if (!registry.TryGet(entry.contractDefinitionId, out ContractDefinition definition))
+                {
+                    failureReason = $"Contract definition '{entry.contractDefinitionId}' was not found.";
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                if (!contractIds.Add(definition.ContractId))
+                {
+                    failureReason = $"Duplicate contract definition '{definition.ContractId}' in save data.";
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                if (entry.state == ContractState.Active)
+                {
+                    activeCount++;
+                    if (activeCount > activeContractLimit)
+                    {
+                        failureReason = "Saved active contracts exceed the active contract limit.";
+                        DisposeAll(restored);
+                        return false;
+                    }
+                }
+
+                if (!ContractInstance.TryRestoreFromSaveData(definition, entry, new ContractObjectiveContext(inventory), out ContractInstance contract, out failureReason))
+                {
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                Subscribe(contract);
+                restored.Add(contract);
+            }
+
+            ClearAllContracts();
+            contracts.AddRange(restored);
+            JournalChanged?.Invoke();
+            return true;
+        }
+
         private int GetActiveCount()
         {
             int count = 0;
@@ -154,6 +240,25 @@ namespace UnityIsekaiGame.Contracts
             }
 
             return count;
+        }
+
+        private void ClearAllContracts()
+        {
+            foreach (ContractInstance contract in contracts)
+            {
+                Unsubscribe(contract);
+                contract.Dispose();
+            }
+
+            contracts.Clear();
+        }
+
+        private static void DisposeAll(List<ContractInstance> contractInstances)
+        {
+            for (int i = 0; i < contractInstances.Count; i++)
+            {
+                contractInstances[i].Dispose();
+            }
         }
 
         private void Subscribe(ContractInstance contract)
