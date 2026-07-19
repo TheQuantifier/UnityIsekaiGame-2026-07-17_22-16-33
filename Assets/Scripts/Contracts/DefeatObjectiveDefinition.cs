@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityIsekaiGame.Persistence;
 
 namespace UnityIsekaiGame.Contracts
 {
@@ -45,6 +46,18 @@ namespace UnityIsekaiGame.Contracts
         public override void RefreshProgress()
         {
             NotifyProgressChanged();
+        }
+
+        public override bool TryRestoreFromSaveData(ObjectiveProgressSaveData saveData, out string failureReason)
+        {
+            if (!ValidateCommonSaveData(saveData, out failureReason))
+            {
+                return false;
+            }
+
+            currentDefeats = Mathf.Clamp(saveData.currentProgress, 0, RequiredProgress);
+            RestoreCompleted(saveData.completed);
+            return true;
         }
     }
 }

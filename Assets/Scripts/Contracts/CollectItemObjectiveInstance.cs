@@ -1,4 +1,5 @@
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Persistence;
 
 namespace UnityIsekaiGame.Contracts
 {
@@ -28,6 +29,14 @@ namespace UnityIsekaiGame.Contracts
             base.Activate();
         }
 
+        public override void ActivateForRestore()
+        {
+            if (inventory != null)
+            {
+                inventory.InventoryChanged += RefreshProgress;
+            }
+        }
+
         public override void Deactivate()
         {
             if (inventory != null)
@@ -40,6 +49,18 @@ namespace UnityIsekaiGame.Contracts
         {
             currentQuantity = definition == null || inventory == null ? 0 : inventory.CountItem(definition.Item);
             NotifyProgressChanged();
+        }
+
+        public override bool TryRestoreFromSaveData(ObjectiveProgressSaveData saveData, out string failureReason)
+        {
+            if (!ValidateCommonSaveData(saveData, out failureReason))
+            {
+                return false;
+            }
+
+            currentQuantity = definition == null || inventory == null ? 0 : inventory.CountItem(definition.Item);
+            RestoreCompleted(currentQuantity >= RequiredProgress);
+            return true;
         }
     }
 }

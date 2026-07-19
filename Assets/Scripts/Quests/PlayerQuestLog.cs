@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Persistence;
 
 namespace UnityIsekaiGame.Quests
 {
@@ -180,6 +182,78 @@ namespace UnityIsekaiGame.Quests
             PrototypeHudMessageBus.Show("Prototype quest reset");
         }
 
+        public List<QuestInstanceSaveData> CreateSaveData()
+        {
+            List<QuestInstanceSaveData> saveData = new List<QuestInstanceSaveData>(quests.Count);
+            for (int i = 0; i < quests.Count; i++)
+            {
+                saveData.Add(quests[i].CreateSaveData());
+            }
+
+            return saveData;
+        }
+
+        public bool TryRestoreFromSaveData(IReadOnlyList<QuestInstanceSaveData> saveData, DefinitionRegistry registry, out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (registry == null)
+            {
+                failureReason = "Definition registry is missing for quest restore.";
+                return false;
+            }
+
+            List<QuestInstance> restored = new List<QuestInstance>();
+            HashSet<string> runtimeIds = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> nonRepeatableQuestIds = new HashSet<string>(StringComparer.Ordinal);
+            IReadOnlyList<QuestInstanceSaveData> entries = saveData ?? Array.Empty<QuestInstanceSaveData>();
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                QuestInstanceSaveData entry = entries[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.questDefinitionId))
+                {
+                    failureReason = "Quest save entry is missing a quest definition ID.";
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                if (!runtimeIds.Add(entry.runtimeInstanceId))
+                {
+                    failureReason = $"Duplicate quest runtime instance ID '{entry.runtimeInstanceId}'.";
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                if (!registry.TryGet(entry.questDefinitionId, out QuestDefinition definition))
+                {
+                    failureReason = $"Quest definition '{entry.questDefinitionId}' was not found.";
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                if (!definition.Repeatable && !nonRepeatableQuestIds.Add(definition.QuestId))
+                {
+                    failureReason = $"Duplicate non-repeatable quest '{definition.QuestId}' in save data.";
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                if (!QuestInstance.TryRestoreFromSaveData(definition, entry, new ContractObjectiveContext(inventory), out QuestInstance quest, out failureReason))
+                {
+                    DisposeAll(restored);
+                    return false;
+                }
+
+                Subscribe(quest);
+                restored.Add(quest);
+            }
+
+            ClearAllQuests();
+            quests.AddRange(restored);
+            QuestLogChanged?.Invoke();
+            return true;
+        }
+
         private void ClearAllQuests()
         {
             foreach (QuestInstance quest in quests)
@@ -189,6 +263,14 @@ namespace UnityIsekaiGame.Quests
             }
 
             quests.Clear();
+        }
+
+        private static void DisposeAll(List<QuestInstance> questInstances)
+        {
+            for (int i = 0; i < questInstances.Count; i++)
+            {
+                questInstances[i].Dispose();
+            }
         }
 
         private void Subscribe(QuestInstance quest)

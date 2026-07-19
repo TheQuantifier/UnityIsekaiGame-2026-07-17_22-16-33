@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Persistence;
 
 namespace UnityIsekaiGame.Quests
 {
@@ -13,14 +14,18 @@ namespace UnityIsekaiGame.Quests
         private int currentStageIndex = -1;
         private bool stageTransitioning;
 
-        public QuestInstance(QuestDefinition definition, ContractObjectiveContext context)
+        public QuestInstance(QuestDefinition definition, ContractObjectiveContext context, string runtimeInstanceId = null)
         {
             Definition = definition;
             inventory = context.Inventory;
             state = QuestState.Active;
+            RuntimeInstanceId = string.IsNullOrWhiteSpace(runtimeInstanceId)
+                ? definition != null && !definition.Repeatable ? definition.QuestId : Guid.NewGuid().ToString("D")
+                : runtimeInstanceId;
         }
 
         public QuestDefinition Definition { get; }
+        public string RuntimeInstanceId { get; }
         public QuestState State => state;
         public int CurrentStageIndex => currentStageIndex;
         public QuestStageDefinition CurrentStage => IsStageIndexValid(currentStageIndex) ? Definition.Stages[currentStageIndex] : null;
@@ -126,8 +131,9 @@ namespace UnityIsekaiGame.Quests
                 return;
             }
 
-            foreach (ContractObjectiveInstance objective in currentObjectives)
+            for (int i = 0; i < currentObjectives.Count; i++)
             {
+                ContractObjectiveInstance objective = currentObjectives[i];
                 if (objective is DefeatObjectiveInstance defeat)
                 {
                     defeat.RecordDefeat(targetCategory);
@@ -164,6 +170,90 @@ namespace UnityIsekaiGame.Quests
             DeactivateCurrentObjectives();
         }
 
+        public QuestInstanceSaveData CreateSaveData()
+        {
+            QuestInstanceSaveData saveData = new QuestInstanceSaveData
+            {
+                questDefinitionId = Definition == null ? string.Empty : Definition.QuestId,
+                runtimeInstanceId = RuntimeInstanceId,
+                state = state,
+                currentStageIndex = currentStageIndex,
+                currentStageId = CurrentStage == null ? string.Empty : CurrentStage.StageId
+            };
+
+            for (int i = 0; i < currentObjectives.Count; i++)
+            {
+                string objectiveId = currentObjectives[i].Definition == null ? string.Empty : currentObjectives[i].Definition.ObjectiveId;
+                saveData.objectives.Add(currentObjectives[i].CreateSaveData(i, objectiveId));
+            }
+
+            return saveData;
+        }
+
+        public static bool TryRestoreFromSaveData(
+            QuestDefinition definition,
+            QuestInstanceSaveData saveData,
+            ContractObjectiveContext context,
+            out QuestInstance instance,
+            out string failureReason)
+        {
+            instance = null;
+            failureReason = string.Empty;
+            if (definition == null)
+            {
+                failureReason = "Quest definition is missing.";
+                return false;
+            }
+
+            if (saveData == null)
+            {
+                failureReason = "Quest save data is missing.";
+                return false;
+            }
+
+            if (!ValidateRuntimeInstanceId(definition, saveData.runtimeInstanceId))
+            {
+                failureReason = $"Quest '{definition.QuestId}' has an invalid runtime instance ID.";
+                return false;
+            }
+
+            if (!Enum.IsDefined(typeof(QuestState), saveData.state))
+            {
+                failureReason = $"Quest '{definition.QuestId}' has invalid state '{saveData.state}'.";
+                return false;
+            }
+
+            QuestInstance restored = new QuestInstance(definition, context, saveData.runtimeInstanceId);
+            restored.state = saveData.state;
+            restored.currentStageIndex = saveData.currentStageIndex;
+
+            if (restored.state == QuestState.Active)
+            {
+                if (!TryFindStageIndexById(definition, saveData.currentStageId, out int restoredStageIndex))
+                {
+                    failureReason = $"Quest '{definition.QuestId}' could not resolve saved stage ID '{saveData.currentStageId}'.";
+                    return false;
+                }
+
+                restored.currentStageIndex = restoredStageIndex;
+
+                if (!restored.TryRestoreCurrentStageObjectives(saveData, context, out failureReason))
+                {
+                    restored.Dispose();
+                    return false;
+                }
+
+                restored.ActivateCurrentObjectivesForRestore();
+            }
+            else
+            {
+                restored.DeactivateCurrentObjectives();
+            }
+
+            instance = restored;
+            return true;
+        }
+
         private void ActivateStage(int stageIndex)
         {
             if (state != QuestState.Active || !IsStageIndexValid(stageIndex))
@@ -190,13 +280,95 @@ namespace UnityIsekaiGame.Quests
                 currentObjectives.Add(objective);
             }
 
-            foreach (ContractObjectiveInstance objective in currentObjectives)
+            for (int i = 0; i < currentObjectives.Count; i++)
             {
-                objective.Activate();
+                currentObjectives[i].Activate();
             }
 
             StageChanged?.Invoke(this);
             EvaluateStageCompletion();
+        }
+
+        private bool TryRestoreCurrentStageObjectives(QuestInstanceSaveData saveData, ContractObjectiveContext context, out string failureReason)
+        {
+            failureReason = string.Empty;
+            DeactivateCurrentObjectives();
+            QuestStageDefinition stage = Definition.Stages[currentStageIndex];
+            for (int i = 0; i < stage.Objectives.Count; i++)
+            {
+                ContractObjectiveDefinition objectiveDefinition = stage.Objectives[i];
+                if (objectiveDefinition == null)
+                {
+                    continue;
+                }
+
+                ContractObjectiveInstance objective = objectiveDefinition.CreateInstance(context);
+                objective.ProgressChanged += OnObjectiveProgressChanged;
+                objective.Completed += OnObjectiveCompleted;
+                currentObjectives.Add(objective);
+            }
+
+            IReadOnlyList<ObjectiveProgressSaveData> entries = saveData.objectives == null ? Array.Empty<ObjectiveProgressSaveData>() : saveData.objectives;
+            if (entries.Count != currentObjectives.Count)
+            {
+                failureReason = $"Quest '{Definition.QuestId}' expected {currentObjectives.Count} objective entries but save has {entries.Count}.";
+                return false;
+            }
+
+            Dictionary<string, ContractObjectiveInstance> objectivesById = new Dictionary<string, ContractObjectiveInstance>();
+            for (int i = 0; i < currentObjectives.Count; i++)
+            {
+                string objectiveId = currentObjectives[i].Definition == null ? string.Empty : currentObjectives[i].Definition.ObjectiveId;
+                if (string.IsNullOrWhiteSpace(objectiveId) || objectivesById.ContainsKey(objectiveId))
+                {
+                    failureReason = $"Quest '{Definition.QuestId}' has invalid objective ID '{objectiveId}' in stage '{stage.StageId}'.";
+                    return false;
+                }
+
+                objectivesById.Add(objectiveId, currentObjectives[i]);
+            }
+
+            HashSet<string> restoredObjectiveIds = new HashSet<string>();
+            for (int i = 0; i < entries.Count; i++)
+            {
+                ObjectiveProgressSaveData entry = entries[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.objectiveId))
+                {
+                    failureReason = $"Quest '{Definition.QuestId}' has missing objective ID in stage '{stage.StageId}'.";
+                    return false;
+                }
+
+                if (!restoredObjectiveIds.Add(entry.objectiveId))
+                {
+                    failureReason = $"Quest '{Definition.QuestId}' save has duplicate objective ID '{entry.objectiveId}' in stage '{stage.StageId}'.";
+                    return false;
+                }
+
+                if (!objectivesById.TryGetValue(entry.objectiveId, out ContractObjectiveInstance objective))
+                {
+                    failureReason = $"Quest '{Definition.QuestId}' could not resolve saved objective ID '{entry.objectiveId}' in stage '{stage.StageId}'.";
+                    return false;
+                }
+
+                if (!objective.TryRestoreFromSaveData(entry, out failureReason))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void ActivateCurrentObjectivesForRestore()
+        {
+            for (int i = 0; i < currentObjectives.Count; i++)
+            {
+                ContractObjectiveInstance objective = currentObjectives[i];
+                if (!objective.IsComplete)
+                {
+                    objective.ActivateForRestore();
+                }
+            }
         }
 
         private void DeactivateCurrentObjectives()
@@ -273,6 +445,38 @@ namespace UnityIsekaiGame.Quests
         private bool IsStageIndexValid(int stageIndex)
         {
             return Definition != null && stageIndex >= 0 && stageIndex < Definition.Stages.Count;
+        }
+
+        private static bool ValidateRuntimeInstanceId(QuestDefinition definition, string runtimeInstanceId)
+        {
+            if (definition == null || string.IsNullOrWhiteSpace(runtimeInstanceId))
+            {
+                return false;
+            }
+
+            return !definition.Repeatable
+                ? string.Equals(runtimeInstanceId, definition.QuestId, StringComparison.Ordinal)
+                : Guid.TryParseExact(runtimeInstanceId, "D", out _);
+        }
+
+        private static bool TryFindStageIndexById(QuestDefinition definition, string stageId, out int stageIndex)
+        {
+            stageIndex = -1;
+            if (definition == null || string.IsNullOrWhiteSpace(stageId))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < definition.Stages.Count; i++)
+            {
+                if (definition.Stages[i] != null && string.Equals(definition.Stages[i].StageId, stageId, StringComparison.Ordinal))
+                {
+                    stageIndex = i;
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

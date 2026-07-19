@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a364ab0c192b4f4cb7207f434bc4add2, type: 3}
   m_Name: DeliverHealthPotionsObjective
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Contracts.DeliveryObjectiveDefinition
+  objectiveId: deliver_health_potions
   description: Deliver 1 Health Potion to the prototype delivery crate.
   destinationId: prototype_delivery_crate
   item: {fileID: 11400000, guid: 9fc1c54f96724ef8b03354950feaae17, type: 2}

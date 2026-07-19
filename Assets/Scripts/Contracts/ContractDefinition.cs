@@ -53,6 +53,7 @@ namespace UnityIsekaiGame.Contracts
             ValidatePersonReference(requesterPerson, nameof(RequesterPerson), definitionsById, report);
             ValidateFactionReference(requesterFaction, nameof(RequesterFaction), definitionsById, report);
             ValidateFactionReference(postingFaction, nameof(PostingFaction), definitionsById, report);
+            ValidateObjectiveIds(report);
 
             if (requesterPerson != null && requesterFaction != null)
             {
@@ -98,6 +99,29 @@ namespace UnityIsekaiGame.Contracts
             if (!definitionsById.TryGetValue(faction.Id, out IGameDefinition found) || found is not FactionDefinition)
             {
                 report.AddError($"ContractDefinition '{DisplayTitle}' references {label} '{faction.Id}', which is not in the configured catalog.");
+            }
+        }
+
+        private void ValidateObjectiveIds(DefinitionValidationReport report)
+        {
+            HashSet<string> objectiveIds = new HashSet<string>();
+            for (int objectiveIndex = 0; objectiveIndex < Objectives.Count; objectiveIndex++)
+            {
+                ContractObjectiveDefinition objective = Objectives[objectiveIndex];
+                if (objective == null)
+                {
+                    report.AddError($"ContractDefinition '{DisplayTitle}' objective {objectiveIndex} is missing.");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(objective.ObjectiveId))
+                {
+                    report.AddError($"ContractDefinition '{DisplayTitle}' objective {objectiveIndex} is missing a stable objective ID.");
+                }
+                else if (!objectiveIds.Add(objective.ObjectiveId))
+                {
+                    report.AddError($"ContractDefinition '{DisplayTitle}' has duplicate objective ID '{objective.ObjectiveId}'.");
+                }
             }
         }
     }

@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 535ceeaf3f2b4219bd21499bc5304651, type: 3}
   m_Name: PrototypeReachInvestigationAreaObjective
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Quests.ReachLocationObjectiveDefinition
+  objectiveId: reach_investigation_area
   description: Investigate the marked disturbance area.
   targetPlace: {fileID: 11400000, guid: 296da81eaaa8497e94c0cd52855222aa, type: 2}
   locationId: prototype_disturbance_site

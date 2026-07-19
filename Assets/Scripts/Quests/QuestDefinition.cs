@@ -61,9 +61,53 @@ namespace UnityIsekaiGame.Quests
                 return;
             }
 
+            ValidateStageAndObjectiveIds(report);
             ValidatePersonReference(questGiver, nameof(QuestGiver), definitionsById, report);
             ValidateFactionReference(questSourceFaction, nameof(QuestSourceFaction), definitionsById, report);
             ValidateFactionReference(relatedFaction, nameof(RelatedFaction), definitionsById, report);
+        }
+
+        private void ValidateStageAndObjectiveIds(DefinitionValidationReport report)
+        {
+            HashSet<string> stageIds = new HashSet<string>();
+            for (int stageIndex = 0; stageIndex < Stages.Count; stageIndex++)
+            {
+                QuestStageDefinition stage = Stages[stageIndex];
+                if (stage == null)
+                {
+                    report.AddError($"QuestDefinition '{Title}' stage {stageIndex} is missing.");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(stage.StageId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' stage {stageIndex} is missing a stable stage ID.");
+                }
+                else if (!stageIds.Add(stage.StageId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has duplicate stage ID '{stage.StageId}'.");
+                }
+
+                HashSet<string> objectiveIds = new HashSet<string>();
+                for (int objectiveIndex = 0; objectiveIndex < stage.Objectives.Count; objectiveIndex++)
+                {
+                    ContractObjectiveDefinition objective = stage.Objectives[objectiveIndex];
+                    if (objective == null)
+                    {
+                        report.AddError($"QuestDefinition '{Title}' stage '{stage.StageId}' objective {objectiveIndex} is missing.");
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(objective.ObjectiveId))
+                    {
+                        report.AddError($"QuestDefinition '{Title}' stage '{stage.StageId}' objective {objectiveIndex} is missing a stable objective ID.");
+                    }
+                    else if (!objectiveIds.Add(objective.ObjectiveId))
+                    {
+                        report.AddError($"QuestDefinition '{Title}' stage '{stage.StageId}' has duplicate objective ID '{objective.ObjectiveId}'.");
+                    }
+                }
+            }
         }
 
         private void ValidatePersonReference(

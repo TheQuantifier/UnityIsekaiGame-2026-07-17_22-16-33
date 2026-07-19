@@ -100,6 +100,8 @@ Commit snapshots current statuses and vitals for defensive rollback, clears curr
 
 Repeated loads clear existing restored statuses before applying the saved set, so status entries and modifiers do not duplicate.
 
+Feature 4.4 quest/contract persistence loads after this participant so Journal state is restored after player inventory, equipment, vitals, and statuses are coherent.
+
 ## Standalone Modifiers
 
 Feature 4.3 does not save raw runtime stat or resistance modifiers.

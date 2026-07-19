@@ -7,6 +7,8 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.Contracts;
 
 namespace UnityIsekaiGame.Editor
 {
@@ -190,7 +192,9 @@ namespace UnityIsekaiGame.Editor
             PlayerMana mana = playerRoot == null ? Object.FindAnyObjectByType<PlayerMana>() : playerRoot.GetComponent<PlayerMana>();
             PlayerStamina stamina = playerRoot == null ? Object.FindAnyObjectByType<PlayerStamina>() : playerRoot.GetComponent<PlayerStamina>();
             StatusEffectController statusController = playerRoot == null ? Object.FindAnyObjectByType<StatusEffectController>() : playerRoot.GetComponent<StatusEffectController>();
-            service.ConfigurePlayerPersistence(catalog, inventory, equipment, stats, health, mana, stamina, statusController);
+            PlayerQuestLog questLog = playerRoot == null ? Object.FindAnyObjectByType<PlayerQuestLog>() : playerRoot.GetComponent<PlayerQuestLog>();
+            PlayerContractJournal contractJournal = playerRoot == null ? Object.FindAnyObjectByType<PlayerContractJournal>() : playerRoot.GetComponent<PlayerContractJournal>();
+            service.ConfigurePlayerPersistence(catalog, inventory, equipment, stats, health, mana, stamina, statusController, questLog, contractJournal);
         }
     }
 }

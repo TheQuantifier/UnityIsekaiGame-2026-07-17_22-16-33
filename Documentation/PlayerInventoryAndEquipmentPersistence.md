@@ -87,6 +87,8 @@ World pickups are not persisted by this participant. Player inventory/equipment 
 
 During local manual tests, avoid using an old save in a reset world in a way that lets the same nonpersistent world pickup be collected again. Shared-world or persistent-entity state belongs to later Step 4 work.
 
+Feature 4.4 quest/contract persistence depends on inventory restoring first so current-held collect objectives can recalculate from the player's restored inventory.
+
 ## Extending Item Save Data
 
 To extend item persistence later:

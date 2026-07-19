@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5ad6d7d4e06549668336fc8b00b98b08, type: 3}
   m_Name: DefeatPrototypeEnemyObjective
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Contracts.DefeatObjectiveDefinition
+  objectiveId: defeat_prototype_enemy
   description: Defeat 1 prototype enemy.
   targetCategory: prototype_enemy
   requiredDefeats: 1
