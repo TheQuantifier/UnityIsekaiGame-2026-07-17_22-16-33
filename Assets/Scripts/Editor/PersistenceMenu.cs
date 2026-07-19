@@ -6,6 +6,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.Contracts;
@@ -81,6 +82,34 @@ namespace UnityIsekaiGame.Editor
             {
                 Debug.Log($"Slot {metadata.slotId}: Valid={metadata.isValid}, Primary={metadata.hasPrimary}, Backup={metadata.hasBackup}, Modified={metadata.modifiedUtc}, Message={metadata.message}");
             }
+        }
+
+        [MenuItem("Tools/Persistence/List Save Slot Descriptors")]
+        public static void ListSaveSlotDescriptors()
+        {
+            PrototypePersistenceServiceBehaviour service = GetOrCreatePrototypeService();
+            if (service == null)
+            {
+                return;
+            }
+
+            foreach (SaveSlotDescriptor descriptor in service.BuildSaveSlotDescriptors())
+            {
+                Debug.Log($"{descriptor.displayName} ({descriptor.slotId}): Kind={descriptor.slotKind}, Exists={descriptor.exists}, Valid={descriptor.isValid}, Compatibility={descriptor.compatibilityStatus}, Saved={PrototypeSaveSlotCatalog.FormatLocalTimestamp(descriptor.lastSavedAtUtc)}, PlayTime={PrototypeSaveSlotCatalog.FormatPlayTime(descriptor.playTimeSeconds)}, Backup={descriptor.backupExists}");
+            }
+        }
+
+        [MenuItem("Tools/Persistence/Force Autosave")]
+        public static void ForceAutosave()
+        {
+            PrototypePersistenceServiceBehaviour service = GetOrCreatePrototypeService();
+            if (service == null)
+            {
+                return;
+            }
+
+            PersistenceSaveResult result = service.ForceAutosave("EditorMenu");
+            Debug.Log($"Force autosave result: {result.Status} - {result.Message}");
         }
 
         [MenuItem("Tools/Persistence/Delete Prototype Slot")]

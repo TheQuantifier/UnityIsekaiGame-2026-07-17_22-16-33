@@ -394,6 +394,8 @@ namespace UnityIsekaiGame.Editor
             if (inventoryController != null)
             {
                 SerializedObject serializedController = new SerializedObject(inventoryController);
+                serializedController.FindProperty("saveLoadDefinitionCatalog").objectReferenceValue = catalog;
+                serializedController.FindProperty("saveLoadPersistence").objectReferenceValue = persistence;
                 serializedController.FindProperty("testLabDefinitionCatalog").objectReferenceValue = catalog;
                 serializedController.FindProperty("testLabPersistence").objectReferenceValue = persistence;
                 serializedController.ApplyModifiedPropertiesWithoutUndo();

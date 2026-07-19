@@ -8,6 +8,7 @@ using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Contracts;
 using UnityIsekaiGame.UI.Quests;
@@ -39,6 +40,9 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private ContractJournalView contractJournalView;
         [SerializeField] private QuestJournalView questJournalView;
         [SerializeField] private GameObject itemUser;
+        [Header("Save/Load")]
+        [SerializeField] private DefinitionCatalog saveLoadDefinitionCatalog;
+        [SerializeField] private PrototypePersistenceServiceBehaviour saveLoadPersistence;
         [SerializeField, Min(1)] private int columns = 4;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         [Header("Development Test Lab")]
@@ -106,6 +110,8 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 questJournalView.Initialize(SelectQuest, AbandonSelectedQuest, ClaimSelectedQuestReward);
             }
+
+            InitializeSaveLoad();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             InitializeTestLab();
@@ -323,6 +329,8 @@ namespace UnityIsekaiGame.UI.Inventory
                 ClampQuestSelection();
                 questJournalView.Render(questLog == null ? null : questLog.Quests, selectedQuestIndex);
             }
+
+            view?.RefreshSaveLoad();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             view?.RefreshTestLab();
@@ -752,6 +760,80 @@ namespace UnityIsekaiGame.UI.Inventory
             Refresh();
         }
 
+        private void InitializeSaveLoad()
+        {
+            if (view == null)
+            {
+                return;
+            }
+
+            DefinitionCatalog catalog = ResolveSaveLoadCatalog();
+            PrototypePersistenceServiceBehaviour persistence = ResolveSaveLoadPersistence(catalog);
+            view.InitializeSaveLoad(persistence);
+        }
+
+        private DefinitionCatalog ResolveSaveLoadCatalog()
+        {
+            if (saveLoadDefinitionCatalog != null)
+            {
+                return saveLoadDefinitionCatalog;
+            }
+
+#if UNITY_EDITOR
+            saveLoadDefinitionCatalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>("Assets/GameData/Prototype/PrototypeDefinitionCatalog.asset");
+#endif
+            return saveLoadDefinitionCatalog;
+        }
+
+        private PrototypePersistenceServiceBehaviour ResolveSaveLoadPersistence(DefinitionCatalog catalog)
+        {
+            if (saveLoadPersistence == null)
+            {
+                saveLoadPersistence = UnityEngine.Object.FindAnyObjectByType<PrototypePersistenceServiceBehaviour>();
+            }
+
+            bool activateCreatedPersistence = false;
+            if (saveLoadPersistence == null && Application.isPlaying)
+            {
+                GameObject persistenceObject = new GameObject("Prototype Persistence Service");
+                persistenceObject.SetActive(false);
+                saveLoadPersistence = persistenceObject.AddComponent<PrototypePersistenceServiceBehaviour>();
+                activateCreatedPersistence = true;
+            }
+
+            ConfigurePersistence(saveLoadPersistence, catalog, activateCreatedPersistence);
+            return saveLoadPersistence;
+        }
+
+        private void ConfigurePersistence(PrototypePersistenceServiceBehaviour persistence, DefinitionCatalog catalog, bool activateCreatedPersistence)
+        {
+            if (persistence == null)
+            {
+                return;
+            }
+
+            persistence.ConfigurePlayerPersistence(
+                catalog,
+                inventory,
+                equipment,
+                playerStats,
+                playerHealth,
+                playerMana,
+                playerStamina,
+                statusEffects,
+                questLog,
+                contractJournal);
+
+            if (activateCreatedPersistence)
+            {
+                persistence.gameObject.SetActive(true);
+            }
+            else
+            {
+                persistence.EnsureInitialized();
+            }
+        }
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private void InitializeTestLab()
         {
@@ -801,6 +883,12 @@ namespace UnityIsekaiGame.UI.Inventory
                 return testLabDefinitionCatalog;
             }
 
+            if (saveLoadDefinitionCatalog != null)
+            {
+                testLabDefinitionCatalog = saveLoadDefinitionCatalog;
+                return testLabDefinitionCatalog;
+            }
+
 #if UNITY_EDITOR
             testLabDefinitionCatalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>("Assets/GameData/Prototype/PrototypeDefinitionCatalog.asset");
 #endif
@@ -811,7 +899,9 @@ namespace UnityIsekaiGame.UI.Inventory
         {
             if (testLabPersistence == null)
             {
-                testLabPersistence = UnityEngine.Object.FindAnyObjectByType<PrototypePersistenceServiceBehaviour>();
+                testLabPersistence = saveLoadPersistence != null
+                    ? saveLoadPersistence
+                    : UnityEngine.Object.FindAnyObjectByType<PrototypePersistenceServiceBehaviour>();
             }
 
             bool activateCreatedPersistence = false;
@@ -823,28 +913,8 @@ namespace UnityIsekaiGame.UI.Inventory
                 activateCreatedPersistence = true;
             }
 
-            if (testLabPersistence != null)
-            {
-                testLabPersistence.ConfigurePlayerPersistence(
-                    catalog,
-                    inventory,
-                    equipment,
-                    playerStats,
-                    playerHealth,
-                    playerMana,
-                    playerStamina,
-                    statusEffects,
-                    questLog,
-                    contractJournal);
-                if (activateCreatedPersistence)
-                {
-                    testLabPersistence.gameObject.SetActive(true);
-                }
-                else
-                {
-                    testLabPersistence.EnsureInitialized();
-                }
-            }
+            ConfigurePersistence(testLabPersistence, catalog, activateCreatedPersistence);
+            saveLoadPersistence ??= testLabPersistence;
 
             return testLabPersistence;
         }

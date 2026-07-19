@@ -40,6 +40,8 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private Text statusReadoutText;
         [SerializeField] private GameObject spellsContentRoot;
         [SerializeField] private GameObject contractsContentRoot;
+        [SerializeField] private GameObject saveLoadContentRoot;
+        [SerializeField] private SaveLoadMenuView saveLoadView;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         [SerializeField] private GameObject testLabContentRoot;
         [SerializeField] private PrototypeTestLabView testLabView;
@@ -48,6 +50,7 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private Button characterMenuButton;
         [SerializeField] private Button spellsMenuButton;
         [SerializeField] private Button contractsMenuButton;
+        [SerializeField] private Button saveLoadMenuButton;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         [SerializeField] private Button testLabMenuButton;
 #endif
@@ -55,6 +58,7 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private Image characterMenuButtonImage;
         [SerializeField] private Image spellsMenuButtonImage;
         [SerializeField] private Image contractsMenuButtonImage;
+        [SerializeField] private Image saveLoadMenuButtonImage;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         [SerializeField] private Image testLabMenuButtonImage;
 #endif
@@ -144,6 +148,13 @@ namespace UnityIsekaiGame.UI.Inventory
                 contractsMenuButton.onClick.AddListener(ShowContractsSection);
             }
 
+            EnsureSaveLoadMenuObjects();
+            if (saveLoadMenuButton != null)
+            {
+                saveLoadMenuButton.onClick.RemoveListener(ShowSaveLoadSection);
+                saveLoadMenuButton.onClick.AddListener(ShowSaveLoadSection);
+            }
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             EnsureTestLabMenuObjects();
             if (testLabMenuButton != null)
@@ -157,6 +168,18 @@ namespace UnityIsekaiGame.UI.Inventory
             unequipSelected = onUnequipSelected;
             ApplyPrototypeMenuLayout();
             ApplyActiveSection();
+        }
+
+        public void InitializeSaveLoad(PrototypePersistenceServiceBehaviour persistence)
+        {
+            EnsureSaveLoadMenuObjects();
+            saveLoadView?.Initialize(persistence);
+            ApplyActiveSection();
+        }
+
+        public void RefreshSaveLoad()
+        {
+            saveLoadView?.Refresh();
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -392,6 +415,13 @@ namespace UnityIsekaiGame.UI.Inventory
             ApplyActiveSection();
         }
 
+        private void ShowSaveLoadSection()
+        {
+            activeSection = InventoryMenuSection.SaveLoad;
+            saveLoadView?.Refresh();
+            ApplyActiveSection();
+        }
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private void ShowTestLabSection()
         {
@@ -406,6 +436,7 @@ namespace UnityIsekaiGame.UI.Inventory
             bool characterActive = activeSection == InventoryMenuSection.Character;
             bool spellsActive = activeSection == InventoryMenuSection.Spells;
             bool contractsActive = activeSection == InventoryMenuSection.Contracts;
+            bool saveLoadActive = activeSection == InventoryMenuSection.SaveLoad;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             bool testLabActive = activeSection == InventoryMenuSection.TestLab;
 #endif
@@ -428,6 +459,11 @@ namespace UnityIsekaiGame.UI.Inventory
             if (contractsContentRoot != null)
             {
                 contractsContentRoot.SetActive(contractsActive);
+            }
+
+            if (saveLoadContentRoot != null)
+            {
+                saveLoadContentRoot.SetActive(saveLoadActive);
             }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -467,6 +503,11 @@ namespace UnityIsekaiGame.UI.Inventory
                 contractsMenuButtonImage.color = contractsActive ? activeMenuColor : inactiveMenuColor;
             }
 
+            if (saveLoadMenuButtonImage != null)
+            {
+                saveLoadMenuButtonImage.color = saveLoadActive ? activeMenuColor : inactiveMenuColor;
+            }
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (testLabMenuButtonImage != null)
             {
@@ -499,8 +540,9 @@ namespace UnityIsekaiGame.UI.Inventory
             ConfigureNavigationButton(inventoryMenuButton, "Inventory", 1);
             ConfigureNavigationButton(spellsMenuButton, "Spells", 2);
             ConfigureNavigationButton(contractsMenuButton, "Journal", 3);
+            ConfigureNavigationButton(saveLoadMenuButton, "Save/Load", 4);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            ConfigureNavigationButton(testLabMenuButton, "Test Lab", 4);
+            ConfigureNavigationButton(testLabMenuButton, "Test Lab", 5);
 #endif
         }
 
@@ -609,6 +651,62 @@ namespace UnityIsekaiGame.UI.Inventory
             layoutElement.minHeight = NavigationButtonHeight;
             layoutElement.preferredHeight = NavigationButtonHeight;
             layoutElement.flexibleHeight = 0f;
+        }
+
+        private void EnsureSaveLoadMenuObjects()
+        {
+            Font font = feedbackText == null ? null : feedbackText.font;
+            if (font == null)
+            {
+                font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            }
+
+            if (saveLoadMenuButton == null)
+            {
+                Transform buttonParent = contractsMenuButton == null ? transform : contractsMenuButton.transform.parent;
+                GameObject buttonObject = new GameObject("Save Load Menu Button", typeof(RectTransform), typeof(Image), typeof(Button));
+                buttonObject.transform.SetParent(buttonParent, false);
+                saveLoadMenuButtonImage = buttonObject.GetComponent<Image>();
+                saveLoadMenuButtonImage.color = inactiveMenuColor;
+                saveLoadMenuButton = buttonObject.GetComponent<Button>();
+
+                Text label = CreateDetailsText("Label", buttonObject.transform, font, 12, FontStyle.Bold, TextAnchor.MiddleCenter);
+                RectTransform labelRect = label.rectTransform;
+                labelRect.anchorMin = Vector2.zero;
+                labelRect.anchorMax = Vector2.one;
+                labelRect.offsetMin = new Vector2(6f, 2f);
+                labelRect.offsetMax = new Vector2(-6f, -2f);
+                label.text = "Save/Load";
+
+                LayoutElement layout = buttonObject.AddComponent<LayoutElement>();
+                ApplyNavigationButtonLayout(layout);
+            }
+
+            if (saveLoadContentRoot == null)
+            {
+                Transform contentParent = contractsContentRoot == null ? transform : contractsContentRoot.transform.parent;
+                saveLoadContentRoot = new GameObject("Save Load Content", typeof(RectTransform));
+                saveLoadContentRoot.transform.SetParent(contentParent, false);
+                RectTransform rectTransform = saveLoadContentRoot.GetComponent<RectTransform>();
+                rectTransform.anchorMin = Vector2.zero;
+                rectTransform.anchorMax = Vector2.one;
+                rectTransform.offsetMin = Vector2.zero;
+                rectTransform.offsetMax = Vector2.zero;
+            }
+
+            if (saveLoadView == null)
+            {
+                saveLoadView = saveLoadContentRoot.GetComponent<SaveLoadMenuView>();
+                if (saveLoadView == null)
+                {
+                    saveLoadView = saveLoadContentRoot.AddComponent<SaveLoadMenuView>();
+                }
+            }
+
+            if (saveLoadMenuButtonImage == null && saveLoadMenuButton != null)
+            {
+                saveLoadMenuButtonImage = saveLoadMenuButton.GetComponent<Image>();
+            }
         }
 
         private void EnsureItemDetailsPanel()
@@ -769,6 +867,7 @@ namespace UnityIsekaiGame.UI.Inventory
             Character,
             Spells,
             Contracts,
+            SaveLoad,
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             TestLab
 #endif

@@ -46,6 +46,7 @@ namespace UnityIsekaiGame.Development
         private Text historyText;
         private Text locationText;
         private Text worldEntityText;
+        private Text persistenceText;
         private Text itemValueText;
         private Text statusValueText;
         private Text damageValueText;
@@ -132,6 +133,11 @@ namespace UnityIsekaiGame.Development
             if (worldEntityText != null)
             {
                 worldEntityText.text = service.BuildWorldEntitySummary();
+            }
+
+            if (persistenceText != null)
+            {
+                persistenceText.text = service.BuildSaveSlotSummary();
             }
 
             UpdateSelectorLabels();
@@ -277,6 +283,16 @@ namespace UnityIsekaiGame.Development
                 ("Load", () => service.Load()),
                 ("Validate Save", () => service.ValidateSave()),
                 ("Delete Save", () => service.DeleteSave(confirmed: false)));
+            AddButtonRow(parent, font,
+                ("Save Manual 1", () => service.SaveManualSlotOne()),
+                ("Force Autosave", () => service.ForceAutosave()),
+                ("Short Autosave", () => service.SetShortAutosaveInterval()));
+            AddButtonRow(parent, font,
+                ("Mark Dirty", () => service.MarkSaveDirty()),
+                ("Mark Clean", () => service.MarkSaveClean()),
+                ("Validate Backup", () => service.ValidateManualSlotOneBackup()),
+                ("Load Backup", () => service.LoadManualSlotOneBackup()));
+            persistenceText = AddText(parent, font, "Save slots not available.", 12, 260);
         }
 
         private void BuildLocationSection(Transform parent, Font font)

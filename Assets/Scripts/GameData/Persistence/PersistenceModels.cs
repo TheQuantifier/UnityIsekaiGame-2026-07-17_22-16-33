@@ -92,6 +92,56 @@ namespace UnityIsekaiGame.GameData.Persistence
         UnknownException
     }
 
+    public enum SaveSlotKind
+    {
+        Manual = 0,
+        Autosave = 100,
+        Quicksave = 200,
+        Recovery = 300,
+        Development = 400
+    }
+
+    public enum SaveCompatibilityStatus
+    {
+        Compatible = 0,
+        OlderSupported = 100,
+        MigrationRequired = 200,
+        FutureVersion = 300,
+        MissingContent = 400,
+        WrongWorld = 500,
+        WrongPlayer = 600,
+        Corrupted = 700,
+        Empty = 800,
+        Unknown = 900
+    }
+
+    public enum PersistenceOperationState
+    {
+        Idle = 0,
+        Capturing = 100,
+        Validating = 200,
+        Writing = 300,
+        RotatingAutosaves = 400,
+        PreparingLoad = 500,
+        CommittingParticipants = 600,
+        RecoveringBackup = 700,
+        Deleting = 800,
+        ValidatingSlot = 900,
+        Failed = 1000
+    }
+
+    public enum SaveEligibilityStatus
+    {
+        Allowed = 0,
+        OperationInProgress = 100,
+        InvalidPlayerState = 200,
+        SceneTransition = 300,
+        NoActivePlayer = 400,
+        ModalBlocked = 500,
+        ParticipantCaptureFailed = 600,
+        Unknown = 900
+    }
+
     [Serializable]
     public sealed class GameSaveEnvelope
     {
@@ -134,8 +184,10 @@ namespace UnityIsekaiGame.GameData.Persistence
         public string displayName;
         public string saveId;
         public string createdUtc;
+        public string lastWrittenUtc;
         public string modifiedUtc;
         public double playtimeSeconds;
+        public string sceneSummary;
         public string currentPlaceSummary;
         public string playerSummary;
         public string worldId;
@@ -149,6 +201,64 @@ namespace UnityIsekaiGame.GameData.Persistence
         public bool isValid;
         public string status;
         public string message;
+    }
+
+    [Serializable]
+    public sealed class SaveSlotDescriptor
+    {
+        public string slotId;
+        public SaveSlotKind slotKind;
+        public string displayName;
+        public bool exists;
+        public bool isValid;
+        public bool primaryExists;
+        public bool backupExists;
+        public int schemaVersion;
+        public string createdAtUtc;
+        public string lastSavedAtUtc;
+        public double playTimeSeconds;
+        public string sceneKey;
+        public string placeId;
+        public string placeDisplayName;
+        public string playerDisplayName;
+        public string currentHealthSummary;
+        public PersistenceValidationStatus validationStatus;
+        public SaveCompatibilityStatus compatibilityStatus;
+        public string lastErrorCode;
+        public string message;
+        public long fileSizeBytes;
+        public int saveGeneration;
+        public bool isNewestAutosave;
+
+        public bool CanSave => slotKind == SaveSlotKind.Manual;
+        public bool CanLoad => exists && isValid && compatibilityStatus == SaveCompatibilityStatus.Compatible;
+        public bool CanDelete => slotKind == SaveSlotKind.Manual && exists;
+        public bool CanValidate => exists || backupExists;
+        public bool CanLoadBackup => backupExists;
+    }
+
+    public readonly struct SaveEligibilityResult
+    {
+        private SaveEligibilityResult(bool allowed, SaveEligibilityStatus status, string message)
+        {
+            Allowed = allowed;
+            Status = status;
+            Message = string.IsNullOrWhiteSpace(message) ? status.ToString() : message;
+        }
+
+        public bool Allowed { get; }
+        public SaveEligibilityStatus Status { get; }
+        public string Message { get; }
+
+        public static SaveEligibilityResult Allow(string message = "Saving is allowed.")
+        {
+            return new SaveEligibilityResult(true, SaveEligibilityStatus.Allowed, message);
+        }
+
+        public static SaveEligibilityResult Block(SaveEligibilityStatus status, string message)
+        {
+            return new SaveEligibilityResult(false, status, message);
+        }
     }
 
     public sealed class PersistenceSaveResult

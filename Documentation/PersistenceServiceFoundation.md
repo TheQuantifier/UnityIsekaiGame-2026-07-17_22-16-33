@@ -276,12 +276,16 @@ Editor menu commands:
 - `Tools > Persistence > Validate Prototype Slot`
 - `Tools > Persistence > List Save Slots`
 - `Tools > Persistence > Delete Prototype Slot`
+- `Tools > Persistence > Force Autosave`
+- `Tools > Persistence > List Save Slot Descriptors`
 - `Tools > Persistence > Increment Prototype Value`
 - `Tools > Persistence > Toggle Prototype Flag`
 - `Tools > Persistence > Corrupt Prototype Primary File`
 - `Tools > Persistence > Open Prototype Save Folder`
 
 These commands require Play Mode. If no prototype persistence root exists, the commands create one scene-local `Prototype Persistence` GameObject. It is not `DontDestroyOnLoad`; scene-loading persistence is deferred.
+
+Feature 4.7 adds the player-facing Save/Load Tab menu page. That page uses five manual slots and three rotating autosaves through the same service APIs. See `Documentation/SaveSlotsAutosaveAndLoadUI.md`.
 
 ## Corruption And Recovery
 
