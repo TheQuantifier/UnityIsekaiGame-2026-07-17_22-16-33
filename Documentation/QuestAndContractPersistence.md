@@ -101,6 +101,8 @@ No live quest log, contract journal, inventory, or UI state changes during prepa
 
 Commit snapshots current quest/contract state, restores quests, restores contracts, and emits one quest-log and one contract-journal refresh through the runtime owners. If an unexpected commit failure occurs, the participant attempts to restore the pre-load snapshots.
 
+Feature 4.8 adds service-level rollback around this participant as part of the integrated load transaction. If quest/contract commit or a later consistency audit fails, the service uses prepared rollback payloads and `PersistenceRestorationGuard` so previous player state can be restored without replaying gameplay signals.
+
 ## Event Safety
 
 Restoration rebuilds runtime instances directly rather than replaying gameplay events. Old objective listeners are disposed before live collections are replaced. Restore-specific activation attaches listeners without calling initial progress refresh, preventing load from auto-advancing quests or contracts.
@@ -117,3 +119,4 @@ Dialogue, contract board, and Journal UI continue reading runtime quest/contract
 - No party quest, faction contract, player-created contract, global event, autosave, cloud save, or multiplayer server persistence.
 - Schema version 1 local prototype saves are not migrated and should be discarded after this Feature 4.4 change.
 - Offline objective progression and timed contract expiration are not implemented.
+- Recovery UI is development-focused; final player recovery workflows are still deferred.

@@ -75,6 +75,8 @@ Commit restores the prepared inventory DTO, then restores the prepared equipment
 
 An unexpected commit failure attempts a local rollback to pre-load inventory/equipment snapshots and reports a structured participant commit failure. Rollback is a defensive fallback, not a replacement for prepare-time validation.
 
+Feature 4.8 also wraps this participant in service-level transaction handling. The service validates dependencies before capture/load, captures rollback payloads before commit, commits participants in dependency order, and marks the runtime unsafe if rollback cannot restore a coherent state.
+
 ## Current Vitals
 
 Feature 4.2 does not persist current health, mana, or stamina.
@@ -107,3 +109,4 @@ To extend item persistence later:
 - No current vital persistence.
 - No status, quest, contract, position, scene, enemy, chest, door, or shared-world persistence.
 - No networking, authentication, cloud saves, or server database integration.
+- Recovery UI is development-focused; final player recovery workflows are still deferred.

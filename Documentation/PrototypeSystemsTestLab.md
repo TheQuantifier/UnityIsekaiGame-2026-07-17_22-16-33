@@ -79,7 +79,7 @@ The Test Lab reuses `PrototypePersistenceServiceBehaviour`. If one is not presen
 
 Persistence controls are still local prototype controls. They do not imply player authority over shared-world state in future multiplayer architecture.
 
-The Persistence section shows save-slot diagnostics and includes controls for the prototype slot, manual slot 1, forced autosave, short autosave interval, dirty/clean state, backup validation, and explicit backup load.
+The Persistence section shows save-slot diagnostics and includes controls for the prototype slot, manual slot 1, forced autosave, short autosave interval, dirty/clean state, backup validation, explicit backup load, runtime fingerprint capture, recovery scan, backup promotion, primary quarantine, stale temp cleanup, and one-shot prepare/commit/audit fault injection.
 
 ## Diagnostics
 
@@ -91,6 +91,7 @@ Diagnostics currently report:
 - duplicate runtime status application IDs on player and enemy.
 - registered world entity IDs through the World Entities Test Lab section.
 - current save-slot state, dirty flag, play time, and last autosave result through the Persistence section.
+- persistence transaction phase, runtime safety, dependency summary, recovery recommendation, consistency audit summary, and runtime state fingerprint through the Persistence section.
 
 The diagnostics are intentionally replaceable. They are meant to catch common prototype setup mistakes, not to replace definition validation, automated tests, or future PlayMode system test suites.
 
@@ -114,13 +115,16 @@ Use the Test Lab only in the existing Tab menu:
 14. Use `Next Quest`, start a quest, and use Talk/Reach/Defeat report buttons to verify quest progress changes in Journal.
 15. Use `Next Contract`, accept a contract, and verify it appears in Journal.
 16. Use the persistence scenario, click `Save`, change player state, click `Load`, and confirm saved player state restores.
-17. Open the `World Entities` Test Lab section. Click `Refresh`, then confirm authored PrototypeScene entities are listed.
-18. Select an item and click `Spawn Persistent`; confirm the spawned loot gets an `entity.local-world.runtime.*` ID.
-19. Click `Destroy Spawned`, then `Recreate Saved`; confirm the same runtime world entity ID is restored.
-20. Click `Duplicate Proof`; confirm the lab reports duplicate rejection instead of registering two objects with the same ID.
-21. Click `Spawn Transient`; confirm it appears in-world but is not added to the registered world entity list.
-22. Click `Delete Save` once and confirm it requires confirmation. Click it again only if you want to remove the prototype slot.
-23. Close the Tab menu and confirm movement, look, interaction, combat, and normal prototype controls resume.
+17. In the Persistence section, click `Fingerprint`, then save manual slot 1, change player state, and load manual slot 1. Confirm the restored state matches expectations and the displayed runtime safety remains safe.
+18. Click `Recovery Scan` and confirm the recovery summary updates without automatically loading or promoting any save file.
+19. Click `Fail Prepare`, then attempt a load and confirm it fails before changing live state. Repeat with `Fail Commit` and confirm the lab reports rollback instead of leaving mixed state. Repeat with `Fail Audit` and confirm rollback is reported.
+20. Open the `World Entities` Test Lab section. Click `Refresh`, then confirm authored PrototypeScene entities are listed.
+21. Select an item and click `Spawn Persistent`; confirm the spawned loot gets an `entity.local-world.runtime.*` ID.
+22. Click `Destroy Spawned`, then `Recreate Saved`; confirm the same runtime world entity ID is restored.
+23. Click `Duplicate Proof`; confirm the lab reports duplicate rejection instead of registering two objects with the same ID.
+24. Click `Spawn Transient`; confirm it appears in-world but is not added to the registered world entity list.
+25. Click `Delete Save` once and confirm it requires confirmation. Click it again only if you want to remove the prototype slot.
+26. Close the Tab menu and confirm movement, look, interaction, combat, and normal prototype controls resume.
 
 ## Known Limitations
 

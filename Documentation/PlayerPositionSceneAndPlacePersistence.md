@@ -32,6 +32,8 @@ Commit enters `LocationRestoreGuard`, blocks gameplay input, closes the Tab/Test
 
 If same-scene commit fails, the previous transform is restored where practical.
 
+Feature 4.8 also captures this participant in the integrated service rollback snapshot. The participant remains last in the current default dependency chain so inventory, stats, quests, and contracts are coherent before a same-scene position/place restore can run.
+
 ## Safe Position And Fallback
 
 Saved positions must be finite, within prototype bounds, and pass a ground probe. Unsafe positions use fallback order:
@@ -66,3 +68,4 @@ Offline-world changes such as destroyed buildings, unavailable regions, ownershi
 - World pickups, enemies, doors, containers, NPC runtime state, and shared-world simulation are not persisted.
 - World entity IDs exist for future references, but world entity mutable state is not persisted by `player.location`.
 - Safe-position validation is prototype-level and should be replaced by server/navmesh/world validation later.
+- Cross-scene rollback and final player recovery UI are still deferred.

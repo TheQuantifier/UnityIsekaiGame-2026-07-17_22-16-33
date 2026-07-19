@@ -58,7 +58,7 @@ The prototype marks dirty on inventory, equipment, vitals/resources, status, que
 
 `SaveLoadMenuView` is generated inside the existing unified Tab menu.
 
-The right-side Tab navigation remains unchanged except for the added `Save/Load` page. The page uses two selector rows: one for the save slot and one for the action. The selected slot metadata, compatibility/status, backup presence, dirty state, and current persistence operation state remain visible below the selectors.
+The right-side Tab navigation remains unchanged except for the added `Save/Load` page. The page uses two selector rows: one for the save slot and one for the action. The selected slot metadata, compatibility/status, backup presence, dirty state, current persistence operation state, current phase, runtime safety state, revision, and transaction ID remain visible below the selectors.
 
 Confirmation behavior:
 
@@ -69,7 +69,7 @@ Confirmation behavior:
 
 ## Test Lab And Editor Tools
 
-The Test Lab Persistence section now includes save-slot diagnostics, manual slot 1 save, force autosave, short autosave interval, dirty/clean toggles, backup validation, and explicit backup load.
+The Test Lab Persistence section now includes save-slot diagnostics, manual slot 1 save, force autosave, short autosave interval, dirty/clean toggles, backup validation, explicit backup load, runtime fingerprints, recovery scan, backup promotion, primary quarantine, stale temp cleanup, and one-shot prepare/commit/audit fault injection.
 
 Editor menu commands remain prototype-oriented and now include save-slot listing through the same service metadata. They are development conveniences, not runtime architecture.
 
@@ -91,4 +91,4 @@ Feature 4.7 does not add:
 - world-state persistence for enemies, pickups, doors, containers, or NPC schedules;
 - cross-scene loading;
 - server persistence;
-- recovery flows beyond explicit backup load.
+- final player-facing recovery UI beyond explicit backup load and development diagnostics.

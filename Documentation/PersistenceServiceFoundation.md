@@ -17,6 +17,11 @@ It owns:
 - atomic write and backup handling;
 - metadata listing;
 - validation-only reads;
+- transaction IDs and phase diagnostics;
+- participant dependency preflight;
+- rollback snapshot capture;
+- post-load consistency auditing;
+- recovery source scanning;
 - two-phase load orchestration;
 - structured save, load, validation, and delete results;
 - operation locking.
@@ -147,20 +152,24 @@ Runtime saves are not written inside `Assets` or the repository.
 Save flow:
 
 1. reject overlapping operations;
-2. capture and self-validate participant payloads;
-3. assemble an envelope;
-4. serialize to memory;
-5. create the save directory;
-6. delete stale temporary file;
-7. write the temporary file;
-8. validate the temporary envelope;
-9. copy the previous primary file to one backup;
-10. replace the primary with the temporary file;
-11. report a structured result.
+2. assign a transaction ID;
+3. validate participant dependencies;
+4. capture and self-validate participant payloads;
+5. assemble an envelope with transaction metadata;
+6. serialize to memory;
+7. create the save directory;
+8. delete stale temporary file;
+9. write the temporary file;
+10. validate the temporary envelope;
+11. copy the previous primary file to one backup;
+12. replace the primary with the temporary file;
+13. report a structured result.
 
 Failed capture, serialization, temporary write, or validation does not replace the existing primary save.
 
 One backup per slot is kept.
+
+Feature 4.8 adds explicit save phases and a completed-write marker. The checksum intentionally remains scoped to authoritative save content so older Step 4 saves remain readable.
 
 ## Load Flow
 
@@ -178,11 +187,13 @@ Phase 1:
 
 Phase 2:
 
-1. commit prepared payloads in deterministic order;
-2. report success;
-3. notify listeners.
+1. capture rollback payloads from the current live runtime state;
+2. commit prepared payloads in deterministic dependency order;
+3. run the consistency audit hook;
+4. report success;
+5. notify listeners.
 
-Participant commits are expected not to fail after successful preparation. If one does, the service reports a critical participant commit failure. Full rollback is not implemented yet.
+Participant commits are expected not to fail after successful preparation. If one does, Feature 4.8 restores already committed participants in reverse order from the rollback snapshot. If rollback fails, the runtime is marked `Unsafe` and normal save/load is blocked until recovery or restart.
 
 ## Participant Ordering
 
@@ -193,6 +204,8 @@ Ordering is deterministic:
 3. participant key.
 
 The initial phases are placeholders for later Step 4 features: bootstrap, actor base, inventory, equipment, statuses, vitals, quests/contracts, position/place, notification, and prototype.
+
+Feature 4.8 adds optional `IPersistenceParticipantDependencies`. Participants can declare required and optional dependencies, and the service also supplies default ordering dependencies for the current player participants. Missing explicit required dependencies and circular dependencies fail before capture or load mutation; missing ordering-only dependencies are reported as diagnostics.
 
 ## Required And Optional Participants
 
@@ -281,6 +294,9 @@ Editor menu commands:
 - `Tools > Persistence > Increment Prototype Value`
 - `Tools > Persistence > Toggle Prototype Flag`
 - `Tools > Persistence > Corrupt Prototype Primary File`
+- `Tools > Persistence > Integration Diagnostics`
+- `Tools > Persistence > Run Recovery Scan`
+- `Tools > Persistence > Promote Manual Slot 1 Backup`
 - `Tools > Persistence > Open Prototype Save Folder`
 
 These commands require Play Mode. If no prototype persistence root exists, the commands create one scene-local `Prototype Persistence` GameObject. It is not `DontDestroyOnLoad`; scene-loading persistence is deferred.
@@ -293,7 +309,7 @@ Normal load checks the primary file. If the primary fails validation and a valid
 
 Backup load is explicit through the service API or development menu.
 
-Corrupt files are not deleted automatically.
+Corrupt files are not deleted automatically. Feature 4.8 adds recovery scanning, explicit backup promotion, explicit primary quarantine, and stale temporary save cleanup for development and future UI workflows.
 
 ## Main Thread Policy
 
@@ -335,6 +351,6 @@ World entity IDs are not proof of client ownership. They are object handles that
 - No cross-scene loading.
 - No full world-entity state persistence.
 - No full gameplay persistence yet.
-- No rollback after an unexpected commit failure.
 - No automatic migrations.
+- No final player-facing recovery UI.
 - Unity `JsonUtility` limits version-tolerant and polymorphic payload support.

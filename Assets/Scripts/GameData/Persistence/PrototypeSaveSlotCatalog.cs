@@ -116,7 +116,9 @@ namespace UnityIsekaiGame.GameData.Persistence
                 message = metadata?.message ?? (exists ? string.Empty : "Empty slot."),
                 fileSizeBytes = metadata?.fileSizeBytes ?? 0,
                 saveGeneration = generation,
-                isNewestAutosave = newestAutosave
+                isNewestAutosave = newestAutosave,
+                transactionId = metadata?.transactionId ?? string.Empty,
+                saveRevision = metadata?.saveRevision ?? 0
             };
         }
 

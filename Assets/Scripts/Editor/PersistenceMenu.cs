@@ -112,6 +112,44 @@ namespace UnityIsekaiGame.Editor
             Debug.Log($"Force autosave result: {result.Status} - {result.Message}");
         }
 
+        [MenuItem("Tools/Persistence/Integration Diagnostics")]
+        public static void IntegrationDiagnostics()
+        {
+            PrototypePersistenceServiceBehaviour service = GetOrCreatePrototypeService();
+            if (service == null)
+            {
+                return;
+            }
+
+            Debug.Log(service.BuildPersistenceIntegrationDiagnosticSummary());
+        }
+
+        [MenuItem("Tools/Persistence/Run Recovery Scan")]
+        public static void RunRecoveryScan()
+        {
+            PrototypePersistenceServiceBehaviour service = GetOrCreatePrototypeService();
+            if (service == null)
+            {
+                return;
+            }
+
+            SaveRecoveryScanReport report = service.RunRecoveryScan();
+            Debug.Log($"Recovery scan: {report.candidates.Length} candidate(s). {report.recommendation}");
+        }
+
+        [MenuItem("Tools/Persistence/Promote Manual Slot 1 Backup")]
+        public static void PromoteManualSlotOneBackup()
+        {
+            PrototypePersistenceServiceBehaviour service = GetOrCreatePrototypeService();
+            if (service == null)
+            {
+                return;
+            }
+
+            PersistenceSaveResult result = service.PromoteBackup(PrototypeSaveSlotCatalog.ManualSlotId(0));
+            Debug.Log($"Promote backup result: {result.Status} - {result.Message}");
+        }
+
         [MenuItem("Tools/Persistence/Delete Prototype Slot")]
         public static void DeletePrototypeSlot()
         {

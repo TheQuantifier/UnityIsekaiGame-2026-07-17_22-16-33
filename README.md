@@ -112,6 +112,7 @@ Player stats/vitals/status persistence is documented in `Documentation/PlayerSta
 Quest and contract persistence is documented in `Documentation/QuestAndContractPersistence.md`.
 Player position, scene, and place persistence is documented in `Documentation/PlayerPositionSceneAndPlacePersistence.md`.
 Persistent world-entity identity is documented in `Documentation/PersistentWorldEntityIdentity.md`.
+Persistence integration, recovery, rollback, and failure hardening are documented in `Documentation/PersistenceIntegrationRecoveryAndFailureHardening.md`.
 The editor/development-build Prototype Systems Test Lab is documented in `Documentation/PrototypeSystemsTestLab.md`.
 PrototypeScene usability, zone layout, pickup grouping, and menu layout standards are documented in `Documentation/PrototypeSceneAndMenuUsability.md`.
 
