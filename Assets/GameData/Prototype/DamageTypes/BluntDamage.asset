@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 955727b101414908a1c0dfe2fc956909, type: 3}
+  m_Name: BluntDamage
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Combat.DamageTypeDefinition
+  damageTypeId: damage.physical.blunt
+  displayName: Blunt
+  description: Impact physical damage.
+  icon: {fileID: 0}
+  primaryCategory: {fileID: 11400000, guid: 17f5e1e3a84f4a12865446ca875b0474, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 62c90b192cb1406ba17cdd6ff6a23cd4, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  parentDamageType: {fileID: 11400000, guid: b5e0014699c74ca5b54041aa6e7f12a7, type: 2}
+  family: 0
+  generalDefenseApplies: 1
+  enforceMinimumDamage: 1
+  minimumDamage: 1
+  presentationNotes: Prototype enemy melee impact damage.

@@ -1,12 +1,13 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Inventory
 {
     [CreateAssetMenu(fileName = "NewItemDefinition", menuName = "Unity Isekai Game/Inventory/Item Definition")]
-    public sealed class ItemDefinition : ScriptableObject, IInventoryItemDefinition, IUsableItemDefinition, IEquippableItemDefinition, IHasRarity, IItemInstancePolicy
+    public sealed class ItemDefinition : ScriptableObject, IInventoryItemDefinition, IUsableItemDefinition, IEquippableItemDefinition, IHasRarity, IItemInstancePolicy, IDefinitionCatalogValidationParticipant
     {
         [SerializeField] private string itemId;
         [SerializeField] private string displayName;
@@ -63,6 +64,60 @@ namespace UnityIsekaiGame.Inventory
         {
             maximumStackSize = Mathf.Max(1, maximumStackSize);
             equipment?.Validate();
+        }
+
+        public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            if (report == null || equipment == null || !equipment.Equippable)
+            {
+                return;
+            }
+
+            ValidateDamageTypeReference(equipment.MeleeWeapon?.DamageType, "melee weapon", definitionsById, report);
+            IReadOnlyList<ResistanceModifierDefinition> resistanceModifiers = equipment.ResistanceModifiers;
+            HashSet<string> seenResistanceTypes = new HashSet<string>();
+            for (int i = 0; i < resistanceModifiers.Count; i++)
+            {
+                ResistanceModifierDefinition modifier = resistanceModifiers[i];
+                if (modifier == null)
+                {
+                    report.AddError($"Item definition '{DisplayName}' has a null equipment resistance modifier at index {i}.");
+                    continue;
+                }
+
+                if (modifier.DamageType == null)
+                {
+                    report.AddError($"Item definition '{DisplayName}' has an equipment resistance modifier with no damage type at index {i}.");
+                    continue;
+                }
+
+                if (!modifier.IsValid)
+                {
+                    report.AddError($"Item definition '{DisplayName}' has an invalid equipment resistance modifier for '{modifier.DamageType.Id}'.");
+                }
+
+                if (!seenResistanceTypes.Add($"{modifier.DamageType.Id}:{modifier.Priority}"))
+                {
+                    report.AddWarning($"Item definition '{DisplayName}' has duplicate-looking equipment resistance modifier for '{modifier.DamageType.Id}'.");
+                }
+
+                ValidateDamageTypeReference(modifier.DamageType, "equipment resistance", definitionsById, report);
+            }
+        }
+
+        private void ValidateDamageTypeReference(DamageTypeDefinition damageTypeDefinition, string label, IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            if (damageTypeDefinition == null)
+            {
+                return;
+            }
+
+            if (definitionsById == null
+                || !definitionsById.TryGetValue(damageTypeDefinition.Id, out IGameDefinition found)
+                || found is not DamageTypeDefinition)
+            {
+                report.AddError($"Item definition '{DisplayName}' {label} references damage type '{damageTypeDefinition.Id}', which is not in the configured catalog.");
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Stats;
 
 namespace UnityIsekaiGame.Equipment
@@ -83,7 +84,9 @@ namespace UnityIsekaiGame.Equipment
             for (int i = 0; i < values.Length; i++)
             {
                 EquipmentSlotType slotType = (EquipmentSlotType)values.GetValue(i);
-                RemoveModifiersFromSource(CreateEquipmentSource(slotType));
+                StatModifierSource source = CreateEquipmentSource(slotType);
+                RemoveModifiersFromSource(source);
+                RemoveResistanceModifiersFromSource(source);
             }
         }
 
@@ -96,6 +99,7 @@ namespace UnityIsekaiGame.Equipment
             AddFlatEquipmentModifier(source, StatType.MaximumMana, modifiers.MaximumMana);
             AddFlatEquipmentModifier(source, StatType.AttackPower, modifiers.AttackPower);
             AddFlatEquipmentModifier(source, StatType.Defense, modifiers.Defense);
+            RegisterEquipmentResistanceModifiers(source, slot.Item.Equipment.ResistanceModifiers);
         }
 
         private void AddFlatEquipmentModifier(StatModifierSource source, StatType statType, float value)
@@ -111,6 +115,25 @@ namespace UnityIsekaiGame.Equipment
         private static StatModifierSource CreateEquipmentSource(EquipmentSlotType slotType)
         {
             return new StatModifierSource(StatModifierSourceType.Equipment, $"equipment.slot.{slotType}");
+        }
+
+        private void RegisterEquipmentResistanceModifiers(StatModifierSource source, System.Collections.Generic.IReadOnlyList<ResistanceModifierDefinition> modifiers)
+        {
+            if (modifiers == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < modifiers.Count; i++)
+            {
+                ResistanceModifierDefinition modifier = modifiers[i];
+                if (modifier == null || !modifier.IsValid)
+                {
+                    continue;
+                }
+
+                AddResistanceModifier(modifier.CreateRuntimeModifier(source));
+            }
         }
     }
 }

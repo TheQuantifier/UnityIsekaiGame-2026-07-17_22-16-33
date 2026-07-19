@@ -9,6 +9,7 @@ namespace UnityIsekaiGame.Combat
         [SerializeField] private EnemyHealth health;
         [SerializeField, Min(0f)] private float damage = 12f;
         [SerializeField] private AttackPowerScalingPolicy attackPowerScaling = AttackPowerScalingPolicy.AddSourceAttackPower;
+        [SerializeField] private DamageTypeDefinition damageType;
         [SerializeField, Min(0.1f)] private float attackRange = 1.6f;
         [SerializeField, Min(0f)] private float attackCooldown = 1.25f;
 
@@ -83,7 +84,11 @@ namespace UnityIsekaiGame.Combat
             nextAttackTime = Time.time + attackCooldown;
             float preMitigationDamage = CombatStatUtility.CalculatePreMitigationDamage(damage, gameObject, attackPowerScaling);
             Vector3 direction = GetPlanarDirectionTo(target);
-            DamageInfo damageInfo = new DamageInfo(preMitigationDamage, gameObject, target.position, direction, DamageType.Physical);
+            DamageComponent component = damageType == null
+                ? DamageComponent.Legacy(DamageType.Physical, preMitigationDamage, attackPowerScaling)
+                : new DamageComponent(damageType, preMitigationDamage, attackPowerScaling);
+            DamagePacket packet = DamagePacket.Single(gameObject, component);
+            DamageInfo damageInfo = new DamageInfo(preMitigationDamage, gameObject, target.position, direction, DamageType.Physical, packet);
             DamageResult result = damageable.ApplyDamage(in damageInfo);
             Debug.Log(result.Applied ? $"{name} attacked {target.name} for {result.AppliedAmount:0.#} damage." : result.Message);
             return Resolve(result);

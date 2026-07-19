@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Beings;
+using UnityIsekaiGame.Combat;
 
 namespace UnityIsekaiGame.Stats
 {
-    public class ActorStats : MonoBehaviour, IActorStats
+    public class ActorStats : MonoBehaviour, IActorStats, IDamageResistanceReceiver
     {
         [SerializeField] private ActorProfileDefinition actorProfile;
         [SerializeField, Min(1f)] protected float baseMaximumHealth = 100f;
@@ -15,6 +17,7 @@ namespace UnityIsekaiGame.Stats
         [SerializeField, Min(0f)] protected float baseMovementSpeed = 0f;
 
         private readonly RuntimeStatCollection runtimeStats = new RuntimeStatCollection();
+        private readonly RuntimeResistanceCollection runtimeResistances = new RuntimeResistanceCollection();
         private bool baseStatsConfigured;
 
         public float MaximumHealth => Mathf.Max(1f, GetRuntimeStatValue(StatType.MaximumHealth));
@@ -34,6 +37,7 @@ namespace UnityIsekaiGame.Stats
                 || !Mathf.Approximately(actorProfile.BaseDefense, baseDefense)
                 || !Mathf.Approximately(actorProfile.BaseMovementSpeed, baseMovementSpeed));
         public event Action StatsChanged;
+        public event Action<DamageTypeDefinition, float> ResistanceChanged;
 
         protected virtual void Awake()
         {
@@ -44,11 +48,13 @@ namespace UnityIsekaiGame.Stats
         {
             EnsureBaseStatsConfigured();
             runtimeStats.StatChanged += OnRuntimeStatChanged;
+            runtimeResistances.ResistanceChanged += OnRuntimeResistanceChanged;
         }
 
         protected virtual void OnDisable()
         {
             runtimeStats.StatChanged -= OnRuntimeStatChanged;
+            runtimeResistances.ResistanceChanged -= OnRuntimeResistanceChanged;
         }
 
         protected virtual void OnValidate()
@@ -99,6 +105,36 @@ namespace UnityIsekaiGame.Stats
             return runtimeStats.RemoveModifiersFromSource(source);
         }
 
+        public float GetDirectResistance(DamageTypeDefinition damageType)
+        {
+            EnsureBaseStatsConfigured();
+            return runtimeResistances.GetDirectResistance(damageType);
+        }
+
+        public float GetEffectiveResistance(DamageTypeDefinition damageType)
+        {
+            EnsureBaseStatsConfigured();
+            return runtimeResistances.GetEffectiveResistance(damageType);
+        }
+
+        public bool AddResistanceModifier(RuntimeResistanceModifier modifier)
+        {
+            EnsureBaseStatsConfigured();
+            return runtimeResistances.AddModifier(modifier);
+        }
+
+        public bool RemoveResistanceModifiersFromSource(StatModifierSource source)
+        {
+            EnsureBaseStatsConfigured();
+            return runtimeResistances.RemoveModifiersFromSource(source);
+        }
+
+        public IReadOnlyList<RuntimeResistanceModifier> GetResistanceModifiers()
+        {
+            EnsureBaseStatsConfigured();
+            return runtimeResistances.GetModifiers();
+        }
+
         protected void NotifyStatsChanged()
         {
             StatsChanged?.Invoke();
@@ -120,6 +156,7 @@ namespace UnityIsekaiGame.Stats
                     actorProfile.BaseAttackPower,
                     actorProfile.BaseDefense,
                     actorProfile.BaseMovementSpeed);
+                ApplyBaseResistances(actorProfile.BaseResistances);
                 LastInitializationResult = new ActorProfileInitializationResult(
                     ActorProfileInitializationStatus.InitializedFromProfile,
                     $"{name} actor stats initialized from profile '{actorProfile.Id}'.");
@@ -133,6 +170,7 @@ namespace UnityIsekaiGame.Stats
                     baseAttackPower,
                     baseDefense,
                     baseMovementSpeed);
+                runtimeResistances.ClearBaseResistances();
                 LastInitializationResult = new ActorProfileInitializationResult(
                     actorProfile == null ? ActorProfileInitializationStatus.InitializedFromLegacyFallback : ActorProfileInitializationStatus.InvalidProfile,
                     actorProfile == null
@@ -159,6 +197,24 @@ namespace UnityIsekaiGame.Stats
             runtimeStats.SetBaseValue(StatType.MovementSpeed, movementSpeed);
         }
 
+        private void ApplyBaseResistances(IReadOnlyList<ResistanceModifierDefinition> baseResistances)
+        {
+            runtimeResistances.ClearBaseResistances();
+            if (baseResistances == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < baseResistances.Count; i++)
+            {
+                ResistanceModifierDefinition resistance = baseResistances[i];
+                if (resistance != null && resistance.IsValid)
+                {
+                    runtimeResistances.SetBaseResistance(resistance.DamageType, resistance.Resistance);
+                }
+            }
+        }
+
         private float GetRuntimeStatValue(StatType statType)
         {
             EnsureBaseStatsConfigured();
@@ -168,6 +224,11 @@ namespace UnityIsekaiGame.Stats
         private void OnRuntimeStatChanged(StatType statType, float value)
         {
             NotifyStatsChanged();
+        }
+
+        private void OnRuntimeResistanceChanged(DamageTypeDefinition damageType, float value)
+        {
+            ResistanceChanged?.Invoke(damageType, value);
         }
     }
 }

@@ -4,7 +4,7 @@ Feature 3.8 adds the first runtime layer for actor status effects and stat modif
 
 ## Definition Versus Runtime State
 
-`StatusEffectDefinition` is static ScriptableObject data. It owns the stable status ID, display text, category, tags, disposition, duration model, stacking policy, refresh policy, visibility flag, and ordered stat modifier definitions. It never stores the current target, remaining duration, current stack count, source object, or subscriptions.
+`StatusEffectDefinition` is static ScriptableObject data. It owns the stable status ID, display text, category, tags, disposition, duration model, stacking policy, refresh policy, visibility flag, ordered stat modifier definitions, and optional typed resistance modifier definitions. It never stores the current target, remaining duration, current stack count, source object, or subscriptions.
 
 `RuntimeStatusEffect` is one active application on one actor. It owns the application ID, source identity, target reference, remaining duration, elapsed duration, stack count, and removed/expired state.
 
@@ -27,7 +27,7 @@ Final values are clamped to zero or above. Base values are never permanently cha
 
 Each runtime modifier has a source type and exact source ID. Status modifiers use the runtime status application ID. Equipment modifiers use slot source IDs such as `equipment.slot.MainHand`.
 
-Removing one status removes only modifiers from that status application. Removing equipment from one slot removes only that slot's contributions.
+Removing one status removes only modifiers from that status application. Removing equipment from one slot removes only that slot's contributions. Feature 3.13 applies the same source-identity rule to typed resistance modifiers.
 
 ## Status Owner
 
@@ -70,6 +70,10 @@ Health, mana, and stamina continue to listen to `PlayerStats.StatsChanged`. Incr
 Recommended flow:
 
 `AbilityDefinition -> ApplyStatusEffectDefinition -> StatusEffectController -> RuntimeStatModifier`
+
+For resistance:
+
+`AbilityDefinition -> ApplyStatusEffectDefinition -> StatusEffectController -> RuntimeResistanceModifier`
 
 ## Prototype Content
 

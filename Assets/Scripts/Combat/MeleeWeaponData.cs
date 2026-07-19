@@ -13,6 +13,7 @@ namespace UnityIsekaiGame.Combat
         [SerializeField, Min(0f)] private float attackCooldown = 0.5f;
         [SerializeField, Min(0f)] private float staminaCost;
         [SerializeField, Min(0.01f)] private float hitRadius = 0.35f;
+        [SerializeField] private DamageTypeDefinition damageType;
 
         public bool IsWeapon => weapon;
         public string AttackName => string.IsNullOrWhiteSpace(attackName) ? "Attack" : attackName;
@@ -21,6 +22,7 @@ namespace UnityIsekaiGame.Combat
         public float AttackCooldown => Mathf.Max(0f, attackCooldown);
         public float StaminaCost => Mathf.Max(0f, staminaCost);
         public float HitRadius => Mathf.Max(0.01f, hitRadius);
+        public DamageTypeDefinition DamageType => damageType;
 
         public void Validate()
         {

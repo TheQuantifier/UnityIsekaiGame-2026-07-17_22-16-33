@@ -87,8 +87,11 @@ namespace UnityIsekaiGame.Gameplay
                 return DamageResult.Failure(damageInfo.RawAmount, "Damage must be greater than zero.");
             }
 
-            DamageCalculation calculation = DamageCalculator.Calculate(damageInfo.RawAmount, CombatStatUtility.GetDefense(gameObject));
-            int roundedDamage = Mathf.Max(1, Mathf.RoundToInt(calculation.FinalAmount));
+            DamageCalculation calculation = DamageCalculator.CalculatePacket(
+                damageInfo.DamagePacket,
+                CombatStatUtility.GetDefense(gameObject),
+                GetComponentInParent<IDamageResistanceReceiver>());
+            int roundedDamage = calculation.FinalAmount <= 0f ? 0 : Mathf.Max(1, Mathf.RoundToInt(calculation.FinalAmount));
             int damageApplied = Damage(roundedDamage);
             bool defeatedNow = currentHealth <= 0;
             string message = defeatedNow

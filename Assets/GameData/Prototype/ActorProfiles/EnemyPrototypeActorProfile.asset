@@ -14,7 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.ActorProfileDefinition
   actorProfileId: actor-profile.enemy-prototype
   displayName: Enemy Prototype
-  description: Prototype enemy actor profile preserving current enemy health, defense, and movement metadata.
+  description: Prototype enemy actor profile preserving current enemy health, defense,
+    and movement metadata.
   beingDefinition: {fileID: 11400000, guid: 7651a66743cd448594e86f1f4774376c, type: 2}
   primaryCategory: {fileID: 11400000, guid: 02c94266952742b4921d4ab8cefe3141, type: 2}
   tags:
@@ -26,5 +27,6 @@ MonoBehaviour:
   baseAttackPower: 0
   baseDefense: 1
   baseMovementSpeed: 1.8
+  baseResistances: []
   futureSensesPlaceholder: 
   futureMovementProfilePlaceholder: 

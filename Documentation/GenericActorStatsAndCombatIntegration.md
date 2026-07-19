@@ -4,7 +4,7 @@ Feature 3.9 generalizes the runtime stat and status foundation so combat-capable
 
 ## Architecture
 
-`ActorStats` is the generic runtime stat component. It implements `IActorStats` and `IRuntimeStatReceiver`, owns one `RuntimeStatCollection`, and exposes calculated max health, max stamina, max mana, attack power, defense, and movement speed as read-only values.
+`ActorStats` is the generic runtime stat component. It implements `IActorStats` and `IRuntimeStatReceiver`, owns one `RuntimeStatCollection`, and exposes calculated max health, max stamina, max mana, attack power, defense, and movement speed as read-only values. Feature 3.13 also makes it the per-actor `IDamageResistanceReceiver` owner for typed resistance.
 
 Base values now come from an assigned `ActorProfileDefinition` when one is configured, with serialized component fields retained as compatibility fallback. Active modifiers are runtime state and are registered by exact `StatModifierSource`. Removing one source only removes that source's modifiers.
 
@@ -34,7 +34,7 @@ Targets apply shared mitigation:
 
 Zero defense preserves incoming damage. Defense cannot produce negative damage, and valid hits have an explicit one-point minimum.
 
-`DamageResult` now carries structured calculation values: pre-mitigation amount, defense, mitigated amount, applied amount, remaining health, defeated state, and message.
+`DamageResult` now carries structured calculation values: pre-mitigation amount, defense, mitigated amount, applied amount, remaining health, defeated state, and message. Feature 3.13 extends this with typed damage components, resistance mitigation, weakness amplification, and per-component result values.
 
 ## Integration Points
 
@@ -46,7 +46,7 @@ Spell projectile delivery remains unchanged. Ability projectile payloads use `Da
 
 Status effects apply modifiers through `StatusEffectController` into the actor's `IRuntimeStatReceiver`. Prototype Might modifies attack power. Prototype Weakened modifies defense and can now affect enemy damage intake.
 
-Equipment modifiers are still owned by `PlayerStats` using equipment-slot source identities. Status modifiers use status application IDs, so equipment removal does not remove status modifiers and status expiration does not remove equipment modifiers.
+Equipment modifiers are still owned by `PlayerStats` using equipment-slot source identities. Status modifiers use status application IDs, so equipment removal does not remove status modifiers and status expiration does not remove equipment modifiers. Typed resistance modifiers follow the same ownership rules.
 
 ## Prototype Wiring
 
@@ -89,4 +89,4 @@ Scene-level actor wiring is validated through Unity import and manual prototype 
 
 ## Known Limitations
 
-Movement speed is configured on `ActorStats` but not yet wired into the player motor or enemy controller. Being definitions, species, levels, skills, damage types, resistances, critical hits, block/dodge/parry, AI reactions, full save/load orchestration, and multiplayer replication remain future work.
+Movement speed is configured on `ActorStats` but not yet wired into the player motor or enemy controller. Being definitions, species, levels, skills, critical hits, block/dodge/parry, AI reactions, full save/load orchestration, and multiplayer replication remain future work. Damage types and basic typed resistance are covered in `Documentation/DamageTypeAndResistanceFoundation.md`.

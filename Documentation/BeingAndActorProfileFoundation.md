@@ -6,11 +6,11 @@ Feature 3.10 adds static actor taxonomy without merging runtime actor state into
 
 `BeingDefinition` describes a reusable being type or broad classification, such as `being.person` or `being.prototype-enemy`. It owns static metadata only: stable ID, display name, description, category, tags, icon, optional parent being, intelligence classification, social capability, locomotion flags, nature flags, and an optional default actor profile reference.
 
-`ActorProfileDefinition` describes reusable base actor configuration. It owns stable ID, display name, description, a required `BeingDefinition`, category/tags, and base values for maximum health, stamina, mana, attack power, defense, and movement speed.
+`ActorProfileDefinition` describes reusable base actor configuration. It owns stable ID, display name, description, a required `BeingDefinition`, category/tags, base values for maximum health, stamina, mana, attack power, defense, movement speed, and optional base typed resistances.
 
 `PersonDefinition` remains individual identity data. It may reference a `BeingDefinition` and optionally an `ActorProfileDefinition`, but it does not own current health, statuses, inventory, equipment, AI state, or scene presence.
 
-`ActorStats` owns runtime base values, runtime modifiers, and calculated values for one loaded actor. Equipment and statuses continue to apply modifiers through `RuntimeStatCollection`.
+`ActorStats` owns runtime base values, runtime modifiers, calculated values, and the actor's runtime typed resistance collection. Equipment and statuses continue to apply stat modifiers through `RuntimeStatCollection` and resistance modifiers through `RuntimeResistanceCollection`.
 
 Location remains separate from being and actor profile data. A being type may later gain habitat metadata, but `ActorProfileDefinition` does not describe where an actor lives or currently is. Static home/workplace information belongs on person/place-facing systems, and current runtime location belongs in future runtime location state.
 

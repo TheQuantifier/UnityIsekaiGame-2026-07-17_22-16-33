@@ -12,6 +12,7 @@ namespace UnityIsekaiGame.GameData
         Faction,
         Quest,
         Contract,
-        Profession
+        Profession,
+        Damage
     }
 }

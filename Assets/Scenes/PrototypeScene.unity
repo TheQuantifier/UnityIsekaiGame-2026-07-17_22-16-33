@@ -3385,6 +3385,7 @@ MonoBehaviour:
     attackCooldown: 0.65
     staminaCost: 5
     hitRadius: 0.3
+    damageType: {fileID: 11400000, guid: ef042dde41204b11bde31bc23acb1274, type: 2}
 --- !u!114 &343134190
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9675,6 +9676,7 @@ MonoBehaviour:
   health: {fileID: 1145515524}
   damage: 12
   attackPowerScaling: 1
+  damageType: {fileID: 11400000, guid: ef042dde41204b11bde31bc23acb1274, type: 2}
   attackRange: 1.6
   attackCooldown: 1.25
 --- !u!114 &1145515524
