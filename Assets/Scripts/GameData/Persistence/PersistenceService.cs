@@ -20,6 +20,7 @@ namespace UnityIsekaiGame.GameData.Persistence
         private readonly List<IPersistenceParticipant> participants = new List<IPersistenceParticipant>();
         private readonly Dictionary<string, IPersistenceParticipant> participantsByKey = new Dictionary<string, IPersistenceParticipant>(StringComparer.Ordinal);
         private bool operationInProgress;
+        private PersistenceOperationState operationState = PersistenceOperationState.Idle;
 
         public PersistenceService(
             PersistencePathProvider pathProvider = null,
@@ -46,8 +47,10 @@ namespace UnityIsekaiGame.GameData.Persistence
         public string PlayerId { get; }
         public string AccountId { get; }
         public bool OperationInProgress => operationInProgress;
+        public PersistenceOperationState OperationState => operationState;
         public int ParticipantCount => participants.Count;
         public PersistencePathProvider PathProvider => pathProvider;
+        public Func<double> PlaytimeSecondsProvider { get; set; }
 
         public bool RegisterParticipant(IPersistenceParticipant participant, out string failureReason)
         {
@@ -114,7 +117,7 @@ namespace UnityIsekaiGame.GameData.Persistence
                 return FinishSave(PersistenceSaveResult.Failure(PersistenceSaveStatus.NoParticipants, slotId, paths.PrimaryPath, "No persistence participants are registered."));
             }
 
-            operationInProgress = true;
+            SetOperation(PersistenceOperationState.Capturing);
             SaveStarted?.Invoke();
 
             try
@@ -143,6 +146,7 @@ namespace UnityIsekaiGame.GameData.Persistence
                     return FinishSave(PersistenceSaveResult.Failure(PersistenceSaveStatus.DirectoryCreationFailed, slotId, paths.PrimaryPath, "Could not create save directory.", exception));
                 }
 
+                SetOperation(PersistenceOperationState.Writing);
                 PersistenceSaveResult writeResult = WriteAtomically(paths, serialized);
                 if (!writeResult.Succeeded)
                 {
@@ -175,7 +179,7 @@ namespace UnityIsekaiGame.GameData.Persistence
             }
 
             string path = loadBackup ? paths.BackupPath : paths.PrimaryPath;
-            operationInProgress = true;
+            SetOperation(PersistenceOperationState.PreparingLoad);
             LoadStarted?.Invoke();
 
             try
@@ -188,6 +192,7 @@ namespace UnityIsekaiGame.GameData.Persistence
                     return FinishLoad(PersistenceLoadResult.Failure(status, slotId, path, validation.Message, backupAvailable, validation.Exception));
                 }
 
+                SetOperation(PersistenceOperationState.CommittingParticipants);
                 PersistenceLoadResult prepared = PrepareAndCommit(slotId, path, validation.Envelope, loadBackup);
                 return FinishLoad(prepared);
             }
@@ -233,6 +238,7 @@ namespace UnityIsekaiGame.GameData.Persistence
             }
 
             operationInProgress = true;
+            operationState = PersistenceOperationState.Deleting;
             try
             {
                 DeleteIfExists(paths.PrimaryPath);
@@ -248,6 +254,7 @@ namespace UnityIsekaiGame.GameData.Persistence
             finally
             {
                 operationInProgress = false;
+                operationState = PersistenceOperationState.Idle;
             }
         }
 
@@ -260,6 +267,82 @@ namespace UnityIsekaiGame.GameData.Persistence
             }
 
             return metadata;
+        }
+
+        public SaveSlotMetadata GetSlotMetadata(string slotId)
+        {
+            return pathProvider.TryGetPaths(slotId, out SaveSlotPaths paths, out _)
+                ? ReadMetadata(paths)
+                : new SaveSlotMetadata
+                {
+                    slotId = slotId,
+                    displayName = slotId,
+                    status = PersistenceValidationStatus.InvalidSlotId.ToString(),
+                    message = $"Invalid save slot ID '{slotId}'."
+                };
+        }
+
+        public PersistenceSaveResult RotateAutosaveSlots(string stagingSlotId, IReadOnlyList<string> generationSlotIds)
+        {
+            if (operationInProgress)
+            {
+                return PersistenceSaveResult.Failure(PersistenceSaveStatus.OperationAlreadyRunning, stagingSlotId, string.Empty, "A save or load operation is already running.");
+            }
+
+            if (generationSlotIds == null || generationSlotIds.Count == 0)
+            {
+                return PersistenceSaveResult.Failure(PersistenceSaveStatus.InvalidSlotId, stagingSlotId, string.Empty, "Autosave rotation requires at least one generation slot.");
+            }
+
+            if (!pathProvider.TryGetPaths(stagingSlotId, out SaveSlotPaths stagingPaths, out string stagingFailure))
+            {
+                return PersistenceSaveResult.Failure(PersistenceSaveStatus.InvalidSlotId, stagingSlotId, string.Empty, stagingFailure);
+            }
+
+            if (!File.Exists(stagingPaths.PrimaryPath))
+            {
+                return PersistenceSaveResult.Failure(PersistenceSaveStatus.TemporaryWriteFailed, stagingSlotId, stagingPaths.PrimaryPath, "Autosave staging slot is missing.");
+            }
+
+            List<SaveSlotPaths> generations = new List<SaveSlotPaths>();
+            foreach (string slotId in generationSlotIds)
+            {
+                if (!pathProvider.TryGetPaths(slotId, out SaveSlotPaths paths, out string failure))
+                {
+                    return PersistenceSaveResult.Failure(PersistenceSaveStatus.InvalidSlotId, slotId, string.Empty, failure);
+                }
+
+                generations.Add(paths);
+            }
+
+            SetOperation(PersistenceOperationState.RotatingAutosaves);
+            try
+            {
+                for (int i = generations.Count - 1; i > 0; i--)
+                {
+                    CopySlotFiles(generations[i - 1], generations[i]);
+                }
+
+                CopySlotFiles(stagingPaths, generations[0]);
+                DeleteIfExists(stagingPaths.PrimaryPath);
+                DeleteIfExists(stagingPaths.BackupPath);
+                DeleteIfExists(stagingPaths.TemporaryPath);
+                SaveSlotsChanged?.Invoke();
+                return PersistenceSaveResult.Success(generations[0].SlotId, generations[0].PrimaryPath, "Autosave rotation completed.");
+            }
+            catch (Exception exception)
+            {
+                operationState = PersistenceOperationState.Failed;
+                return PersistenceSaveResult.Failure(PersistenceSaveStatus.ReplacementFailed, generations[0].SlotId, generations[0].PrimaryPath, "Autosave rotation failed.", exception);
+            }
+            finally
+            {
+                operationInProgress = false;
+                if (operationState != PersistenceOperationState.Failed)
+                {
+                    operationState = PersistenceOperationState.Idle;
+                }
+            }
         }
 
         private GameSaveEnvelope BuildEnvelope(string slotId, string displayName, SaveSlotPaths paths)
@@ -279,7 +362,7 @@ namespace UnityIsekaiGame.GameData.Persistence
                 accountId = AccountId,
                 createdUtc = string.IsNullOrWhiteSpace(previous?.createdUtc) ? now : previous.createdUtc,
                 lastWrittenUtc = now,
-                playtimeSeconds = previous?.playtimeSeconds ?? 0,
+                playtimeSeconds = PlaytimeSecondsProvider == null ? previous?.playtimeSeconds ?? 0 : Math.Max(0d, PlaytimeSecondsProvider.Invoke()),
                 sceneSummary = "Prototype scene placeholder",
                 placeSummary = "Prototype place placeholder",
                 playerSummary = "Prototype player placeholder"
@@ -588,8 +671,10 @@ namespace UnityIsekaiGame.GameData.Persistence
                 displayName = envelope == null ? paths.SlotId : envelope.displayName,
                 saveId = envelope == null ? string.Empty : envelope.saveId,
                 createdUtc = envelope == null ? string.Empty : envelope.createdUtc,
+                lastWrittenUtc = envelope == null ? string.Empty : envelope.lastWrittenUtc,
                 modifiedUtc = primary.Exists ? primary.LastWriteTimeUtc.ToString("o") : string.Empty,
                 playtimeSeconds = envelope?.playtimeSeconds ?? 0,
+                sceneSummary = envelope == null ? string.Empty : envelope.sceneSummary,
                 currentPlaceSummary = envelope == null ? string.Empty : envelope.placeSummary,
                 playerSummary = envelope == null ? string.Empty : envelope.playerSummary,
                 worldId = envelope == null ? string.Empty : envelope.worldId,
@@ -737,15 +822,33 @@ namespace UnityIsekaiGame.GameData.Persistence
         private PersistenceSaveResult FinishSave(PersistenceSaveResult result)
         {
             operationInProgress = false;
+            operationState = result.Succeeded ? PersistenceOperationState.Idle : PersistenceOperationState.Failed;
             SaveCompleted?.Invoke(result);
+            if (result.Succeeded)
+            {
+                operationState = PersistenceOperationState.Idle;
+            }
+
             return result;
         }
 
         private PersistenceLoadResult FinishLoad(PersistenceLoadResult result)
         {
             operationInProgress = false;
+            operationState = result.Succeeded ? PersistenceOperationState.Idle : PersistenceOperationState.Failed;
             LoadCompleted?.Invoke(result);
+            if (result.Succeeded)
+            {
+                operationState = PersistenceOperationState.Idle;
+            }
+
             return result;
+        }
+
+        private void SetOperation(PersistenceOperationState state)
+        {
+            operationInProgress = true;
+            operationState = state;
         }
 
         private static PersistenceLoadStatus MapValidationToLoadStatus(PersistenceValidationStatus status)
@@ -805,6 +908,42 @@ namespace UnityIsekaiGame.GameData.Persistence
             {
                 File.Delete(path);
             }
+        }
+
+        private static void CopySlotFiles(SaveSlotPaths source, SaveSlotPaths target)
+        {
+            DeleteIfExists(target.PrimaryPath);
+            DeleteIfExists(target.BackupPath);
+            DeleteIfExists(target.TemporaryPath);
+
+            CopyEnvelopeFile(source.PrimaryPath, target.PrimaryPath, target.SlotId);
+            CopyEnvelopeFile(source.BackupPath, target.BackupPath, target.SlotId);
+        }
+
+        private static void CopyEnvelopeFile(string sourcePath, string targetPath, string targetSlotId)
+        {
+            if (!File.Exists(sourcePath))
+            {
+                return;
+            }
+
+            try
+            {
+                GameSaveEnvelope envelope = JsonUtility.FromJson<GameSaveEnvelope>(File.ReadAllText(sourcePath, Encoding.UTF8));
+                if (envelope != null && envelope.formatIdentifier == FormatIdentifier)
+                {
+                    envelope.slotId = targetSlotId;
+                    envelope.contentChecksum = ComputeChecksum(envelope);
+                    File.WriteAllText(targetPath, JsonUtility.ToJson(envelope, true), Encoding.UTF8);
+                    return;
+                }
+            }
+            catch
+            {
+                // Preserve unreadable files exactly; validation/reporting owns the resulting error.
+            }
+
+            File.Copy(sourcePath, targetPath, true);
         }
 
         private sealed class PreparedParticipant

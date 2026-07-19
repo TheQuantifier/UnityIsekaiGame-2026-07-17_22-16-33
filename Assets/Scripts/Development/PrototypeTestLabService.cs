@@ -15,6 +15,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
+using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.WorldEntities;
@@ -138,6 +139,30 @@ namespace UnityIsekaiGame.Development
                 $"Last Destroyed: {(string.IsNullOrWhiteSpace(lastDestroyedWorldEntityId) ? "None" : lastDestroyedWorldEntityId)}",
                 $"Last Result: {(string.IsNullOrWhiteSpace(lastWorldEntityOperationMessage) ? "None" : lastWorldEntityOperationMessage)}"
             });
+        }
+
+        public string BuildSaveSlotSummary()
+        {
+            if (context?.Persistence == null)
+            {
+                return "Save slot persistence is missing.";
+            }
+
+            context.Persistence.EnsureInitialized();
+            List<string> lines = new List<string>
+            {
+                "Save Slots, Autosave, and Load UI",
+                context.Persistence.BuildSaveSlotDiagnosticSummary()
+            };
+
+            IReadOnlyList<SaveSlotDescriptor> descriptors = context.Persistence.BuildSaveSlotDescriptors();
+            for (int i = 0; i < descriptors.Count; i++)
+            {
+                SaveSlotDescriptor descriptor = descriptors[i];
+                lines.Add($"{descriptor.displayName}: {descriptor.compatibilityStatus} | {PrototypeSaveSlotCatalog.FormatLocalTimestamp(descriptor.lastSavedAtUtc)} | {PrototypeSaveSlotCatalog.FormatPlayTime(descriptor.playTimeSeconds)} | Backup={descriptor.backupExists}");
+            }
+
+            return string.Join(Environment.NewLine, lines);
         }
 
         public PrototypeTestLabOperation GrantItem(ItemDefinition item, int quantity)
@@ -551,6 +576,83 @@ namespace UnityIsekaiGame.Development
 
             PersistenceDeleteResult result = persistence.DeletePrototypeSlot();
             return Record(result.Succeeded, "Delete Prototype Slot", result.Status.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation ForceAutosave()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Force Autosave", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            PersistenceSaveResult result = persistence.ForceAutosave("TestLab");
+            return Record(result.Succeeded, "Force Autosave", result.Status.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation SetShortAutosaveInterval()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Set Autosave Interval", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            persistence.SetAutosaveIntervalForTesting(15f);
+            return RecordSuccess("Set Autosave Interval", "Autosave interval set to 15 seconds for local testing.");
+        }
+
+        public PrototypeTestLabOperation MarkSaveDirty()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Mark Save Dirty", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            persistence.DirtyTracker?.DevelopmentSetDirty(true, "Test Lab marked save dirty.");
+            return RecordSuccess("Mark Save Dirty", "Save dirty state set for confirmation and autosave testing.");
+        }
+
+        public PrototypeTestLabOperation MarkSaveClean()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Mark Save Clean", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            persistence.DirtyTracker?.DevelopmentSetDirty(false, "Test Lab marked save clean.");
+            return RecordSuccess("Mark Save Clean", "Save dirty state cleared.");
+        }
+
+        public PrototypeTestLabOperation SaveManualSlotOne()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Save Manual Slot 1", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            PersistenceSaveResult result = persistence.SaveManualSlot(0);
+            return Record(result.Succeeded, "Save Manual Slot 1", result.Status.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation LoadManualSlotOneBackup()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Load Manual Slot 1 Backup", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            PersistenceLoadResult result = persistence.LoadSaveSlot(PrototypeSaveSlotCatalog.ManualSlotId(0), loadBackup: true);
+            return Record(result.Succeeded, "Load Manual Slot 1 Backup", result.Status.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation ValidateManualSlotOneBackup()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Validate Manual Slot 1 Backup", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            PersistenceValidationResult result = persistence.ValidateSaveSlot(PrototypeSaveSlotCatalog.ManualSlotId(0), validateBackup: true);
+            return Record(result.Succeeded, "Validate Manual Slot 1 Backup", result.Status.ToString(), result.Message);
         }
 
         public PrototypeTestLabOperation Teleport(PrototypeTestPoint point)

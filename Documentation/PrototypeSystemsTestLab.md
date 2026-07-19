@@ -75,9 +75,11 @@ Destructive actions require pressing the same action twice: clear inventory, une
 
 ## Persistence Integration
 
-The Test Lab reuses `PrototypePersistenceServiceBehaviour`. If one is not present during Play Mode, the controller may create a prototype persistence service object and configure it with the same player systems used by the menu. This preserves the Feature 4.1-4.4 local save/load proof while keeping the lab itself non-authoritative over future shared-world state.
+The Test Lab reuses `PrototypePersistenceServiceBehaviour`. If one is not present during Play Mode, the controller may create a prototype persistence service object and configure it with the same player systems used by the menu. This preserves the local save/load proof while keeping the lab itself non-authoritative over future shared-world state.
 
 Persistence controls are still local prototype controls. They do not imply player authority over shared-world state in future multiplayer architecture.
+
+The Persistence section shows save-slot diagnostics and includes controls for the prototype slot, manual slot 1, forced autosave, short autosave interval, dirty/clean state, backup validation, and explicit backup load.
 
 ## Diagnostics
 
@@ -88,6 +90,7 @@ Diagnostics currently report:
 - duplicate item instance IDs across inventory and equipment;
 - duplicate runtime status application IDs on player and enemy.
 - registered world entity IDs through the World Entities Test Lab section.
+- current save-slot state, dirty flag, play time, and last autosave result through the Persistence section.
 
 The diagnostics are intentionally replaceable. They are meant to catch common prototype setup mistakes, not to replace definition validation, automated tests, or future PlayMode system test suites.
 

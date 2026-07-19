@@ -38,6 +38,13 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerQuestContract = true;
         [SerializeField] private bool registerPlayerLocation = true;
         [SerializeField] private string prototypeSlotId = PersistenceService.PrototypeSlotId;
+        [Header("Save Slots")]
+        [SerializeField, Min(1)] private int manualSlotCount = PrototypeSaveSlotCatalog.DefaultManualSlotCount;
+        [SerializeField, Min(1)] private int autosaveSlotCount = PrototypeSaveSlotCatalog.DefaultAutosaveSlotCount;
+        [SerializeField, Min(5f)] private float autosaveIntervalSeconds = 300f;
+        [SerializeField] private PlayTimeTracker playTimeTracker;
+        [SerializeField] private GameSaveDirtyTracker dirtyTracker;
+        [SerializeField] private AutosaveCoordinator autosaveCoordinator;
 
         private PersistenceService service;
         private PrototypePersistenceStateParticipant participant;
@@ -46,10 +53,16 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerQuestContractPersistenceParticipant questContractParticipant;
         private PlayerLocationPersistenceParticipant playerLocationParticipant;
         private DefinitionRegistry definitionRegistry;
+        private bool dirtyEventsSubscribed;
 
         public PersistenceService Service => service;
         public PrototypePersistenceState PrototypeState => prototypeState;
         public string PrototypeSlotId => string.IsNullOrWhiteSpace(prototypeSlotId) ? PersistenceService.PrototypeSlotId : prototypeSlotId;
+        public int ManualSlotCount => Mathf.Max(1, manualSlotCount);
+        public int AutosaveSlotCount => Mathf.Max(1, autosaveSlotCount);
+        public PlayTimeTracker PlayTime => playTimeTracker;
+        public GameSaveDirtyTracker DirtyTracker => dirtyTracker;
+        public AutosaveCoordinator Autosave => autosaveCoordinator;
 
         private void Awake()
         {
@@ -87,6 +100,8 @@ namespace UnityIsekaiGame.Gameplay
                 service.UnregisterParticipant(playerLocationParticipant);
                 playerLocationParticipant = null;
             }
+
+            UnsubscribeDirtyEvents();
         }
 
         public void ConfigurePlayerPersistence(
@@ -127,7 +142,9 @@ namespace UnityIsekaiGame.Gameplay
                 prototypeState = gameObject.AddComponent<PrototypePersistenceState>();
             }
 
+            EnsureRuntimeHelpers();
             service ??= new PersistenceService();
+            service.PlaytimeSecondsProvider = () => playTimeTracker == null ? 0d : playTimeTracker.CumulativeSeconds;
             if (participant == null)
             {
                 participant = new PrototypePersistenceStateParticipant(prototypeState);
@@ -143,6 +160,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerQuestContractParticipant();
             EnsurePlayerLocationParticipant();
+            SubscribeDirtyEvents();
         }
 
         public PersistenceSaveResult SavePrototypeSlot()
@@ -191,6 +209,130 @@ namespace UnityIsekaiGame.Gameplay
             return service.ListSaveSlots();
         }
 
+        public IReadOnlyList<SaveSlotDescriptor> BuildSaveSlotDescriptors()
+        {
+            EnsureInitialized();
+            return PrototypeSaveSlotCatalog.BuildDescriptors(service, ManualSlotCount, AutosaveSlotCount);
+        }
+
+        public SaveEligibilityResult CheckSaveEligibility(bool showDetailedPlayerMessage)
+        {
+            EnsureInitialized();
+            if (service.OperationInProgress)
+            {
+                return SaveEligibilityResult.Block(SaveEligibilityStatus.OperationInProgress, "A persistence operation is already running.");
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerRoot == null)
+            {
+                return SaveEligibilityResult.Block(SaveEligibilityStatus.NoActivePlayer, "No active player root is available.");
+            }
+
+            if (playerHealth != null && playerHealth.IsDefeated)
+            {
+                return SaveEligibilityResult.Block(SaveEligibilityStatus.InvalidPlayerState, "Cannot save while the player is defeated.");
+            }
+
+            return SaveEligibilityResult.Allow(showDetailedPlayerMessage ? "Saving is available." : "Allowed");
+        }
+
+        public PersistenceSaveResult SaveManualSlot(int zeroBasedIndex)
+        {
+            string slotId = PrototypeSaveSlotCatalog.ManualSlotId(zeroBasedIndex);
+            return SaveNamedSlot(slotId, PrototypeSaveSlotCatalog.ManualDisplayName(zeroBasedIndex), markClean: true);
+        }
+
+        public PersistenceSaveResult SaveNamedSlot(string slotId, string displayName, bool markClean)
+        {
+            EnsureInitialized();
+            SaveEligibilityResult eligibility = CheckSaveEligibility(showDetailedPlayerMessage: true);
+            if (!eligibility.Allowed)
+            {
+                return PersistenceSaveResult.Failure(PersistenceSaveStatus.ParticipantCaptureFailed, slotId, string.Empty, eligibility.Message);
+            }
+
+            PersistenceSaveResult result = service.Save(slotId, displayName);
+            Report(result.Succeeded, result.Message);
+            if (result.Succeeded && markClean)
+            {
+                dirtyTracker?.MarkClean($"Saved {displayName}.");
+                autosaveCoordinator?.ResetTimer();
+            }
+
+            return result;
+        }
+
+        public PersistenceSaveResult SaveAutosave(string reason)
+        {
+            EnsureInitialized();
+            string staging = PrototypeSaveSlotCatalog.AutosaveStagingSlotId;
+            PersistenceSaveResult saveResult = SaveNamedSlot(staging, $"Autosave ({reason})", markClean: false);
+            if (!saveResult.Succeeded)
+            {
+                return saveResult;
+            }
+
+            PersistenceSaveResult rotate = service.RotateAutosaveSlots(staging, PrototypeSaveSlotCatalog.BuildAutosaveSlotIds(AutosaveSlotCount));
+            Report(rotate.Succeeded, rotate.Message);
+            if (rotate.Succeeded)
+            {
+                dirtyTracker?.MarkClean($"Autosaved: {reason}.");
+            }
+
+            return rotate;
+        }
+
+        public PersistenceSaveResult ForceAutosave(string reason = "DevelopmentCommand")
+        {
+            EnsureInitialized();
+            return autosaveCoordinator == null ? SaveAutosave(reason) : autosaveCoordinator.ForceAutosave(reason);
+        }
+
+        public PersistenceLoadResult LoadSaveSlot(string slotId, bool loadBackup = false)
+        {
+            EnsureInitialized();
+            PersistenceValidationResult preValidation = service.ValidateSlot(slotId, loadBackup);
+            PersistenceLoadResult result = service.Load(slotId, loadBackup);
+            Report(result.Succeeded, result.Message);
+            if (result.Succeeded)
+            {
+                playTimeTracker?.Restore(preValidation.Envelope == null ? 0d : preValidation.Envelope.playtimeSeconds);
+                dirtyTracker?.MarkClean(loadBackup ? "Loaded backup save." : "Loaded save.");
+                autosaveCoordinator?.ResetTimer();
+            }
+
+            return result;
+        }
+
+        public PersistenceValidationResult ValidateSaveSlot(string slotId, bool validateBackup = false)
+        {
+            EnsureInitialized();
+            PersistenceValidationResult result = service.ValidateSlot(slotId, validateBackup);
+            Report(result.Succeeded, result.Message);
+            return result;
+        }
+
+        public PersistenceDeleteResult DeleteSaveSlot(string slotId)
+        {
+            EnsureInitialized();
+            PersistenceDeleteResult result = service.DeleteSlot(slotId);
+            Report(result.Succeeded, result.Message);
+            return result;
+        }
+
+        public void SetAutosaveIntervalForTesting(float seconds)
+        {
+            autosaveIntervalSeconds = Mathf.Max(5f, seconds);
+            autosaveCoordinator?.SetIntervalForTesting(autosaveIntervalSeconds);
+        }
+
+        public string BuildSaveSlotDiagnosticSummary()
+        {
+            EnsureInitialized();
+            return $"Operation={service.OperationState} Dirty={dirtyTracker != null && dirtyTracker.IsDirty} PlayTime={PrototypeSaveSlotCatalog.FormatPlayTime(playTimeTracker == null ? 0d : playTimeTracker.CumulativeSeconds)} Autosave={autosaveCoordinator?.LastResult ?? "None"}";
+        }
+
         private static void Report(bool succeeded, string message)
         {
             if (succeeded)
@@ -237,6 +379,38 @@ namespace UnityIsekaiGame.Gameplay
                 Debug.LogWarning(failureReason);
                 inventoryEquipmentParticipant = null;
             }
+        }
+
+        private void EnsureRuntimeHelpers()
+        {
+            if (playTimeTracker == null)
+            {
+                playTimeTracker = GetComponent<PlayTimeTracker>();
+                if (playTimeTracker == null)
+                {
+                    playTimeTracker = gameObject.AddComponent<PlayTimeTracker>();
+                }
+            }
+
+            if (dirtyTracker == null)
+            {
+                dirtyTracker = GetComponent<GameSaveDirtyTracker>();
+                if (dirtyTracker == null)
+                {
+                    dirtyTracker = gameObject.AddComponent<GameSaveDirtyTracker>();
+                }
+            }
+
+            if (autosaveCoordinator == null)
+            {
+                autosaveCoordinator = GetComponent<AutosaveCoordinator>();
+                if (autosaveCoordinator == null)
+                {
+                    autosaveCoordinator = gameObject.AddComponent<AutosaveCoordinator>();
+                }
+            }
+
+            autosaveCoordinator.Configure(this, autosaveIntervalSeconds);
         }
 
         private void ResolvePlayerPersistenceReferences()
@@ -452,6 +626,154 @@ namespace UnityIsekaiGame.Gameplay
             string message = args == null ? "Player location fallback was used." : args.Message;
             Debug.LogWarning(message);
             PrototypeHudMessageBus.Show(message);
+        }
+
+        private void SubscribeDirtyEvents()
+        {
+            if (dirtyEventsSubscribed)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerInventory != null)
+            {
+                playerInventory.InventoryChanged += OnMeaningfulRuntimeStateChanged;
+            }
+
+            if (playerEquipment != null)
+            {
+                playerEquipment.EquipmentChanged += OnMeaningfulRuntimeStateChanged;
+            }
+
+            if (playerHealth != null)
+            {
+                playerHealth.HealthChanged += OnVitalsChanged;
+            }
+
+            if (playerMana != null)
+            {
+                playerMana.ManaChanged += OnResourceChanged;
+            }
+
+            if (playerStamina != null)
+            {
+                playerStamina.StaminaChanged += OnResourceChanged;
+            }
+
+            if (statusEffectController != null)
+            {
+                statusEffectController.StatusAdded += OnStatusChanged;
+                statusEffectController.StatusChanged += OnStatusChanged;
+                statusEffectController.StatusRemoved += OnStatusChanged;
+                statusEffectController.StatusExpired += OnStatusChanged;
+            }
+
+            if (playerQuestLog != null)
+            {
+                playerQuestLog.QuestLogChanged += OnQuestContractChanged;
+            }
+
+            if (playerContractJournal != null)
+            {
+                playerContractJournal.JournalChanged += OnQuestContractChanged;
+            }
+
+            if (currentPlaceTracker != null)
+            {
+                currentPlaceTracker.CurrentPlaceChanged += OnPlaceChanged;
+            }
+
+            dirtyEventsSubscribed = true;
+        }
+
+        private void UnsubscribeDirtyEvents()
+        {
+            if (!dirtyEventsSubscribed)
+            {
+                return;
+            }
+
+            if (playerInventory != null)
+            {
+                playerInventory.InventoryChanged -= OnMeaningfulRuntimeStateChanged;
+            }
+
+            if (playerEquipment != null)
+            {
+                playerEquipment.EquipmentChanged -= OnMeaningfulRuntimeStateChanged;
+            }
+
+            if (playerHealth != null)
+            {
+                playerHealth.HealthChanged -= OnVitalsChanged;
+            }
+
+            if (playerMana != null)
+            {
+                playerMana.ManaChanged -= OnResourceChanged;
+            }
+
+            if (playerStamina != null)
+            {
+                playerStamina.StaminaChanged -= OnResourceChanged;
+            }
+
+            if (statusEffectController != null)
+            {
+                statusEffectController.StatusAdded -= OnStatusChanged;
+                statusEffectController.StatusChanged -= OnStatusChanged;
+                statusEffectController.StatusRemoved -= OnStatusChanged;
+                statusEffectController.StatusExpired -= OnStatusChanged;
+            }
+
+            if (playerQuestLog != null)
+            {
+                playerQuestLog.QuestLogChanged -= OnQuestContractChanged;
+            }
+
+            if (playerContractJournal != null)
+            {
+                playerContractJournal.JournalChanged -= OnQuestContractChanged;
+            }
+
+            if (currentPlaceTracker != null)
+            {
+                currentPlaceTracker.CurrentPlaceChanged -= OnPlaceChanged;
+            }
+
+            dirtyEventsSubscribed = false;
+        }
+
+        private void OnMeaningfulRuntimeStateChanged()
+        {
+            dirtyTracker?.MarkDirty("Player state changed.");
+        }
+
+        private void OnQuestContractChanged()
+        {
+            dirtyTracker?.MarkDirty("Quest or contract state changed.");
+            autosaveCoordinator?.RequestAutosave("Progression");
+        }
+
+        private void OnVitalsChanged(int current, int maximum)
+        {
+            dirtyTracker?.MarkDirty("Player vitals changed.");
+        }
+
+        private void OnResourceChanged(float current, float maximum)
+        {
+            dirtyTracker?.MarkDirty("Player resource changed.");
+        }
+
+        private void OnStatusChanged(RuntimeStatusEffect status)
+        {
+            dirtyTracker?.MarkDirty("Status effect state changed.");
+        }
+
+        private void OnPlaceChanged(PlaceDefinition place, bool entered)
+        {
+            dirtyTracker?.MarkDirty("Player location changed.");
         }
 
         private string ResolveSceneKey()
