@@ -60,3 +60,7 @@ Defeated prototype saves are rejected. Timed statuses restore with saved remaini
 Feature 4.4 adds `player.quests-contracts` after inventory/equipment and stats/vitals/statuses. It persists personal quests, accepted contracts, current quest stage, active objective progress, runtime instance IDs, and reward-claim state. Schema version 2 restores quest stages and quest/contract objectives by authored stable IDs instead of array position; schema version 1 is rejected rather than migrated.
 
 Current objective keys use authored stage/objective indexes with stage ID validation where authored. Future content should add stable objective IDs before reordering shipped quest or contract objectives.
+
+## Feature 4.5 Status
+
+Feature 4.5 adds optional `player.location` after quests/contracts in the load order. It persists stable scene key `scene.prototype`, current place ID, player root position/rotation, diagnostic scene data, and fallback spawn ID. Same-scene restoration is supported with CharacterController-safe teleport, movement transient reset, current-place refresh, and Reach Location suppression during load. Cross-scene restoration is rejected clearly until a controlled asynchronous scene loading service is added.

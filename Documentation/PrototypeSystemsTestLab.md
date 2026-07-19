@@ -23,6 +23,8 @@ These helpers are also editor/development-build only.
 
 `InventoryScreenController` creates and configures a `PrototypeTestLabService` when the Tab menu initializes in editor/development builds. `InventoryScreenView` creates a Test Lab navigation button and content root if serialized scene references are not already present.
 
+The Location tab displays the `player.location` diagnostic summary and provides teleport, save location, load location, and current-position validation controls through the existing persistence and test-point systems.
+
 The page uses the same modal behavior as the rest of the Tab menu:
 
 - no new input action;

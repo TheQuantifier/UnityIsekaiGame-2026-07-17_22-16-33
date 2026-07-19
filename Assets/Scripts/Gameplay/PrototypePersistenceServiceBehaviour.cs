@@ -3,11 +3,14 @@ using UnityEngine;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
+using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Persistence;
+using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.UI.Inventory;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -24,9 +27,16 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private StatusEffectController statusEffectController;
         [SerializeField] private PlayerQuestLog playerQuestLog;
         [SerializeField] private PlayerContractJournal playerContractJournal;
+        [SerializeField] private Transform playerRoot;
+        [SerializeField] private PlayerInputReader playerInput;
+        [SerializeField] private InventoryScreenController inventoryScreenController;
+        [SerializeField] private CurrentPlaceTracker currentPlaceTracker;
+        [SerializeField] private string sceneKey = "scene.prototype";
+        [SerializeField] private string defaultSpawnPointId = "spawn.prototype.default";
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerQuestContract = true;
+        [SerializeField] private bool registerPlayerLocation = true;
         [SerializeField] private string prototypeSlotId = PersistenceService.PrototypeSlotId;
 
         private PersistenceService service;
@@ -34,6 +44,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerQuestContractPersistenceParticipant questContractParticipant;
+        private PlayerLocationPersistenceParticipant playerLocationParticipant;
         private DefinitionRegistry definitionRegistry;
 
         public PersistenceService Service => service;
@@ -70,6 +81,12 @@ namespace UnityIsekaiGame.Gameplay
                 service.UnregisterParticipant(questContractParticipant);
                 questContractParticipant = null;
             }
+
+            if (service != null && playerLocationParticipant != null)
+            {
+                service.UnregisterParticipant(playerLocationParticipant);
+                playerLocationParticipant = null;
+            }
         }
 
         public void ConfigurePlayerPersistence(
@@ -94,6 +111,7 @@ namespace UnityIsekaiGame.Gameplay
             statusEffectController = statusController;
             playerQuestLog = questLog;
             playerContractJournal = contractJournal;
+            playerRoot = inventory == null ? playerRoot : inventory.transform;
             definitionRegistry = null;
         }
 
@@ -124,6 +142,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerQuestContractParticipant();
+            EnsurePlayerLocationParticipant();
         }
 
         public PersistenceSaveResult SavePrototypeSlot()
@@ -242,45 +261,69 @@ namespace UnityIsekaiGame.Gameplay
                 playerInventory = playerEquipment.GetComponent<PlayerInventory>();
             }
 
-            GameObject playerRoot = playerInventory == null ? playerEquipment == null ? null : playerEquipment.gameObject : playerInventory.gameObject;
-            if (playerRoot == null && playerStats != null)
+            GameObject playerObject = playerInventory == null ? playerEquipment == null ? null : playerEquipment.gameObject : playerInventory.gameObject;
+            if (playerObject == null && playerStats != null)
             {
-                playerRoot = playerStats.gameObject;
+                playerObject = playerStats.gameObject;
             }
 
             if (playerStats == null)
             {
-                playerStats = playerRoot == null ? Object.FindAnyObjectByType<PlayerStats>() : playerRoot.GetComponent<PlayerStats>();
+                playerStats = playerObject == null ? Object.FindAnyObjectByType<PlayerStats>() : playerObject.GetComponent<PlayerStats>();
             }
 
             if (playerHealth == null)
             {
-                playerHealth = playerRoot == null ? Object.FindAnyObjectByType<PlayerHealth>() : playerRoot.GetComponent<PlayerHealth>();
+                playerHealth = playerObject == null ? Object.FindAnyObjectByType<PlayerHealth>() : playerObject.GetComponent<PlayerHealth>();
             }
 
             if (playerMana == null)
             {
-                playerMana = playerRoot == null ? Object.FindAnyObjectByType<PlayerMana>() : playerRoot.GetComponent<PlayerMana>();
+                playerMana = playerObject == null ? Object.FindAnyObjectByType<PlayerMana>() : playerObject.GetComponent<PlayerMana>();
             }
 
             if (playerStamina == null)
             {
-                playerStamina = playerRoot == null ? Object.FindAnyObjectByType<PlayerStamina>() : playerRoot.GetComponent<PlayerStamina>();
+                playerStamina = playerObject == null ? Object.FindAnyObjectByType<PlayerStamina>() : playerObject.GetComponent<PlayerStamina>();
             }
 
             if (statusEffectController == null)
             {
-                statusEffectController = playerRoot == null ? Object.FindAnyObjectByType<StatusEffectController>() : playerRoot.GetComponent<StatusEffectController>();
+                statusEffectController = playerObject == null ? Object.FindAnyObjectByType<StatusEffectController>() : playerObject.GetComponent<StatusEffectController>();
             }
 
             if (playerQuestLog == null)
             {
-                playerQuestLog = playerRoot == null ? Object.FindAnyObjectByType<PlayerQuestLog>() : playerRoot.GetComponent<PlayerQuestLog>();
+                playerQuestLog = playerObject == null ? Object.FindAnyObjectByType<PlayerQuestLog>() : playerObject.GetComponent<PlayerQuestLog>();
             }
 
             if (playerContractJournal == null)
             {
-                playerContractJournal = playerRoot == null ? Object.FindAnyObjectByType<PlayerContractJournal>() : playerRoot.GetComponent<PlayerContractJournal>();
+                playerContractJournal = playerObject == null ? Object.FindAnyObjectByType<PlayerContractJournal>() : playerObject.GetComponent<PlayerContractJournal>();
+            }
+
+            if (playerRoot == null)
+            {
+                playerRoot = playerObject == null ? null : playerObject.transform;
+            }
+
+            if (playerInput == null)
+            {
+                playerInput = playerRoot == null ? Object.FindAnyObjectByType<PlayerInputReader>() : playerRoot.GetComponentInChildren<PlayerInputReader>();
+            }
+
+            if (inventoryScreenController == null)
+            {
+                inventoryScreenController = Object.FindAnyObjectByType<InventoryScreenController>();
+            }
+
+            if (currentPlaceTracker == null && playerRoot != null)
+            {
+                currentPlaceTracker = playerRoot.GetComponent<CurrentPlaceTracker>();
+                if (currentPlaceTracker == null)
+                {
+                    currentPlaceTracker = playerRoot.gameObject.AddComponent<CurrentPlaceTracker>();
+                }
             }
         }
 
@@ -354,6 +397,72 @@ namespace UnityIsekaiGame.Gameplay
                 Debug.LogWarning(failureReason);
                 questContractParticipant = null;
             }
+        }
+
+        private void EnsurePlayerLocationParticipant()
+        {
+            if (!registerPlayerLocation || playerLocationParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerRoot == null)
+            {
+                Debug.LogWarning("Player location persistence participant was not registered because the prototype player root is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player location persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            playerLocationParticipant = new PlayerLocationPersistenceParticipant(
+                playerRoot,
+                GetDefinitionRegistry,
+                service.PlayerId,
+                ResolveSceneKey(),
+                defaultSpawnPointId,
+                playerInput,
+                inventoryScreenController,
+                currentPlaceTracker);
+
+            playerLocationParticipant.LocationFallbackUsed += OnLocationFallbackUsed;
+            service.RegisterParticipant(playerLocationParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerLocationParticipant.LocationFallbackUsed -= OnLocationFallbackUsed;
+                playerLocationParticipant = null;
+            }
+        }
+
+        public string BuildPlayerLocationDiagnosticSummary()
+        {
+            EnsureInitialized();
+            return playerLocationParticipant == null
+                ? $"Scene: {ResolveSceneKey()}\nPlayer location participant: not registered"
+                : playerLocationParticipant.BuildDiagnosticSummary();
+        }
+
+        private void OnLocationFallbackUsed(LocationFallbackEventArgs args)
+        {
+            string message = args == null ? "Player location fallback was used." : args.Message;
+            Debug.LogWarning(message);
+            PrototypeHudMessageBus.Show(message);
+        }
+
+        private string ResolveSceneKey()
+        {
+            if (!string.IsNullOrWhiteSpace(sceneKey))
+            {
+                return sceneKey;
+            }
+
+            SceneKeyIdentity identity = Object.FindAnyObjectByType<SceneKeyIdentity>();
+            return identity == null || string.IsNullOrWhiteSpace(identity.SceneKey) ? "scene.prototype" : identity.SceneKey;
         }
 
         private DefinitionRegistry GetDefinitionRegistry()

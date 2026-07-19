@@ -8,6 +8,8 @@ Feature 3.11 adds static place identity and hierarchy foundations without turnin
 
 `PlaceIdentity` is an optional runtime scene presence for a loaded place. It references a `PlaceDefinition` and exposes place ID/display metadata and optional bounds. It does not register globally and does not own permanent place state.
 
+`CurrentPlaceTracker` is the runtime current-place stack used by player-location persistence. It tracks active triggers, chooses the deepest place in the hierarchy, and supports restore-time refresh without turning place definitions into mutable state.
+
 Unity scenes remain technical content containers. A scene can contain multiple places, and a place can later be represented across more than one scene. The scene key on `PlaceDefinition` is optional metadata, not the stable identity.
 
 Location triggers report a `PlaceDefinition` stable ID or legacy location string. They do not define places, discovery, quest state, or permanent world state.
@@ -86,7 +88,7 @@ These helpers operate on already-resolved definitions and do not scan `AssetData
 
 `PlaceIdentity` was added, but no `PlaceRegistry` was introduced. The current feature has no concrete runtime need for loaded-place lookup, and static lookup stays in `DefinitionCatalog`.
 
-No current-place tracker was introduced. The Reach Location objective can be proven by typed trigger reports without adding overlapping trigger stack behavior yet. A later tracker can choose the most deeply nested active place and expose current place events when gameplay needs it.
+Feature 4.5 introduces `CurrentPlaceTracker` for the player. It is still lightweight and scene-local; it does not own discovery, control, schedules, or permanent world state.
 
 ## Reach Location Integration
 

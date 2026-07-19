@@ -11,6 +11,8 @@ using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Persistence;
+using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Inventory;
@@ -65,6 +67,8 @@ namespace UnityIsekaiGame.Editor
 
             CreateZones(zoneMarkers);
             CreateGlobalCollisionFloor(environment);
+            EnsureSceneKey(root);
+            EnsurePlayerTracking();
             CreateSigns(generated);
             CreatePickupGroups(consumables, materials, equipment);
             CreateStatusInteractables(testInteractables);
@@ -262,10 +266,25 @@ namespace UnityIsekaiGame.Editor
             GameObject point = ReplaceGenerated(id, parent);
             point.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
             PrototypeTestPoint testPoint = point.AddComponent<PrototypeTestPoint>();
+            PlayerSpawnPoint spawnPoint = point.AddComponent<PlayerSpawnPoint>();
             SerializedObject serialized = new SerializedObject(testPoint);
             serialized.FindProperty("testPointId").stringValue = id;
             serialized.FindProperty("displayName").stringValue = displayName;
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            SerializedObject serializedSpawn = new SerializedObject(spawnPoint);
+            serializedSpawn.FindProperty("spawnPointId").stringValue = id switch
+            {
+                "test-point.spawn" => "spawn.prototype.default",
+                "test-point.items" => "spawn.prototype.items",
+                "test-point.combat" => "spawn.prototype.combat",
+                "test-point.investigation-area" => "spawn.prototype.quest-area",
+                _ => $"spawn.prototype.{id.Replace("test-point.", string.Empty)}"
+            };
+            serializedSpawn.FindProperty("place").objectReferenceValue = id == "test-point.investigation-area"
+                ? Load<PlaceDefinition>("Assets/GameData/Prototype/Places/DisturbanceSitePlace.asset")
+                : null;
+            serializedSpawn.FindProperty("priority").intValue = id == "test-point.spawn" ? 100 : 10;
+            serializedSpawn.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void WirePrototypePersistence(Transform parent)
@@ -303,6 +322,12 @@ namespace UnityIsekaiGame.Editor
             serializedPersistence.FindProperty("statusEffectController").objectReferenceValue = FindFirst<StatusEffectController>();
             serializedPersistence.FindProperty("playerQuestLog").objectReferenceValue = FindFirst<PlayerQuestLog>();
             serializedPersistence.FindProperty("playerContractJournal").objectReferenceValue = FindFirst<PlayerContractJournal>();
+            serializedPersistence.FindProperty("playerRoot").objectReferenceValue = FindFirst<PlayerInventory>() == null ? null : FindFirst<PlayerInventory>().transform;
+            serializedPersistence.FindProperty("playerInput").objectReferenceValue = FindFirst<UnityIsekaiGame.Input.PlayerInputReader>();
+            serializedPersistence.FindProperty("inventoryScreenController").objectReferenceValue = FindFirst<InventoryScreenController>();
+            serializedPersistence.FindProperty("currentPlaceTracker").objectReferenceValue = FindFirst<CurrentPlaceTracker>();
+            serializedPersistence.FindProperty("sceneKey").stringValue = "scene.prototype";
+            serializedPersistence.FindProperty("defaultSpawnPointId").stringValue = "spawn.prototype.default";
             serializedPersistence.ApplyModifiedPropertiesWithoutUndo();
 
             InventoryScreenController inventoryController = FindFirst<InventoryScreenController>();
@@ -364,6 +389,28 @@ namespace UnityIsekaiGame.Editor
             floor.transform.position = new Vector3(0f, -0.055f, 9f);
             BoxCollider collider = floor.AddComponent<BoxCollider>();
             collider.size = new Vector3(58f, 0.1f, 76f);
+        }
+
+        private static void EnsureSceneKey(Transform root)
+        {
+            SceneKeyIdentity identity = root.GetComponent<SceneKeyIdentity>();
+            if (identity == null)
+            {
+                identity = root.gameObject.AddComponent<SceneKeyIdentity>();
+            }
+
+            SerializedObject serialized = new SerializedObject(identity);
+            serialized.FindProperty("sceneKey").stringValue = "scene.prototype";
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void EnsurePlayerTracking()
+        {
+            PlayerInventory inventory = FindFirst<PlayerInventory>();
+            if (inventory != null && inventory.GetComponent<CurrentPlaceTracker>() == null)
+            {
+                inventory.gameObject.AddComponent<CurrentPlaceTracker>();
+            }
         }
 
         private static void FaceBasePlatform(Transform transform)

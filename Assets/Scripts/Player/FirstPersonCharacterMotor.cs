@@ -51,5 +51,10 @@ namespace UnityIsekaiGame.Player
             Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity;
             controller.Move(velocity * Time.deltaTime);
         }
+
+        public void ResetTransientMotionForPersistenceRestore()
+        {
+            verticalVelocity = 0f;
+        }
     }
 }

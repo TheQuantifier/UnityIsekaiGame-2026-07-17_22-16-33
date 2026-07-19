@@ -210,6 +210,8 @@ Feature 4.3 adds `player.stats-vitals-status`. It is player-scoped, owned by `lo
 
 Feature 4.4 adds `player.quests-contracts`. It is player-scoped, owned by `local-player`, loads after stats/vitals/statuses, and restores personal quest log and accepted contract journal state.
 
+Feature 4.5 adds optional `player.location`. It is player-scoped, owned by `local-player`, loads after quests/contracts in `PositionAndPlace`, and restores same-scene player scene/place/position without mutating shared-world state.
+
 ## Player State Versus World State
 
 Player-state saves and shared-world saves must remain separable.
@@ -322,7 +324,7 @@ Clients must not be allowed to become authoritative over `SharedWorld` or `Regio
 - No autosave.
 - No cloud saves.
 - No encryption or compression.
-- No scene loading.
+- No cross-scene loading.
 - No full gameplay persistence yet.
 - No rollback after an unexpected commit failure.
 - No automatic migrations.
