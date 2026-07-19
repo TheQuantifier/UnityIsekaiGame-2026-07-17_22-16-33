@@ -73,6 +73,8 @@ Examples for new content:
 - `spell.arcane-bolt`
 - `ability.arcane-bolt`
 - `effect.restore-health`
+- `status.prototype-might`
+- `stat.attack-power`
 - `person.prototype-npc`
 - `quest.strange-disturbance`
 - `contract.prototype-elimination`
@@ -121,6 +123,8 @@ Step 3.3 adds object and item taxonomy interfaces on top of the same catalog. It
 Step 3.4 adds `RarityDefinition`, `QualityDefinition`, and `ConditionDefinition` as ordinary catalog definitions. Rarity may be referenced by static definitions through `IHasRarity`; quality and condition are available for future runtime instance metadata and should not be stored as mutable state on shared ScriptableObject assets.
 
 Step 3.7 adds `AbilityDefinition` and reusable `EffectDefinition` assets. They are catalog definitions with stable IDs, but runtime cooldowns, resource values, selected targets, and active projectile state are not catalog data.
+
+Step 3.8 adds `StatusEffectDefinition` assets and stable stat IDs. Status definitions are catalog data; active status applications, remaining duration, stack count, and modifier source IDs are runtime state.
 
 `PersonRegistry` remains separate. It tracks currently loaded `PersonIdentity` scene instances, while the definition catalog tracks static `PersonDefinition` assets.
 
@@ -175,5 +179,5 @@ Those systems are not implemented in Step 3.1.
 - Existing item, person, quest, and contract IDs are valid legacy IDs but do not use the preferred domain prefix.
 - `SpellDefinition` gained an additive `spellId` field; existing prototype spell assets were assigned IDs.
 - There is no global project catalog bootstrap yet. Runtime systems should receive or create registries explicitly from configured catalogs.
-- Dialogue nodes, objective definitions, rewards, places, species, factions, generalized abilities, and effects are outside this feature.
+- Dialogue nodes, objective definitions, rewards, places, species, factions, and full stat-definition assets are outside this feature.
 - Rarity, quality, and condition exist as definition foundations only. They do not yet drive loot probability, item stats, repairs, economy, save/load, or inventory-instance behavior.

@@ -48,7 +48,7 @@ namespace UnityIsekaiGame.Abilities
             ValidateDelivery(ability, report);
         }
 
-        public static void ValidateEffect(EffectDefinition effect, DefinitionValidationReport report)
+        public static void ValidateEffect(EffectDefinition effect, IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
         {
             effect?.ValidateDefinition(report);
         }

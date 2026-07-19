@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a610522ce9e8495f9e0f7db0c62f8e80, type: 3}
+  m_Name: PrototypeMightStatus
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.StatusEffects.StatusEffectDefinition
+  statusId: status.prototype-might
+  displayName: Prototype Might
+  description: Timed prototype status that increases attack power.
+  icon: {fileID: 0}
+  primaryCategory: {fileID: 11400000, guid: 945962798de54554bd97b6f8741234d2, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 1c36edca14a34e7fbf05e1600ed656f9, type: 2}
+  - {fileID: 11400000, guid: 00d9d8e91960473db6677178f9e4ab3d, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  disposition: 0
+  durationModel: 1
+  defaultDuration: 12
+  stackingPolicy: 1
+  refreshPolicy: 1
+  maximumStacks: 1
+  canBeRemoved: 1
+  visibleInHud: 1
+  statModifiers:
+  - statType: 3
+    operation: 0
+    value: 5
+    scaleWithStacks: 1
+    priority: 0
+  periodicInterval: 0
+  periodicEffects: []

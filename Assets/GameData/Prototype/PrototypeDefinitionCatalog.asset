@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.3.4-step-3
+  contentVersion: 0.3.8-step-3
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -78,3 +78,17 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 639aa4a2f0594102aab8d3119e667cb9, type: 2}
   - {fileID: 11400000, guid: 0cd85663eeb0438f80077353d3735bc2, type: 2}
   - {fileID: 11400000, guid: 905f1237ab314a1e82bec294e8d4a55e, type: 2}
+  - {fileID: 11400000, guid: 213b056aa2ef47b9b6d64f7ed862f710, type: 2}
+  - {fileID: 11400000, guid: 945962798de54554bd97b6f8741234d2, type: 2}
+  - {fileID: 11400000, guid: b90adac694334d06929e8db0a590eb46, type: 2}
+  - {fileID: 11400000, guid: 5a0798ea7cec499b913b2569d5ec5a92, type: 2}
+  - {fileID: 11400000, guid: 1c36edca14a34e7fbf05e1600ed656f9, type: 2}
+  - {fileID: 11400000, guid: 8a5b37c7f4e845e5b1b65c752383ac0f, type: 2}
+  - {fileID: 11400000, guid: 00d9d8e91960473db6677178f9e4ab3d, type: 2}
+  - {fileID: 11400000, guid: 7c57f0a4a2b24be197cfcc39be96ef00, type: 2}
+  - {fileID: 11400000, guid: 26bfe312fb7d4568b043a4143e687f0e, type: 2}
+  - {fileID: 11400000, guid: c3d63207771140459be919cc279ed44c, type: 2}
+  - {fileID: 11400000, guid: 042229a544464822b36268e56dc9ed42, type: 2}
+  - {fileID: 11400000, guid: 8c30203a22a94d16b3bd5c87d9b4312c, type: 2}
+  - {fileID: 11400000, guid: c67e92bcfd104fe2b6d6edb73ac590fd, type: 2}
+  - {fileID: 11400000, guid: c9f9f690eb684fffa71eaec8797d2367, type: 2}

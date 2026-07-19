@@ -36,9 +36,9 @@ namespace UnityIsekaiGame.Abilities
             }
         }
 
-        public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        public virtual void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
         {
-            AbilityDefinitionValidator.ValidateEffect(this, report);
+            AbilityDefinitionValidator.ValidateEffect(this, definitionsById, report);
         }
     }
 }

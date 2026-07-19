@@ -5,6 +5,8 @@ using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Contracts;
 using UnityIsekaiGame.UI.Quests;
 
@@ -18,6 +20,11 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private PlayerSpellLoadout spellLoadout;
         [SerializeField] private PlayerContractJournal contractJournal;
         [SerializeField] private PlayerQuestLog questLog;
+        [SerializeField] private PlayerStats playerStats;
+        [SerializeField] private PlayerHealth playerHealth;
+        [SerializeField] private PlayerStamina playerStamina;
+        [SerializeField] private PlayerMana playerMana;
+        [SerializeField] private StatusEffectController statusEffects;
         [SerializeField] private InventoryScreenView view;
         [SerializeField] private SpellManagementView spellManagementView;
         [SerializeField] private ContractJournalView contractJournalView;
@@ -61,6 +68,8 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 itemUser = inventory.gameObject;
             }
+
+            ResolveCharacterSources();
 
             if (view != null)
             {
@@ -113,6 +122,8 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 questLog.QuestLogChanged += Refresh;
             }
+
+            SubscribeCharacterSources();
         }
 
         private void Update()
@@ -182,6 +193,8 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 questLog.QuestLogChanged -= Refresh;
             }
+
+            UnsubscribeCharacterSources();
 
             if (isOpen)
             {
@@ -265,6 +278,7 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 view.Render(inventory.Slots);
                 view.RenderEquipment(equipment == null ? null : equipment.Slots);
+                view.RenderCharacter(playerStats, playerHealth, playerStamina, playerMana, statusEffects);
                 ClampSelection();
                 view.SetSelectedSlot(selectedSlotIndex);
                 view.SetSelectedEquipmentSlot(selectedEquipmentSlot);
@@ -596,6 +610,122 @@ namespace UnityIsekaiGame.UI.Inventory
             }
 
             return questLog.Quests[selectedQuestIndex];
+        }
+
+        private void ResolveCharacterSources()
+        {
+            GameObject source = itemUser != null ? itemUser : inventory == null ? null : inventory.gameObject;
+            if (source == null)
+            {
+                return;
+            }
+
+            if (playerStats == null)
+            {
+                playerStats = source.GetComponentInParent<PlayerStats>();
+            }
+
+            if (playerHealth == null)
+            {
+                playerHealth = source.GetComponentInParent<PlayerHealth>();
+            }
+
+            if (playerStamina == null)
+            {
+                playerStamina = source.GetComponentInParent<PlayerStamina>();
+            }
+
+            if (playerMana == null)
+            {
+                playerMana = source.GetComponentInParent<PlayerMana>();
+            }
+
+            if (statusEffects == null)
+            {
+                statusEffects = source.GetComponentInParent<StatusEffectController>();
+            }
+        }
+
+        private void SubscribeCharacterSources()
+        {
+            if (playerStats != null)
+            {
+                playerStats.StatsChanged += Refresh;
+            }
+
+            if (playerHealth != null)
+            {
+                playerHealth.HealthChanged += OnHealthChanged;
+            }
+
+            if (playerStamina != null)
+            {
+                playerStamina.StaminaChanged += OnStaminaChanged;
+            }
+
+            if (playerMana != null)
+            {
+                playerMana.ManaChanged += OnManaChanged;
+            }
+
+            if (statusEffects != null)
+            {
+                statusEffects.StatusAdded += OnStatusChanged;
+                statusEffects.StatusChanged += OnStatusChanged;
+                statusEffects.StatusRemoved += OnStatusChanged;
+                statusEffects.StatusExpired += OnStatusChanged;
+            }
+        }
+
+        private void UnsubscribeCharacterSources()
+        {
+            if (playerStats != null)
+            {
+                playerStats.StatsChanged -= Refresh;
+            }
+
+            if (playerHealth != null)
+            {
+                playerHealth.HealthChanged -= OnHealthChanged;
+            }
+
+            if (playerStamina != null)
+            {
+                playerStamina.StaminaChanged -= OnStaminaChanged;
+            }
+
+            if (playerMana != null)
+            {
+                playerMana.ManaChanged -= OnManaChanged;
+            }
+
+            if (statusEffects != null)
+            {
+                statusEffects.StatusAdded -= OnStatusChanged;
+                statusEffects.StatusChanged -= OnStatusChanged;
+                statusEffects.StatusRemoved -= OnStatusChanged;
+                statusEffects.StatusExpired -= OnStatusChanged;
+            }
+        }
+
+        private void OnHealthChanged(int current, int maximum)
+        {
+            Refresh();
+        }
+
+        private void OnStaminaChanged(float current, float maximum)
+        {
+            Refresh();
+        }
+
+        private void OnManaChanged(float current, float maximum)
+        {
+            Refresh();
+        }
+
+        private void OnStatusChanged(RuntimeStatusEffect status)
+        {
+            Refresh();
         }
     }
 }

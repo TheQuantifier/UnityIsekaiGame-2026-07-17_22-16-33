@@ -5,6 +5,7 @@ using UnityIsekaiGame.Dialogue;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Loot;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Inventory;
 
 namespace UnityIsekaiGame.Gameplay
@@ -18,6 +19,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PlayerMana playerMana;
         [SerializeField] private PlayerMeleeCombat playerMeleeCombat;
         [SerializeField] private PlayerSpellcaster playerSpellcaster;
+        [SerializeField] private StatusEffectController playerStatusEffects;
         [SerializeField] private DialogueController dialogueController;
         [SerializeField] private InventoryScreenController inventoryScreenController;
         [SerializeField] private Transform playerSpawnPoint;
@@ -27,6 +29,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PrototypeEnemyController enemyController;
         [SerializeField] private EnemyContractTargetReporter enemyContractTargetReporter;
         [SerializeField] private EnemyLootDrop enemyLootDrop;
+        [SerializeField] private StatusEffectController enemyStatusEffects;
 
         private Vector3 fallbackPlayerSpawnPosition;
         private Quaternion fallbackPlayerSpawnRotation;
@@ -70,6 +73,11 @@ namespace UnityIsekaiGame.Gameplay
                 playerSpellcaster = player.GetComponent<PlayerSpellcaster>();
             }
 
+            if (playerStatusEffects == null && player != null)
+            {
+                playerStatusEffects = player.GetComponent<StatusEffectController>();
+            }
+
             if (dialogueController == null)
             {
                 dialogueController = FindAnyObjectByType<DialogueController>();
@@ -110,6 +118,11 @@ namespace UnityIsekaiGame.Gameplay
                 enemyLootDrop = prototypeEnemy.GetComponent<EnemyLootDrop>();
             }
 
+            if (enemyStatusEffects == null && prototypeEnemy != null)
+            {
+                enemyStatusEffects = prototypeEnemy.GetComponent<StatusEffectController>();
+            }
+
             fallbackPlayerSpawnPosition = player == null ? Vector3.zero : player.position;
             fallbackPlayerSpawnRotation = player == null ? Quaternion.identity : player.rotation;
             enemyStartPosition = prototypeEnemy == null ? Vector3.zero : prototypeEnemy.position;
@@ -129,6 +142,7 @@ namespace UnityIsekaiGame.Gameplay
             dialogueController?.EndDialogue();
             inventoryScreenController?.CloseForPrototypeReset();
             ResetPlayerPosition();
+            playerStatusEffects?.ClearTemporaryStatuses();
             playerHealth?.ResetToMaximum();
             playerStamina?.RestoreToMaximum();
             playerMana?.RestoreToMaximum();
@@ -177,6 +191,7 @@ namespace UnityIsekaiGame.Gameplay
             enemyController?.ResetControllerState();
             enemyContractTargetReporter?.ResetReporter();
             enemyLootDrop?.ResetLootState();
+            enemyStatusEffects?.ClearTemporaryStatuses();
             enemyHealth?.ResetToMaximum();
         }
     }

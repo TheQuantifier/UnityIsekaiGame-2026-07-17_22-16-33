@@ -65,7 +65,7 @@ Effects execute in serialized order. Missing effects or failed validation stop e
 
 Melee combat is not rewritten. The new `DamageEffectDefinition` accepts the same `IDamageable` contract used by melee, so melee can migrate later.
 
-Equipment stat modifiers remain persistent equipped-state calculations. Ability effects are one-time executions. Future status effects may bridge time-bound modifiers.
+Equipment stat modifiers remain persistent equipped-state calculations. Feature 3.8 adds status effects as the preferred bridge for time-bound modifiers. Ability effects can now apply a `StatusEffectDefinition` through `ApplyStatusEffectDefinition` so modifier lifetime is owned by a runtime status controller.
 
 Ability contexts can carry optional `ItemDefinition` and `ItemInstance` sources for future item-instance-aware attacks, wands, or potion instances.
 
@@ -79,6 +79,8 @@ Current prototype definitions:
 - `effect.arcane-damage`
 - `effect.heavy-arcane-damage`
 - `effect.restore-health`
+- `effect.apply-prototype-might`
+- `effect.apply-prototype-weakened`
 
 ## Creating A New Ability
 

@@ -4,6 +4,9 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityIsekaiGame.Equipment;
+using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.UI;
 using CategoryDefinition = UnityIsekaiGame.GameData.CategoryDefinition;
 using ItemInstance = UnityIsekaiGame.GameData.ItemInstance;
 using InventorySlot = UnityIsekaiGame.Inventory.InventorySlot;
@@ -26,6 +29,10 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private Text selectedItemDetailsText;
         [SerializeField] private GameObject inventoryContentRoot;
         [SerializeField] private GameObject characterContentRoot;
+        [SerializeField] private GameObject characterStatsRoot;
+        [SerializeField] private Text characterStatsText;
+        [SerializeField] private StatusEffectReadoutView statusReadoutView;
+        [SerializeField] private Text statusReadoutText;
         [SerializeField] private GameObject spellsContentRoot;
         [SerializeField] private GameObject contractsContentRoot;
         [SerializeField] private Button inventoryMenuButton;
@@ -215,6 +222,34 @@ namespace UnityIsekaiGame.UI.Inventory
             }
         }
 
+        public void RenderCharacter(
+            PlayerStats stats,
+            PlayerHealth health,
+            PlayerStamina stamina,
+            PlayerMana mana,
+            StatusEffectController statusEffects)
+        {
+            EnsureCharacterStatsPanel();
+
+            if (characterStatsRoot != null)
+            {
+                characterStatsRoot.SetActive(true);
+            }
+
+            if (characterStatsText == null)
+            {
+                return;
+            }
+
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Stats");
+            AppendLine(builder, "Attack", stats == null ? "--" : FormatNumber(stats.AttackPower));
+            AppendLine(builder, "Defense", stats == null ? "--" : FormatNumber(stats.Defense));
+
+            characterStatsText.text = builder.ToString().TrimEnd();
+            statusReadoutView?.SetStatusController(statusEffects);
+        }
+
         public void SetSelectedEquipmentSlot(EquipmentSlotType selectedSlot)
         {
             if (equipmentSlotViews == null)
@@ -401,6 +436,84 @@ namespace UnityIsekaiGame.UI.Inventory
                 rectTransform.offsetMin = new Vector2(12f, 12f);
                 rectTransform.offsetMax = new Vector2(-12f, -50f);
             }
+        }
+
+        private void EnsureCharacterStatsPanel()
+        {
+            if (characterStatsText != null)
+            {
+                return;
+            }
+
+            Transform parent = characterContentRoot == null ? transform : characterContentRoot.transform;
+            Font font = feedbackText == null ? null : feedbackText.font;
+            if (font == null)
+            {
+                font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            }
+
+            characterStatsRoot = characterStatsRoot == null
+                ? CreateCharacterStatsRoot(parent)
+                : characterStatsRoot;
+
+            characterStatsText = CreateDetailsText("Character Stats And Status", characterStatsRoot.transform, font, 16, FontStyle.Normal, TextAnchor.UpperLeft);
+            RectTransform rectTransform = characterStatsText.rectTransform;
+            rectTransform.anchorMin = new Vector2(0f, 0.62f);
+            rectTransform.anchorMax = Vector2.one;
+            rectTransform.offsetMin = new Vector2(18f, 16f);
+            rectTransform.offsetMax = new Vector2(-18f, -16f);
+
+            statusReadoutText = statusReadoutText == null
+                ? CreateDetailsText("Status Effects", characterStatsRoot.transform, font, 16, FontStyle.Normal, TextAnchor.UpperLeft)
+                : statusReadoutText;
+            RectTransform statusRect = statusReadoutText.rectTransform;
+            statusRect.anchorMin = Vector2.zero;
+            statusRect.anchorMax = new Vector2(1f, 0.58f);
+            statusRect.offsetMin = new Vector2(18f, 16f);
+            statusRect.offsetMax = new Vector2(-18f, -8f);
+
+            if (statusReadoutView == null)
+            {
+                statusReadoutView = statusReadoutText.GetComponent<StatusEffectReadoutView>();
+                if (statusReadoutView == null)
+                {
+                    statusReadoutView = statusReadoutText.gameObject.AddComponent<StatusEffectReadoutView>();
+                }
+            }
+        }
+
+        private static GameObject CreateCharacterStatsRoot(Transform parent)
+        {
+            GameObject root = new GameObject("Character Stats And Status", typeof(RectTransform), typeof(Image), typeof(Outline));
+            root.transform.SetParent(parent, false);
+
+            RectTransform rectTransform = root.GetComponent<RectTransform>();
+            rectTransform.anchorMin = new Vector2(0f, 1f);
+            rectTransform.anchorMax = new Vector2(0f, 1f);
+            rectTransform.pivot = new Vector2(0f, 1f);
+            rectTransform.anchoredPosition = new Vector2(410f, -56f);
+            rectTransform.sizeDelta = new Vector2(430f, 330f);
+
+            Image image = root.GetComponent<Image>();
+            image.color = new Color(0.08f, 0.1f, 0.12f, 0.95f);
+
+            Outline outline = root.GetComponent<Outline>();
+            outline.effectColor = new Color(0.28f, 0.35f, 0.39f, 0.9f);
+            outline.effectDistance = new Vector2(1f, -1f);
+
+            return root;
+        }
+
+        private static void AppendLine(StringBuilder builder, string label, string value)
+        {
+            builder.Append(label);
+            builder.Append(": ");
+            builder.AppendLine(value);
+        }
+
+        private static string FormatNumber(float value)
+        {
+            return value.ToString("0.##");
         }
 
         private static GameObject CreateDetailsRoot(Transform parent)

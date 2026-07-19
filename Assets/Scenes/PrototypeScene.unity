@@ -145,6 +145,7 @@ GameObject:
   - component: {fileID: 343134193}
   - component: {fileID: 343134194}
   - component: {fileID: 343134195}
+  - component: {fileID: 343134196}
   m_Layer: 0
   m_Name: Prototype Player
   m_TagString: Player
@@ -3012,6 +3013,11 @@ MonoBehaviour:
   spellLoadout: {fileID: 343134192}
   contractJournal: {fileID: 343134194}
   questLog: {fileID: 343134195}
+  playerStats: {fileID: 343134187}
+  playerHealth: {fileID: 100007}
+  playerStamina: {fileID: 100009}
+  playerMana: {fileID: 100008}
+  statusEffects: {fileID: 343134196}
   view: {fileID: 328735282}
   spellManagementView: {fileID: 472352635}
   contractJournalView: {fileID: 1793998630}
@@ -3061,6 +3067,10 @@ MonoBehaviour:
   unequipButton: {fileID: 1786610508}
   inventoryContentRoot: {fileID: 1055995008}
   characterContentRoot: {fileID: 420009398}
+  characterStatsRoot: {fileID: 0}
+  characterStatsText: {fileID: 0}
+  statusReadoutView: {fileID: 0}
+  statusReadoutText: {fileID: 0}
   spellsContentRoot: {fileID: 1342193302}
   contractsContentRoot: {fileID: 1696936191}
   inventoryMenuButton: {fileID: 1656311039}
@@ -3355,6 +3365,18 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Quests.PlayerQuestLog
   inventory: {fileID: 100006}
+--- !u!114 &343134196
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d1fb0e46e44301b4496da21379869daf, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.StatusEffects.StatusEffectController
 --- !u!1 &364830257
 GameObject:
   m_ObjectHideFlags: 0
