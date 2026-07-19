@@ -6,6 +6,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.StatusEffects;
 
 namespace UnityIsekaiGame.Editor
 {
@@ -183,7 +184,13 @@ namespace UnityIsekaiGame.Editor
             DefinitionCatalog catalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(PrototypeCatalogPath);
             PlayerInventory inventory = Object.FindAnyObjectByType<PlayerInventory>();
             PlayerEquipment equipment = inventory == null ? Object.FindAnyObjectByType<PlayerEquipment>() : inventory.GetComponent<PlayerEquipment>();
-            service.ConfigurePlayerPersistence(catalog, inventory, equipment);
+            GameObject playerRoot = inventory == null ? equipment == null ? null : equipment.gameObject : inventory.gameObject;
+            PlayerStats stats = playerRoot == null ? Object.FindAnyObjectByType<PlayerStats>() : playerRoot.GetComponent<PlayerStats>();
+            PlayerHealth health = playerRoot == null ? Object.FindAnyObjectByType<PlayerHealth>() : playerRoot.GetComponent<PlayerHealth>();
+            PlayerMana mana = playerRoot == null ? Object.FindAnyObjectByType<PlayerMana>() : playerRoot.GetComponent<PlayerMana>();
+            PlayerStamina stamina = playerRoot == null ? Object.FindAnyObjectByType<PlayerStamina>() : playerRoot.GetComponent<PlayerStamina>();
+            StatusEffectController statusController = playerRoot == null ? Object.FindAnyObjectByType<StatusEffectController>() : playerRoot.GetComponent<StatusEffectController>();
+            service.ConfigurePlayerPersistence(catalog, inventory, equipment, stats, health, mana, stamina, statusController);
         }
     }
 }

@@ -96,6 +96,20 @@ namespace UnityIsekaiGame.Gameplay
             mana.SetCurrent(mana.MaximumValue);
         }
 
+        public bool TryRestoreForPersistence(float restoredMana, out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (float.IsNaN(restoredMana) || float.IsInfinity(restoredMana) || restoredMana < 0f)
+            {
+                failureReason = $"Mana value {restoredMana} is invalid for save restoration.";
+                return false;
+            }
+
+            regenerationBlockedUntil = 0f;
+            mana.SetCurrent(Mathf.Clamp(restoredMana, 0f, mana.MaximumValue));
+            return true;
+        }
+
         private void OnManaChanged(float current, float maximum)
         {
             ManaChanged?.Invoke(current, maximum);

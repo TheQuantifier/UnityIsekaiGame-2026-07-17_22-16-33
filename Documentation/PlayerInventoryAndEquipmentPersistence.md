@@ -79,7 +79,7 @@ An unexpected commit failure attempts a local rollback to pre-load inventory/equ
 
 Feature 4.2 does not persist current health, mana, or stamina.
 
-If restored equipment changes maximum vitals, existing runtime behavior applies: lowering a maximum clamps current value, and raising a maximum does not refill automatically. Feature 4.3 should restore current vitals after equipment is restored.
+If restored equipment changes maximum vitals, existing runtime behavior applies: lowering a maximum clamps current value, and raising a maximum does not refill automatically. Feature 4.3 restores current vitals after equipment and save-eligible statuses have rebuilt final max-stat modifiers.
 
 ## World Pickup Limitation
 

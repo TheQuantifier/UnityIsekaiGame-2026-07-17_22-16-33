@@ -1,6 +1,6 @@
 # Persistence Service Foundation
 
-Feature 4.1 adds the first persistence layer. Feature 4.2 adds player-scoped inventory/equipment persistence through the same participant architecture. The service still does not persist vitals, statuses, quests, contracts, position, scene loading, or shared-world restoration.
+Feature 4.1 adds the first persistence layer. Feature 4.2 adds player-scoped inventory/equipment persistence, and Feature 4.3 adds player-scoped stats/vitals/status persistence through the same participant architecture. The service still does not persist quests, contracts, position, scene loading, or shared-world restoration.
 
 ## Architecture
 
@@ -205,6 +205,8 @@ Feature 4.1 uses one required participant: `prototype.state`.
 `prototype.state` is player-scoped and uses the local prototype owner ID. This proves owner metadata without introducing networking or account authentication.
 
 Feature 4.2 adds another required prototype participant: `player.inventory-equipment`. It is player-scoped, owned by `local-player`, and coordinates inventory/equipment restore as one aggregate payload.
+
+Feature 4.3 adds `player.stats-vitals-status`. It is player-scoped, owned by `local-player`, loads after inventory/equipment, restores save-eligible statuses, and then restores current Health, Mana, and Stamina.
 
 ## Player State Versus World State
 

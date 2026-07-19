@@ -106,7 +106,8 @@ namespace UnityIsekaiGame.StatusEffects
                 remainingDuration = remainingDuration,
                 elapsedDuration = elapsedDuration,
                 stackCount = stackCount,
-                durationModel = Definition == null ? StatusDurationModel.Instant : Definition.DurationModel
+                durationModel = Definition == null ? StatusDurationModel.Instant : Definition.DurationModel,
+                persistencePolicy = Definition == null ? StatusPersistencePolicy.DoNotSave : Definition.PersistencePolicy
             };
         }
 

@@ -8,6 +8,8 @@ Feature 3.8 adds the first runtime layer for actor status effects and stat modif
 
 `RuntimeStatusEffect` is one active application on one actor. It owns the application ID, source identity, target reference, remaining duration, elapsed duration, stack count, and removed/expired state.
 
+Feature 4.3 adds `StatusPersistencePolicy` on `StatusEffectDefinition`. Save-eligible non-instant statuses preserve definition ID, application ID, source ID, remaining duration, elapsed duration, and stack count. Status-owned stat and resistance modifiers are rebuilt from the restored status rather than serialized directly.
+
 ## Modifiers And Stats
 
 `StatModifierDefinition` describes a modifier target and operation. `RuntimeStatModifier` is one active contribution with an exact `StatModifierSource`.
