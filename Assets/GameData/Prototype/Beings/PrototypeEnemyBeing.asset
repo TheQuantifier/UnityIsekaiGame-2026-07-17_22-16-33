@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2428ea1035e84591903a962719c185f6, type: 3}
+  m_Name: PrototypeEnemyBeing
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.BeingDefinition
+  beingId: being.prototype-enemy
+  displayName: Prototype Enemy
+  description: Prototype-only hostile being used by the current enemy actor.
+  primaryCategory: {fileID: 11400000, guid: 02c94266952742b4921d4ab8cefe3141, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 42afd05984f545cab3198148adf73183, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  icon: {fileID: 0}
+  parentBeing: {fileID: 0}
+  intelligence: 1
+  socialCapability: 1
+  locomotionCapabilities: 1
+  nature: 1
+  defaultActorProfile: {fileID: 0}
+  futureSpeciesIdPlaceholder: 

@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63e087d1263a415793df16c2ff45e573, type: 3}
+  m_Name: PlayerPrototypeActorProfile
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.ActorProfileDefinition
+  actorProfileId: actor-profile.player-prototype
+  displayName: Player Prototype
+  description: Prototype player actor profile preserving current runtime stat values.
+  beingDefinition: {fileID: 11400000, guid: 83c94b51705a4b43aa317ea3d808e24f, type: 2}
+  primaryCategory: {fileID: 11400000, guid: 0bfc1472e1244e4992e19c31886b1252, type: 2}
+  tags:
+  - {fileID: 11400000, guid: ae91f7acd1794650bcc7d65b47d79796, type: 2}
+  - {fileID: 11400000, guid: e882b89cbef5443098b68df0b7b8bd87, type: 2}
+  - {fileID: 11400000, guid: acb0be3d97e64471aa1fb2f07b488819, type: 2}
+  - {fileID: 11400000, guid: a4ab8cdf610243969457336dc9af1145, type: 2}
+  - {fileID: 11400000, guid: f85b347e325146efa0195c535be596dc, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  baseMaximumHealth: 100
+  baseMaximumStamina: 100
+  baseMaximumMana: 100
+  baseAttackPower: 5
+  baseDefense: 0
+  baseMovementSpeed: 0
+  futureSensesPlaceholder: 
+  futureMovementProfilePlaceholder: 

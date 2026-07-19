@@ -6,7 +6,7 @@ Feature 3.9 generalizes the runtime stat and status foundation so combat-capable
 
 `ActorStats` is the generic runtime stat component. It implements `IActorStats` and `IRuntimeStatReceiver`, owns one `RuntimeStatCollection`, and exposes calculated max health, max stamina, max mana, attack power, defense, and movement speed as read-only values.
 
-Base values are serialized actor configuration. Active modifiers are runtime state and are registered by exact `StatModifierSource`. Removing one source only removes that source's modifiers.
+Base values now come from an assigned `ActorProfileDefinition` when one is configured, with serialized component fields retained as compatibility fallback. Active modifiers are runtime state and are registered by exact `StatModifierSource`. Removing one source only removes that source's modifiers.
 
 `PlayerStats` now inherits from `ActorStats` and remains the player-specific adapter for equipment modifiers. Existing player callers still use `MaximumHealth`, `MaximumStamina`, `MaximumMana`, `AttackPower`, `Defense`, and `StatsChanged`.
 

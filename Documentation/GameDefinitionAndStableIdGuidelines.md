@@ -75,6 +75,8 @@ Examples for new content:
 - `effect.restore-health`
 - `status.prototype-might`
 - `stat.attack-power`
+- `being.person`
+- `actor-profile.player-prototype`
 - `person.prototype-npc`
 - `quest.strange-disturbance`
 - `contract.prototype-elimination`

@@ -1,10 +1,12 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.Beings;
 
 namespace UnityIsekaiGame.Stats
 {
     public class ActorStats : MonoBehaviour, IActorStats
     {
+        [SerializeField] private ActorProfileDefinition actorProfile;
         [SerializeField, Min(1f)] protected float baseMaximumHealth = 100f;
         [SerializeField, Min(0f)] protected float baseMaximumStamina = 100f;
         [SerializeField, Min(0f)] protected float baseMaximumMana = 100f;
@@ -21,6 +23,16 @@ namespace UnityIsekaiGame.Stats
         public float AttackPower => Mathf.Max(0f, GetRuntimeStatValue(StatType.AttackPower));
         public float Defense => Mathf.Max(0f, GetRuntimeStatValue(StatType.Defense));
         public float MovementSpeed => Mathf.Max(0f, GetRuntimeStatValue(StatType.MovementSpeed));
+        public ActorProfileDefinition ActorProfile => actorProfile;
+        public bool IsInitialized => baseStatsConfigured;
+        public ActorProfileInitializationResult LastInitializationResult { get; private set; }
+        public bool HasProfileLegacyConflict => actorProfile != null
+            && (!Mathf.Approximately(actorProfile.BaseMaximumHealth, baseMaximumHealth)
+                || !Mathf.Approximately(actorProfile.BaseMaximumStamina, baseMaximumStamina)
+                || !Mathf.Approximately(actorProfile.BaseMaximumMana, baseMaximumMana)
+                || !Mathf.Approximately(actorProfile.BaseAttackPower, baseAttackPower)
+                || !Mathf.Approximately(actorProfile.BaseDefense, baseDefense)
+                || !Mathf.Approximately(actorProfile.BaseMovementSpeed, baseMovementSpeed));
         public event Action StatsChanged;
 
         protected virtual void Awake()
@@ -47,6 +59,20 @@ namespace UnityIsekaiGame.Stats
             baseAttackPower = Mathf.Max(0f, baseAttackPower);
             baseDefense = Mathf.Max(0f, baseDefense);
             baseMovementSpeed = Mathf.Max(0f, baseMovementSpeed);
+        }
+
+        public ActorProfileInitializationResult TryInitializeBaseStats()
+        {
+            if (baseStatsConfigured)
+            {
+                LastInitializationResult = new ActorProfileInitializationResult(
+                    ActorProfileInitializationStatus.AlreadyInitialized,
+                    $"{name} actor stats are already initialized.");
+                return LastInitializationResult;
+            }
+
+            EnsureBaseStatsConfigured();
+            return LastInitializationResult;
         }
 
         public bool HasStat(StatType statType)
@@ -85,13 +111,52 @@ namespace UnityIsekaiGame.Stats
                 return;
             }
 
-            runtimeStats.SetBaseValue(StatType.MaximumHealth, baseMaximumHealth);
-            runtimeStats.SetBaseValue(StatType.MaximumStamina, baseMaximumStamina);
-            runtimeStats.SetBaseValue(StatType.MaximumMana, baseMaximumMana);
-            runtimeStats.SetBaseValue(StatType.AttackPower, baseAttackPower);
-            runtimeStats.SetBaseValue(StatType.Defense, baseDefense);
-            runtimeStats.SetBaseValue(StatType.MovementSpeed, baseMovementSpeed);
+            if (actorProfile != null && actorProfile.HasValidBaseStats)
+            {
+                ApplyBaseValues(
+                    actorProfile.BaseMaximumHealth,
+                    actorProfile.BaseMaximumStamina,
+                    actorProfile.BaseMaximumMana,
+                    actorProfile.BaseAttackPower,
+                    actorProfile.BaseDefense,
+                    actorProfile.BaseMovementSpeed);
+                LastInitializationResult = new ActorProfileInitializationResult(
+                    ActorProfileInitializationStatus.InitializedFromProfile,
+                    $"{name} actor stats initialized from profile '{actorProfile.Id}'.");
+            }
+            else
+            {
+                ApplyBaseValues(
+                    baseMaximumHealth,
+                    baseMaximumStamina,
+                    baseMaximumMana,
+                    baseAttackPower,
+                    baseDefense,
+                    baseMovementSpeed);
+                LastInitializationResult = new ActorProfileInitializationResult(
+                    actorProfile == null ? ActorProfileInitializationStatus.InitializedFromLegacyFallback : ActorProfileInitializationStatus.InvalidProfile,
+                    actorProfile == null
+                        ? $"{name} actor stats initialized from legacy fallback fields."
+                        : $"{name} actor stats profile '{actorProfile.Id}' is invalid; legacy fallback fields were used.");
+            }
+
             baseStatsConfigured = true;
+        }
+
+        private void ApplyBaseValues(
+            float maximumHealth,
+            float maximumStamina,
+            float maximumMana,
+            float attackPower,
+            float defense,
+            float movementSpeed)
+        {
+            runtimeStats.SetBaseValue(StatType.MaximumHealth, maximumHealth);
+            runtimeStats.SetBaseValue(StatType.MaximumStamina, maximumStamina);
+            runtimeStats.SetBaseValue(StatType.MaximumMana, maximumMana);
+            runtimeStats.SetBaseValue(StatType.AttackPower, attackPower);
+            runtimeStats.SetBaseValue(StatType.Defense, defense);
+            runtimeStats.SetBaseValue(StatType.MovementSpeed, movementSpeed);
         }
 
         private float GetRuntimeStatValue(StatType statType)

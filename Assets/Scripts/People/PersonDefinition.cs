@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.Beings;
 using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.People
 {
     [CreateAssetMenu(fileName = "Person", menuName = "Unity Isekai Game/People/Person")]
-    public sealed class PersonDefinition : ScriptableObject, IGameDefinition, ICategorizableDefinition, ITaggedDefinition, ILegacyStringTaggedDefinition
+    public sealed class PersonDefinition : ScriptableObject, IGameDefinition, ICategorizableDefinition, ITaggedDefinition, ILegacyStringTaggedDefinition, IDefinitionCatalogValidationParticipant
     {
         [SerializeField] private string personId;
         [SerializeField] private string displayName;
@@ -15,6 +16,8 @@ namespace UnityIsekaiGame.People
         [SerializeField] private Sprite portrait;
         [SerializeField] private CategoryDefinition primaryCategory;
         [SerializeField] private TagDefinition[] tags;
+        [SerializeField] private BeingDefinition beingDefinition;
+        [SerializeField] private ActorProfileDefinition actorProfile;
         [SerializeField] private string[] roleTags;
         [SerializeField] private string factionIdPlaceholder;
         [SerializeField] private string settlementIdPlaceholder;
@@ -29,6 +32,8 @@ namespace UnityIsekaiGame.People
         public CategoryDefinition PrimaryCategory => primaryCategory;
         public CategoryDomain ClassificationDomain => CategoryDomain.Person;
         public IReadOnlyList<TagDefinition> Tags => tags ?? Array.Empty<TagDefinition>();
+        public BeingDefinition BeingDefinition => beingDefinition;
+        public ActorProfileDefinition ActorProfile => actorProfile;
         public IReadOnlyList<string> RoleTags => roleTags ?? Array.Empty<string>();
         public IReadOnlyList<string> LegacyTags => RoleTags;
         public string LegacyTagLabel => "role";
@@ -36,5 +41,31 @@ namespace UnityIsekaiGame.People
         public string SettlementIdPlaceholder => settlementIdPlaceholder;
         public PersonImportance Importance => importance;
         public bool HasValidPersonId => !string.IsNullOrWhiteSpace(personId);
+
+        public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            if (definitionsById == null || report == null)
+            {
+                return;
+            }
+
+            if (beingDefinition != null
+                && (!definitionsById.TryGetValue(beingDefinition.Id, out IGameDefinition being) || !(being is BeingDefinition)))
+            {
+                report.AddError($"PersonDefinition '{DisplayName}' references being '{beingDefinition.Id}', which is not in the configured catalog.");
+            }
+
+            if (actorProfile != null)
+            {
+                if (!definitionsById.TryGetValue(actorProfile.Id, out IGameDefinition profile) || !(profile is ActorProfileDefinition))
+                {
+                    report.AddError($"PersonDefinition '{DisplayName}' references actor profile '{actorProfile.Id}', which is not in the configured catalog.");
+                }
+                else if (beingDefinition != null && actorProfile.BeingDefinition != null && actorProfile.BeingDefinition.Id != beingDefinition.Id)
+                {
+                    report.AddWarning($"PersonDefinition '{DisplayName}' references being '{beingDefinition.Id}' but actor profile '{actorProfile.Id}' references being '{actorProfile.BeingDefinition.Id}'.");
+                }
+            }
+        }
     }
 }

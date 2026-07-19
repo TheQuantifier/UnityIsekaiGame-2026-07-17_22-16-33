@@ -3191,6 +3191,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 045240f77ef28004b918bfe4ad6a5bf5, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Equipment.PlayerStats
+  actorProfile: {fileID: 11400000, guid: 0697f228c00e4202a143936fb644f547, type: 2}
   equipment: {fileID: 343134188}
   baseMaximumHealth: 100
   baseMaximumStamina: 100
@@ -9571,6 +9572,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 09672751c3f54efd8e4e70931fbdd62c, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Stats.ActorStats
+  actorProfile: {fileID: 11400000, guid: 8f9cba49469c4a2bbdbd7f0ffbcb2ec1, type: 2}
   baseMaximumHealth: 65
   baseMaximumStamina: 0
   baseMaximumMana: 0
