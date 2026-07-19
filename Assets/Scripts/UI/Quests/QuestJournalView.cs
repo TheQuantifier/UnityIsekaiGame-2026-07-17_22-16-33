@@ -134,10 +134,10 @@ namespace UnityIsekaiGame.UI.Quests
         {
             StringBuilder builder = new StringBuilder();
             builder.Append(quest.Definition.Category);
-            if (!string.IsNullOrWhiteSpace(quest.Definition.QuestGiverDisplayName))
+            if (!string.IsNullOrWhiteSpace(quest.Definition.QuestSourceDisplayName))
             {
                 builder.Append(" - ");
-                builder.Append(quest.Definition.QuestGiverDisplayName);
+                builder.Append(quest.Definition.QuestSourceDisplayName);
             }
 
             builder.AppendLine();

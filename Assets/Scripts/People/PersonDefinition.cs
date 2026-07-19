@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Beings;
+using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Places;
 
@@ -20,6 +21,9 @@ namespace UnityIsekaiGame.People
         [SerializeField] private BeingDefinition beingDefinition;
         [SerializeField] private ActorProfileDefinition actorProfile;
         [SerializeField] private PlaceDefinition homePlace;
+        [SerializeField] private FactionDefinition primaryFaction;
+        [SerializeField] private string publicRoleTitle;
+        [SerializeField] private FactionDefinition leadershipOfFaction;
         [SerializeField] private string[] roleTags;
         [SerializeField] private string factionIdPlaceholder;
         [SerializeField] private string settlementIdPlaceholder;
@@ -37,6 +41,9 @@ namespace UnityIsekaiGame.People
         public BeingDefinition BeingDefinition => beingDefinition;
         public ActorProfileDefinition ActorProfile => actorProfile;
         public PlaceDefinition HomePlace => homePlace;
+        public FactionDefinition PrimaryFaction => primaryFaction;
+        public string PublicRoleTitle => publicRoleTitle;
+        public FactionDefinition LeadershipOfFaction => leadershipOfFaction;
         public IReadOnlyList<string> RoleTags => roleTags ?? Array.Empty<string>();
         public IReadOnlyList<string> LegacyTags => RoleTags;
         public string LegacyTagLabel => "role";
@@ -74,6 +81,26 @@ namespace UnityIsekaiGame.People
                 && (!definitionsById.TryGetValue(homePlace.Id, out IGameDefinition place) || !(place is PlaceDefinition)))
             {
                 report.AddError($"PersonDefinition '{DisplayName}' references home place '{homePlace.Id}', which is not in the configured catalog.");
+            }
+
+            ValidateFactionReference(primaryFaction, nameof(PrimaryFaction), definitionsById, report);
+            ValidateFactionReference(leadershipOfFaction, nameof(LeadershipOfFaction), definitionsById, report);
+        }
+
+        private void ValidateFactionReference(
+            FactionDefinition faction,
+            string label,
+            IReadOnlyDictionary<string, IGameDefinition> definitionsById,
+            DefinitionValidationReport report)
+        {
+            if (faction == null)
+            {
+                return;
+            }
+
+            if (!definitionsById.TryGetValue(faction.Id, out IGameDefinition found) || found is not FactionDefinition)
+            {
+                report.AddError($"PersonDefinition '{DisplayName}' references {label} '{faction.Id}', which is not in the configured catalog.");
             }
         }
     }

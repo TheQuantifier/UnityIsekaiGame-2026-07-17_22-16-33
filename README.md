@@ -40,6 +40,8 @@ Contracts may eventually be created by the simulated world, NPCs, governments, g
 
 Other guilds, such as a Merchant Guild, should be able to use the same shared contract foundation for profession-specific work.
 
+The current prototype now includes static faction and organization definitions for a prototype kingdom, Adventurer's Guild, Merchant Guild, town guard, and bandits. These are authored metadata only; ranks, memberships, reputation, diplomacy, laws, and economy are still future runtime systems.
+
 ## Economy And Player Businesses
 
 Settlements are planned to have statistical economies rather than one fixed global price list.

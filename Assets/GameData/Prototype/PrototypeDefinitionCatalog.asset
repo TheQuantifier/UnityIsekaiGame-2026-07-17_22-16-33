@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.3.11-step-3
+  contentVersion: 0.3.12-step-3
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -126,3 +126,25 @@ MonoBehaviour:
   - {fileID: 11400000, guid: c67f143c04714aa5b83246d52f264b97, type: 2}
   - {fileID: 11400000, guid: 296da81eaaa8497e94c0cd52855222aa, type: 2}
   - {fileID: 11400000, guid: c678b5b42a394c799148a7cbe8b2c4cc, type: 2}
+  - {fileID: 11400000, guid: 1072935190c944aab8ed121741a10ab7, type: 2}
+  - {fileID: 11400000, guid: 42d38c491e114892ba676c7c612abca7, type: 2}
+  - {fileID: 11400000, guid: 6335cb4e10d84e2ca441e16daf61a13d, type: 2}
+  - {fileID: 11400000, guid: 53e8903f08dc4061bf4dac898ff0c2b8, type: 2}
+  - {fileID: 11400000, guid: d020d72923894818af83c448e879e08f, type: 2}
+  - {fileID: 11400000, guid: 27a8afdccff34e5b88a6d47bfa702091, type: 2}
+  - {fileID: 11400000, guid: e6faae0b42df4b90918e793183184420, type: 2}
+  - {fileID: 11400000, guid: f7ffb725d2284bf8a8fbb3fc1282aca5, type: 2}
+  - {fileID: 11400000, guid: 0e978004aefc46869e97dfcccb6d1c23, type: 2}
+  - {fileID: 11400000, guid: cbc90424149442d08874d2e0289da4a8, type: 2}
+  - {fileID: 11400000, guid: 24913325812e4a9e878f22f01dca5b2c, type: 2}
+  - {fileID: 11400000, guid: 05670206bf984b6cbd45c096e3a78b34, type: 2}
+  - {fileID: 11400000, guid: e1a0084395594246817ec0a1444abeaa, type: 2}
+  - {fileID: 11400000, guid: b23aae3a04934641b8b978f392f4901c, type: 2}
+  - {fileID: 11400000, guid: 0384e6baae874ed69d4118cfb6adaa14, type: 2}
+  - {fileID: 11400000, guid: 73dfa74dbb8b4273bc4bfd4edbd2197a, type: 2}
+  - {fileID: 11400000, guid: c23ea4c408b14dfb8eb1fbeeaf9d1608, type: 2}
+  - {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+  - {fileID: 11400000, guid: 70bb165840944ae696f652b7a5f99744, type: 2}
+  - {fileID: 11400000, guid: 7e01f3a42a04430c94c818e54228d964, type: 2}
+  - {fileID: 11400000, guid: d0a96b4f8055496c824ed24b814277be, type: 2}
+  - {fileID: 11400000, guid: 5602fe7130674ea788bcd74fca7bbdb8, type: 2}

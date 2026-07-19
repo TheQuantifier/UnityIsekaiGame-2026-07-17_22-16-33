@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Interaction;
+using UnityIsekaiGame.UI.Contracts;
 
 namespace UnityIsekaiGame.Contracts
 {
@@ -8,9 +9,8 @@ namespace UnityIsekaiGame.Contracts
     {
         [SerializeField] private PlayerContractJournal journal;
         [SerializeField] private ContractDefinition[] availableContracts;
+        [SerializeField] private ContractBoardMenuView menuView;
         [SerializeField] private string interactionPrompt = "Review contracts";
-
-        private int nextContractIndex;
 
         public string InteractionPrompt => interactionPrompt;
 
@@ -19,6 +19,11 @@ namespace UnityIsekaiGame.Contracts
             if (journal == null)
             {
                 journal = FindAnyObjectByType<PlayerContractJournal>();
+            }
+
+            if (menuView == null)
+            {
+                menuView = FindAnyObjectByType<ContractBoardMenuView>(FindObjectsInactive.Include);
             }
         }
 
@@ -34,19 +39,12 @@ namespace UnityIsekaiGame.Contracts
                 return;
             }
 
-            for (int attempts = 0; attempts < availableContracts.Length; attempts++)
+            if (menuView == null)
             {
-                ContractDefinition contract = availableContracts[nextContractIndex];
-                nextContractIndex = (nextContractIndex + 1) % availableContracts.Length;
-                ContractOperationResult result = journal.AcceptContract(contract);
-                Debug.Log(result.Message);
-                PrototypeHudMessageBus.Show(result.Message);
-
-                if (result.Succeeded)
-                {
-                    return;
-                }
+                menuView = ContractBoardMenuView.FindOrCreate();
             }
+
+            menuView.Open(journal, availableContracts);
         }
     }
 }

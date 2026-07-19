@@ -4,7 +4,7 @@ Feature 3.11 adds static place identity and hierarchy foundations without turnin
 
 ## Responsibilities
 
-`PlaceDefinition` is the static identity and metadata for a place. It owns stable ID, display name, description, category, tags, icon, optional parent place, `PlaceKind`, optional scene key, provisional map label/position metadata, controlling-faction placeholder, danger metadata, and discovery metadata.
+`PlaceDefinition` is the static identity and metadata for a place. It owns stable ID, display name, description, category, tags, icon, optional parent place, `PlaceKind`, optional scene key, provisional map label/position metadata, optional default governing faction, controlling-faction placeholder, danger metadata, and discovery metadata.
 
 `PlaceIdentity` is an optional runtime scene presence for a loaded place. It references a `PlaceDefinition` and exposes place ID/display metadata and optional bounds. It does not register globally and does not own permanent place state.
 
@@ -64,7 +64,7 @@ Each `PlaceDefinition` can have one optional parent `PlaceDefinition`. The first
 
 Validation rejects self-parenting, missing catalog parents, and circular parent chains. Some unusual relationships, such as a nation inside a building, are warnings instead of errors so later fantasy-specific edge cases remain possible.
 
-Administrative, political, legal, and economic relationships are not modeled through parent hierarchy. Future systems should add separate references for faction control, taxation, routes, supply links, jurisdiction, or market affiliation.
+Administrative, political, legal, and economic relationships are not modeled through parent hierarchy. `DefaultGoverningFaction` can point at a static `FactionDefinition` as authored metadata, but current political control, taxation, routes, supply links, jurisdiction changes, or market affiliation belong in future runtime systems.
 
 ## Hierarchy Helpers
 

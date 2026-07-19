@@ -27,6 +27,7 @@ MonoBehaviour:
   mapLabel: 
   showOnMapByDefault: 1
   normalizedMapPosition: {x: 0.45, y: 0.55}
+  defaultGoverningFaction: {fileID: 11400000, guid: d0a96b4f8055496c824ed24b814277be, type: 2}
   controllingFactionIdPlaceholder: 
   dangerLevel: 1
   discoveryMode: 0
