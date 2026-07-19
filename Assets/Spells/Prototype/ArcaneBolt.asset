@@ -19,6 +19,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: eac27d0065b44f969205af5ca702cbe7, type: 2}
   - {fileID: 11400000, guid: 03ff46bc67384aa4abda15daaa390259, type: 2}
   - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  ability: {fileID: 11400000, guid: 639aa4a2f0594102aab8d3119e667cb9, type: 2}
   manaCost: 20
   cooldown: 0.65
   baseDamage: 18

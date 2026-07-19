@@ -12,4 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a4dc56e38b447c34cb9c5a2c06a7b881, type: 3}
   m_Name: RestoreHealth25
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Inventory.RestoreHealthItemUseEffect
+  restoreEffect: {fileID: 11400000, guid: f62676e5766148c5b5839004aaef9e4f, type: 2}
   healingAmount: 25

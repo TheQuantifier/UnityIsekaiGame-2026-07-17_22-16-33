@@ -75,8 +75,23 @@ namespace UnityIsekaiGame.GameData
             }
 
             DefinitionClassificationValidator.ValidateCatalogDefinitions(definitions, definitionsById, report);
+            ValidateParticipantDefinitions(definitions, definitionsById, report);
 
             return report;
+        }
+
+        private static void ValidateParticipantDefinitions(
+            IReadOnlyList<IGameDefinition> definitions,
+            IReadOnlyDictionary<string, IGameDefinition> definitionsById,
+            DefinitionValidationReport report)
+        {
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                if (definitions[i] is IDefinitionCatalogValidationParticipant participant)
+                {
+                    participant.ValidateCatalogDefinition(definitionsById, report);
+                }
+            }
         }
     }
 }

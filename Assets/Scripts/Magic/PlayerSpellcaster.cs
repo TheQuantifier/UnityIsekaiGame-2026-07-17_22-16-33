@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Input;
 
@@ -19,6 +20,7 @@ namespace UnityIsekaiGame.Magic
 
         private readonly List<SpellProjectile> activeProjectiles = new List<SpellProjectile>();
         private readonly Dictionary<SpellDefinition, float> cooldowns = new Dictionary<SpellDefinition, float>();
+        private readonly AbilityCooldownTracker abilityCooldowns = new AbilityCooldownTracker();
 
         private void Awake()
         {
@@ -59,6 +61,11 @@ namespace UnityIsekaiGame.Magic
         public SpellCastResult TryCastPrimarySpell()
         {
             SpellDefinition spell = GetCurrentSpell();
+            if (spell != null && spell.Ability != null)
+            {
+                return TryCastAbilitySpell(spell);
+            }
+
             SpellCastResult validation = ValidateCast(spell);
             if (!validation.Succeeded)
             {
@@ -89,6 +96,7 @@ namespace UnityIsekaiGame.Magic
         public void ResetSpellcasting()
         {
             cooldowns.Clear();
+            abilityCooldowns.Reset();
             for (int i = activeProjectiles.Count - 1; i >= 0; i--)
             {
                 SpellProjectile projectile = activeProjectiles[i];
@@ -152,6 +160,44 @@ namespace UnityIsekaiGame.Magic
             projectile.Initialize(gameObject, castDirection, spell.ProjectileSpeed, spell.BaseDamage, spell.MaximumLifetime);
             activeProjectiles.Add(projectile);
             return projectile;
+        }
+
+        private SpellCastResult TryCastAbilitySpell(SpellDefinition spell)
+        {
+            Vector3 sourcePosition = castOrigin == null ? transform.position : castOrigin.position;
+            Vector3 direction = castOrigin == null ? transform.forward : GetCastDirection(sourcePosition, spell);
+            AbilityExecutionContext context = new AbilityExecutionContext(
+                spell.Ability,
+                gameObject,
+                null,
+                castOrigin,
+                sourcePosition,
+                sourcePosition + direction * Mathf.Max(1f, spell.Ability.Range),
+                direction,
+                gameplayBlocked: input != null && input.GameplayInputBlocked,
+                projectileSpawned: RegisterProjectile);
+
+            AbilityExecutionResult result = AbilityExecutor.Execute(in context, abilityCooldowns);
+            if (!result.Succeeded)
+            {
+                ReportFailure(result.Message);
+                return SpellCastResult.Failure(result.Message);
+            }
+
+            string message = $"Cast {spell.DisplayName}.";
+            Debug.Log(message);
+            return SpellCastResult.Success(message);
+        }
+
+        private void RegisterProjectile(SpellProjectile projectile)
+        {
+            if (projectile == null)
+            {
+                return;
+            }
+
+            projectile.Completed += HandleProjectileCompleted;
+            activeProjectiles.Add(projectile);
         }
 
         private Vector3 GetCastDirection(Vector3 spawnPosition, SpellDefinition spell)

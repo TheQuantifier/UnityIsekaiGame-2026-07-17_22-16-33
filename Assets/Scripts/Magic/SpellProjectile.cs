@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.Combat;
 
 namespace UnityIsekaiGame.Magic
@@ -22,9 +23,11 @@ namespace UnityIsekaiGame.Magic
         private Vector3 direction;
         private float speed;
         private float baseDamage;
+        private AbilityDefinition ability;
         private float expireAtTime;
         private bool initialized;
         private bool completed;
+        private bool payloadExecuted;
 
         public event Action<SpellProjectile> Completed;
 
@@ -65,12 +68,29 @@ namespace UnityIsekaiGame.Magic
         public void Initialize(GameObject spellCaster, Vector3 travelDirection, float projectileSpeed, float damage, float lifetime)
         {
             caster = spellCaster;
+            ability = null;
             direction = travelDirection.sqrMagnitude > 0f ? travelDirection.normalized : transform.forward;
             speed = Mathf.Max(0.1f, projectileSpeed);
             baseDamage = Mathf.Max(0f, damage);
             expireAtTime = Time.time + Mathf.Max(0.1f, lifetime);
             initialized = true;
             completed = false;
+            payloadExecuted = false;
+            damagedTargets.Clear();
+            IgnoreCasterColliders();
+        }
+
+        public void Initialize(GameObject spellCaster, Vector3 travelDirection, float projectileSpeed, AbilityDefinition payloadAbility, float lifetime)
+        {
+            caster = spellCaster;
+            ability = payloadAbility;
+            direction = travelDirection.sqrMagnitude > 0f ? travelDirection.normalized : transform.forward;
+            speed = Mathf.Max(0.1f, projectileSpeed);
+            baseDamage = 0f;
+            expireAtTime = Time.time + Mathf.Max(0.1f, lifetime);
+            initialized = true;
+            completed = false;
+            payloadExecuted = false;
             damagedTargets.Clear();
             IgnoreCasterColliders();
         }
@@ -79,6 +99,13 @@ namespace UnityIsekaiGame.Magic
         {
             if (hit.collider == null || IsCasterCollider(hit.collider))
             {
+                return;
+            }
+
+            if (ability != null)
+            {
+                ExecuteAbilityPayload(hit);
+                Complete();
                 return;
             }
 
@@ -93,6 +120,26 @@ namespace UnityIsekaiGame.Magic
             }
 
             Complete();
+        }
+
+        private void ExecuteAbilityPayload(RaycastHit hit)
+        {
+            if (payloadExecuted || ability == null)
+            {
+                return;
+            }
+
+            payloadExecuted = true;
+            GameObject target = hit.collider == null ? null : hit.collider.gameObject;
+            EffectExecutionContext context = new EffectExecutionContext(
+                ability,
+                caster,
+                target,
+                caster == null ? transform.position : caster.transform.position,
+                hit.point,
+                direction);
+            AbilityExecutionResult result = AbilityExecutor.ExecuteEffects(in context, ability.Effects);
+            Debug.Log(result.Succeeded ? result.Message : result.Message);
         }
 
         private void IgnoreCasterColliders()

@@ -1,16 +1,18 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Magic
 {
     [CreateAssetMenu(fileName = "NewSpellDefinition", menuName = "Unity Isekai Game/Magic/Spell Definition")]
-    public sealed class SpellDefinition : ScriptableObject, IGameDefinition, ICategorizableDefinition, ITaggedDefinition
+    public sealed class SpellDefinition : ScriptableObject, IGameDefinition, ICategorizableDefinition, ITaggedDefinition, IDefinitionCatalogValidationParticipant
     {
         [SerializeField] private string spellId;
         [SerializeField] private string displayName;
         [SerializeField] private CategoryDefinition primaryCategory;
         [SerializeField] private TagDefinition[] tags;
+        [SerializeField] private AbilityDefinition ability;
         [SerializeField, Min(0f)] private float manaCost = 10f;
         [SerializeField, Min(0f)] private float cooldown = 0.5f;
         [SerializeField, Min(0f)] private float baseDamage = 10f;
@@ -25,6 +27,7 @@ namespace UnityIsekaiGame.Magic
         public CategoryDefinition PrimaryCategory => primaryCategory;
         public CategoryDomain ClassificationDomain => CategoryDomain.Ability;
         public IReadOnlyList<TagDefinition> Tags => tags ?? System.Array.Empty<TagDefinition>();
+        public AbilityDefinition Ability => ability;
         public float ManaCost => manaCost;
         public float Cooldown => cooldown;
         public float BaseDamage => baseDamage;
@@ -40,6 +43,11 @@ namespace UnityIsekaiGame.Magic
             baseDamage = Mathf.Max(0f, baseDamage);
             projectileSpeed = Mathf.Max(0.1f, projectileSpeed);
             maximumLifetime = Mathf.Max(0.1f, maximumLifetime);
+        }
+
+        public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            AbilityDefinitionValidator.ValidateSpellAdapter(this, report);
         }
     }
 }

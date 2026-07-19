@@ -273,6 +273,8 @@ The validator reports but does not mutate assets.
 
 Feature 3.4 layers rarity, quality, and condition foundations on top of this taxonomy. See `Documentation/RarityQualityAndCondition.md`.
 
+Feature 3.7 adds shared ability and effect definitions. Item-use effects can adapt to shared effect definitions, but item categories still describe items, not the behavior authority for abilities.
+
 Later systems can add:
 
 - durability and condition;

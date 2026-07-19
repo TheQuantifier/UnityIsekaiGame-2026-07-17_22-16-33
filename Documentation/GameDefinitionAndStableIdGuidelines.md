@@ -71,6 +71,8 @@ Examples for new content:
 
 - `item.health-potion`
 - `spell.arcane-bolt`
+- `ability.arcane-bolt`
+- `effect.restore-health`
 - `person.prototype-npc`
 - `quest.strange-disturbance`
 - `contract.prototype-elimination`
@@ -117,6 +119,8 @@ Step 3.2 also registers category and tag definitions in the same catalog. Catego
 Step 3.3 adds object and item taxonomy interfaces on top of the same catalog. Item definitions remain registered static definitions, while inventory quantities, equipped state, and future per-instance item state remain runtime data.
 
 Step 3.4 adds `RarityDefinition`, `QualityDefinition`, and `ConditionDefinition` as ordinary catalog definitions. Rarity may be referenced by static definitions through `IHasRarity`; quality and condition are available for future runtime instance metadata and should not be stored as mutable state on shared ScriptableObject assets.
+
+Step 3.7 adds `AbilityDefinition` and reusable `EffectDefinition` assets. They are catalog definitions with stable IDs, but runtime cooldowns, resource values, selected targets, and active projectile state are not catalog data.
 
 `PersonRegistry` remains separate. It tracks currently loaded `PersonIdentity` scene instances, while the definition catalog tracks static `PersonDefinition` assets.
 

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cdffcdfe3ce4e42aef26809163896d5, type: 3}
+  m_Name: RestoreHealthEffect
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Abilities.RestoreVitalEffectDefinition
+  effectId: effect.restore-health
+  displayName: Restore Health
+  description: Restores health for current potion-style healing.
+  primaryCategory: {fileID: 11400000, guid: 7adc9396c5664d3ca81d5f59f7629d34, type: 2}
+  tags:
+  - {fileID: 11400000, guid: bbafd9a5c2184102ba5682e7ed93829e, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  vitalType: 0
+  amount: 25
