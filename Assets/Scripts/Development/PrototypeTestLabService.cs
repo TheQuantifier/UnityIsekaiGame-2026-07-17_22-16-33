@@ -101,9 +101,24 @@ namespace UnityIsekaiGame.Development
                 $"Quests: {(context.QuestLog == null ? 0 : context.QuestLog.Quests.Count)}",
                 $"Contracts: {(context.ContractJournal == null ? 0 : context.ContractJournal.Contracts.Count)}",
                 $"Enemy: {FormatEnemy()}",
+                $"Location: {FormatLocationOneLine()}",
                 $"Definitions: {(registry == null ? 0 : registry.Count)}",
                 $"Persistence Slot: {CurrentSlotId}",
                 $"Modal Active: {PrototypeGameplayModalState.IsModalActive}"
+            });
+        }
+
+        public string BuildLocationSummary()
+        {
+            string details = context?.Persistence == null
+                ? "Player location persistence is missing."
+                : context.Persistence.BuildPlayerLocationDiagnosticSummary();
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Player Location Persistence",
+                details,
+                "Policy: same-scene restore is supported; cross-scene saves validate clearly and are not restored yet.",
+                "Reach Location objectives are suppressed during persistence restore."
             });
         }
 
@@ -543,6 +558,17 @@ namespace UnityIsekaiGame.Development
             return RecordSuccess("Teleport", $"Teleported to {point.DisplayName} ({point.TestPointId}).");
         }
 
+        public PrototypeTestLabOperation ValidateCurrentLocation()
+        {
+            if (context?.Persistence == null)
+            {
+                return RecordFailure("Validate Current Location", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            string summary = context.Persistence.BuildPlayerLocationDiagnosticSummary();
+            return RecordSuccess("Validate Current Location", summary.Replace(Environment.NewLine, " | "));
+        }
+
         public PrototypeTestLabOperation RunScenario(string scenarioId, ItemDefinition item, QuestDefinition quest, ContractDefinition contract, DamageTypeDefinition damageType)
         {
             switch (scenarioId)
@@ -763,6 +789,16 @@ namespace UnityIsekaiGame.Development
             return context?.EnemyHealth == null
                 ? "Missing"
                 : $"{context.EnemyHealth.CurrentHealth:0.#}/{context.EnemyHealth.MaximumHealth:0.#} Defeated={context.EnemyHealth.IsDefeated}";
+        }
+
+        private string FormatLocationOneLine()
+        {
+            if (context?.Persistence == null)
+            {
+                return "Missing";
+            }
+
+            return context.Persistence.BuildPlayerLocationDiagnosticSummary().Replace(Environment.NewLine, " | ");
         }
 
         private void AddDuplicateInstanceDiagnostics(List<string> lines)

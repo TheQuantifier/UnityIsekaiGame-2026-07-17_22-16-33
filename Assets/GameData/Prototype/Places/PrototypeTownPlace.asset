@@ -23,7 +23,7 @@ MonoBehaviour:
   icon: {fileID: 0}
   parentPlace: {fileID: 11400000, guid: b766e35224be4b9eba5529a49ed36469, type: 2}
   placeKind: 4
-  sceneKey: Assets/Scenes/PrototypeScene.unity
+  sceneKey: scene.prototype
   mapLabel: 
   showOnMapByDefault: 1
   normalizedMapPosition: {x: 0.45, y: 0.55}

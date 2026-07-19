@@ -20,6 +20,8 @@ Future party quests, faction-wide contracts, player-created postings, guild boar
 
 `PlayerQuestContractPersistenceParticipant` is a combined participant. Quests and contracts share objective infrastructure, both appear in the Journal, and combined validation prevents duplicate runtime IDs before commit.
 
+Player location persistence loads after this participant. During location restoration, `LocationRestoreGuard` suppresses Reach Location reports so loading into an area does not complete an incomplete objective. Normal movement after load still uses the existing signal bus and can complete the objective once.
+
 The participant coordinates DTO capture, validation, prepare, and commit. `PlayerQuestLog` remains the gameplay owner for quests, and `PlayerContractJournal` remains the gameplay owner for contracts.
 
 ## Load Ordering

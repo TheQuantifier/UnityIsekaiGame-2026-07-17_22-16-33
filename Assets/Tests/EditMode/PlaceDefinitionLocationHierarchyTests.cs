@@ -159,7 +159,7 @@ namespace UnityIsekaiGame.Tests
             Type locationType = RequiredType("UnityIsekaiGame.Places.ActorLocationSaveData");
             object location = Activator.CreateInstance(locationType);
             locationType.GetField("currentPlaceId").SetValue(location, "place.settlement.prototype-town");
-            locationType.GetField("sceneKey").SetValue(location, "Assets/Scenes/PrototypeScene.unity");
+            locationType.GetField("sceneKey").SetValue(location, "scene.prototype");
 
             Assert.That(referenceType.GetField("placeId").GetValue(reference), Is.EqualTo("place.poi.disturbance-site"));
             Assert.That(locationType.GetField("currentPlaceId").GetValue(location), Is.EqualTo("place.settlement.prototype-town"));

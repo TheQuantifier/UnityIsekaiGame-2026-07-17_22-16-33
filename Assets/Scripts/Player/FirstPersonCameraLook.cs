@@ -39,5 +39,22 @@ namespace UnityIsekaiGame.Player
             pitch = Mathf.Clamp(pitch - pitchDelta, movementSettings.PitchLimits.x, movementSettings.PitchLimits.y);
             pitchRoot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
         }
+
+        public void SyncToCurrentRotationForPersistenceRestore()
+        {
+            if (pitchRoot == null)
+            {
+                pitch = 0f;
+                return;
+            }
+
+            pitch = NormalizePitch(pitchRoot.localEulerAngles.x);
+            pitchRoot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        }
+
+        private static float NormalizePitch(float angle)
+        {
+            return angle > 180f ? angle - 360f : angle;
+        }
     }
 }

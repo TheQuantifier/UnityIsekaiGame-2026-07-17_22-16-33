@@ -43,6 +43,7 @@ namespace UnityIsekaiGame.Development
         private Text overviewText;
         private Text diagnosticsText;
         private Text historyText;
+        private Text locationText;
         private Text itemValueText;
         private Text statusValueText;
         private Text damageValueText;
@@ -119,6 +120,11 @@ namespace UnityIsekaiGame.Development
             if (overviewText != null)
             {
                 overviewText.text = service.BuildOverview();
+            }
+
+            if (locationText != null)
+            {
+                locationText.text = service.BuildLocationSummary();
             }
 
             UpdateSelectorLabels();
@@ -267,7 +273,11 @@ namespace UnityIsekaiGame.Development
         private void BuildLocationSection(Transform parent, Font font)
         {
             AddButtonRow(parent, font,
-                ("Teleport To Point", () => service.Teleport(GetSelected(testPoints, selectedTestPointIndex))));
+                ("Teleport To Point", () => service.Teleport(GetSelected(testPoints, selectedTestPointIndex))),
+                ("Save Location", () => service.Save()),
+                ("Load Location", () => service.Load()),
+                ("Validate Position", () => service.ValidateCurrentLocation()));
+            locationText = AddText(parent, font, "Location not available.", 13, 210);
         }
 
         private void BuildScenarioSection(Transform parent, Font font)

@@ -305,6 +305,7 @@ namespace UnityIsekaiGame.GameData.Persistence
                 }
 
                 participant.DiscardPreparedPayload(prepareResult.PreparedPayload);
+                ApplyParticipantMetadata(envelope, participant, result.PayloadJson);
                 envelope.participants.Add(new SaveParticipantRecord
                 {
                     participantKey = participant.ParticipantKey,
@@ -322,6 +323,43 @@ namespace UnityIsekaiGame.GameData.Persistence
             envelope.contentChecksum = ComputeChecksum(envelope);
             return envelope;
         }
+
+        private static void ApplyParticipantMetadata(GameSaveEnvelope envelope, IPersistenceParticipant participant, string payloadJson)
+        {
+            if (envelope == null || participant == null || participant.ParticipantKey != "player.location" || string.IsNullOrWhiteSpace(payloadJson))
+            {
+                return;
+            }
+
+            try
+            {
+                PlayerLocationMetadataPayload location = JsonUtility.FromJson<PlayerLocationMetadataPayload>(payloadJson);
+                if (location == null)
+                {
+                    return;
+                }
+
+                envelope.sceneSummary = location.sceneKey;
+                envelope.placeSummary = location.placeId;
+                envelope.playerSummary = $"Position {location.positionX:0.##}, {location.positionY:0.##}, {location.positionZ:0.##}";
+            }
+            catch
+            {
+                // Metadata must never make an otherwise valid save fail.
+            }
+        }
+
+#pragma warning disable 0649
+        [Serializable]
+        private sealed class PlayerLocationMetadataPayload
+        {
+            public string sceneKey;
+            public string placeId;
+            public float positionX;
+            public float positionY;
+            public float positionZ;
+        }
+#pragma warning restore 0649
 
         private PersistenceSaveResult WriteAtomically(SaveSlotPaths paths, string serialized)
         {
