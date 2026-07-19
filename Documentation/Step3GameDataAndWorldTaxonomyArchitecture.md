@@ -81,4 +81,4 @@ The prototype scene uses the Step 3 data through these representative paths:
 
 Step 3 is ready to serve as the static data foundation for Step 4. Remaining prototype warnings are known legacy-content warnings, mostly old item IDs and broad root taxonomy IDs.
 
-Step 4 should build one runtime owner at a time on top of these definitions. Good candidates are save/load restoration ordering, quest/contract persistence, authored weapon/spell damage packets, or a first NPC/faction runtime relationship layer.
+Step 4 now begins with `PersistenceService`, a versioned save envelope, explicit participant registration, and prototype-only save/load proof. See `Documentation/PersistenceServiceFoundation.md` and `Documentation/Step4PersistenceRoadmap.md`. Future Step 4 features should add one runtime owner at a time on top of these definitions.
