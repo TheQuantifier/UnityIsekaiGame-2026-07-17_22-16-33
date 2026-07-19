@@ -88,6 +88,7 @@ Current foundations include:
 - Consumable item use.
 - Health, stamina, and mana.
 - Equipment and generic runtime actor statistics.
+- Static being definitions and reusable actor profiles for player/enemy base stats.
 - Melee combat and shared attack/defense damage handling.
 - Enemy health, runtime stats, pursuit, attacks, defeat, statuses, and loot drops.
 - Prototype player defeat and reset controls.

@@ -21,6 +21,8 @@ MonoBehaviour:
   tags:
   - {fileID: 11400000, guid: 14268cc42f1e4520a42b58aac03c1143, type: 2}
   - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  beingDefinition: {fileID: 11400000, guid: 83c94b51705a4b43aa317ea3d808e24f, type: 2}
+  actorProfile: {fileID: 0}
   roleTags:
   - quest_giver
   factionIdPlaceholder:

@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63e087d1263a415793df16c2ff45e573, type: 3}
+  m_Name: EnemyPrototypeActorProfile
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.ActorProfileDefinition
+  actorProfileId: actor-profile.enemy-prototype
+  displayName: Enemy Prototype
+  description: Prototype enemy actor profile preserving current enemy health, defense, and movement metadata.
+  beingDefinition: {fileID: 11400000, guid: 7651a66743cd448594e86f1f4774376c, type: 2}
+  primaryCategory: {fileID: 11400000, guid: 02c94266952742b4921d4ab8cefe3141, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 42afd05984f545cab3198148adf73183, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  baseMaximumHealth: 65
+  baseMaximumStamina: 0
+  baseMaximumMana: 0
+  baseAttackPower: 0
+  baseDefense: 1
+  baseMovementSpeed: 1.8
+  futureSensesPlaceholder: 
+  futureMovementProfilePlaceholder: 

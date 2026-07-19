@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63e087d1263a415793df16c2ff45e573, type: 3}
+  m_Name: CivilianBasicActorProfile
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.ActorProfileDefinition
+  actorProfileId: actor-profile.civilian-basic
+  displayName: Civilian Basic
+  description: Optional baseline profile for noncombat person actors.
+  beingDefinition: {fileID: 11400000, guid: 83c94b51705a4b43aa317ea3d808e24f, type: 2}
+  primaryCategory: {fileID: 11400000, guid: 0bfc1472e1244e4992e19c31886b1252, type: 2}
+  tags:
+  - {fileID: 11400000, guid: ae91f7acd1794650bcc7d65b47d79796, type: 2}
+  - {fileID: 11400000, guid: acb0be3d97e64471aa1fb2f07b488819, type: 2}
+  baseMaximumHealth: 100
+  baseMaximumStamina: 100
+  baseMaximumMana: 0
+  baseAttackPower: 0
+  baseDefense: 0
+  baseMovementSpeed: 1.5
+  futureSensesPlaceholder: 
+  futureMovementProfilePlaceholder: 
