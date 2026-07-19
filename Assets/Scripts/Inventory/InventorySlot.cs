@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Inventory
 {
@@ -8,16 +9,31 @@ namespace UnityIsekaiGame.Inventory
     {
         [SerializeField] private ItemDefinition item;
         [SerializeField, Min(0)] private int quantity;
+        [NonSerialized] private ItemInstance itemInstance;
 
-        public ItemDefinition Item => item;
-        public int Quantity => quantity;
-        public bool IsEmpty => item == null || quantity <= 0;
+        public ItemDefinition Item => itemInstance != null ? itemInstance.Definition as ItemDefinition : item;
+        public int Quantity => Mode == InventorySlotMode.StatefulInstance ? 1 : quantity;
+        public ItemInstance ItemInstance => itemInstance;
+        public InventorySlotMode Mode
+        {
+            get
+            {
+                if (itemInstance != null)
+                {
+                    return InventorySlotMode.StatefulInstance;
+                }
+
+                return item == null || quantity <= 0 ? InventorySlotMode.Empty : InventorySlotMode.DefinitionStack;
+            }
+        }
+        public bool IsStateful => Mode == InventorySlotMode.StatefulInstance;
+        public bool IsEmpty => Mode == InventorySlotMode.Empty;
 
         public int AvailableStackSpace
         {
             get
             {
-                if (IsEmpty || item == null)
+                if (Mode != InventorySlotMode.DefinitionStack || item == null)
                 {
                     return 0;
                 }
@@ -28,7 +44,7 @@ namespace UnityIsekaiGame.Inventory
 
         public bool CanStack(ItemDefinition candidate)
         {
-            return !IsEmpty && item == candidate && item.Stackable && AvailableStackSpace > 0;
+            return Mode == InventorySlotMode.DefinitionStack && item == candidate && item.Stackable && AvailableStackSpace > 0;
         }
 
         internal int AddToStack(int amount)
@@ -45,6 +61,7 @@ namespace UnityIsekaiGame.Inventory
 
         internal void Set(ItemDefinition newItem, int newQuantity)
         {
+            itemInstance = null;
             item = newItem;
             quantity = Mathf.Max(0, newQuantity);
 
@@ -54,14 +71,39 @@ namespace UnityIsekaiGame.Inventory
             }
         }
 
+        internal void SetInstance(ItemInstance newItemInstance)
+        {
+            if (newItemInstance == null || newItemInstance.Definition is not ItemDefinition)
+            {
+                Clear();
+                return;
+            }
+
+            itemInstance = newItemInstance;
+            item = null;
+            quantity = 0;
+        }
+
         internal void Clear()
         {
+            itemInstance = null;
             item = null;
             quantity = 0;
         }
 
         internal bool Remove(int amount)
         {
+            if (Mode == InventorySlotMode.StatefulInstance)
+            {
+                if (amount != 1)
+                {
+                    return false;
+                }
+
+                Clear();
+                return true;
+            }
+
             if (amount <= 0 || IsEmpty)
             {
                 return false;

@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityIsekaiGame.Equipment;
 using CategoryDefinition = UnityIsekaiGame.GameData.CategoryDefinition;
+using ItemInstance = UnityIsekaiGame.GameData.ItemInstance;
 using InventorySlot = UnityIsekaiGame.Inventory.InventorySlot;
 using ItemDefinition = UnityIsekaiGame.Inventory.ItemDefinition;
 using TagDefinition = UnityIsekaiGame.GameData.TagDefinition;
@@ -467,24 +468,68 @@ namespace UnityIsekaiGame.UI.Inventory
             }
 
             StringBuilder builder = new StringBuilder();
-            AppendLine(builder, "ID", string.IsNullOrWhiteSpace(item.ItemId) ? "Unassigned" : item.ItemId);
+            AppendLine(builder, "Definition ID", string.IsNullOrWhiteSpace(item.ItemId) ? "Unassigned" : item.ItemId);
             AppendLine(builder, "Type", GetCategoryName(item.PrimaryCategory));
             AppendLine(builder, "Rarity", item.Rarity == null ? "Unassigned" : item.Rarity.DisplayName);
             AppendLine(builder, "Tags", FormatTags(item.Tags));
             AppendLine(builder, "Quantity", slot.Quantity.ToString());
             AppendLine(builder, "Stack", item.Stackable ? $"Stackable, max {item.MaximumStackSize}" : "Not stackable");
+            AppendLine(builder, "Instance Mode", slot.IsStateful ? "Stateful instance" : item.InstanceMode.ToString());
             AppendLine(builder, "Capability", FormatCapabilities(item));
+            AppendInstanceDetails(builder, slot.ItemInstance, item);
 
             if (includeDescription && !string.IsNullOrWhiteSpace(item.Description))
             {
                 builder.AppendLine();
                 builder.AppendLine(item.Description);
+                AppendDescriptionInstanceId(builder, slot.ItemInstance);
             }
 
             AppendUseDetails(builder, item);
             AppendEquipmentDetails(builder, item.Equipment);
 
             return builder.ToString().TrimEnd();
+        }
+
+        private static void AppendInstanceDetails(StringBuilder builder, ItemInstance itemInstance, ItemDefinition item)
+        {
+            if (itemInstance == null)
+            {
+                if (item != null && item.InstanceMode != UnityIsekaiGame.GameData.ItemInstanceMode.DefinitionOnly)
+                {
+                    AppendLine(builder, "Unique Instance ID", "Not instanced");
+                }
+
+                return;
+            }
+
+            AppendLine(builder, "Unique Instance ID", itemInstance.HasPersistentIdentity ? itemInstance.InstanceId : "Runtime only");
+
+            if (itemInstance.Metadata == null || !itemInstance.Metadata.HasAnyState)
+            {
+                return;
+            }
+
+            if (itemInstance.Metadata.HasQuality)
+            {
+                AppendLine(builder, "Quality", itemInstance.Metadata.Quality == null ? "Unassigned" : itemInstance.Metadata.Quality.DisplayName);
+            }
+
+            if (itemInstance.Metadata.HasCondition)
+            {
+                AppendLine(builder, "Condition", $"{Mathf.RoundToInt(itemInstance.Metadata.ConditionNormalized * 100f)}%");
+            }
+        }
+
+        private static void AppendDescriptionInstanceId(StringBuilder builder, ItemInstance itemInstance)
+        {
+            if (itemInstance == null)
+            {
+                return;
+            }
+
+            builder.AppendLine();
+            AppendLine(builder, "Unique Instance ID", itemInstance.HasPersistentIdentity ? itemInstance.InstanceId : "Runtime only");
         }
 
         private static void AppendUseDetails(StringBuilder builder, ItemDefinition item)

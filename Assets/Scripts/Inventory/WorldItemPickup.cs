@@ -41,7 +41,7 @@ namespace UnityIsekaiGame.Inventory
                 return;
             }
 
-            InventoryAddResult result = inventory.AddItem(item, quantity);
+            InventoryAddResult result = inventory.AddItemOrInstances(item, quantity);
 
             if (result.AddedAll)
             {
