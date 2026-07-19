@@ -80,3 +80,13 @@ Feature 4.7 adds local prototype save-slot UX and autosave orchestration. The Ta
 Manual overwrite, dirty-load, backup-load, and delete operations require explicit confirmation in the UI. Backup load remains opt-in; corruption or backup availability is reported rather than silently recovered.
 
 This is still local proof infrastructure. It persists player-scoped prototype participants and player location only. Shared-world and region state remain future server/world-owned work.
+
+## Feature 4.8 Status
+
+Feature 4.8 hardens the integrated persistence pipeline with transaction IDs, explicit save/load phases, dependency preflight, deterministic dependency ordering, temporary-file validation, rollback snapshots, rollback guarded by `PersistenceRestorationGuard`, consistency-audit hooks, runtime safety state, recovery scanning, and explicit backup promotion/quarantine tools.
+
+The dependency graph now preserves the intended player-state load order even when participants register in a different order. Current default ordering hints keep inventory/equipment before stats/vitals/statuses, stats before quests/contracts, and quests/contracts before player location when those participants are present. Explicit required dependencies can still block save/load before mutation.
+
+Recovery remains explicit. Normal load does not silently choose a backup or temp file. The service reports valid backups, corrupt primaries, autosave candidates, and stale temporary files so editor tools, the Save/Load page, or Test Lab can recommend a controlled action.
+
+This feature still does not persist shared-world or region simulation state. It creates the transaction, recovery, and safety foundation those later server-owned participants will need.

@@ -102,6 +102,8 @@ Repeated loads clear existing restored statuses before applying the saved set, s
 
 Feature 4.4 quest/contract persistence loads after this participant so Journal state is restored after player inventory, equipment, vitals, and statuses are coherent.
 
+Feature 4.8 enforces that dependency relationship through persistence preflight instead of relying only on registration order. Service-level rollback captures this participant's current state before integrated load commits and restores it if a later participant or consistency audit fails.
+
 ## Standalone Modifiers
 
 Feature 4.3 does not save raw runtime stat or resistance modifiers.
@@ -116,3 +118,4 @@ Current player modifiers have authoritative owners: actor profile/base stats, eq
 - No autosave or final save/load UI.
 - No offline timestamp progression.
 - No networking, authentication, cloud saves, or server database integration.
+- Recovery UI is development-focused; final player recovery workflows are still deferred.

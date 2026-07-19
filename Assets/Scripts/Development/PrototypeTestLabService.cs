@@ -165,6 +165,13 @@ namespace UnityIsekaiGame.Development
             return string.Join(Environment.NewLine, lines);
         }
 
+        public string BuildPersistenceIntegrationSummary()
+        {
+            return context?.Persistence == null
+                ? "Persistence integration service is missing."
+                : context.Persistence.BuildPersistenceIntegrationDiagnosticSummary();
+        }
+
         public PrototypeTestLabOperation GrantItem(ItemDefinition item, int quantity)
         {
             if (context?.Inventory == null)
@@ -653,6 +660,108 @@ namespace UnityIsekaiGame.Development
 
             PersistenceValidationResult result = persistence.ValidateSaveSlot(PrototypeSaveSlotCatalog.ManualSlotId(0), validateBackup: true);
             return Record(result.Succeeded, "Validate Manual Slot 1 Backup", result.Status.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation RunRecoveryScan()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Run Recovery Scan", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            SaveRecoveryScanReport report = persistence.RunRecoveryScan();
+            return RecordSuccess("Run Recovery Scan", $"{report.candidates.Length} candidate(s). {report.recommendation}");
+        }
+
+        public PrototypeTestLabOperation PromoteManualSlotOneBackup(bool confirmed)
+        {
+            if (!RequireConfirmation("PromoteManualSlotOneBackup", confirmed, out PrototypeTestLabOperation confirmation))
+            {
+                return confirmation;
+            }
+
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Promote Manual Slot 1 Backup", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            PersistenceSaveResult result = persistence.PromoteBackup(PrototypeSaveSlotCatalog.ManualSlotId(0));
+            return Record(result.Succeeded, "Promote Manual Slot 1 Backup", result.Status.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation QuarantineManualSlotOnePrimary(bool confirmed)
+        {
+            if (!RequireConfirmation("QuarantineManualSlotOnePrimary", confirmed, out PrototypeTestLabOperation confirmation))
+            {
+                return confirmation;
+            }
+
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Quarantine Manual Slot 1", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            PersistenceSaveResult result = persistence.QuarantinePrimary(PrototypeSaveSlotCatalog.ManualSlotId(0));
+            return Record(result.Succeeded, "Quarantine Manual Slot 1", result.Status.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation CleanupTemporarySaves(bool confirmed)
+        {
+            if (!RequireConfirmation("CleanupTemporarySaves", confirmed, out PrototypeTestLabOperation confirmation))
+            {
+                return confirmation;
+            }
+
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Cleanup Temporary Saves", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            PersistenceDeleteResult result = persistence.CleanupStaleTemporaryFiles();
+            return Record(result.Succeeded, "Cleanup Temporary Saves", result.Status.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation InjectPrepareFailure()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Inject Prepare Failure", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            persistence.InjectNextPersistenceFault(PersistenceFaultInjectionPoint.LoadPrepare);
+            return RecordSuccess("Inject Prepare Failure", "Next load prepare phase will fail once.");
+        }
+
+        public PrototypeTestLabOperation InjectCommitFailure()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Inject Commit Failure", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            persistence.InjectNextPersistenceFault(PersistenceFaultInjectionPoint.LoadCommit);
+            return RecordSuccess("Inject Commit Failure", "Next load commit phase will fail once and attempt rollback.");
+        }
+
+        public PrototypeTestLabOperation InjectAuditFailure()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Inject Audit Failure", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            persistence.InjectNextPersistenceFault(PersistenceFaultInjectionPoint.ConsistencyAudit);
+            return RecordSuccess("Inject Audit Failure", "Next consistency audit will fail once and attempt rollback.");
+        }
+
+        public PrototypeTestLabOperation RecordFingerprint()
+        {
+            if (!EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence))
+            {
+                return RecordFailure("Record Fingerprint", "Persistence service is missing.", "MissingPersistence");
+            }
+
+            return RecordSuccess("Record Fingerprint", persistence.BuildRuntimeStateFingerprint());
         }
 
         public PrototypeTestLabOperation Teleport(PrototypeTestPoint point)

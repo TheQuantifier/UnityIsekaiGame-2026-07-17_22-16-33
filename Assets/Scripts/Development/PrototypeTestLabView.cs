@@ -47,6 +47,7 @@ namespace UnityIsekaiGame.Development
         private Text locationText;
         private Text worldEntityText;
         private Text persistenceText;
+        private Text persistenceIntegrationText;
         private Text itemValueText;
         private Text statusValueText;
         private Text damageValueText;
@@ -138,6 +139,11 @@ namespace UnityIsekaiGame.Development
             if (persistenceText != null)
             {
                 persistenceText.text = service.BuildSaveSlotSummary();
+            }
+
+            if (persistenceIntegrationText != null)
+            {
+                persistenceIntegrationText.text = service.BuildPersistenceIntegrationSummary();
             }
 
             UpdateSelectorLabels();
@@ -292,7 +298,18 @@ namespace UnityIsekaiGame.Development
                 ("Mark Clean", () => service.MarkSaveClean()),
                 ("Validate Backup", () => service.ValidateManualSlotOneBackup()),
                 ("Load Backup", () => service.LoadManualSlotOneBackup()));
+            AddButtonRow(parent, font,
+                ("Fingerprint", () => service.RecordFingerprint()),
+                ("Recovery Scan", () => service.RunRecoveryScan()),
+                ("Promote Backup", () => service.PromoteManualSlotOneBackup(confirmed: false)),
+                ("Quarantine", () => service.QuarantineManualSlotOnePrimary(confirmed: false)));
+            AddButtonRow(parent, font,
+                ("Clean Temps", () => service.CleanupTemporarySaves(confirmed: false)),
+                ("Fail Prepare", () => service.InjectPrepareFailure()),
+                ("Fail Commit", () => service.InjectCommitFailure()),
+                ("Fail Audit", () => service.InjectAuditFailure()));
             persistenceText = AddText(parent, font, "Save slots not available.", 12, 260);
+            persistenceIntegrationText = AddText(parent, font, "Persistence integration not available.", 12, 260);
         }
 
         private void BuildLocationSection(Transform parent, Font font)

@@ -16,6 +16,16 @@ namespace UnityIsekaiGame.GameData.Persistence
         void DiscardPreparedPayload(object preparedPayload);
     }
 
+    public interface IPersistenceParticipantDependencies
+    {
+        System.Collections.Generic.IReadOnlyList<string> RequiredDependencies { get; }
+        System.Collections.Generic.IReadOnlyList<string> OptionalDependencies { get; }
+        bool SupportsRollback { get; }
+        bool RequiresSceneReadiness { get; }
+        bool RequiresDefinitionRegistry { get; }
+        bool RequiresWorldEntityRegistry { get; }
+    }
+
     public sealed class PersistenceParticipantSaveResult
     {
         private PersistenceParticipantSaveResult(bool succeeded, string payloadJson, string message)

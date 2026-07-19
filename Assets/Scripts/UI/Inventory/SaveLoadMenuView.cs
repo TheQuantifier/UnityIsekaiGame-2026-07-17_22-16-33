@@ -184,6 +184,9 @@ namespace UnityIsekaiGame.UI.Inventory
             builder.AppendLine($"Primary: {(descriptor.primaryExists ? "Yes" : "No")}  Backup: {(descriptor.backupExists ? "Yes" : "No")}");
             builder.AppendLine($"Dirty: {(persistence != null && persistence.DirtyTracker != null && persistence.DirtyTracker.IsDirty ? "Yes" : "No")}");
             builder.AppendLine($"Operation: {persistence?.Service?.OperationState.ToString() ?? "Missing"}");
+            builder.AppendLine($"Phase: {persistence?.Service?.CurrentPhase.ToString() ?? "Missing"}");
+            builder.AppendLine($"Safety: {persistence?.Service?.RuntimeSafety.ToString() ?? "Missing"}");
+            builder.AppendLine($"Revision: {descriptor.saveRevision}  Transaction: {EmptyFallback(descriptor.transactionId)}");
             builder.AppendLine("World State: player state and location only; shared-world state is future server-owned persistence.");
             if (!string.IsNullOrWhiteSpace(descriptor.message))
             {

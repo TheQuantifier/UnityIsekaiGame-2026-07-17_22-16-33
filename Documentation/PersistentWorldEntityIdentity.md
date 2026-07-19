@@ -99,6 +99,8 @@ Examples:
 
 Feature 4.6 does not implement those participant payloads. It only provides stable IDs, references, registration, diagnostics, and scene assignments.
 
+Feature 4.8 recovery and consistency auditing do not make world entities persistent by themselves. They provide transaction, rollback, and audit hooks that future `SharedWorld` or `RegionOrScene` world-entity participants can use once those systems own mutable world state.
+
 ## Multiplayer Ownership
 
 World entity identity is compatible with server-authoritative persistence. In multiplayer, clients may display or reference world entity IDs sent by the server, but clients must not become authoritative over `SharedWorld` or `RegionOrScene` state by uploading local world entity saves.

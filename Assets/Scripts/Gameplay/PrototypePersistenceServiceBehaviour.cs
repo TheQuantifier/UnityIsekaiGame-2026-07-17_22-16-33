@@ -330,7 +330,79 @@ namespace UnityIsekaiGame.Gameplay
         public string BuildSaveSlotDiagnosticSummary()
         {
             EnsureInitialized();
-            return $"Operation={service.OperationState} Dirty={dirtyTracker != null && dirtyTracker.IsDirty} PlayTime={PrototypeSaveSlotCatalog.FormatPlayTime(playTimeTracker == null ? 0d : playTimeTracker.CumulativeSeconds)} Autosave={autosaveCoordinator?.LastResult ?? "None"}";
+            PersistenceTransactionDiagnostics diagnostics = service.BuildTransactionDiagnostics();
+            return $"Operation={service.OperationState} Phase={diagnostics.phase} Safety={diagnostics.runtimeSafety} Dirty={dirtyTracker != null && dirtyTracker.IsDirty} PlayTime={PrototypeSaveSlotCatalog.FormatPlayTime(playTimeTracker == null ? 0d : playTimeTracker.CumulativeSeconds)} Autosave={autosaveCoordinator?.LastResult ?? "None"}";
+        }
+
+        public string BuildPersistenceIntegrationDiagnosticSummary()
+        {
+            EnsureInitialized();
+            PersistenceDependencyReport dependencies = service.BuildParticipantDependencyReport();
+            PersistenceTransactionDiagnostics diagnostics = service.BuildTransactionDiagnostics();
+            string order = dependencies.orderedParticipantKeys == null || dependencies.orderedParticipantKeys.Length == 0
+                ? "None"
+                : string.Join(" -> ", dependencies.orderedParticipantKeys);
+            return string.Join("\n", new[]
+            {
+                "Persistence Integration",
+                $"Transaction: {diagnostics.transactionId}",
+                $"Phase: {diagnostics.phase}",
+                $"Operation: {diagnostics.operationState}",
+                $"Safety: {diagnostics.runtimeSafety}",
+                $"Guard Active: {PersistenceRestorationGuard.IsActive}",
+                $"Participant Dependencies: {(dependencies.succeeded ? "Valid" : "Invalid")}",
+                $"Participant Order: {order}",
+                $"Dependency Detail: {dependencies.message}",
+                $"Fingerprint: {BuildRuntimeStateFingerprint()}",
+                $"Last Audit: {diagnostics.lastConsistencyAudit}",
+                $"Last Recovery: {diagnostics.lastRecoveryRecommendation}"
+            });
+        }
+
+        public string BuildRuntimeStateFingerprint()
+        {
+            EnsureInitialized();
+            return service.BuildRuntimeStateFingerprint();
+        }
+
+        public SaveRecoveryScanReport RunRecoveryScan()
+        {
+            EnsureInitialized();
+            SaveRecoveryScanReport report = service.ScanRecoverySources();
+            Report(true, report.recommendation);
+            return report;
+        }
+
+        public PersistenceSaveResult PromoteBackup(string slotId)
+        {
+            EnsureInitialized();
+            PersistenceSaveResult result = service.PromoteBackup(slotId);
+            Report(result.Succeeded, result.Message);
+            return result;
+        }
+
+        public PersistenceSaveResult QuarantinePrimary(string slotId)
+        {
+            EnsureInitialized();
+            PersistenceSaveResult result = service.QuarantinePrimary(slotId);
+            Report(result.Succeeded, result.Message);
+            return result;
+        }
+
+        public PersistenceDeleteResult CleanupStaleTemporaryFiles()
+        {
+            EnsureInitialized();
+            PersistenceDeleteResult result = service.CleanupStaleTemporaryFiles();
+            Report(result.Succeeded, result.Message);
+            return result;
+        }
+
+        public void InjectNextPersistenceFault(PersistenceFaultInjectionPoint point)
+        {
+            EnsureInitialized();
+            service.FaultInjection.nextFailurePoint = point;
+            service.FaultInjection.message = $"Injected {point} fault.";
+            Report(true, $"Next persistence fault: {point}");
         }
 
         private static void Report(bool succeeded, string message)
