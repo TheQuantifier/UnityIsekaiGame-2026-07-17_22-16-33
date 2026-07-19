@@ -89,7 +89,7 @@ Current foundations include:
 - Category/tag taxonomy for items, abilities, statuses, beings, places, factions, and damage.
 - Item definitions, item rarity, world pickups, and item taxonomy metadata.
 - Inventory data, stacking, stateful item instances, inventory/equipment save-data DTOs, and inventory UI.
-- Save-file envelope, persistence service, save-slot metadata, atomic local writes, backups, and development save/load commands.
+- Save-file envelope, persistence service, save-slot metadata, atomic local writes, backups, development save/load commands, and player-scoped inventory/equipment persistence.
 - Consumable item use.
 - Health, stamina, and mana.
 - Equipment, generic runtime actor statistics, and typed damage resistance modifiers.
@@ -106,6 +106,7 @@ Current foundations include:
 Step 3 closeout documentation lives in `Documentation/Step3GameDataAndWorldTaxonomyArchitecture.md`, with regression coverage in `Documentation/Step3RegressionChecklist.md`.
 
 Step 4 persistence foundation documentation lives in `Documentation/PersistenceServiceFoundation.md`, with the planned sequence in `Documentation/Step4PersistenceRoadmap.md`.
+Player inventory/equipment persistence is documented in `Documentation/PlayerInventoryAndEquipmentPersistence.md`.
 
 ### Inventory Item Instance Save Foundation
 

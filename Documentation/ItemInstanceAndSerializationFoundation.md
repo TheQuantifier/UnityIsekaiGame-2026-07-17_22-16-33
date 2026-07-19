@@ -86,7 +86,7 @@ public float conditionNormalized;
 
 The save shape stores stable IDs rather than ScriptableObject references. Explicit presence flags distinguish missing metadata from default values and avoid nullable fields for Unity serialization compatibility.
 
-Step 3.5 does not write files to disk or serialize full inventory/equipment state.
+Step 3.5 does not write files to disk by itself. Feature 4.2 now uses this DTO inside the player-scoped inventory/equipment persistence participant.
 
 ## Restoration Flow
 
@@ -163,8 +163,7 @@ Step 3.5 does not implement disk save/load, inventory serialization, equipment s
 
 Recommended next steps:
 
-1. Decide inventory save entry shape for definition-only stacks versus stateful instances.
-2. Add equipment save entries that preserve item instance IDs.
-3. Introduce world/container ownership of item instances.
-4. Add versioned save payloads and missing-definition reporting.
-5. Only then make condition, quality, enchantments, or ownership affect gameplay.
+1. Introduce world/container ownership of item instances.
+2. Add versioned migrations when item-instance payloads change.
+3. Add current vital persistence after equipment max-stat restoration.
+4. Only then make condition, quality, enchantments, or ownership affect gameplay.

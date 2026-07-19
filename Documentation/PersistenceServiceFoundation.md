@@ -1,6 +1,6 @@
 # Persistence Service Foundation
 
-Feature 4.1 adds the first persistence layer. It creates save-file infrastructure and a small prototype participant only. It does not migrate inventory, equipment, vitals, statuses, quests, contracts, position, scene loading, or world-state restoration.
+Feature 4.1 adds the first persistence layer. Feature 4.2 adds player-scoped inventory/equipment persistence through the same participant architecture. The service still does not persist vitals, statuses, quests, contracts, position, scene loading, or shared-world restoration.
 
 ## Architecture
 
@@ -55,6 +55,8 @@ Participant scopes are:
 - `SessionOnly`: temporary state that may be coordinated during a session but is not normally durable.
 
 Player-scoped participants should declare an owner ID. Shared-world participants should not be loaded as a side effect of loading one player's state.
+
+On load, registered participant records are checked against the runtime participant's declared scope and owner ID before payload preparation. A save for another owner fails without mutating the local runtime state.
 
 ## Save Envelope
 
@@ -202,6 +204,8 @@ Feature 4.1 uses one required participant: `prototype.state`.
 
 `prototype.state` is player-scoped and uses the local prototype owner ID. This proves owner metadata without introducing networking or account authentication.
 
+Feature 4.2 adds another required prototype participant: `player.inventory-equipment`. It is player-scoped, owned by `local-player`, and coordinates inventory/equipment restore as one aggregate payload.
+
 ## Player State Versus World State
 
 Player-state saves and shared-world saves must remain separable.
@@ -252,7 +256,7 @@ Callers do not need to parse exception strings.
 
 The runtime component is `PrototypePersistenceState`. It is development-only proof infrastructure and can be removed when real participants replace it.
 
-This feature intentionally avoids partial migration of inventory, equipment, stats, vitals, statuses, quests, contracts, or position.
+The real prototype player inventory/equipment state is now handled by `PlayerInventoryEquipmentPersistenceParticipant`. `prototype.state` remains a development-only proof participant for validating multiple participants and menu commands.
 
 ## Development Tools
 
