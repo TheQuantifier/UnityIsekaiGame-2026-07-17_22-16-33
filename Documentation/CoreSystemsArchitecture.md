@@ -1,10 +1,10 @@
 # Core Systems Architecture
 
-This document records the Step 2 prototype architecture as of the core systems closeout. It is practical project documentation, not final game design or lore.
+This document records the prototype architecture through the Step 3 game-data and world-taxonomy closeout. It is practical project documentation, not final game design or lore.
 
 ## Step 2 System Overview
 
-The prototype is a first-person Unity 6.5 URP RPG sandbox. The current scene validates movement, interaction, inventory, item use, vitals, equipment, combat, enemy behavior, loot, magic, spell loadout, dialogue, contracts, quests, HUD feedback, reset controls, and NPC person identity.
+The prototype is a first-person Unity 6.5 URP RPG sandbox. The current scene validates movement, interaction, inventory, item use, vitals, equipment, combat, enemy behavior, loot, abilities, statuses, typed damage, spell loadout, dialogue, contracts, quests, HUD feedback, reset controls, NPC person identity, places, and factions.
 
 The major rule is separation between static definitions and runtime state. ScriptableObjects describe authored data. MonoBehaviours and runtime instances own player/enemy/session state.
 
@@ -65,7 +65,7 @@ Runtime state is owned by components or runtime instances:
 
 Stable IDs identify authored definitions and objective targets. They must not be derived from GameObject names.
 
-Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. Step 3.2 adds registered `CategoryDefinition` and `TagDefinition` assets plus opt-in classification interfaces for metadata-only category/tag assignment. Step 3.3 adds object/item taxonomy interfaces and item capability validation while keeping stack, use, and equipment behavior data-driven. Step 3.4 adds distinct rarity, quality, and condition definitions, optional static item rarity, and standalone runtime item-instance metadata without migrating inventory slots. Step 3.5 adds runtime item-instance identity, save-data DTOs, restoration through `DefinitionRegistry`, and future stack-compatibility policy while preserving current gameplay storage. Step 3.6 integrates item instances into inventory/equipment runtime state. Step 3.7 adds shared `AbilityDefinition` and `EffectDefinition` foundations while keeping cooldowns, resources, targets, and active projectiles in runtime owners. Step 3.8 adds runtime status effects and exact-source stat modifiers. Step 3.9 adds generic actor stats and shared combat stat integration. Step 3.10 adds `BeingDefinition` and `ActorProfileDefinition` while keeping person identity and runtime actor state separate. Step 3.11 adds `PlaceDefinition` and typed reach-location references while keeping scenes, triggers, and runtime world state separate from static place identity. Step 3.12 adds `FactionDefinition` and organization metadata while keeping memberships, ranks, reputation, law, diplomacy, and economy as future runtime systems. Step 3.13 adds `DamageTypeDefinition`, typed damage packets, and per-actor typed resistance while keeping health, stats, equipment, and statuses as separate runtime owners. See `Documentation/GameDefinitionAndStableIdGuidelines.md`, `Documentation/CategoryAndTagSystem.md`, `Documentation/ObjectAndItemTaxonomy.md`, `Documentation/RarityQualityAndCondition.md`, `Documentation/ItemInstanceAndSerializationFoundation.md`, `Documentation/InventoryItemInstanceIntegration.md`, `Documentation/AbilityAndEffectDefinitionFoundation.md`, `Documentation/StatusEffectAndRuntimeModifierFoundation.md`, `Documentation/GenericActorStatsAndCombatIntegration.md`, `Documentation/BeingAndActorProfileFoundation.md`, `Documentation/PlaceDefinitionAndLocationHierarchy.md`, `Documentation/FactionAndOrganizationFoundation.md`, and `Documentation/DamageTypeAndResistanceFoundation.md`.
+Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. Step 3.2 adds registered `CategoryDefinition` and `TagDefinition` assets plus opt-in classification interfaces for metadata-only category/tag assignment. Step 3.3 adds object/item taxonomy interfaces and item capability validation while keeping stack, use, and equipment behavior data-driven. Step 3.4 adds distinct rarity, quality, and condition definitions, optional static item rarity, and standalone runtime item-instance metadata. Step 3.5 adds runtime item-instance identity, save-data DTOs, restoration through `DefinitionRegistry`, and future stack-compatibility policy. Step 3.6 integrates item instances into inventory/equipment runtime state. Step 3.7 adds shared `AbilityDefinition` and `EffectDefinition` foundations while keeping cooldowns, resources, targets, and active projectiles in runtime owners. Step 3.8 adds runtime status effects and exact-source stat modifiers. Step 3.9 adds generic actor stats and shared combat stat integration. Step 3.10 adds `BeingDefinition` and `ActorProfileDefinition` while keeping person identity and runtime actor state separate. Step 3.11 adds `PlaceDefinition` and typed reach-location references while keeping scenes, triggers, and runtime world state separate from static place identity. Step 3.12 adds `FactionDefinition` and organization metadata while keeping memberships, ranks, reputation, law, diplomacy, and economy as future runtime systems. Step 3.13 adds `DamageTypeDefinition`, typed damage packets, and per-actor typed resistance while keeping health, stats, equipment, and statuses as separate runtime owners. Step 3.14 closes out the architecture with integration documentation, regression checklist coverage, and catalog-level integration tests. See `Documentation/Step3GameDataAndWorldTaxonomyArchitecture.md` and `Documentation/Step3RegressionChecklist.md` for the Step 3 closeout map.
 
 Current ID families:
 
@@ -204,9 +204,9 @@ The prototype scene intentionally contains:
 
 Removed visual clutter should not be reintroduced unless it is needed for a specific system test.
 
-## Step 3 Extension Points
+## Step 4 Extension Points
 
-The current architecture is ready for these Step 3 directions without merging systems together:
+The current architecture is ready for these next directions without merging static definitions and runtime owners:
 
 - save/load snapshots for inventory, equipment, vitals, quests, contracts, spell loadout, and person references;
 - richer item categories and loot tables;

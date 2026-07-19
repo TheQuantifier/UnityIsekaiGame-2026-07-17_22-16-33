@@ -85,19 +85,24 @@ Current foundations include:
 - First-person movement and camera controls.
 - Keyboard, mouse, and gamepad input through the Unity Input System.
 - Reusable center-screen world interaction.
-- Item definitions and world pickups.
-- Inventory data, stacking, stateful item instances, inventory save-data DTOs, and inventory UI.
+- Shared game-data definitions, stable IDs, catalog validation, and prototype registry lookup.
+- Category/tag taxonomy for items, abilities, statuses, beings, places, factions, and damage.
+- Item definitions, item rarity, world pickups, and item taxonomy metadata.
+- Inventory data, stacking, stateful item instances, inventory/equipment save-data DTOs, and inventory UI.
 - Consumable item use.
 - Health, stamina, and mana.
-- Equipment and generic runtime actor statistics.
+- Equipment, generic runtime actor statistics, and typed damage resistance modifiers.
 - Static being definitions and reusable actor profiles for player/enemy base stats.
 - Static place definitions and typed reach-location references.
+- Static faction and organization definitions used by quests, contracts, people, and places.
 - Melee combat and shared attack/defense damage handling.
-- Enemy health, runtime stats, pursuit, attacks, defeat, statuses, and loot drops.
+- Enemy health, runtime stats, typed damage, pursuit, attacks, defeat, statuses, and loot drops.
 - Prototype player defeat and reset controls.
-- Basic spellcasting and projectiles.
+- Ability/effect definitions, basic spellcasting, and projectiles.
 - Spell loadout and quick-action selection.
 - Dialogue system foundation with prototype NPC conversation.
+
+Step 3 closeout documentation lives in `Documentation/Step3GameDataAndWorldTaxonomyArchitecture.md`, with regression coverage in `Documentation/Step3RegressionChecklist.md`.
 
 ### Inventory Item Instance Save Foundation
 
