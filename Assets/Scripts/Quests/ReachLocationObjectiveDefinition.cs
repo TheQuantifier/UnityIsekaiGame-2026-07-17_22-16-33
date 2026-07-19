@@ -1,14 +1,19 @@
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Places;
 
 namespace UnityIsekaiGame.Quests
 {
     [CreateAssetMenu(fileName = "ReachLocationObjective", menuName = "Unity Isekai Game/Quests/Objectives/Reach Location")]
     public sealed class ReachLocationObjectiveDefinition : ContractObjectiveDefinition
     {
+        [SerializeField] private PlaceDefinition targetPlace;
         [SerializeField] private string locationId;
 
+        public PlaceDefinition TargetPlace => targetPlace;
         public string LocationId => locationId;
+        public string TargetLocationId => targetPlace == null ? locationId : targetPlace.Id;
+        public string TargetDisplayName => targetPlace == null ? locationId : targetPlace.DisplayName;
 
         public override ContractObjectiveInstance CreateInstance(ContractObjectiveContext context)
         {
@@ -48,7 +53,7 @@ namespace UnityIsekaiGame.Quests
 
         private void OnReachedLocation(string locationId)
         {
-            if (IsComplete || definition == null || locationId != definition.LocationId)
+            if (IsComplete || definition == null || string.IsNullOrWhiteSpace(locationId) || locationId != definition.TargetLocationId)
             {
                 return;
             }

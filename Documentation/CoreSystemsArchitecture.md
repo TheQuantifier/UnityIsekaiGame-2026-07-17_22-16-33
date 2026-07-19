@@ -27,6 +27,7 @@ Static data lives in ScriptableObjects and should not be mutated during play:
 - `ContractRewardDefinition`: item reward configuration shared by contracts and quests.
 - `BeingDefinition`: stable being type, broad classification, intelligence/social/locomotion metadata, and optional default profile reference.
 - `ActorProfileDefinition`: stable reusable base actor configuration for stats and being reference.
+- `PlaceDefinition`: stable place identity, hierarchy, classification, optional scene/map metadata, and future discovery/control placeholders.
 - `PersonDefinition`: stable person ID, display name, title, role tags, optional being/profile references, metadata placeholders.
 - `PlayerMovementSettings`: first-person movement tuning.
 
@@ -54,13 +55,14 @@ Runtime state is owned by components or runtime instances:
 - `QuestInstance` owns quest state, current stage, current objective instances, and reward claim state.
 - `PlayerContractJournal` and `PlayerQuestLog` own active runtime collections for contracts and quests.
 - `PersonIdentity` represents a currently loaded scene presence for a static `PersonDefinition`.
+- `PlaceIdentity` can represent a loaded scene presence for a static `PlaceDefinition`, but it is not a static registry or save-data source.
 - `PersonRegistry` owns only currently loaded active person identities.
 
 ## Stable ID Conventions
 
 Stable IDs identify authored definitions and objective targets. They must not be derived from GameObject names.
 
-Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. Step 3.2 adds registered `CategoryDefinition` and `TagDefinition` assets plus opt-in classification interfaces for metadata-only category/tag assignment. Step 3.3 adds object/item taxonomy interfaces and item capability validation while keeping stack, use, and equipment behavior data-driven. Step 3.4 adds distinct rarity, quality, and condition definitions, optional static item rarity, and standalone runtime item-instance metadata without migrating inventory slots. Step 3.5 adds runtime item-instance identity, save-data DTOs, restoration through `DefinitionRegistry`, and future stack-compatibility policy while preserving current gameplay storage. Step 3.6 integrates item instances into inventory/equipment runtime state. Step 3.7 adds shared `AbilityDefinition` and `EffectDefinition` foundations while keeping cooldowns, resources, targets, and active projectiles in runtime owners. Step 3.8 adds runtime status effects and exact-source stat modifiers. Step 3.9 adds generic actor stats and shared combat stat integration. Step 3.10 adds `BeingDefinition` and `ActorProfileDefinition` while keeping person identity and runtime actor state separate. See `Documentation/GameDefinitionAndStableIdGuidelines.md`, `Documentation/CategoryAndTagSystem.md`, `Documentation/ObjectAndItemTaxonomy.md`, `Documentation/RarityQualityAndCondition.md`, `Documentation/ItemInstanceAndSerializationFoundation.md`, `Documentation/InventoryItemInstanceIntegration.md`, `Documentation/AbilityAndEffectDefinitionFoundation.md`, `Documentation/StatusEffectAndRuntimeModifierFoundation.md`, `Documentation/GenericActorStatsAndCombatIntegration.md`, and `Documentation/BeingAndActorProfileFoundation.md`.
+Step 3.1 adds the shared `IGameDefinition` contract, reusable ID validation, explicit `DefinitionCatalog` assets, and `DefinitionRegistry` lookup. Step 3.2 adds registered `CategoryDefinition` and `TagDefinition` assets plus opt-in classification interfaces for metadata-only category/tag assignment. Step 3.3 adds object/item taxonomy interfaces and item capability validation while keeping stack, use, and equipment behavior data-driven. Step 3.4 adds distinct rarity, quality, and condition definitions, optional static item rarity, and standalone runtime item-instance metadata without migrating inventory slots. Step 3.5 adds runtime item-instance identity, save-data DTOs, restoration through `DefinitionRegistry`, and future stack-compatibility policy while preserving current gameplay storage. Step 3.6 integrates item instances into inventory/equipment runtime state. Step 3.7 adds shared `AbilityDefinition` and `EffectDefinition` foundations while keeping cooldowns, resources, targets, and active projectiles in runtime owners. Step 3.8 adds runtime status effects and exact-source stat modifiers. Step 3.9 adds generic actor stats and shared combat stat integration. Step 3.10 adds `BeingDefinition` and `ActorProfileDefinition` while keeping person identity and runtime actor state separate. Step 3.11 adds `PlaceDefinition` and typed reach-location references while keeping scenes, triggers, and runtime world state separate from static place identity. See `Documentation/GameDefinitionAndStableIdGuidelines.md`, `Documentation/CategoryAndTagSystem.md`, `Documentation/ObjectAndItemTaxonomy.md`, `Documentation/RarityQualityAndCondition.md`, `Documentation/ItemInstanceAndSerializationFoundation.md`, `Documentation/InventoryItemInstanceIntegration.md`, `Documentation/AbilityAndEffectDefinitionFoundation.md`, `Documentation/StatusEffectAndRuntimeModifierFoundation.md`, `Documentation/GenericActorStatsAndCombatIntegration.md`, `Documentation/BeingAndActorProfileFoundation.md`, and `Documentation/PlaceDefinitionAndLocationHierarchy.md`.
 
 Current ID families:
 
@@ -71,7 +73,7 @@ Current ID families:
 - Quest stage IDs: `QuestStageDefinition.StageId`
 - Person IDs: `PersonDefinition.PersonId`
 - Talk objective IDs: `TalkObjectiveDefinition.TalkTargetId`, preferably resolved from `PersonDefinition`
-- Location IDs: `ReachLocationObjectiveDefinition.LocationId` and `QuestReachLocationReporter`
+- Location IDs: `ReachLocationObjectiveDefinition.TargetPlace` / `TargetLocationId` and `QuestReachLocationReporter.TargetPlace`, with legacy string fallback.
 - Contract delivery destination IDs: `DeliveryObjectiveDefinition.DestinationId`
 - Defeat target categories: `ContractObjectiveTarget.TargetCategory`
 

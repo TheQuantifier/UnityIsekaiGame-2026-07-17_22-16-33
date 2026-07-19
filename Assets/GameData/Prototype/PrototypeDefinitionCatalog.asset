@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.3.10-step-3
+  contentVersion: 0.3.11-step-3
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -106,3 +106,23 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 0697f228c00e4202a143936fb644f547, type: 2}
   - {fileID: 11400000, guid: 8f9cba49469c4a2bbdbd7f0ffbcb2ec1, type: 2}
   - {fileID: 11400000, guid: 0beba797c9b34a67a3bed8f4449fa6a3, type: 2}
+  - {fileID: 11400000, guid: 15cff4f5d3104f01ae23288980ff52f7, type: 2}
+  - {fileID: 11400000, guid: a307be9ee9794c4780f97545ced1eb7b, type: 2}
+  - {fileID: 11400000, guid: 6950eaa41e4b4f2dbaa73429571cc4c1, type: 2}
+  - {fileID: 11400000, guid: 98b435bc5ea54c47a70f88ec351355f5, type: 2}
+  - {fileID: 11400000, guid: 2f54e1a91a9140dd902d2167bc744427, type: 2}
+  - {fileID: 11400000, guid: 1953333ee90a4a709acab20d03eac09e, type: 2}
+  - {fileID: 11400000, guid: 655ad9208add48c3a5a6d01fbd605924, type: 2}
+  - {fileID: 11400000, guid: 138229000fe749ba8264e02e36a85938, type: 2}
+  - {fileID: 11400000, guid: d274d1811dbb440d96508b05aede5bc3, type: 2}
+  - {fileID: 11400000, guid: 3f8c56cd550742a6b08f2c36f61d5e17, type: 2}
+  - {fileID: 11400000, guid: ea96506764854fc691678f21cee667c9, type: 2}
+  - {fileID: 11400000, guid: 2581f6d72fb54cb5b0cecb6815ba33ce, type: 2}
+  - {fileID: 11400000, guid: 1b2d169a43e448ec944b2a33e9584f11, type: 2}
+  - {fileID: 11400000, guid: 4819e29845be4c3182c93abbd1130f0f, type: 2}
+  - {fileID: 11400000, guid: 5898d9df369c48b2b931176b95e8e640, type: 2}
+  - {fileID: 11400000, guid: b766e35224be4b9eba5529a49ed36469, type: 2}
+  - {fileID: 11400000, guid: f1cccd051a484f3c85af0dcb2be313ff, type: 2}
+  - {fileID: 11400000, guid: c67f143c04714aa5b83246d52f264b97, type: 2}
+  - {fileID: 11400000, guid: 296da81eaaa8497e94c0cd52855222aa, type: 2}
+  - {fileID: 11400000, guid: c678b5b42a394c799148a7cbe8b2c4cc, type: 2}
