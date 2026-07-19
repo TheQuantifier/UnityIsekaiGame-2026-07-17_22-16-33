@@ -20,6 +20,8 @@ namespace UnityIsekaiGame.UI.Inventory
 {
     public sealed class InventoryScreenView : MonoBehaviour
     {
+        private const float NavigationButtonHeight = 42f;
+
         [SerializeField] private CanvasGroup canvasGroup;
         [SerializeField] private InventorySlotView[] slotViews;
         [SerializeField] private EquipmentSlotView[] equipmentSlotViews;
@@ -153,6 +155,7 @@ namespace UnityIsekaiGame.UI.Inventory
 
             equipSelected = onEquipSelected;
             unequipSelected = onUnequipSelected;
+            ApplyPrototypeMenuLayout();
             ApplyActiveSection();
         }
 
@@ -432,6 +435,16 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 testLabContentRoot.SetActive(testLabActive);
             }
+
+            if (feedbackText != null)
+            {
+                feedbackText.gameObject.SetActive(!testLabActive);
+            }
+#else
+            if (feedbackText != null)
+            {
+                feedbackText.gameObject.SetActive(true);
+            }
 #endif
 
             if (inventoryMenuButtonImage != null)
@@ -462,6 +475,69 @@ namespace UnityIsekaiGame.UI.Inventory
 #endif
         }
 
+        private void ApplyPrototypeMenuLayout()
+        {
+            Transform navigationParent = characterMenuButton == null ? inventoryMenuButton == null ? null : inventoryMenuButton.transform.parent : characterMenuButton.transform.parent;
+            if (navigationParent != null)
+            {
+                VerticalLayoutGroup layout = navigationParent.GetComponent<VerticalLayoutGroup>();
+                if (layout == null)
+                {
+                    layout = navigationParent.gameObject.AddComponent<VerticalLayoutGroup>();
+                }
+
+                layout.padding = new RectOffset(8, 8, 8, 8);
+                layout.spacing = 8f;
+                layout.childControlWidth = true;
+                layout.childControlHeight = true;
+                layout.childForceExpandWidth = true;
+                layout.childForceExpandHeight = false;
+                layout.childAlignment = TextAnchor.UpperCenter;
+            }
+
+            ConfigureNavigationButton(characterMenuButton, "Character", 0);
+            ConfigureNavigationButton(inventoryMenuButton, "Inventory", 1);
+            ConfigureNavigationButton(spellsMenuButton, "Spells", 2);
+            ConfigureNavigationButton(contractsMenuButton, "Journal", 3);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            ConfigureNavigationButton(testLabMenuButton, "Test Lab", 4);
+#endif
+        }
+
+        private static void ConfigureNavigationButton(Button button, string label, int siblingIndex)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.transform.SetSiblingIndex(siblingIndex);
+            LayoutElement layoutElement = button.GetComponent<LayoutElement>();
+            if (layoutElement == null)
+            {
+                layoutElement = button.gameObject.AddComponent<LayoutElement>();
+            }
+
+            ApplyNavigationButtonLayout(layoutElement);
+
+            Text text = button.GetComponentInChildren<Text>(true);
+            if (text != null)
+            {
+                text.text = label;
+                text.fontSize = 12;
+                text.fontStyle = FontStyle.Bold;
+                text.alignment = TextAnchor.MiddleCenter;
+                text.horizontalOverflow = HorizontalWrapMode.Wrap;
+                text.verticalOverflow = VerticalWrapMode.Truncate;
+                text.raycastTarget = false;
+                RectTransform textRect = text.rectTransform;
+                textRect.anchorMin = Vector2.zero;
+                textRect.anchorMax = Vector2.one;
+                textRect.offsetMin = new Vector2(6f, 2f);
+                textRect.offsetMax = new Vector2(-6f, -2f);
+            }
+        }
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private void EnsureTestLabMenuObjects()
         {
@@ -480,7 +556,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 testLabMenuButtonImage.color = inactiveMenuColor;
                 testLabMenuButton = buttonObject.GetComponent<Button>();
 
-                Text label = CreateDetailsText("Label", buttonObject.transform, font, 14, FontStyle.Bold, TextAnchor.MiddleCenter);
+                Text label = CreateDetailsText("Label", buttonObject.transform, font, 12, FontStyle.Bold, TextAnchor.MiddleCenter);
                 RectTransform labelRect = label.rectTransform;
                 labelRect.anchorMin = Vector2.zero;
                 labelRect.anchorMax = Vector2.one;
@@ -489,8 +565,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 label.text = "Test Lab";
 
                 LayoutElement layout = buttonObject.AddComponent<LayoutElement>();
-                layout.preferredWidth = contractsMenuButton == null ? 110f : ((RectTransform)contractsMenuButton.transform).rect.width;
-                layout.preferredHeight = contractsMenuButton == null ? 36f : ((RectTransform)contractsMenuButton.transform).rect.height;
+                ApplyNavigationButtonLayout(layout);
             }
 
             if (testLabContentRoot == null)
@@ -520,6 +595,21 @@ namespace UnityIsekaiGame.UI.Inventory
             }
         }
 #endif
+
+        private static void ApplyNavigationButtonLayout(LayoutElement layoutElement)
+        {
+            if (layoutElement == null)
+            {
+                return;
+            }
+
+            layoutElement.minWidth = 0f;
+            layoutElement.preferredWidth = -1f;
+            layoutElement.flexibleWidth = 1f;
+            layoutElement.minHeight = NavigationButtonHeight;
+            layoutElement.preferredHeight = NavigationButtonHeight;
+            layoutElement.flexibleHeight = 0f;
+        }
 
         private void EnsureItemDetailsPanel()
         {

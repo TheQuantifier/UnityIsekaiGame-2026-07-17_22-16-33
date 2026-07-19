@@ -121,6 +121,8 @@ Dialogue is a separate modal controlled by `DialogueScreenController`. It also b
 
 In editor and development builds, the same Tab menu can expose a `Test Lab` page. The Test Lab is development tooling, not gameplay UI. It uses the existing Tab menu input blocking and cursor ownership, calls runtime systems through `PrototypeTestLabService`, and provides centralized prototype actions for inventory, equipment, vitals, statuses, combat, quests, contracts, persistence, scenarios, and diagnostics. See `Documentation/PrototypeSystemsTestLab.md`.
 
+Maintenance 4.4B adds a prototype scene/menu usability layout standard for PrototypeScene: labeled zones, repeated pickup groups, clearer contract/quest/combat/status areas, Test Lab teleport points, and menu layout guidance. See `Documentation/PrototypeSceneAndMenuUsability.md`.
+
 The reset controller closes dialogue and the shared menu explicitly before restoring gameplay input.
 
 ## Quests Versus Contracts
