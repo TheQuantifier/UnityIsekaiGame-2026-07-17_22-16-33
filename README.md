@@ -110,6 +110,7 @@ Player inventory/equipment persistence is documented in `Documentation/PlayerInv
 Player stats/vitals/status persistence is documented in `Documentation/PlayerStatsVitalsStatusPersistence.md`.
 Quest and contract persistence is documented in `Documentation/QuestAndContractPersistence.md`.
 The editor/development-build Prototype Systems Test Lab is documented in `Documentation/PrototypeSystemsTestLab.md`.
+PrototypeScene usability, zone layout, pickup grouping, and menu layout standards are documented in `Documentation/PrototypeSceneAndMenuUsability.md`.
 
 ### Inventory Item Instance Save Foundation
 

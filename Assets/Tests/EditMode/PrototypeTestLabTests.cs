@@ -77,11 +77,12 @@ namespace UnityIsekaiGame.Tests
         [Test]
         public void OperationHistoryIsBounded()
         {
-            object service = CreateService();
+            using RuntimeFixture fixture = RuntimeFixture.Create();
+            object service = CreateService(fixture);
 
             for (int i = 0; i < HistoryLimit + 8; i++)
             {
-                Invoke(service, "GrantItem", null, 1);
+                Invoke(service, "RestoreVitals");
             }
 
             Assert.That(Count(Get<object>(service, "History")), Is.EqualTo(HistoryLimit));

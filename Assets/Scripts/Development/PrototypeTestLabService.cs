@@ -69,6 +69,15 @@ namespace UnityIsekaiGame.Development
             return cached.Cast<TDefinition>().ToList();
         }
 
+        public IReadOnlyList<PrototypeTestPoint> GetTestPoints()
+        {
+            return UnityEngine.Object.FindObjectsByType<PrototypeTestPoint>(FindObjectsInactive.Exclude)
+                .Where(point => point != null && !string.IsNullOrWhiteSpace(point.TestPointId))
+                .OrderBy(point => point.TestPointId)
+                .ThenBy(point => point.DisplayName)
+                .ToList();
+        }
+
         public string BuildOverview()
         {
             if (context == null)
@@ -664,7 +673,7 @@ namespace UnityIsekaiGame.Development
                 history.RemoveAt(history.Count - 1);
             }
 
-            if (!succeeded)
+            if (!succeeded && !string.Equals(code, "ConfirmationRequired", StringComparison.Ordinal))
             {
                 Debug.LogWarning($"{operationName}: {message}");
             }

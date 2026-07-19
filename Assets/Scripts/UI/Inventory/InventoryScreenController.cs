@@ -814,10 +814,13 @@ namespace UnityIsekaiGame.UI.Inventory
                 testLabPersistence = UnityEngine.Object.FindAnyObjectByType<PrototypePersistenceServiceBehaviour>();
             }
 
+            bool activateCreatedPersistence = false;
             if (testLabPersistence == null && Application.isPlaying)
             {
                 GameObject persistenceObject = new GameObject("Prototype Persistence Service");
+                persistenceObject.SetActive(false);
                 testLabPersistence = persistenceObject.AddComponent<PrototypePersistenceServiceBehaviour>();
+                activateCreatedPersistence = true;
             }
 
             if (testLabPersistence != null)
@@ -833,6 +836,14 @@ namespace UnityIsekaiGame.UI.Inventory
                     statusEffects,
                     questLog,
                     contractJournal);
+                if (activateCreatedPersistence)
+                {
+                    testLabPersistence.gameObject.SetActive(true);
+                }
+                else
+                {
+                    testLabPersistence.EnsureInitialized();
+                }
             }
 
             return testLabPersistence;

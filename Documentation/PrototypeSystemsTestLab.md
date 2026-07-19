@@ -52,6 +52,7 @@ The service records recent operations in a bounded history list, returns `Protot
 The generated Test Lab page includes:
 
 - selector displays for items, statuses, damage types, quests, contracts, places, and people;
+- selector display for scene test points;
 - cycle buttons for selectors so choices remain clickable in the generated Unity UI;
 - quantity and amount inputs;
 - inventory grant, stateful grant, remove, fill, and clear actions;
@@ -63,6 +64,7 @@ The generated Test Lab page includes:
 - quest start and talk/reach/defeat signal actions;
 - contract accept and clear actions;
 - save, load, validate, and delete slot actions;
+- teleport to scene test points;
 - scenario buttons for clean baseline, combat setup, full inventory, quest midpoint, contract testing, and persistence round trip;
 - diagnostics and operation history readouts.
 

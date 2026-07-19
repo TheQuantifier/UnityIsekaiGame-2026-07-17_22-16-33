@@ -18,20 +18,51 @@ namespace UnityIsekaiGame.Development
 {
     public sealed class PrototypeTestLabView : MonoBehaviour
     {
+        private static readonly Color PanelColor = new Color(0.055f, 0.065f, 0.075f, 0.96f);
+        private static readonly Color FieldColor = new Color(0.10f, 0.12f, 0.14f, 1f);
+        private static readonly Color ButtonColor = new Color(0.17f, 0.25f, 0.29f, 1f);
+        private static readonly Color ActiveButtonColor = new Color(0.20f, 0.42f, 0.55f, 1f);
+
+        private static readonly string[] SectionNames =
+        {
+            "Overview",
+            "Player",
+            "Inventory",
+            "Combat",
+            "Statuses",
+            "Quests",
+            "Persistence",
+            "Location",
+            "Scenarios",
+            "Diagnostics"
+        };
+
         private PrototypeTestLabService service;
-        private Dropdown sectionDropdown;
-        private Dropdown itemDropdown;
-        private Dropdown statusDropdown;
-        private Dropdown damageDropdown;
-        private Dropdown questDropdown;
-        private Dropdown contractDropdown;
-        private Dropdown placeDropdown;
-        private Dropdown personDropdown;
         private InputField quantityInput;
         private InputField amountInput;
         private Text overviewText;
         private Text diagnosticsText;
         private Text historyText;
+        private Text itemValueText;
+        private Text statusValueText;
+        private Text damageValueText;
+        private Text questValueText;
+        private Text contractValueText;
+        private Text placeValueText;
+        private Text personValueText;
+        private Text testPointValueText;
+        private ScrollRect bodyScrollRect;
+
+        private int activeSectionIndex;
+        private int selectedItemIndex;
+        private int selectedStatusIndex;
+        private int selectedDamageIndex;
+        private int selectedQuestIndex;
+        private int selectedContractIndex;
+        private int selectedPlaceIndex;
+        private int selectedPersonIndex;
+        private int selectedTestPointIndex;
+
         private readonly List<ItemDefinition> items = new List<ItemDefinition>();
         private readonly List<StatusEffectDefinition> statuses = new List<StatusEffectDefinition>();
         private readonly List<DamageTypeDefinition> damageTypes = new List<DamageTypeDefinition>();
@@ -39,6 +70,9 @@ namespace UnityIsekaiGame.Development
         private readonly List<ContractDefinition> contracts = new List<ContractDefinition>();
         private readonly List<PlaceDefinition> places = new List<PlaceDefinition>();
         private readonly List<PersonDefinition> people = new List<PersonDefinition>();
+        private readonly List<PrototypeTestPoint> testPoints = new List<PrototypeTestPoint>();
+        private readonly List<GameObject> sectionRoots = new List<GameObject>();
+        private readonly List<Button> sectionButtons = new List<Button>();
 
         private void OnEnable()
         {
@@ -72,6 +106,7 @@ namespace UnityIsekaiGame.Development
             BuildUi();
             RefreshSelectors();
             Refresh();
+            SetActiveSection(activeSectionIndex);
         }
 
         public void Refresh()
@@ -86,150 +121,174 @@ namespace UnityIsekaiGame.Development
                 overviewText.text = service.BuildOverview();
             }
 
-            if (historyText != null)
-            {
-                StringBuilder builder = new StringBuilder();
-                foreach (PrototypeTestLabOperation operation in service.History)
-                {
-                    builder.Append(operation.Timestamp.ToString("HH:mm:ss"));
-                    builder.Append(operation.Succeeded ? " OK " : " FAIL ");
-                    builder.Append(operation.OperationName);
-                    builder.Append(" [");
-                    builder.Append(operation.Code);
-                    builder.Append("] ");
-                    builder.AppendLine(operation.Message);
-                }
-
-                historyText.text = builder.Length == 0 ? "No operations yet." : builder.ToString().TrimEnd();
-            }
+            UpdateSelectorLabels();
+            UpdateHistory();
+            UpdateSectionButtonStates();
         }
 
         private void BuildUi()
         {
-            if (sectionDropdown != null)
+            if (sectionRoots.Count > 0)
             {
                 return;
             }
 
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            RectTransform root = gameObject.GetComponent<RectTransform>();
+            RectTransform root = GetComponent<RectTransform>();
             root.anchorMin = Vector2.zero;
             root.anchorMax = Vector2.one;
-            root.offsetMin = new Vector2(18f, 18f);
-            root.offsetMax = new Vector2(-18f, -18f);
+            root.offsetMin = new Vector2(14f, 14f);
+            root.offsetMax = new Vector2(-14f, -14f);
 
-            GameObject scrollObject = CreateChild("Test Lab Scroll", root, typeof(ScrollRect), typeof(Image));
-            RectTransform scrollRectTransform = scrollObject.GetComponent<RectTransform>();
-            scrollRectTransform.anchorMin = Vector2.zero;
-            scrollRectTransform.anchorMax = Vector2.one;
-            scrollRectTransform.offsetMin = Vector2.zero;
-            scrollRectTransform.offsetMax = Vector2.zero;
-            scrollObject.GetComponent<Image>().color = new Color(0.055f, 0.065f, 0.075f, 0.96f);
+            GameObject layoutRoot = CreateChild("Test Lab Layout", root, typeof(VerticalLayoutGroup));
+            VerticalLayoutGroup rootLayout = layoutRoot.GetComponent<VerticalLayoutGroup>();
+            rootLayout.spacing = 8f;
+            rootLayout.padding = new RectOffset(10, 10, 10, 10);
+            rootLayout.childControlWidth = true;
+            rootLayout.childControlHeight = true;
+            rootLayout.childForceExpandWidth = true;
+            rootLayout.childForceExpandHeight = false;
 
-            GameObject content = CreateChild("Test Lab Content", scrollObject.transform, typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
-            RectTransform contentRect = content.GetComponent<RectTransform>();
-            contentRect.anchorMin = new Vector2(0f, 1f);
-            contentRect.anchorMax = new Vector2(1f, 1f);
-            contentRect.pivot = new Vector2(0.5f, 1f);
-            contentRect.offsetMin = new Vector2(8f, 0f);
-            contentRect.offsetMax = new Vector2(-8f, 0f);
-            VerticalLayoutGroup layout = content.GetComponent<VerticalLayoutGroup>();
-            layout.spacing = 8f;
-            layout.padding = new RectOffset(10, 10, 10, 10);
-            content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            ScrollRect scrollRect = scrollObject.GetComponent<ScrollRect>();
-            scrollRect.content = contentRect;
-            scrollRect.horizontal = false;
+            Image background = layoutRoot.AddComponent<Image>();
+            background.color = PanelColor;
 
-            AddHeader(content.transform, font, "Development Actions - Editor/Development Builds Only");
-            sectionDropdown = AddDropdown(content.transform, font, new[] { "Overview", "Player", "Inventory & Equipment", "Combat & Enemy", "Statuses", "Quests & Contracts", "Persistence", "Location", "Scenarios", "Diagnostics" });
-            itemDropdown = AddDropdown(content.transform, font, Array.Empty<string>());
-            statusDropdown = AddDropdown(content.transform, font, Array.Empty<string>());
-            damageDropdown = AddDropdown(content.transform, font, Array.Empty<string>());
-            questDropdown = AddDropdown(content.transform, font, Array.Empty<string>());
-            contractDropdown = AddDropdown(content.transform, font, Array.Empty<string>());
-            placeDropdown = AddDropdown(content.transform, font, Array.Empty<string>());
-            personDropdown = AddDropdown(content.transform, font, Array.Empty<string>());
+            AddHeader(layoutRoot.transform, font, "Development Actions - Editor/Development Builds Only");
+            AddSectionTabs(layoutRoot.transform, font);
+            bodyScrollRect = AddBodyScroll(layoutRoot.transform);
 
-            AddButtonRow(content.transform, font,
-                ("Next Item", () => Cycle(itemDropdown, items.Count)),
-                ("Next Status", () => Cycle(statusDropdown, statuses.Count)),
-                ("Next Damage", () => Cycle(damageDropdown, damageTypes.Count)),
-                ("Next Quest", () => Cycle(questDropdown, quests.Count)));
+            Transform content = bodyScrollRect.content;
+            Transform overviewSection = AddSection(content, "Overview Section");
+            Transform playerSection = AddSection(content, "Player Section");
+            Transform inventorySection = AddSection(content, "Inventory Section");
+            Transform combatSection = AddSection(content, "Combat Section");
+            Transform statusSection = AddSection(content, "Statuses Section");
+            Transform questSection = AddSection(content, "Quests Section");
+            Transform persistenceSection = AddSection(content, "Persistence Section");
+            Transform locationSection = AddSection(content, "Location Section");
+            Transform scenarioSection = AddSection(content, "Scenarios Section");
+            Transform diagnosticsSection = AddSection(content, "Diagnostics Section");
 
-            AddButtonRow(content.transform, font,
-                ("Next Contract", () => Cycle(contractDropdown, contracts.Count)),
-                ("Next Place", () => Cycle(placeDropdown, places.Count)),
-                ("Next Person", () => Cycle(personDropdown, people.Count)));
+            BuildOverviewSection(overviewSection, font);
+            BuildPlayerSection(playerSection, font);
+            BuildInventorySection(inventorySection, font);
+            BuildCombatSection(combatSection, font);
+            BuildStatusSection(statusSection, font);
+            BuildQuestSection(questSection, font);
+            BuildPersistenceSection(persistenceSection, font);
+            BuildLocationSection(locationSection, font);
+            BuildScenarioSection(scenarioSection, font);
+            BuildDiagnosticsSection(diagnosticsSection, font);
+        }
 
-            quantityInput = AddInput(content.transform, font, "Quantity", "1");
-            amountInput = AddInput(content.transform, font, "Amount", "25");
-
-            AddButtonRow(content.transform, font,
+        private void BuildOverviewSection(Transform parent, Font font)
+        {
+            itemValueText = AddSelectorRow(parent, font, "Item", () => CycleSelection(ref selectedItemIndex, items.Count, -1), () => CycleSelection(ref selectedItemIndex, items.Count, 1));
+            statusValueText = AddSelectorRow(parent, font, "Status", () => CycleSelection(ref selectedStatusIndex, statuses.Count, -1), () => CycleSelection(ref selectedStatusIndex, statuses.Count, 1));
+            damageValueText = AddSelectorRow(parent, font, "Damage", () => CycleSelection(ref selectedDamageIndex, damageTypes.Count, -1), () => CycleSelection(ref selectedDamageIndex, damageTypes.Count, 1));
+            questValueText = AddSelectorRow(parent, font, "Quest", () => CycleSelection(ref selectedQuestIndex, quests.Count, -1), () => CycleSelection(ref selectedQuestIndex, quests.Count, 1));
+            contractValueText = AddSelectorRow(parent, font, "Contract", () => CycleSelection(ref selectedContractIndex, contracts.Count, -1), () => CycleSelection(ref selectedContractIndex, contracts.Count, 1));
+            placeValueText = AddSelectorRow(parent, font, "Place", () => CycleSelection(ref selectedPlaceIndex, places.Count, -1), () => CycleSelection(ref selectedPlaceIndex, places.Count, 1));
+            personValueText = AddSelectorRow(parent, font, "Person", () => CycleSelection(ref selectedPersonIndex, people.Count, -1), () => CycleSelection(ref selectedPersonIndex, people.Count, 1));
+            testPointValueText = AddSelectorRow(parent, font, "Test Point", () => CycleSelection(ref selectedTestPointIndex, testPoints.Count, -1), () => CycleSelection(ref selectedTestPointIndex, testPoints.Count, 1));
+            quantityInput = AddInputRow(parent, font, "Quantity", "1");
+            amountInput = AddInputRow(parent, font, "Amount", "25");
+            AddButtonRow(parent, font,
                 ("Refresh", Refresh),
-                ("Diagnostics", () => diagnosticsText.text = service.RunDiagnostics()),
-                ("Restore Vitals", () => service.RestoreVitals()));
+                ("Restore Vitals", () => service.RestoreVitals()),
+                ("Run Diagnostics", () => RunDiagnostics()));
+            overviewText = AddText(parent, font, "Overview", 13, 220);
+        }
 
-            AddButtonRow(content.transform, font,
-                ("Grant Item", () => service.GrantItem(GetSelected(items, itemDropdown), GetInt(quantityInput, 1))),
-                ("Grant Stateful", () => service.GrantStatefulItem(GetSelected(items, itemDropdown))),
-                ("Remove Item", () => service.RemoveItem(GetSelected(items, itemDropdown), GetInt(quantityInput, 1))));
-
-            AddButtonRow(content.transform, font,
-                ("Fill Inventory", () => service.FillInventory(GetSelected(items, itemDropdown))),
-                ("Clear Inventory", () => service.ClearInventory(confirmed: false)),
-                ("Equip Selected Def", () => service.EquipFirstCompatible(GetSelected(items, itemDropdown))),
-                ("Unequip All", () => service.UnequipAll(confirmed: false)));
-
-            AddButtonRow(content.transform, font,
+        private void BuildPlayerSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
                 ("Damage Player", () => service.DamagePlayer(GetInt(amountInput, 25))),
                 ("Heal Player", () => service.HealPlayer(GetInt(amountInput, 25))),
-                ("Set Health", () => service.SetHealth(GetInt(amountInput, 100))),
+                ("Set Health", () => service.SetHealth(GetInt(amountInput, 100))));
+            AddButtonRow(parent, font,
                 ("Drain Mana", () => service.DrainMana(GetFloat(amountInput, 25f))),
-                ("Drain Stamina", () => service.DrainStamina(GetFloat(amountInput, 25f))));
+                ("Drain Stamina", () => service.DrainStamina(GetFloat(amountInput, 25f))),
+                ("Restore Vitals", () => service.RestoreVitals()));
+        }
 
-            AddButtonRow(content.transform, font,
-                ("Apply Status Player", () => service.ApplyStatus(GetSelected(statuses, statusDropdown), toEnemy: false)),
-                ("Apply Status Enemy", () => service.ApplyStatus(GetSelected(statuses, statusDropdown), toEnemy: true)),
-                ("Remove Status Player", () => service.RemoveStatus(GetSelected(statuses, statusDropdown), fromEnemy: false)),
-                ("Clear Temp Statuses", () => service.ClearTemporaryStatuses()));
+        private void BuildInventorySection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Grant Item", () => service.GrantItem(GetSelected(items, selectedItemIndex), GetInt(quantityInput, 1))),
+                ("Grant Stateful", () => service.GrantStatefulItem(GetSelected(items, selectedItemIndex))),
+                ("Remove Item", () => service.RemoveItem(GetSelected(items, selectedItemIndex), GetInt(quantityInput, 1))));
+            AddButtonRow(parent, font,
+                ("Fill Inventory", () => service.FillInventory(GetSelected(items, selectedItemIndex))),
+                ("Equip Selected", () => service.EquipFirstCompatible(GetSelected(items, selectedItemIndex))),
+                ("Unequip All", () => service.UnequipAll(confirmed: false)),
+                ("Clear Inventory", () => service.ClearInventory(confirmed: false)));
+        }
 
-            AddButtonRow(content.transform, font,
-                ("Damage Enemy", () => service.ApplyTypedDamage(GetSelected(damageTypes, damageDropdown), GetFloat(amountInput, 25f), targetEnemy: true, sourcePlayer: true)),
-                ("Damage Player Typed", () => service.ApplyTypedDamage(GetSelected(damageTypes, damageDropdown), GetFloat(amountInput, 25f), targetEnemy: false, sourcePlayer: false)),
-                ("Defeat Enemy", () => service.DefeatEnemy(GetSelected(damageTypes, damageDropdown))),
+        private void BuildCombatSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Damage Enemy", () => service.ApplyTypedDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetEnemy: true, sourcePlayer: true)),
+                ("Damage Player", () => service.ApplyTypedDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetEnemy: false, sourcePlayer: false)),
+                ("Defeat Enemy", () => service.DefeatEnemy(GetSelected(damageTypes, selectedDamageIndex))),
                 ("Reset Enemy", () => service.ResetEnemy()));
+        }
 
-            AddButtonRow(content.transform, font,
-                ("Start Quest", () => service.StartQuest(GetSelected(quests, questDropdown))),
-                ("Report Talk", () => service.ReportTalk(GetSelected(people, personDropdown))),
-                ("Report Reach", () => service.ReportReach(GetSelected(places, placeDropdown))),
+        private void BuildStatusSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Apply To Player", () => service.ApplyStatus(GetSelected(statuses, selectedStatusIndex), toEnemy: false)),
+                ("Apply To Enemy", () => service.ApplyStatus(GetSelected(statuses, selectedStatusIndex), toEnemy: true)),
+                ("Remove From Player", () => service.RemoveStatus(GetSelected(statuses, selectedStatusIndex), fromEnemy: false)),
+                ("Clear Temp Statuses", () => service.ClearTemporaryStatuses()));
+        }
+
+        private void BuildQuestSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Start Quest", () => service.StartQuest(GetSelected(quests, selectedQuestIndex))),
+                ("Report Talk", () => service.ReportTalk(GetSelected(people, selectedPersonIndex))),
+                ("Report Reach", () => service.ReportReach(GetSelected(places, selectedPlaceIndex))),
                 ("Report Defeat", () => service.ReportDefeat("prototype_enemy")));
-
-            AddButtonRow(content.transform, font,
+            AddButtonRow(parent, font,
+                ("Accept Contract", () => service.AcceptContract(GetSelected(contracts, selectedContractIndex))),
                 ("Clear Quests", () => service.ClearQuestLog(confirmed: false)),
-                ("Accept Contract", () => service.AcceptContract(GetSelected(contracts, contractDropdown))),
                 ("Clear Contracts", () => service.ClearContractJournal(confirmed: false)));
+        }
 
-            AddButtonRow(content.transform, font,
+        private void BuildPersistenceSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
                 ("Save", () => service.Save()),
                 ("Load", () => service.Load()),
                 ("Validate Save", () => service.ValidateSave()),
                 ("Delete Save", () => service.DeleteSave(confirmed: false)));
+        }
 
-            AddButtonRow(content.transform, font,
-                ("Scenario Clean", () => service.RunScenario("clean", GetSelected(items, itemDropdown), GetSelected(quests, questDropdown), GetSelected(contracts, contractDropdown), GetSelected(damageTypes, damageDropdown))),
-                ("Scenario Combat", () => service.RunScenario("combat", GetSelected(items, itemDropdown), GetSelected(quests, questDropdown), GetSelected(contracts, contractDropdown), GetSelected(damageTypes, damageDropdown))),
-                ("Scenario Full Inv", () => service.RunScenario("full-inventory", GetSelected(items, itemDropdown), GetSelected(quests, questDropdown), GetSelected(contracts, contractDropdown), GetSelected(damageTypes, damageDropdown))));
+        private void BuildLocationSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Teleport To Point", () => service.Teleport(GetSelected(testPoints, selectedTestPointIndex))));
+        }
 
-            AddButtonRow(content.transform, font,
-                ("Scenario Quest", () => service.RunScenario("quest", GetSelected(items, itemDropdown), GetSelected(quests, questDropdown), GetSelected(contracts, contractDropdown), GetSelected(damageTypes, damageDropdown))),
-                ("Scenario Contract", () => service.RunScenario("contract", GetSelected(items, itemDropdown), GetSelected(quests, questDropdown), GetSelected(contracts, contractDropdown), GetSelected(damageTypes, damageDropdown))),
-                ("Scenario Persist", () => service.RunScenario("persistence", GetSelected(items, itemDropdown), GetSelected(quests, questDropdown), GetSelected(contracts, contractDropdown), GetSelected(damageTypes, damageDropdown))));
+        private void BuildScenarioSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Clean", () => service.RunScenario("clean", GetSelected(items, selectedItemIndex), GetSelected(quests, selectedQuestIndex), GetSelected(contracts, selectedContractIndex), GetSelected(damageTypes, selectedDamageIndex))),
+                ("Combat", () => service.RunScenario("combat", GetSelected(items, selectedItemIndex), GetSelected(quests, selectedQuestIndex), GetSelected(contracts, selectedContractIndex), GetSelected(damageTypes, selectedDamageIndex))),
+                ("Full Inventory", () => service.RunScenario("full-inventory", GetSelected(items, selectedItemIndex), GetSelected(quests, selectedQuestIndex), GetSelected(contracts, selectedContractIndex), GetSelected(damageTypes, selectedDamageIndex))));
+            AddButtonRow(parent, font,
+                ("Quest", () => service.RunScenario("quest", GetSelected(items, selectedItemIndex), GetSelected(quests, selectedQuestIndex), GetSelected(contracts, selectedContractIndex), GetSelected(damageTypes, selectedDamageIndex))),
+                ("Contract", () => service.RunScenario("contract", GetSelected(items, selectedItemIndex), GetSelected(quests, selectedQuestIndex), GetSelected(contracts, selectedContractIndex), GetSelected(damageTypes, selectedDamageIndex))),
+                ("Persistence", () => service.RunScenario("persistence", GetSelected(items, selectedItemIndex), GetSelected(quests, selectedQuestIndex), GetSelected(contracts, selectedContractIndex), GetSelected(damageTypes, selectedDamageIndex))));
+        }
 
-            overviewText = AddText(content.transform, font, "Overview", 14, 220);
-            diagnosticsText = AddText(content.transform, font, "Diagnostics not run.", 14, 160);
-            historyText = AddText(content.transform, font, "No operations yet.", 13, 260);
+        private void BuildDiagnosticsSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Run Diagnostics", () => RunDiagnostics()),
+                ("Refresh", Refresh));
+            diagnosticsText = AddText(parent, font, "Diagnostics not run.", 13, 210);
+            historyText = AddText(parent, font, "No operations yet.", 12, 260);
         }
 
         private void RefreshSelectors()
@@ -239,17 +298,67 @@ namespace UnityIsekaiGame.Development
                 return;
             }
 
-            SetOptions(itemDropdown, items, service.GetDefinitions<ItemDefinition>());
-            SetOptions(statusDropdown, statuses, service.GetDefinitions<StatusEffectDefinition>());
-            SetOptions(damageDropdown, damageTypes, service.GetDefinitions<DamageTypeDefinition>());
-            SetOptions(questDropdown, quests, service.GetDefinitions<QuestDefinition>());
-            SetOptions(contractDropdown, contracts, service.GetDefinitions<ContractDefinition>());
-            SetOptions(placeDropdown, places, service.GetDefinitions<PlaceDefinition>());
-            SetOptions(personDropdown, people, service.GetDefinitions<PersonDefinition>());
+            SetOptions(items, service.GetDefinitions<ItemDefinition>(), ref selectedItemIndex);
+            SetOptions(statuses, service.GetDefinitions<StatusEffectDefinition>(), ref selectedStatusIndex);
+            SetOptions(damageTypes, service.GetDefinitions<DamageTypeDefinition>(), ref selectedDamageIndex);
+            SetOptions(quests, service.GetDefinitions<QuestDefinition>(), ref selectedQuestIndex);
+            SetOptions(contracts, service.GetDefinitions<ContractDefinition>(), ref selectedContractIndex);
+            SetOptions(places, service.GetDefinitions<PlaceDefinition>(), ref selectedPlaceIndex);
+            SetOptions(people, service.GetDefinitions<PersonDefinition>(), ref selectedPersonIndex);
+            SetOptions(testPoints, service.GetTestPoints(), ref selectedTestPointIndex);
         }
 
-        private static void SetOptions<T>(Dropdown dropdown, List<T> target, IReadOnlyList<T> values)
-            where T : class, IGameDefinition
+        private void UpdateSelectorLabels()
+        {
+            SetValue(itemValueText, FormatSelected(items, selectedItemIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(statusValueText, FormatSelected(statuses, selectedStatusIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(damageValueText, FormatSelected(damageTypes, selectedDamageIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(questValueText, FormatSelected(quests, selectedQuestIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(contractValueText, FormatSelected(contracts, selectedContractIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(placeValueText, FormatSelected(places, selectedPlaceIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(personValueText, FormatSelected(people, selectedPersonIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(testPointValueText, FormatSelected(testPoints, selectedTestPointIndex, point => $"{point.DisplayName} ({point.TestPointId})"));
+        }
+
+        private void UpdateHistory()
+        {
+            if (historyText == null)
+            {
+                return;
+            }
+
+            StringBuilder builder = new StringBuilder();
+            foreach (PrototypeTestLabOperation operation in service.History)
+            {
+                builder.Append(operation.Timestamp.ToString("HH:mm:ss"));
+                builder.Append(operation.Succeeded ? " OK " : " FAIL ");
+                builder.Append(operation.OperationName);
+                builder.Append(" [");
+                builder.Append(operation.Code);
+                builder.Append("] ");
+                builder.AppendLine(operation.Message);
+            }
+
+            historyText.text = builder.Length == 0 ? "No operations yet." : builder.ToString().TrimEnd();
+        }
+
+        private void RunDiagnostics()
+        {
+            if (diagnosticsText != null)
+            {
+                diagnosticsText.text = service.RunDiagnostics();
+            }
+        }
+
+        private static string FormatSelected<T>(IReadOnlyList<T> values, int selectedIndex, Func<T, string> formatter)
+            where T : class
+        {
+            T selected = GetSelected(values, selectedIndex);
+            return selected == null ? "None" : formatter(selected);
+        }
+
+        private static void SetOptions<T>(List<T> target, IReadOnlyList<T> values, ref int selectedIndex)
+            where T : class
         {
             target.Clear();
             if (values != null)
@@ -257,16 +366,13 @@ namespace UnityIsekaiGame.Development
                 target.AddRange(values);
             }
 
-            dropdown.ClearOptions();
-            dropdown.AddOptions(target.Count == 0
-                ? new List<string> { "None" }
-                : target.ConvertAll(PrototypeTestLabService.FormatDefinition));
+            selectedIndex = target.Count == 0 ? 0 : Mathf.Clamp(selectedIndex, 0, target.Count - 1);
         }
 
-        private static T GetSelected<T>(IReadOnlyList<T> values, Dropdown dropdown)
+        private static T GetSelected<T>(IReadOnlyList<T> values, int selectedIndex)
             where T : class
         {
-            return values == null || dropdown == null || dropdown.value < 0 || dropdown.value >= values.Count ? null : values[dropdown.value];
+            return values == null || selectedIndex < 0 || selectedIndex >= values.Count ? null : values[selectedIndex];
         }
 
         private static int GetInt(InputField input, int fallback)
@@ -279,20 +385,210 @@ namespace UnityIsekaiGame.Development
             return input != null && float.TryParse(input.text, out float value) ? value : fallback;
         }
 
-        private static void Cycle(Dropdown dropdown, int count)
+        private void CycleSelection(ref int selectedIndex, int count, int direction)
         {
-            if (dropdown == null || count <= 0)
+            if (count <= 0)
             {
                 return;
             }
 
-            dropdown.value = (dropdown.value + 1) % count;
-            dropdown.RefreshShownValue();
+            selectedIndex = (selectedIndex + direction) % count;
+            if (selectedIndex < 0)
+            {
+                selectedIndex += count;
+            }
+
+            Refresh();
+        }
+
+        private void SetActiveSection(int sectionIndex)
+        {
+            if (sectionIndex < 0 || sectionIndex >= sectionRoots.Count)
+            {
+                return;
+            }
+
+            activeSectionIndex = sectionIndex;
+            for (int i = 0; i < sectionRoots.Count; i++)
+            {
+                sectionRoots[i].SetActive(i == activeSectionIndex);
+            }
+
+            UpdateSectionButtonStates();
+            Canvas.ForceUpdateCanvases();
+            if (bodyScrollRect != null)
+            {
+                bodyScrollRect.verticalNormalizedPosition = 1f;
+            }
+        }
+
+        private void AddSectionTabs(Transform parent, Font font)
+        {
+            sectionButtons.Clear();
+            for (int start = 0; start < SectionNames.Length; start += 5)
+            {
+                GameObject row = CreateRow("Test Lab Tabs", parent, 36f);
+                int end = Mathf.Min(start + 5, SectionNames.Length);
+                for (int i = start; i < end; i++)
+                {
+                    int sectionIndex = i;
+                    Button button = AddButton(row.transform, font, SectionNames[i], 10);
+                    button.onClick.AddListener(() => SetActiveSection(sectionIndex));
+                    sectionButtons.Add(button);
+                }
+            }
+        }
+
+        private void UpdateSectionButtonStates()
+        {
+            for (int i = 0; i < sectionButtons.Count; i++)
+            {
+                Image image = sectionButtons[i] == null ? null : sectionButtons[i].GetComponent<Image>();
+                if (image != null)
+                {
+                    image.color = i == activeSectionIndex ? ActiveButtonColor : ButtonColor;
+                }
+            }
+        }
+
+        private Transform AddSection(Transform parent, string name)
+        {
+            GameObject section = CreateChild(name, parent, typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+            VerticalLayoutGroup layout = section.GetComponent<VerticalLayoutGroup>();
+            layout.spacing = 8f;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+            section.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            sectionRoots.Add(section);
+            return section.transform;
+        }
+
+        private ScrollRect AddBodyScroll(Transform parent)
+        {
+            GameObject scrollObject = CreateChild("Test Lab Body", parent, typeof(Image), typeof(Mask), typeof(ScrollRect), typeof(LayoutElement));
+            scrollObject.GetComponent<Image>().color = new Color(0.025f, 0.028f, 0.035f, 0.92f);
+            scrollObject.GetComponent<Mask>().showMaskGraphic = true;
+            LayoutElement scrollLayout = scrollObject.GetComponent<LayoutElement>();
+            scrollLayout.minHeight = 220f;
+            scrollLayout.flexibleHeight = 1f;
+
+            GameObject content = CreateChild("Test Lab Body Content", scrollObject.transform, typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+            RectTransform contentRect = content.GetComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0f, 1f);
+            contentRect.anchorMax = new Vector2(1f, 1f);
+            contentRect.pivot = new Vector2(0.5f, 1f);
+            contentRect.offsetMin = new Vector2(10f, 0f);
+            contentRect.offsetMax = new Vector2(-24f, -10f);
+            VerticalLayoutGroup layout = content.GetComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(0, 0, 10, 10);
+            layout.spacing = 8f;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+            content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            ScrollRect scrollRect = scrollObject.GetComponent<ScrollRect>();
+            scrollRect.content = contentRect;
+            scrollRect.viewport = scrollObject.GetComponent<RectTransform>();
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.scrollSensitivity = 48f;
+            scrollRect.verticalScrollbar = AddVerticalScrollbar(scrollObject.transform);
+            scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport;
+            scrollRect.verticalScrollbarSpacing = -2f;
+            return scrollRect;
+        }
+
+        private static Scrollbar AddVerticalScrollbar(Transform parent)
+        {
+            GameObject scrollbarObject = CreateChild("Vertical Scrollbar", parent, typeof(Image), typeof(Scrollbar));
+            Image track = scrollbarObject.GetComponent<Image>();
+            track.color = new Color(0.08f, 0.09f, 0.10f, 0.95f);
+            RectTransform scrollbarRect = scrollbarObject.GetComponent<RectTransform>();
+            scrollbarRect.anchorMin = new Vector2(1f, 0f);
+            scrollbarRect.anchorMax = Vector2.one;
+            scrollbarRect.pivot = new Vector2(1f, 0.5f);
+            scrollbarRect.offsetMin = new Vector2(-12f, 4f);
+            scrollbarRect.offsetMax = new Vector2(-4f, -4f);
+
+            GameObject handleObject = CreateChild("Handle", scrollbarObject.transform, typeof(Image));
+            Image handle = handleObject.GetComponent<Image>();
+            handle.color = new Color(0.24f, 0.42f, 0.50f, 1f);
+            Scrollbar scrollbar = scrollbarObject.GetComponent<Scrollbar>();
+            scrollbar.direction = Scrollbar.Direction.BottomToTop;
+            scrollbar.targetGraphic = handle;
+            scrollbar.handleRect = handleObject.GetComponent<RectTransform>();
+            return scrollbar;
         }
 
         private static void AddHeader(Transform parent, Font font, string text)
         {
-            AddText(parent, font, text, 18, 32, FontStyle.Bold);
+            Text header = AddText(parent, font, text, 16, 28, FontStyle.Bold);
+            header.color = new Color(0.92f, 0.95f, 0.98f, 1f);
+        }
+
+        private static Text AddSelectorRow(Transform parent, Font font, string label, Action previous, Action next)
+        {
+            GameObject row = CreateRow("Selector - " + label, parent, 32f);
+            Text labelText = AddText(row.transform, font, label, 12, 28, FontStyle.Bold);
+            SetElement(labelText.gameObject, 78f, 28f, 0f);
+            Text valueText = AddText(row.transform, font, "None", 12, 28);
+            valueText.color = new Color(0.86f, 0.92f, 0.96f, 1f);
+            SetElement(valueText.gameObject, 0f, 28f, 1f);
+            AddFixedButton(row.transform, font, "Prev", previous, 58f);
+            AddFixedButton(row.transform, font, "Next", next, 58f);
+            return valueText;
+        }
+
+        private static InputField AddInputRow(Transform parent, Font font, string label, string value)
+        {
+            GameObject row = CreateRow("Input - " + label, parent, 32f);
+            Text labelText = AddText(row.transform, font, label, 12, 28, FontStyle.Bold);
+            SetElement(labelText.gameObject, 78f, 28f, 0f);
+            GameObject inputObject = CreateChild(label, row.transform, typeof(Image), typeof(InputField), typeof(LayoutElement));
+            inputObject.GetComponent<Image>().color = FieldColor;
+            SetElement(inputObject, 0f, 30f, 1f);
+            Text text = AddText(inputObject.transform, font, value, 12, 28);
+            text.rectTransform.offsetMin = new Vector2(8f, 2f);
+            text.rectTransform.offsetMax = new Vector2(-8f, -2f);
+            InputField input = inputObject.GetComponent<InputField>();
+            input.textComponent = text;
+            input.text = value;
+            return input;
+        }
+
+        private static void AddButtonRow(Transform parent, Font font, params (string Label, Action Action)[] buttons)
+        {
+            GameObject row = CreateRow("Action Row", parent, 34f);
+            foreach ((string label, Action action) in buttons)
+            {
+                Button button = AddButton(row.transform, font, label, 11);
+                button.onClick.AddListener(() => action?.Invoke());
+            }
+        }
+
+        private static Button AddFixedButton(Transform parent, Font font, string label, Action action, float width)
+        {
+            Button button = AddButton(parent, font, label, 11);
+            SetElement(button.gameObject, width, 30f, 0f);
+            button.onClick.AddListener(() => action?.Invoke());
+            return button;
+        }
+
+        private static Button AddButton(Transform parent, Font font, string label, int fontSize)
+        {
+            GameObject root = CreateChild(label, parent, typeof(Image), typeof(Button), typeof(LayoutElement));
+            root.GetComponent<Image>().color = ButtonColor;
+            SetElement(root, 96f, 32f, 1f);
+            Text text = AddText(root.transform, font, label, fontSize, 28, FontStyle.Bold);
+            text.alignment = TextAnchor.MiddleCenter;
+            text.raycastTarget = false;
+            text.rectTransform.offsetMin = new Vector2(4f, 2f);
+            text.rectTransform.offsetMax = new Vector2(-4f, -2f);
+            return root.GetComponent<Button>();
         }
 
         private static Text AddText(Transform parent, Font font, string text, int size, float height, FontStyle style = FontStyle.Normal)
@@ -302,67 +598,48 @@ namespace UnityIsekaiGame.Development
             label.font = font;
             label.fontSize = size;
             label.fontStyle = style;
-            label.alignment = TextAnchor.UpperLeft;
+            label.alignment = TextAnchor.MiddleLeft;
             label.color = Color.white;
             label.horizontalOverflow = HorizontalWrapMode.Wrap;
             label.verticalOverflow = VerticalWrapMode.Truncate;
             label.text = text;
-            obj.GetComponent<LayoutElement>().preferredHeight = height;
+            SetElement(obj, 0f, height, 1f);
             return label;
         }
 
-        private static InputField AddInput(Transform parent, Font font, string label, string value)
+        private static GameObject CreateRow(string name, Transform parent, float height)
         {
-            GameObject root = CreateChild(label, parent, typeof(Image), typeof(InputField), typeof(LayoutElement));
-            root.GetComponent<Image>().color = new Color(0.11f, 0.13f, 0.15f, 1f);
-            root.GetComponent<LayoutElement>().preferredHeight = 32f;
-            Text text = AddText(root.transform, font, value, 14, 28);
-            text.rectTransform.offsetMin = new Vector2(8f, 2f);
-            text.rectTransform.offsetMax = new Vector2(-8f, -2f);
-            InputField input = root.GetComponent<InputField>();
-            input.textComponent = text;
-            input.text = value;
-            return input;
-        }
-
-        private static Dropdown AddDropdown(Transform parent, Font font, IReadOnlyList<string> options)
-        {
-            GameObject root = CreateChild("Dropdown", parent, typeof(Image), typeof(Dropdown), typeof(LayoutElement));
-            root.GetComponent<Image>().color = new Color(0.11f, 0.13f, 0.15f, 1f);
-            root.GetComponent<LayoutElement>().preferredHeight = 32f;
-            Text label = AddText(root.transform, font, string.Empty, 14, 28);
-            label.rectTransform.offsetMin = new Vector2(8f, 2f);
-            label.rectTransform.offsetMax = new Vector2(-8f, -2f);
-            Dropdown dropdown = root.GetComponent<Dropdown>();
-            dropdown.captionText = label;
-            dropdown.targetGraphic = root.GetComponent<Image>();
-            dropdown.AddOptions(new List<string>(options));
-            return dropdown;
-        }
-
-        private static void AddButtonRow(Transform parent, Font font, params (string Label, Action Action)[] buttons)
-        {
-            GameObject row = CreateChild("Button Row", parent, typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-            row.GetComponent<LayoutElement>().preferredHeight = 34f;
+            GameObject row = CreateChild(name, parent, typeof(HorizontalLayoutGroup), typeof(LayoutElement));
             HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
             layout.spacing = 6f;
-            foreach ((string label, Action action) in buttons)
-            {
-                Button button = AddButton(row.transform, font, label);
-                button.onClick.AddListener(() => action?.Invoke());
-            }
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+            SetElement(row, 0f, height, 1f);
+            return row;
         }
 
-        private static Button AddButton(Transform parent, Font font, string label)
+        private static void SetElement(GameObject obj, float preferredWidth, float preferredHeight, float flexibleWidth)
         {
-            GameObject root = CreateChild(label, parent, typeof(Image), typeof(Button), typeof(LayoutElement));
-            root.GetComponent<Image>().color = new Color(0.17f, 0.25f, 0.29f, 1f);
-            root.GetComponent<LayoutElement>().preferredWidth = 150f;
-            Text text = AddText(root.transform, font, label, 12, 28, FontStyle.Bold);
-            text.alignment = TextAnchor.MiddleCenter;
-            text.rectTransform.offsetMin = new Vector2(4f, 2f);
-            text.rectTransform.offsetMax = new Vector2(-4f, -2f);
-            return root.GetComponent<Button>();
+            LayoutElement layoutElement = obj.GetComponent<LayoutElement>();
+            if (layoutElement == null)
+            {
+                layoutElement = obj.AddComponent<LayoutElement>();
+            }
+
+            layoutElement.preferredWidth = preferredWidth <= 0f ? -1f : preferredWidth;
+            layoutElement.preferredHeight = preferredHeight;
+            layoutElement.flexibleWidth = flexibleWidth;
+            layoutElement.flexibleHeight = 0f;
+        }
+
+        private static void SetValue(Text text, string value)
+        {
+            if (text != null)
+            {
+                text.text = value;
+            }
         }
 
         private static GameObject CreateChild(string name, Transform parent, params Type[] components)
