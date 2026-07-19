@@ -4,122 +4,57 @@ using UnityIsekaiGame.Stats;
 
 namespace UnityIsekaiGame.Equipment
 {
-    public sealed class PlayerStats : MonoBehaviour, IRuntimeStatReceiver
+    public sealed class PlayerStats : ActorStats
     {
+        private const float DefaultPlayerAttackPower = 5f;
+
         [SerializeField] private PlayerEquipment equipment;
-        [SerializeField, Min(1f)] private float baseMaximumHealth = 100f;
-        [SerializeField, Min(1f)] private float baseMaximumStamina = 100f;
-        [SerializeField, Min(1f)] private float baseMaximumMana = 100f;
-        [SerializeField, Min(0f)] private float baseAttackPower = 5f;
-        [SerializeField, Min(0f)] private float baseDefense = 0f;
 
-        private readonly RuntimeStatCollection runtimeStats = new RuntimeStatCollection();
-        private bool baseStatsConfigured;
+        private void Reset()
+        {
+            baseAttackPower = DefaultPlayerAttackPower;
+        }
 
-        public float MaximumHealth => Mathf.Max(1f, GetRuntimeStatValue(StatType.MaximumHealth));
-        public float MaximumStamina => Mathf.Max(1f, GetRuntimeStatValue(StatType.MaximumStamina));
-        public float MaximumMana => Mathf.Max(1f, GetRuntimeStatValue(StatType.MaximumMana));
-        public float AttackPower => Mathf.Max(0f, GetRuntimeStatValue(StatType.AttackPower));
-        public float Defense => Mathf.Max(0f, GetRuntimeStatValue(StatType.Defense));
-        public event Action StatsChanged;
-
-        private void Awake()
+        protected override void Awake()
         {
             if (equipment == null)
             {
                 equipment = GetComponent<PlayerEquipment>();
             }
 
-            EnsureBaseStatsConfigured();
+            if (Mathf.Approximately(baseAttackPower, 0f))
+            {
+                baseAttackPower = DefaultPlayerAttackPower;
+            }
+
+            base.Awake();
             RecalculateEquipmentModifiers();
         }
 
-        private void OnEnable()
+        protected override void OnEnable()
         {
-            EnsureBaseStatsConfigured();
+            base.OnEnable();
 
             if (equipment != null)
             {
                 equipment.EquipmentChanged += OnEquipmentChanged;
             }
-
-            runtimeStats.StatChanged += OnRuntimeStatChanged;
         }
 
-        private void OnDisable()
+        protected override void OnDisable()
         {
             if (equipment != null)
             {
                 equipment.EquipmentChanged -= OnEquipmentChanged;
             }
 
-            runtimeStats.StatChanged -= OnRuntimeStatChanged;
-        }
-
-        private void OnValidate()
-        {
-            baseMaximumHealth = Mathf.Max(1f, baseMaximumHealth);
-            baseMaximumStamina = Mathf.Max(1f, baseMaximumStamina);
-            baseMaximumMana = Mathf.Max(1f, baseMaximumMana);
-            baseAttackPower = Mathf.Max(0f, baseAttackPower);
-            baseDefense = Mathf.Max(0f, baseDefense);
-        }
-
-        public bool HasStat(StatType statType)
-        {
-            EnsureBaseStatsConfigured();
-            return runtimeStats.HasStat(statType);
-        }
-
-        public float GetStatValue(StatType statType)
-        {
-            EnsureBaseStatsConfigured();
-            return runtimeStats.GetValue(statType);
-        }
-
-        public bool AddModifier(RuntimeStatModifier modifier)
-        {
-            EnsureBaseStatsConfigured();
-            return runtimeStats.AddModifier(modifier);
-        }
-
-        public bool RemoveModifiersFromSource(StatModifierSource source)
-        {
-            EnsureBaseStatsConfigured();
-            return runtimeStats.RemoveModifiersFromSource(source);
+            base.OnDisable();
         }
 
         private void OnEquipmentChanged()
         {
             RecalculateEquipmentModifiers();
-            StatsChanged?.Invoke();
-        }
-
-        private void OnRuntimeStatChanged(StatType statType, float value)
-        {
-            StatsChanged?.Invoke();
-        }
-
-        private float GetRuntimeStatValue(StatType statType)
-        {
-            EnsureBaseStatsConfigured();
-            return runtimeStats.GetValue(statType);
-        }
-
-        private void EnsureBaseStatsConfigured()
-        {
-            if (baseStatsConfigured)
-            {
-                return;
-            }
-
-            runtimeStats.SetBaseValue(StatType.MaximumHealth, baseMaximumHealth);
-            runtimeStats.SetBaseValue(StatType.MaximumStamina, baseMaximumStamina);
-            runtimeStats.SetBaseValue(StatType.MaximumMana, baseMaximumMana);
-            runtimeStats.SetBaseValue(StatType.AttackPower, baseAttackPower);
-            runtimeStats.SetBaseValue(StatType.Defense, baseDefense);
-            runtimeStats.SetBaseValue(StatType.MovementSpeed, 0f);
-            baseStatsConfigured = true;
+            NotifyStatsChanged();
         }
 
         private void RecalculateEquipmentModifiers()
@@ -148,7 +83,7 @@ namespace UnityIsekaiGame.Equipment
             for (int i = 0; i < values.Length; i++)
             {
                 EquipmentSlotType slotType = (EquipmentSlotType)values.GetValue(i);
-                runtimeStats.RemoveModifiersFromSource(CreateEquipmentSource(slotType));
+                RemoveModifiersFromSource(CreateEquipmentSource(slotType));
             }
         }
 
@@ -170,7 +105,7 @@ namespace UnityIsekaiGame.Equipment
                 return;
             }
 
-            runtimeStats.AddModifier(new RuntimeStatModifier(statType, StatModifierOperation.FlatAdd, value, source));
+            AddModifier(new RuntimeStatModifier(statType, StatModifierOperation.FlatAdd, value, source));
         }
 
         private static StatModifierSource CreateEquipmentSource(EquipmentSlotType slotType)

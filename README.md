@@ -87,9 +87,9 @@ Current foundations include:
 - Inventory data, stacking, stateful item instances, inventory save-data DTOs, and inventory UI.
 - Consumable item use.
 - Health, stamina, and mana.
-- Equipment and basic player statistics.
-- Melee combat and shared damage handling.
-- Enemy health, pursuit, attacks, defeat, and loot drops.
+- Equipment and generic runtime actor statistics.
+- Melee combat and shared attack/defense damage handling.
+- Enemy health, runtime stats, pursuit, attacks, defeat, statuses, and loot drops.
 - Prototype player defeat and reset controls.
 - Basic spellcasting and projectiles.
 - Spell loadout and quick-action selection.

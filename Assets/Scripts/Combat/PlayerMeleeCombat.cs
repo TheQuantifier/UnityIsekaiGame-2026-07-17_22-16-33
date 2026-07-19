@@ -102,7 +102,10 @@ namespace UnityIsekaiGame.Combat
             }
 
             nextAttackTime = Time.time + weapon.AttackCooldown;
-            float damageAmount = weapon.BaseDamage + (stats == null ? 0f : stats.AttackPower);
+            float damageAmount = CombatStatUtility.CalculatePreMitigationDamage(
+                weapon.BaseDamage,
+                gameObject,
+                AttackPowerScalingPolicy.AddSourceAttackPower);
             MeleeAttackResult result = PerformHitTest(weapon, damageAmount);
             return Resolve(result);
         }

@@ -87,17 +87,16 @@ namespace UnityIsekaiGame.Gameplay
                 return DamageResult.Failure(damageInfo.RawAmount, "Damage must be greater than zero.");
             }
 
-            float defense = stats == null ? 0f : stats.Defense;
-            float appliedDamage = DamageCalculator.CalculateAppliedDamage(damageInfo.RawAmount, defense);
-            int roundedDamage = Mathf.Max(1, Mathf.RoundToInt(appliedDamage));
+            DamageCalculation calculation = DamageCalculator.Calculate(damageInfo.RawAmount, CombatStatUtility.GetDefense(gameObject));
+            int roundedDamage = Mathf.Max(1, Mathf.RoundToInt(calculation.FinalAmount));
             int damageApplied = Damage(roundedDamage);
             bool defeatedNow = currentHealth <= 0;
             string message = defeatedNow
                 ? $"Player took {damageApplied} damage and was defeated."
-                : $"Player took {damageApplied} damage after {defense:0.#} defense. Health: {currentHealth} / {effectiveMaximumHealth}.";
+                : $"Player took {damageApplied} damage after {calculation.Defense:0.#} defense. Health: {currentHealth} / {effectiveMaximumHealth}.";
 
             Debug.Log(message);
-            return DamageResult.Success(damageInfo.RawAmount, damageApplied, defeatedNow, message);
+            return DamageResult.Success(damageInfo.RawAmount, calculation, damageApplied, currentHealth, defeatedNow, message);
         }
 
         public int Heal(int amount)

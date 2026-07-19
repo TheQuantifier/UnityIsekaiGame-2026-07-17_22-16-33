@@ -61,9 +61,11 @@ Effects execute in serialized order. Missing effects or failed validation stop e
 
 `SpellProjectile` can carry an ability payload and execute its configured effects once on impact. Legacy hard-coded projectile damage remains as a fallback for spells without an ability reference.
 
+`DamageEffectDefinition` can optionally add source attack power, but the current Arcane Bolt and Heavy Arcane Bolt effects ignore source attack power by default and keep their configured damage values.
+
 `RestoreHealthItemUseEffect` can reference `RestoreVitalEffectDefinition`. The health potion keeps its existing item-use flow, including full-health failure and no consumption on failed use.
 
-Melee combat is not rewritten. The new `DamageEffectDefinition` accepts the same `IDamageable` contract used by melee, so melee can migrate later.
+Melee combat and damage effects now share the same flat defense mitigation path. Player and enemy melee add current actor attack power at execution time.
 
 Equipment stat modifiers remain persistent equipped-state calculations. Feature 3.8 adds status effects as the preferred bridge for time-bound modifiers. Ability effects can now apply a `StatusEffectDefinition` through `ApplyStatusEffectDefinition` so modifier lifetime is owned by a runtime status controller.
 
@@ -107,6 +109,6 @@ Definition validation checks ability/effect IDs through existing catalog rules, 
 
 ## Known Limitations
 
-There is no status-effect runtime, damage-type resistance system, area targeting, homing, chaining, skill progression, ability levels, animation events, save files, multiplayer replication, or final VFX/UI. Health costs are prepared but not active.
+There is no damage-type resistance system, area targeting, homing, chaining, skill progression, ability levels, animation events, save files, multiplayer replication, or final VFX/UI. Health costs are prepared but not active.
 
 Future extensions can add status effects, profession abilities, social actions, world-state effects, AI ability selection, save/load snapshots, and multiplayer-authoritative execution.

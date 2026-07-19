@@ -3271,6 +3271,7 @@ MonoBehaviour:
   playerMana: {fileID: 100008}
   playerMeleeCombat: {fileID: 343134189}
   playerSpellcaster: {fileID: 343134191}
+  playerStatusEffects: {fileID: 343134196}
   dialogueController: {fileID: 604495670}
   inventoryScreenController: {fileID: 0}
   playerSpawnPoint: {fileID: 438627171}
@@ -3280,6 +3281,7 @@ MonoBehaviour:
   enemyController: {fileID: 1145515522}
   enemyContractTargetReporter: {fileID: 1145515530}
   enemyLootDrop: {fileID: 1145515529}
+  enemyStatusEffects: {fileID: 1145515533}
 --- !u!114 &343134191
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9477,6 +9479,9 @@ GameObject:
   - component: {fileID: 1145515529}
   - component: {fileID: 1145515531}
   - component: {fileID: 1145515530}
+  - component: {fileID: 1145515532}
+  - component: {fileID: 1145515533}
+  - component: {fileID: 1145515534}
   m_Layer: 0
   m_Name: Prototype Enemy
   m_TagString: Untagged
@@ -9536,6 +9541,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Combat.EnemyMeleeAttack
   health: {fileID: 1145515524}
   damage: 12
+  attackPowerScaling: 1
   attackRange: 1.6
   attackCooldown: 1.25
 --- !u!114 &1145515524
@@ -9552,6 +9558,52 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Combat.EnemyHealth
   maximumHealth: 65
   defense: 1
+  stats: {fileID: 1145515532}
+--- !u!114 &1145515532
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1145515520}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09672751c3f54efd8e4e70931fbdd62c, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Stats.ActorStats
+  baseMaximumHealth: 65
+  baseMaximumStamina: 0
+  baseMaximumMana: 0
+  baseAttackPower: 0
+  baseDefense: 1
+  baseMovementSpeed: 1.8
+--- !u!114 &1145515533
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1145515520}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d1fb0e46e44301b4496da21379869daf, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.StatusEffects.StatusEffectController
+--- !u!114 &1145515534
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1145515520}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a45b3b783781604d85d96393478d108, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.StatusEffects.PrototypeStatusEffectInteractable
+  statusEffect: {fileID: 11400000, guid: c3d63207771140459be919cc279ed44c, type: 2}
+  applyToThisObject: 1
+  durationOverride: 0
 --- !u!23 &1145515525
 MeshRenderer:
   m_ObjectHideFlags: 0

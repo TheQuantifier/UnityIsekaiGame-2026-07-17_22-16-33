@@ -41,10 +41,11 @@ Runtime state is owned by components or runtime instances:
 - `InventorySlot` is runtime slot state, not static item data.
 - `ItemInstance` and `ItemInstanceMetadata` are serializable runtime foundations for optional item identity, quality, and condition, but current inventory slots do not store them yet.
 - `PlayerEquipment` owns equipped items by equipment slot.
-- `PlayerStats` combines base values with equipment and status modifiers through a shared runtime stat collection.
+- `ActorStats` owns generic runtime stat calculation for combat-capable actors.
+- `PlayerStats` derives from `ActorStats` and adds player equipment modifier integration.
 - `PlayerHealth`, `PlayerStamina`, and `PlayerMana` own current vital values and resource timing.
 - `PlayerMeleeCombat`, `PlayerSpellcaster`, and projectile instances own combat/cooldown state.
-- `EnemyHealth`, `PrototypeEnemyController`, and `EnemyMeleeAttack` own enemy runtime combat state.
+- `EnemyHealth`, `PrototypeEnemyController`, and `EnemyMeleeAttack` own enemy runtime combat state and read combat stats from `ActorStats` where available.
 - `EnemyLootDrop` owns whether the current enemy defeat has already rolled loot.
 - `DialogueController` owns the active dialogue node and active participant display override.
 - `ContractInstance` owns contract progress, completion, abandonment, and reward claim state.

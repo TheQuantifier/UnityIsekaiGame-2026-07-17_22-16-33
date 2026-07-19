@@ -243,6 +243,9 @@ namespace UnityIsekaiGame.UI.Inventory
 
             StringBuilder builder = new StringBuilder();
             builder.AppendLine("Stats");
+            AppendLine(builder, "Max Health", health == null ? "--" : FormatNumber(health.MaximumHealth));
+            AppendLine(builder, "Max Stamina", stamina == null ? "--" : FormatNumber(stamina.MaximumStamina));
+            AppendLine(builder, "Max Mana", mana == null ? "--" : FormatNumber(mana.MaximumMana));
             AppendLine(builder, "Attack", stats == null ? "--" : FormatNumber(stats.AttackPower));
             AppendLine(builder, "Defense", stats == null ? "--" : FormatNumber(stats.Defense));
 

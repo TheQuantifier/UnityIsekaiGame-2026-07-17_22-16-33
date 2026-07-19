@@ -33,7 +33,7 @@ Removing one status removes only modifiers from that status application. Removin
 
 `StatusEffectController` is the per-actor owner. It can be attached to players, enemies, or other actors. It applies statuses, enforces stacking and refresh policies, updates timed expiration, removes by application ID, definition ID, or source ID, raises runtime events, creates save-data entries, and clears temporary statuses for prototype reset.
 
-It does not depend on player-only components. Stat-modifying statuses require a target with `IRuntimeStatReceiver`.
+It does not depend on player-only components. Stat-modifying statuses require a target with `IRuntimeStatReceiver`; `ActorStats` is the generic receiver used by enemies and future non-player actors.
 
 ## Duration And Stacking
 
@@ -55,7 +55,7 @@ Implemented stacking policies:
 
 ## Equipment And Vitals
 
-`PlayerStats` now uses `RuntimeStatCollection` internally while preserving its public properties: `MaximumHealth`, `MaximumStamina`, `MaximumMana`, `AttackPower`, and `Defense`.
+`ActorStats` owns the shared runtime stat collection. `PlayerStats` derives from it while preserving its public properties: `MaximumHealth`, `MaximumStamina`, `MaximumMana`, `AttackPower`, and `Defense`.
 
 Equipment remains the authority for equipped items. On equipment changes, `PlayerStats` removes slot-scoped equipment modifiers and re-adds the current slot contributions. Status modifiers remain active during equipment swaps.
 
