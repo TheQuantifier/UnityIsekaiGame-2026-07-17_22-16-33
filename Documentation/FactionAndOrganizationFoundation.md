@@ -20,9 +20,9 @@ Static faction definitions describe what an organization is intended to be. Runt
 
 ## Categories And Tags
 
-Faction categories use the `faction-category.*` namespace so they do not collide with globally unique `faction.*` definition IDs.
+Faction categories use the `category.faction.*` namespace so they do not collide with globally unique `faction.*` definition IDs.
 
-Prototype categories added: `faction-category`, `faction-category.nation`, `faction-category.government`, `faction-category.guild`, `faction-category.company`, `faction-category.military`, `faction-category.criminal`, and `faction-category.settlement-authority`.
+Prototype categories added: `category.faction`, `category.faction.nation`, `category.faction.government`, `category.faction.guild`, `category.faction.company`, `category.faction.military`, `category.faction.criminal`, and `category.faction.settlement-authority`.
 
 Prototype reusable tags added: `tag.adventurer`, `tag.merchant`, `tag.government`, `tag.criminal`, `tag.public`, `tag.secret`, `tag.local`, `tag.national`, and `tag.trade`. Existing `tag.prototype` is reused.
 
@@ -80,7 +80,7 @@ Future restoration order:
 1. Create a `FactionDefinition` asset.
 2. Assign a stable `faction.*` ID.
 3. Choose a `FactionKind`.
-4. Assign a `faction-category.*` primary category and any relevant tags.
+4. Assign a `category.faction.*` primary category and any relevant tags.
 5. Optionally assign parent faction, home/headquarters/jurisdiction places, default leader, visibility, color, and authority flags.
 6. Add the asset to the shared `DefinitionCatalog`.
 7. Run `Tools > Game Data > Validate Definitions`.

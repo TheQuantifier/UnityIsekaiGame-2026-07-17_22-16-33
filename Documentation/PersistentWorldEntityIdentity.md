@@ -2,6 +2,8 @@
 
 Feature 4.6 adds a stable identity layer for runtime world objects. It is a reference foundation only. It does not persist full enemy state, pickup state, container contents, NPC schedules, door state, region simulation, or shared-world snapshots yet.
 
+For final Step 4 stable-ID audit, ownership boundaries, and limitations, see `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceOwnershipMatrix.md`, and `Documentation/Step4PersistenceKnownLimitations.md`.
+
 ## Purpose
 
 `WorldEntityIdentity` gives scene and runtime objects a durable handle that future persistence systems can use to say "this exact world object" without serializing a Unity object reference.

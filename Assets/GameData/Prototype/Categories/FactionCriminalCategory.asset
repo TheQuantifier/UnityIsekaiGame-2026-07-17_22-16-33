@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
   m_Name: FactionCriminalCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: faction-category.criminal
+  categoryId: category.faction.criminal
   displayName: Criminal Faction
   description: Category for criminal or outlaw organizations.
   parentCategory: {fileID: 11400000, guid: 1072935190c944aab8ed121741a10ab7, type: 2}

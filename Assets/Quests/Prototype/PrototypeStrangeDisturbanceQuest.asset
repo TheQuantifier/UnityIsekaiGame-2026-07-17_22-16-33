@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ae127f1fb11847bd9c01a706ab051189, type: 3}
   m_Name: PrototypeStrangeDisturbanceQuest
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Quests.QuestDefinition
-  questId: prototype_strange_disturbance
+  questId: quest.prototype-strange-disturbance
   title: A Strange Disturbance
   summary: Help the prototype NPC investigate a strange disturbance.
   detailedDescription: Prototype-only side quest used to verify staged quest progress, dialogue targets, location triggers, enemy defeat objectives, and quest rewards.
@@ -20,7 +20,7 @@ MonoBehaviour:
   questGiver: {fileID: 11400000, guid: d7045b9bbc0f4f2f8fc1a0fb254f0e55, type: 2}
   questSourceFaction: {fileID: 11400000, guid: 70bb165840944ae696f652b7a5f99744, type: 2}
   relatedFaction: {fileID: 11400000, guid: 70bb165840944ae696f652b7a5f99744, type: 2}
-  questGiverId: prototype_npc
+  questGiverId: person.prototype-npc
   questGiverDisplayName: Prototype NPC
   stages:
   - stageId: speak_with_npc

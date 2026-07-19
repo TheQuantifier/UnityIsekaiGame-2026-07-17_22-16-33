@@ -11,7 +11,7 @@ namespace UnityIsekaiGame.Tests
         [Test]
         public void BeingDefinition_ExposesStableClassificationMetadata()
         {
-            CategoryDefinition category = CreateCategory("being-category.person", CategoryDomain.Being);
+            CategoryDefinition category = CreateCategory("category.being.person", CategoryDomain.Being);
             TagDefinition humanoid = CreateTag("tag.humanoid", CategoryDomain.Being);
             ScriptableObject being = CreateBeing("being.person", "Person", category, new[] { humanoid });
 
@@ -19,7 +19,7 @@ namespace UnityIsekaiGame.Tests
             Assert.That(Get<object>(being, "Intelligence").ToString(), Is.EqualTo("Sapient"));
             Assert.That(Get<object>(being, "SocialCapability").ToString(), Is.EqualTo("Institutional"));
             Assert.That(Convert.ToInt32(Get<object>(being, "LocomotionCapabilities")), Is.EqualTo(1));
-            Assert.That(ClassificationUtility.IsInCategory((ICategorizableDefinition)being, "being-category.person"), Is.True);
+            Assert.That(ClassificationUtility.IsInCategory((ICategorizableDefinition)being, "category.being.person"), Is.True);
             Assert.That(ClassificationUtility.HasTag((ITaggedDefinition)being, "tag.humanoid"), Is.True);
         }
 

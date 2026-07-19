@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 389db4201f024a3895f7c81a530a3538, type: 3}
   m_Name: PrototypeSword
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Inventory.ItemDefinition
-  itemId: prototype_sword
+  itemId: item.prototype-sword
   displayName: Prototype Sword
   description: A test sword for the Main Hand slot.
   icon: {fileID: 0}

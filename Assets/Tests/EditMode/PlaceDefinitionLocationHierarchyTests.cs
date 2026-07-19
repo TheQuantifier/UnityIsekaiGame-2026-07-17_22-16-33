@@ -11,13 +11,13 @@ namespace UnityIsekaiGame.Tests
         [Test]
         public void PlaceDefinition_ExposesStableMetadataAndClassification()
         {
-            CategoryDefinition category = CreateCategory("place-category.settlement", CategoryDomain.Place);
+            CategoryDefinition category = CreateCategory("category.place.settlement", CategoryDomain.Place);
             TagDefinition settlement = CreateTag("tag.settlement", CategoryDomain.Place);
             ScriptableObject place = CreatePlace("place.settlement.prototype-town", "Prototype Town", "Settlement", category, new[] { settlement });
 
             Assert.That(Get<string>(place, "Id"), Is.EqualTo("place.settlement.prototype-town"));
             Assert.That(Get<object>(place, "PlaceKind").ToString(), Is.EqualTo("Settlement"));
-            Assert.That(ClassificationUtility.IsInCategory((ICategorizableDefinition)place, "place-category.settlement"), Is.True);
+            Assert.That(ClassificationUtility.IsInCategory((ICategorizableDefinition)place, "category.place.settlement"), Is.True);
             Assert.That(ClassificationUtility.HasTag((ITaggedDefinition)place, "tag.settlement"), Is.True);
         }
 

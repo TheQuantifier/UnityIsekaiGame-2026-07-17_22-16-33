@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 22343d95503043eeb28e2027f31a88c7, type: 3}
   m_Name: PrototypePotionCollectionContract
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Contracts.ContractDefinition
-  contractId: prototype_potion_collection
+  contractId: contract.prototype-potion-collection
   displayTitle: Prototype Potion Collection
   description: Hold two Health Potions in your inventory. Progress is based on currently held quantity.
   requesterPerson: {fileID: 0}

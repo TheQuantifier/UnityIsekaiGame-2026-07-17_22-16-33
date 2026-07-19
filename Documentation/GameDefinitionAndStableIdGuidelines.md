@@ -83,10 +83,10 @@ Examples for new content:
 - `person.prototype-npc`
 - `faction.guild.adventurers`
 - `faction.kingdom.prototype`
-- `quest.strange-disturbance`
-- `contract.prototype-elimination`
+- `quest.prototype-strange-disturbance`
+- `contract.prototype-enemy-elimination`
 
-Existing legacy IDs such as `health_potion` and `prototype_npc` remain valid for compatibility, but new content should prefer a namespaced domain prefix with a period.
+Feature 4.9 canonicalized first-party prototype definition IDs to this preferred format. Obsolete pre-alpha IDs such as `health_potion`, `prototype_npc`, `prototype_strange_disturbance`, and `status.beneficial` are not retained as silent aliases.
 
 ## ID Immutability
 
@@ -105,7 +105,7 @@ Renaming an ID is a migration, not a refactor. Future save data should store sta
 
 The selected rule is globally unique IDs inside a definition catalog. New IDs should be namespaced by domain, such as `item.` or `quest.`, so generic future systems can resolve them without carrying a separate type key.
 
-The current validator allows legacy non-namespaced IDs with a warning. This keeps existing prototype assets compatible while making the preferred format explicit for future content.
+The current validator still allows non-namespaced IDs with a warning for external or transitional content. First-party prototype content should not rely on that warning path.
 
 ## Catalog And Lookup
 
@@ -160,9 +160,31 @@ Do not add rarity, faction, prefab, icon, value, or other domain-specific fields
 - Do not rename existing serialized ID fields unless necessary.
 - Use `FormerlySerializedAs` if a serialized field must be renamed.
 - Do not regenerate IDs.
-- Do not change IDs only to match the preferred new format.
+- Do not change IDs only to match the preferred new format unless the change is handled as an explicit content/save compatibility event.
 - Treat ID renames as content migrations that require reference and save compatibility review.
 - Keep old string fallback fields until serialized assets no longer need them.
+
+## Feature 4.9 Prototype ID Compatibility Break
+
+Feature 4.9 intentionally invalidates old local development saves that store obsolete prototype definition IDs instead of carrying permanent aliases. The project is still pre-alpha, and those saves should be deleted before final manual testing.
+
+Renamed first-party prototype IDs include:
+
+- `health_potion` -> `item.health-potion`
+- `prototype_sword` -> `item.prototype-sword`
+- `prototype_helmet` -> `item.prototype-helmet`
+- `prototype_npc` -> `person.prototype-npc`
+- `prototype_strange_disturbance` -> `quest.prototype-strange-disturbance`
+- `prototype_enemy_elimination` -> `contract.prototype-enemy-elimination`
+- `prototype_potion_collection` -> `contract.prototype-potion-collection`
+- `prototype_potion_delivery` -> `contract.prototype-potion-delivery`
+- `status.beneficial` -> `category.status.beneficial`
+- `status.harmful` -> `category.status.harmful`
+- `status.neutral` -> `category.status.neutral`
+- `being-category` -> `category.being`
+- `place-category` -> `category.place`
+- `faction-category` -> `category.faction`
+- `damage-category` -> `category.damage`
 
 ## Future Save And Load
 
@@ -183,7 +205,6 @@ Those systems are not implemented in Step 3.1.
 
 ## Known Limitations
 
-- Existing item, person, quest, and contract IDs are valid legacy IDs but do not use the preferred domain prefix.
 - `SpellDefinition` gained an additive `spellId` field; existing prototype spell assets were assigned IDs.
 - There is no global project catalog bootstrap yet. Runtime systems should receive or create registries explicitly from configured catalogs.
 - Dialogue nodes, objective definitions, rewards, places, species, factions, and full stat-definition assets are outside this feature.

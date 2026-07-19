@@ -24,7 +24,7 @@ Taxonomy is descriptive. It should not become a runtime authority for ownership,
 
 ## Items And Item Instances
 
-`ItemDefinition` owns stable item identity, display info, classification, rarity, stack policy, use effects, and equipment configuration. The current prototype still keeps legacy item IDs for some early assets, and validation warns rather than fails for those IDs.
+`ItemDefinition` owns stable item identity, display info, classification, rarity, stack policy, use effects, and equipment configuration. First-party prototype item IDs now use canonical namespaced IDs such as `item.health-potion`.
 
 `ItemInstance` owns runtime identity for stateful items. `ItemInstanceSaveData` and related inventory/equipment save DTOs preserve instance IDs, definition IDs, quality, condition, and metadata. This lets two swords exist as separate runtime objects even when they share the same item definition.
 
@@ -79,6 +79,6 @@ The prototype scene uses the Step 3 data through these representative paths:
 
 ## Closeout Status
 
-Step 3 is ready to serve as the static data foundation for Step 4. Remaining prototype warnings are known legacy-content warnings, mostly old item IDs and broad root taxonomy IDs.
+Step 3 is ready to serve as the static data foundation for Step 4. Feature 4.9 removes the earlier first-party prototype preferred-ID warnings by canonicalizing the affected IDs.
 
 Step 4 now has `PersistenceService`, a versioned save envelope, explicit participant registration, and player-scoped inventory/equipment persistence. See `Documentation/PersistenceServiceFoundation.md`, `Documentation/PlayerInventoryAndEquipmentPersistence.md`, and `Documentation/Step4PersistenceRoadmap.md`. Future Step 4 features should add one runtime owner at a time on top of these definitions.

@@ -2,6 +2,8 @@
 
 Feature 4.5 adds the first player-scoped location persistence participant.
 
+For final Step 4 participant inventory, schema policy, ownership boundaries, and regression coverage, see `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, `Documentation/Step4PersistenceOwnershipMatrix.md`, and `Documentation/Step4PersistenceRegressionChecklist.md`.
+
 ## Participant
 
 - Key: `player.location`

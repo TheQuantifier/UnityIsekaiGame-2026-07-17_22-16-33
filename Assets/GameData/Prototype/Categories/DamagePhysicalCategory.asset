@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
   m_Name: DamagePhysicalCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: damage-category.physical
+  categoryId: category.damage.physical
   displayName: Physical Damage
   description: Damage category for weapon, impact, and bodily force damage.
   parentCategory: {fileID: 11400000, guid: db0ed2fe397a40398848fe94dc0d6d15, type: 2}

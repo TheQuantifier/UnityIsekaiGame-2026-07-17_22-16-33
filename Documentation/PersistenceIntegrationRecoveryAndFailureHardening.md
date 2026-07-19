@@ -2,6 +2,8 @@
 
 Feature 4.8 hardens the existing local prototype persistence pipeline without adding shared-world persistence or networking.
 
+For final Step 4 transaction, recovery, compatibility, and regression closeout, see `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, and `Documentation/Step4PersistenceRegressionChecklist.md`.
+
 ## Architecture
 
 `PersistenceService` remains the central coordinator. Participants still own their own DTO capture, validation, prepare, and commit logic. The service now owns transaction phases, dependency validation, rollback capture, consistency auditing, recovery source scanning, and structured diagnostics.

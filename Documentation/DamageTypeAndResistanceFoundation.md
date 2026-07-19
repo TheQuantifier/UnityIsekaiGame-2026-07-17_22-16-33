@@ -10,7 +10,7 @@ Definitions never store current damage amount, current source, current target, r
 
 Prototype definitions created: `damage.physical`, `damage.physical.slashing`, `damage.physical.blunt`, `damage.magic`, and `damage.magic.arcane`.
 
-Prototype categories created: `damage-category`, `damage-category.physical`, and `damage-category.magical`.
+Prototype categories created: `category.damage`, `category.damage.physical`, and `category.damage.magical`.
 
 Prototype tags created: `tag.physical` and `tag.arcane`.
 

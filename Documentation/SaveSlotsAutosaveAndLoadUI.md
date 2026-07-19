@@ -2,6 +2,8 @@
 
 Feature 4.7 adds the first player-facing persistence workflow on top of the existing `PersistenceService`.
 
+For final Step 4 slot, autosave, recovery, and manual regression coverage, see `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, and `Documentation/Step4PersistenceRegressionChecklist.md`.
+
 The implementation remains local and synchronous for the prototype, but the UI is only a client of persistence operations. `PersistenceService` still owns slot validation, write/delete/load behavior, backup files, and autosave generation rotation.
 
 ## Slot Model

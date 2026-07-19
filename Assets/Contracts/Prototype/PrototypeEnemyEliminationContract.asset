@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 22343d95503043eeb28e2027f31a88c7, type: 3}
   m_Name: PrototypeEnemyEliminationContract
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Contracts.ContractDefinition
-  contractId: prototype_enemy_elimination
+  contractId: contract.prototype-enemy-elimination
   displayTitle: Prototype Enemy Elimination
   description: Defeat the prototype enemy once after accepting this contract.
   requesterPerson: {fileID: 0}

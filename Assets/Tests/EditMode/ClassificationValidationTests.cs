@@ -118,7 +118,7 @@ namespace UnityIsekaiGame.Tests
         public void Validate_ReportsLegacyStringTags()
         {
             TestLegacyTaggedDefinition person = ScriptableObject.CreateInstance<TestLegacyTaggedDefinition>();
-            person.Initialize("person.prototype-npc", "Prototype NPC", "quest_giver");
+            person.Initialize("person.prototype-npc", "Prototype NPC", "old_role_tag");
 
             DefinitionCatalog catalog = ClassificationTestFactory.CreateCatalog(person);
 

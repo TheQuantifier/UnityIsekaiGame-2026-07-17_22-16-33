@@ -2,6 +2,8 @@
 
 Maintenance 4.4A adds a centralized development-only test surface for the current prototype systems. The Test Lab is not final gameplay UI. It is a replaceable QA and debugging page inside the existing Tab menu so prototype systems can be exercised without creating one-off scene buttons, modal windows, or temporary Text objects.
 
+For final Step 4 persistence closeout coverage, use the persistence section steps in `Documentation/Step4PersistenceRegressionChecklist.md`.
+
 ## Development Boundary
 
 The runtime Test Lab scripts live under `Assets/Scripts/Development` and are wrapped in `UNITY_EDITOR || DEVELOPMENT_BUILD`.

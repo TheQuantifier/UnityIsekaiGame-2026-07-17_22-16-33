@@ -707,7 +707,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: health_potion
+  definitionId: item.health-potion
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &30135746
@@ -3200,7 +3200,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: prototype_helmet
+  definitionId: item.prototype-helmet
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &230941392
@@ -11012,7 +11012,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: prototype_sword
+  definitionId: item.prototype-sword
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &948365833
@@ -11318,7 +11318,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: health_potion
+  definitionId: item.health-potion
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &973675675
@@ -12392,7 +12392,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: health_potion
+  definitionId: item.health-potion
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &1050243336
@@ -15040,7 +15040,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: health_potion
+  definitionId: item.health-potion
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &1238330459
@@ -15210,7 +15210,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: prototype_sword
+  definitionId: item.prototype-sword
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &1254932055
@@ -15482,7 +15482,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: health_potion
+  definitionId: item.health-potion
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &1268345459
@@ -17581,7 +17581,7 @@ MonoBehaviour:
   dialogueInteractable: {fileID: 1413055598}
   personIdentity: {fileID: 1413055604}
   questLog: {fileID: 343134195}
-  talkTargetId: prototype_npc
+  talkTargetId: person.prototype-npc
   offeredQuest: {fileID: 11400000, guid: 8ed9409bc8694caeafcf85685317d0d6, type: 2}
   offerQuestOnTalk: 1
 --- !u!114 &1413055604
@@ -26012,7 +26012,7 @@ MonoBehaviour:
   ownerId:
   parentEntityId:
   persistenceEligible: 1
-  definitionId: prototype_helmet
+  definitionId: item.prototype-helmet
   expectedEntityType: WorldItemPickup
   registerInAwake: 1
 --- !u!65 &2106427118

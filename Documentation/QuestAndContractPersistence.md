@@ -2,6 +2,8 @@
 
 Feature 4.4 adds player-scoped persistence for personal quest and accepted contract state.
 
+For final Step 4 participant inventory, schema policy, and regression coverage, see `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, and `Documentation/Step4PersistenceRegressionChecklist.md`.
+
 ## Ownership
 
 Personal quest logs and accepted contract journals are `Player` scoped state.

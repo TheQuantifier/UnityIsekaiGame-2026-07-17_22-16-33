@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
   m_Name: PlaceWildernessCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: place-category.wilderness
+  categoryId: category.place.wilderness
   displayName: Wilderness Place
   description: Broad place category for wilderness areas.
   parentCategory: {fileID: 11400000, guid: 15cff4f5d3104f01ae23288980ff52f7, type: 2}
