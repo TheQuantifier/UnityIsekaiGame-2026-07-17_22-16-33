@@ -84,7 +84,7 @@ Current foundations include:
 - Keyboard, mouse, and gamepad input through the Unity Input System.
 - Reusable center-screen world interaction.
 - Item definitions and world pickups.
-- Inventory data, stacking, and inventory UI.
+- Inventory data, stacking, stateful item instances, inventory save-data DTOs, and inventory UI.
 - Consumable item use.
 - Health, stamina, and mana.
 - Equipment and basic player statistics.
@@ -94,6 +94,12 @@ Current foundations include:
 - Basic spellcasting and projectiles.
 - Spell loadout and quick-action selection.
 - Dialogue system foundation with prototype NPC conversation.
+
+### Inventory Item Instance Save Foundation
+
+The inventory still supports the existing definition-stack flow through `PlayerInventory.AddItem` for ordinary stackable content. Items marked `AlwaysInstanced` are granted through `PlayerInventory.AddItemOrInstances`, which creates one persistent `ItemInstance` per quantity. Exact instances can move between inventory and equipment without losing their instance ID or metadata.
+
+`PlayerInventory.CreateSaveData` / `TryRestoreFromSaveData` and `PlayerEquipment.CreateSaveData` / `TryRestoreFromSaveData` provide the first save-data shapes for slot stacks and stateful item instances. Restore is validated before live state is replaced, so missing definitions, invalid quantities, bad item-instance payloads, duplicate IDs, or incompatible equipment slots fail without partially mutating the current inventory or equipment.
 
 These systems are still prototype-quality and may be revised substantially as larger gameplay systems are added.
 

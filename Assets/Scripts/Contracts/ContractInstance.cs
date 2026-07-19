@@ -106,7 +106,7 @@ namespace UnityIsekaiGame.Contracts
                     return ContractOperationResult.Failure("Contract has an invalid reward.");
                 }
 
-                if (!inventory.CanAddItem(reward.Item, reward.Quantity))
+                if (!inventory.CanAddItemOrInstances(reward.Item, reward.Quantity))
                 {
                     return ContractOperationResult.Failure("Not enough inventory space for the full reward.");
                 }
@@ -114,7 +114,7 @@ namespace UnityIsekaiGame.Contracts
 
             for (int i = 0; i < rewards.Count; i++)
             {
-                inventory.AddItem(rewards[i].Item, rewards[i].Quantity);
+                inventory.AddItemOrInstances(rewards[i].Item, rewards[i].Quantity);
             }
 
             state = ContractState.RewardClaimed;
