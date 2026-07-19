@@ -34,6 +34,7 @@ MonoBehaviour:
       maximumMana: 0
       attackPower: 5
       defense: 0
+    resistanceModifiers: []
     meleeWeapon:
       weapon: 1
       attackName: Prototype Slash
@@ -42,3 +43,4 @@ MonoBehaviour:
       attackCooldown: 0.75
       staminaCost: 12
       hitRadius: 0.45
+      damageType: {fileID: 11400000, guid: 4ff1c2abd80244cdaace238049bef76b, type: 2}

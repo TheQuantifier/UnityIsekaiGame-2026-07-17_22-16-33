@@ -67,7 +67,10 @@ namespace UnityIsekaiGame.Combat
                 return DamageResult.Failure(damageInfo.RawAmount, "Damage must be greater than zero.");
             }
 
-            DamageCalculation calculation = DamageCalculator.Calculate(damageInfo.RawAmount, GetConfiguredDefense());
+            DamageCalculation calculation = DamageCalculator.CalculatePacket(
+                damageInfo.DamagePacket,
+                GetConfiguredDefense(),
+                GetComponentInParent<IDamageResistanceReceiver>());
             float previousHealth = currentHealth;
             currentHealth = Mathf.Max(0f, currentHealth - calculation.FinalAmount);
             float changedAmount = previousHealth - currentHealth;

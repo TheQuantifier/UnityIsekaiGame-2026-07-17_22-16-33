@@ -146,7 +146,7 @@ Prototype equipment items are classified as:
 
 Both categories inherit from `item.equipment`.
 
-Equipment behavior still depends on `EquipmentData`, `EquipmentSlotType`, stat modifiers, and melee weapon data. Equip slots are not inferred from category.
+Equipment behavior still depends on `EquipmentData`, `EquipmentSlotType`, stat modifiers, optional typed resistance modifiers, and melee weapon data. Equip slots are not inferred from category.
 
 ## Consumable Integration
 
@@ -248,6 +248,8 @@ The validator reports but does not mutate assets.
 6. Configure stackability and maximum stack size.
 7. Add item-use effects only if the item is usable.
 8. Configure equipment data only if the item is equippable.
+9. For weapons, assign a typed damage definition when the item should produce typed melee damage.
+10. For armor or accessories, add resistance modifiers only when the item should change typed mitigation while equipped.
 9. Add the item and any new categories/tags to the definition catalog.
 10. Run `Tools/Game Data/Validate Definitions`.
 

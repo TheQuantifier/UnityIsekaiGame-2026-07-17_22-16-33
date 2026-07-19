@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Stats;
 
 namespace UnityIsekaiGame.StatusEffects
@@ -9,6 +10,7 @@ namespace UnityIsekaiGame.StatusEffects
     {
         private readonly List<RuntimeStatusEffect> activeStatuses = new List<RuntimeStatusEffect>();
         private IRuntimeStatReceiver statReceiver;
+        private IDamageResistanceReceiver resistanceReceiver;
 
         public IReadOnlyList<RuntimeStatusEffect> ActiveStatuses => activeStatuses;
         public StatusEffectController StatusController => this;
@@ -20,6 +22,7 @@ namespace UnityIsekaiGame.StatusEffects
         private void Awake()
         {
             statReceiver = GetComponentInParent<IRuntimeStatReceiver>();
+            resistanceReceiver = GetComponentInParent<IDamageResistanceReceiver>();
         }
 
         private void Update()
@@ -311,23 +314,44 @@ namespace UnityIsekaiGame.StatusEffects
 
         private bool CanReceiveModifiers(StatusEffectDefinition definition)
         {
-            if (definition.StatModifiers.Count == 0)
+            if (definition.StatModifiers.Count == 0 && definition.ResistanceModifiers.Count == 0)
             {
                 return true;
             }
 
-            statReceiver ??= GetComponentInParent<IRuntimeStatReceiver>();
-            if (statReceiver == null)
+            if (definition.StatModifiers.Count > 0)
             {
-                return false;
-            }
-
-            for (int i = 0; i < definition.StatModifiers.Count; i++)
-            {
-                StatModifierDefinition modifier = definition.StatModifiers[i];
-                if (modifier == null || !modifier.IsValid || !statReceiver.HasStat(modifier.StatType))
+                statReceiver ??= GetComponentInParent<IRuntimeStatReceiver>();
+                if (statReceiver == null)
                 {
                     return false;
+                }
+
+                for (int i = 0; i < definition.StatModifiers.Count; i++)
+                {
+                    StatModifierDefinition modifier = definition.StatModifiers[i];
+                    if (modifier == null || !modifier.IsValid || !statReceiver.HasStat(modifier.StatType))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            if (definition.ResistanceModifiers.Count > 0)
+            {
+                resistanceReceiver ??= GetComponentInParent<IDamageResistanceReceiver>();
+                if (resistanceReceiver == null)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < definition.ResistanceModifiers.Count; i++)
+                {
+                    ResistanceModifierDefinition modifier = definition.ResistanceModifiers[i];
+                    if (modifier == null || !modifier.IsValid)
+                    {
+                        return false;
+                    }
                 }
             }
 
@@ -335,6 +359,27 @@ namespace UnityIsekaiGame.StatusEffects
         }
 
         private bool RegisterModifiers(RuntimeStatusEffect status)
+        {
+            if (status.Definition.StatModifiers.Count == 0 && status.Definition.ResistanceModifiers.Count == 0)
+            {
+                return true;
+            }
+
+            if (!RegisterStatModifiers(status))
+            {
+                return false;
+            }
+
+            if (!RegisterResistanceModifiers(status))
+            {
+                UnregisterModifiers(status);
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool RegisterStatModifiers(RuntimeStatusEffect status)
         {
             if (status.Definition.StatModifiers.Count == 0)
             {
@@ -360,10 +405,38 @@ namespace UnityIsekaiGame.StatusEffects
             return true;
         }
 
+        private bool RegisterResistanceModifiers(RuntimeStatusEffect status)
+        {
+            if (status.Definition.ResistanceModifiers.Count == 0)
+            {
+                return true;
+            }
+
+            resistanceReceiver ??= GetComponentInParent<IDamageResistanceReceiver>();
+            if (resistanceReceiver == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < status.Definition.ResistanceModifiers.Count; i++)
+            {
+                RuntimeResistanceModifier modifier = status.Definition.ResistanceModifiers[i].CreateRuntimeModifier(status.ModifierSource, status.StackCount);
+                if (!resistanceReceiver.AddResistanceModifier(modifier))
+                {
+                    resistanceReceiver.RemoveResistanceModifiersFromSource(status.ModifierSource);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private void UnregisterModifiers(RuntimeStatusEffect status)
         {
             statReceiver ??= GetComponentInParent<IRuntimeStatReceiver>();
             statReceiver?.RemoveModifiersFromSource(status.ModifierSource);
+            resistanceReceiver ??= GetComponentInParent<IDamageResistanceReceiver>();
+            resistanceReceiver?.RemoveResistanceModifiersFromSource(status.ModifierSource);
         }
 
         private void RebuildModifiers(RuntimeStatusEffect status)

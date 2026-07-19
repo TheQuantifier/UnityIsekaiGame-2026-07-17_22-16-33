@@ -61,7 +61,7 @@ Effects execute in serialized order. Missing effects or failed validation stop e
 
 `SpellProjectile` can carry an ability payload and execute its configured effects once on impact. Legacy hard-coded projectile damage remains as a fallback for spells without an ability reference.
 
-`DamageEffectDefinition` can optionally add source attack power, but the current Arcane Bolt and Heavy Arcane Bolt effects ignore source attack power by default and keep their configured damage values.
+`DamageEffectDefinition` can optionally add source attack power, but the current Arcane Bolt and Heavy Arcane Bolt effects ignore source attack power by default and keep their configured damage values. Feature 3.13 adds typed damage: new effects should use `typedDamageType` or `typedComponents`, while legacy `DamageType` remains a compatibility fallback.
 
 `RestoreHealthItemUseEffect` can reference `RestoreVitalEffectDefinition`. The health potion keeps its existing item-use flow, including full-health failure and no consumption on failed use.
 

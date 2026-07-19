@@ -34,3 +34,4 @@ MonoBehaviour:
       maximumMana: 0
       attackPower: 0
       defense: 2
+    resistanceModifiers: []

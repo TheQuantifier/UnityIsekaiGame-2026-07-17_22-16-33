@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Abilities;
+using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Stats;
 
@@ -24,6 +25,7 @@ namespace UnityIsekaiGame.StatusEffects
         [SerializeField] private bool canBeRemoved = true;
         [SerializeField] private bool visibleInHud = true;
         [SerializeField] private StatModifierDefinition[] statModifiers;
+        [SerializeField] private ResistanceModifierDefinition[] resistanceModifiers;
         [SerializeField, Min(0f)] private float periodicInterval;
         [SerializeField] private EffectDefinition[] periodicEffects;
 
@@ -44,6 +46,7 @@ namespace UnityIsekaiGame.StatusEffects
         public bool CanBeRemoved => canBeRemoved;
         public bool VisibleInHud => visibleInHud;
         public IReadOnlyList<StatModifierDefinition> StatModifiers => statModifiers ?? System.Array.Empty<StatModifierDefinition>();
+        public IReadOnlyList<ResistanceModifierDefinition> ResistanceModifiers => resistanceModifiers ?? System.Array.Empty<ResistanceModifierDefinition>();
         public float PeriodicInterval => periodicInterval;
         public IReadOnlyList<EffectDefinition> PeriodicEffects => periodicEffects ?? System.Array.Empty<EffectDefinition>();
 
@@ -81,6 +84,11 @@ namespace UnityIsekaiGame.StatusEffects
                 report.AddWarning($"Instant status effect '{DisplayName}' has stat modifiers that will not remain active.");
             }
 
+            if (durationModel == StatusDurationModel.Instant && (resistanceModifiers?.Length ?? 0) > 0)
+            {
+                report.AddWarning($"Instant status effect '{DisplayName}' has resistance modifiers that will not remain active.");
+            }
+
             if (maximumStacks < 1)
             {
                 report.AddError($"Status effect '{DisplayName}' must allow at least one stack.");
@@ -97,6 +105,7 @@ namespace UnityIsekaiGame.StatusEffects
             }
 
             ValidateModifierDefinitions(report);
+            ValidateResistanceModifierDefinitions(definitionsById, report);
             ValidatePeriodicConfiguration(report);
         }
 
@@ -153,6 +162,48 @@ namespace UnityIsekaiGame.StatusEffects
                 if (periodicEffects[i] == null)
                 {
                     report.AddError($"Status effect '{DisplayName}' has a null periodic effect at index {i}.");
+                }
+            }
+        }
+
+        private void ValidateResistanceModifierDefinitions(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            if (resistanceModifiers == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenModifiers = new HashSet<string>();
+            for (int i = 0; i < resistanceModifiers.Length; i++)
+            {
+                ResistanceModifierDefinition modifier = resistanceModifiers[i];
+                if (modifier == null)
+                {
+                    report.AddError($"Status effect '{DisplayName}' has a null resistance modifier at index {i}.");
+                    continue;
+                }
+
+                if (modifier.DamageType == null)
+                {
+                    report.AddError($"Status effect '{DisplayName}' has a resistance modifier with no damage type at index {i}.");
+                    continue;
+                }
+
+                if (!modifier.IsValid)
+                {
+                    report.AddError($"Status effect '{DisplayName}' has an invalid resistance modifier value at index {i}.");
+                }
+
+                if (!seenModifiers.Add($"{modifier.DamageType.Id}:{modifier.Priority}"))
+                {
+                    report.AddWarning($"Status effect '{DisplayName}' has duplicate-looking resistance modifier for '{modifier.DamageType.Id}'.");
+                }
+
+                if (definitionsById == null
+                    || !definitionsById.TryGetValue(modifier.DamageType.Id, out IGameDefinition found)
+                    || found is not DamageTypeDefinition)
+                {
+                    report.AddError($"Status effect '{DisplayName}' references damage type '{modifier.DamageType.Id}', which is not in the configured catalog.");
                 }
             }
         }

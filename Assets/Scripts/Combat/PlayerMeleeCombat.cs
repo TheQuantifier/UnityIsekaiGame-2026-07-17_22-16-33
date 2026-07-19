@@ -136,7 +136,11 @@ namespace UnityIsekaiGame.Combat
                 }
 
                 Vector3 hitDirection = hit.point == Vector3.zero ? direction : (hit.point - origin).normalized;
-                DamageInfo damageInfo = new DamageInfo(damageAmount, gameObject, hit.point, hitDirection, DamageType.Physical);
+                DamageComponent component = weapon.DamageType == null
+                    ? DamageComponent.Legacy(DamageType.Physical, damageAmount, AttackPowerScalingPolicy.AddSourceAttackPower)
+                    : new DamageComponent(weapon.DamageType, damageAmount, AttackPowerScalingPolicy.AddSourceAttackPower);
+                DamagePacket packet = DamagePacket.Single(gameObject, component);
+                DamageInfo damageInfo = new DamageInfo(damageAmount, gameObject, hit.point, hitDirection, DamageType.Physical, packet);
                 DamageResult damageResult = damageable.ApplyDamage(in damageInfo);
                 string message = damageResult.Applied
                     ? $"{weapon.AttackName} hit {hit.collider.name} for {damageResult.AppliedAmount:0.#} damage."

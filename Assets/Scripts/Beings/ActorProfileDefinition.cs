@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Beings
@@ -20,6 +21,7 @@ namespace UnityIsekaiGame.Beings
         [SerializeField, Min(0f)] private float baseAttackPower;
         [SerializeField, Min(0f)] private float baseDefense;
         [SerializeField, Min(0f)] private float baseMovementSpeed;
+        [SerializeField] private ResistanceModifierDefinition[] baseResistances;
         [SerializeField] private string futureSensesPlaceholder;
         [SerializeField] private string futureMovementProfilePlaceholder;
 
@@ -37,6 +39,7 @@ namespace UnityIsekaiGame.Beings
         public float BaseAttackPower => baseAttackPower;
         public float BaseDefense => baseDefense;
         public float BaseMovementSpeed => baseMovementSpeed;
+        public IReadOnlyList<ResistanceModifierDefinition> BaseResistances => baseResistances ?? System.Array.Empty<ResistanceModifierDefinition>();
         public string FutureSensesPlaceholder => futureSensesPlaceholder;
         public string FutureMovementProfilePlaceholder => futureMovementProfilePlaceholder;
         public bool HasValidBaseStats => IsFinite(baseMaximumHealth)
@@ -79,6 +82,7 @@ namespace UnityIsekaiGame.Beings
             ValidateBaseStat(baseAttackPower, 0f, "base attack power", report);
             ValidateBaseStat(baseDefense, 0f, "base defense", report);
             ValidateBaseStat(baseMovementSpeed, 0f, "base movement speed", report);
+            ValidateBaseResistances(definitionsById, report);
 
             if (primaryCategory == null && beingDefinition != null && beingDefinition.PrimaryCategory == null)
             {
@@ -105,6 +109,48 @@ namespace UnityIsekaiGame.Beings
             else if (value < minimum)
             {
                 report.AddError($"ActorProfileDefinition '{DisplayName}' has {label} below {minimum:0.#}.");
+            }
+        }
+
+        private void ValidateBaseResistances(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            if (baseResistances == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenDamageTypes = new HashSet<string>();
+            for (int i = 0; i < baseResistances.Length; i++)
+            {
+                ResistanceModifierDefinition resistance = baseResistances[i];
+                if (resistance == null)
+                {
+                    report.AddError($"ActorProfileDefinition '{DisplayName}' has a null base resistance at index {i}.");
+                    continue;
+                }
+
+                if (resistance.DamageType == null)
+                {
+                    report.AddError($"ActorProfileDefinition '{DisplayName}' has a base resistance with no damage type at index {i}.");
+                    continue;
+                }
+
+                if (!RuntimeResistanceCollection.IsSupportedResistance(resistance.Resistance))
+                {
+                    report.AddError($"ActorProfileDefinition '{DisplayName}' has resistance {resistance.Resistance:0.###} for '{resistance.DamageType.Id}', outside -1 to 1.");
+                }
+
+                if (!seenDamageTypes.Add(resistance.DamageType.Id))
+                {
+                    report.AddError($"ActorProfileDefinition '{DisplayName}' has duplicate base resistance for '{resistance.DamageType.Id}'.");
+                }
+
+                if (definitionsById == null
+                    || !definitionsById.TryGetValue(resistance.DamageType.Id, out IGameDefinition found)
+                    || found is not DamageTypeDefinition)
+                {
+                    report.AddError($"ActorProfileDefinition '{DisplayName}' references damage type '{resistance.DamageType.Id}', which is not in the configured catalog.");
+                }
             }
         }
 

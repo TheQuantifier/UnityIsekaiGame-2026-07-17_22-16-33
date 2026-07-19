@@ -23,6 +23,7 @@ namespace UnityIsekaiGame.Magic
         private Vector3 direction;
         private float speed;
         private float baseDamage;
+        private DamageTypeDefinition directDamageType;
         private AbilityDefinition ability;
         private float expireAtTime;
         private bool initialized;
@@ -72,6 +73,7 @@ namespace UnityIsekaiGame.Magic
             direction = travelDirection.sqrMagnitude > 0f ? travelDirection.normalized : transform.forward;
             speed = Mathf.Max(0.1f, projectileSpeed);
             baseDamage = Mathf.Max(0f, damage);
+            directDamageType = null;
             expireAtTime = Time.time + Mathf.Max(0.1f, lifetime);
             initialized = true;
             completed = false;
@@ -87,6 +89,7 @@ namespace UnityIsekaiGame.Magic
             direction = travelDirection.sqrMagnitude > 0f ? travelDirection.normalized : transform.forward;
             speed = Mathf.Max(0.1f, projectileSpeed);
             baseDamage = 0f;
+            directDamageType = null;
             expireAtTime = Time.time + Mathf.Max(0.1f, lifetime);
             initialized = true;
             completed = false;
@@ -114,7 +117,11 @@ namespace UnityIsekaiGame.Magic
             {
                 damagedTargets.Add(damageable);
                 Vector3 hitDirection = direction;
-                DamageInfo damageInfo = new DamageInfo(baseDamage, caster, hit.point, hitDirection, DamageType.Magic);
+                DamageComponent component = directDamageType == null
+                    ? DamageComponent.Legacy(DamageType.Magic, baseDamage)
+                    : new DamageComponent(directDamageType, baseDamage);
+                DamagePacket packet = DamagePacket.Single(caster, component);
+                DamageInfo damageInfo = new DamageInfo(baseDamage, caster, hit.point, hitDirection, DamageType.Magic, packet);
                 DamageResult damageResult = damageable.ApplyDamage(in damageInfo);
                 Debug.Log(damageResult.Applied ? $"Spell hit for {damageResult.AppliedAmount:0.#} damage." : damageResult.Message);
             }

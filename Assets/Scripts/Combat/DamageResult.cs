@@ -4,6 +4,8 @@ namespace UnityIsekaiGame.Combat
 {
     public readonly struct DamageResult
     {
+        private readonly System.Collections.Generic.IReadOnlyList<DamageComponentResult> componentResults;
+
         public DamageResult(bool applied, float requestedAmount, float appliedAmount, bool defeated, string message)
             : this(applied, requestedAmount, requestedAmount, 0f, Mathf.Max(0f, requestedAmount - appliedAmount), appliedAmount, 0f, defeated, message)
         {
@@ -19,16 +21,36 @@ namespace UnityIsekaiGame.Combat
             float remainingHealth,
             bool defeated,
             string message)
+            : this(applied, requestedAmount, preMitigationAmount, defense, mitigatedAmount, 0f, 0f, appliedAmount, remainingHealth, defeated, message, System.Array.Empty<DamageComponentResult>())
+        {
+        }
+
+        public DamageResult(
+            bool applied,
+            float requestedAmount,
+            float preMitigationAmount,
+            float defense,
+            float mitigatedAmount,
+            float resistanceMitigation,
+            float weaknessAmplification,
+            float appliedAmount,
+            float remainingHealth,
+            bool defeated,
+            string message,
+            System.Collections.Generic.IReadOnlyList<DamageComponentResult> componentResults)
         {
             Applied = applied;
             RequestedAmount = requestedAmount;
             PreMitigationAmount = preMitigationAmount;
             Defense = defense;
             MitigatedAmount = mitigatedAmount;
+            ResistanceMitigation = resistanceMitigation;
+            WeaknessAmplification = weaknessAmplification;
             AppliedAmount = appliedAmount;
             RemainingHealth = remainingHealth;
             Defeated = defeated;
             Message = message;
+            this.componentResults = componentResults ?? System.Array.Empty<DamageComponentResult>();
         }
 
         public bool Applied { get; }
@@ -36,10 +58,13 @@ namespace UnityIsekaiGame.Combat
         public float PreMitigationAmount { get; }
         public float Defense { get; }
         public float MitigatedAmount { get; }
+        public float ResistanceMitigation { get; }
+        public float WeaknessAmplification { get; }
         public float AppliedAmount { get; }
         public float RemainingHealth { get; }
         public bool Defeated { get; }
         public string Message { get; }
+        public System.Collections.Generic.IReadOnlyList<DamageComponentResult> ComponentResults => componentResults ?? System.Array.Empty<DamageComponentResult>();
 
         public static DamageResult Success(float requestedAmount, float appliedAmount, bool defeated, string message)
         {
@@ -60,10 +85,13 @@ namespace UnityIsekaiGame.Combat
                 calculation.PreMitigationAmount,
                 calculation.Defense,
                 calculation.MitigatedAmount,
+                calculation.ResistanceMitigation,
+                calculation.WeaknessAmplification,
                 appliedAmount,
                 remainingHealth,
                 defeated,
-                message);
+                message,
+                calculation.ComponentResults);
         }
 
         public static DamageResult Failure(float requestedAmount, string message)
