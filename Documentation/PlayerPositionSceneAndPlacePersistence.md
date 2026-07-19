@@ -20,6 +20,8 @@ Prototype scene data uses stable scene key `scene.prototype`. Unity scene name, 
 
 Feature 4.5 fully supports same-scene restoration. Cross-scene save data is validated and rejected clearly; asynchronous scene loading is deferred to a later feature.
 
+Feature 4.6 world entity IDs complement scene and place keys. Scene keys identify the loaded scene context, place IDs identify authored location definitions, and world entity IDs identify specific scene/runtime objects inside that context. Player location persistence still stores only player-owned location state.
+
 ## Restore Flow
 
 Restore is two-phase.
@@ -62,4 +64,5 @@ Offline-world changes such as destroyed buildings, unavailable regions, ownershi
 
 - Cross-scene restore is rejected, not loaded.
 - World pickups, enemies, doors, containers, NPC runtime state, and shared-world simulation are not persisted.
+- World entity IDs exist for future references, but world entity mutable state is not persisted by `player.location`.
 - Safe-position validation is prototype-level and should be replaced by server/navmesh/world validation later.

@@ -212,6 +212,8 @@ Feature 4.4 adds `player.quests-contracts`. It is player-scoped, owned by `local
 
 Feature 4.5 adds optional `player.location`. It is player-scoped, owned by `local-player`, loads after quests/contracts in `PositionAndPlace`, and restores same-scene player scene/place/position without mutating shared-world state.
 
+Feature 4.6 adds persistent world-entity identity infrastructure. It does not add a save participant yet. `WorldEntityIdentity`, `WorldEntityReference`, and `WorldEntityRegistry` provide stable handles for authored and runtime world objects so future `SharedWorld` or `RegionOrScene` participants can refer to exact loaded objects without serializing Unity object references.
+
 ## Player State Versus World State
 
 Player-state saves and shared-world saves must remain separable.
@@ -303,6 +305,8 @@ Future server-authoritative multiplayer persistence will require a different tru
 
 Clients must not be allowed to become authoritative over `SharedWorld` or `RegionOrScene` persistence by uploading local save files.
 
+World entity IDs are not proof of client ownership. They are object handles that future server-owned world persistence can validate against the authoritative loaded world/region state.
+
 ## Adding A Participant
 
 1. Create a plain serializable DTO.
@@ -325,6 +329,7 @@ Clients must not be allowed to become authoritative over `SharedWorld` or `Regio
 - No cloud saves.
 - No encryption or compression.
 - No cross-scene loading.
+- No full world-entity state persistence.
 - No full gameplay persistence yet.
 - No rollback after an unexpected commit failure.
 - No automatic migrations.

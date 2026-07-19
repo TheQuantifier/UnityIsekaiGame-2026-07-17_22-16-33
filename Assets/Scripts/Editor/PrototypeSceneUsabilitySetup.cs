@@ -9,6 +9,7 @@ using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Development;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Persistence;
@@ -16,6 +17,7 @@ using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Inventory;
+using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Editor
 {
@@ -76,6 +78,7 @@ namespace UnityIsekaiGame.Editor
             CreateDamageDummy(actors);
             CreateTestPoints(testInfrastructure);
             WirePrototypePersistence(testInfrastructure);
+            AssignWorldEntityIdentities();
             ImproveLighting();
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -164,6 +167,7 @@ namespace UnityIsekaiGame.Editor
             serialized.FindProperty("destinationId").stringValue = "prototype_delivery_crate";
             serialized.FindProperty("interactionPrompt").stringValue = "Deliver to prototype crate";
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            AddAuthoredWorldIdentity(target, "delivery.crate.primary", string.Empty, nameof(ContractDeliveryInteractable));
             CreateSign(parent, "Sign - Delivery Crate", "Delivery Target", new Vector3(21.5f, 1.65f, 12.5f), 180f);
         }
 
@@ -182,7 +186,62 @@ namespace UnityIsekaiGame.Editor
             SerializedObject serialized = new SerializedObject(target);
             serialized.FindProperty("targetCategory").stringValue = "prototype_damage_dummy";
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            AddAuthoredWorldIdentity(dummy, "target.damage-dummy.primary", "being.damage-dummy.prototype", nameof(EnemyHealth));
             CreateSign(parent, "Sign - Damage Dummy", "Damage Dummy", new Vector3(5.5f, 2.6f, 22f), 180f);
+        }
+
+        private static void AssignWorldEntityIdentities()
+        {
+            AddAuthoredWorldIdentity(GameObject.Find("Prototype Enemy"), "enemy.primary", "being.prototype-enemy", nameof(EnemyHealth));
+            AddAuthoredWorldIdentity(GameObject.Find("Prototype Dialogue NPC"), "npc.dialogue.primary", "person.prototype-npc", "PersonIdentity");
+            AddAuthoredWorldIdentity(GameObject.Find("Prototype Contract Board"), "contract-board.primary", string.Empty, "ContractBoardInteractable");
+            AddAuthoredWorldIdentity(GameObject.Find("Prototype Quest Investigation Area"), "quest.investigation-area", "place.poi.disturbance-site", "QuestReachLocationReporter");
+            AddAuthoredWorldIdentity(GameObject.Find("Prototype Health Potion Pickup"), "pickup.legacy.health-potion", "item.health-potion", nameof(WorldItemPickup));
+            AddAuthoredWorldIdentity(GameObject.Find("Prototype Sword Pickup"), "pickup.legacy.sword", "item.prototype-sword", nameof(WorldItemPickup));
+            AddAuthoredWorldIdentity(GameObject.Find("Prototype Helmet Pickup"), "pickup.legacy.helmet", "item.prototype-helmet", nameof(WorldItemPickup));
+        }
+
+        private static void AddAuthoredWorldIdentity(GameObject target, string localAuthoredId, string definitionId, string expectedType)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            WorldEntityIdentity identity = target.GetComponent<WorldEntityIdentity>();
+            if (identity == null)
+            {
+                identity = target.AddComponent<WorldEntityIdentity>();
+            }
+
+            SerializedObject serialized = new SerializedObject(identity);
+            serialized.FindProperty("identityKind").enumValueIndex = 0;
+            serialized.FindProperty("localAuthoredId").stringValue = WorldEntityIdUtility.Normalize(localAuthoredId);
+            serialized.FindProperty("runtimeEntityId").stringValue = string.Empty;
+            serialized.FindProperty("sceneKey").stringValue = "scene.prototype";
+            serialized.FindProperty("worldId").stringValue = PersistenceService.LocalWorldId;
+            serialized.FindProperty("ownerScope").enumValueIndex = 2;
+            serialized.FindProperty("ownerId").stringValue = string.Empty;
+            serialized.FindProperty("parentEntityId").stringValue = string.Empty;
+            serialized.FindProperty("persistenceEligible").boolValue = true;
+            serialized.FindProperty("definitionId").stringValue = WorldEntityIdUtility.Normalize(definitionId);
+            serialized.FindProperty("expectedEntityType").stringValue = expectedType ?? string.Empty;
+            serialized.FindProperty("registerInAwake").boolValue = true;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static string LocalIdFromName(string prefix, string objectName)
+        {
+            string normalized = WorldEntityIdUtility.Normalize(objectName);
+            normalized = normalized.Replace(" - ", ".").Replace(' ', '-');
+            normalized = normalized.Replace("--", "-");
+            string prefixWithSeparator = $"{prefix}.";
+            if (normalized.StartsWith(prefixWithSeparator))
+            {
+                normalized = normalized.Substring(prefixWithSeparator.Length);
+            }
+
+            return $"{prefix}.{normalized}";
         }
 
         private static void CreateTestPoints(Transform parent)
@@ -242,6 +301,7 @@ namespace UnityIsekaiGame.Editor
                 Mathf.Max(0.8f, scale.y),
                 Mathf.Max(0.8f, scale.z));
             collider.center = Vector3.zero;
+            AddAuthoredWorldIdentity(pickup, LocalIdFromName("pickup", name), item == null ? string.Empty : item.Id, nameof(WorldItemPickup));
         }
 
         private static void CreateStatusPedestal(Transform parent, string name, StatusEffectDefinition status, Vector3 position, Material material)

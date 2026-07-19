@@ -17,6 +17,7 @@ using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.WorldEntities;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -36,6 +37,11 @@ namespace UnityIsekaiGame.Development
         private PrototypeTestLabContext context;
         private DefinitionRegistry registry;
         private int historyLimit = DefaultHistoryLimit;
+        private string lastSpawnedWorldEntityId;
+        private ItemDefinition lastSpawnedWorldEntityItem;
+        private string lastDestroyedWorldEntityId;
+        private ItemDefinition lastDestroyedWorldEntityItem;
+        private string lastWorldEntityOperationMessage;
 
         public event Action HistoryChanged;
 
@@ -119,6 +125,18 @@ namespace UnityIsekaiGame.Development
                 details,
                 "Policy: same-scene restore is supported; cross-scene saves validate clearly and are not restored yet.",
                 "Reach Location objectives are suppressed during persistence restore."
+            });
+        }
+
+        public string BuildWorldEntitySummary()
+        {
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Persistent World Entities",
+                WorldEntityRegistry.BuildDiagnosticReport(),
+                $"Last Spawned: {(string.IsNullOrWhiteSpace(lastSpawnedWorldEntityId) ? "None" : lastSpawnedWorldEntityId)}",
+                $"Last Destroyed: {(string.IsNullOrWhiteSpace(lastDestroyedWorldEntityId) ? "None" : lastDestroyedWorldEntityId)}",
+                $"Last Result: {(string.IsNullOrWhiteSpace(lastWorldEntityOperationMessage) ? "None" : lastWorldEntityOperationMessage)}"
             });
         }
 
@@ -567,6 +585,194 @@ namespace UnityIsekaiGame.Development
 
             string summary = context.Persistence.BuildPlayerLocationDiagnosticSummary();
             return RecordSuccess("Validate Current Location", summary.Replace(Environment.NewLine, " | "));
+        }
+
+        public PrototypeTestLabOperation RefreshWorldEntityDiagnostics()
+        {
+            return RecordSuccess("World Entity Diagnostics", $"Registered {WorldEntityRegistry.Count} world entity identity object(s).");
+        }
+
+        public PrototypeTestLabOperation SpawnPersistentWorldLoot(ItemDefinition item)
+        {
+            if (item == null)
+            {
+                return RecordFailure("Spawn Persistent World Loot", "No item definition selected.", "MissingDefinition");
+            }
+
+            Vector3 position = context?.PlayerTransform == null ? Vector3.zero : context.PlayerTransform.position + context.PlayerTransform.forward * 2f + Vector3.up * 0.25f;
+            GameObject pickup = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            pickup.name = $"Persistent Test Loot - {item.DisplayName}";
+            pickup.transform.SetPositionAndRotation(position, Quaternion.identity);
+            pickup.transform.localScale = Vector3.one * 0.35f;
+            pickup.AddComponent<WorldItemPickup>().Configure(item, 1);
+            WorldEntitySpawnResult result = WorldEntityIdentityFactory.CreateRuntimeIdentity(pickup, "scene.prototype", PersistenceService.LocalWorldId, item.Id);
+            if (!result.Succeeded)
+            {
+                DestroyTestObject(pickup);
+                return RecordFailure("Spawn Persistent World Loot", result.Message, result.Code);
+            }
+
+            lastSpawnedWorldEntityId = result.Identity.EntityId;
+            lastSpawnedWorldEntityItem = item;
+            return RecordWorldEntityResult("Spawn Persistent World Loot", $"Spawned {item.DisplayName} as {lastSpawnedWorldEntityId}.");
+        }
+
+        public PrototypeTestLabOperation SpawnTransientWorldLoot(ItemDefinition item)
+        {
+            if (item == null)
+            {
+                return RecordFailure("Spawn Transient World Loot", "No item definition selected.", "MissingDefinition");
+            }
+
+            Vector3 position = context?.PlayerTransform == null ? Vector3.zero : context.PlayerTransform.position + context.PlayerTransform.right * 2f + Vector3.up * 0.25f;
+            GameObject pickup = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            pickup.name = $"Transient Test Loot - {item.DisplayName}";
+            pickup.transform.SetPositionAndRotation(position, Quaternion.identity);
+            pickup.transform.localScale = Vector3.one * 0.35f;
+            pickup.AddComponent<WorldItemPickup>().Configure(item, 1);
+            WorldEntityIdentity identity = pickup.AddComponent<WorldEntityIdentity>();
+            identity.TryMarkTransient(out _);
+            return RecordWorldEntityResult("Spawn Transient World Loot", $"Spawned transient {item.DisplayName}; it is intentionally not persistently registered.");
+        }
+
+        public PrototypeTestLabOperation DestroyLastSpawnedWorldLoot()
+        {
+            if (string.IsNullOrWhiteSpace(lastSpawnedWorldEntityId) || !WorldEntityRegistry.TryResolve(lastSpawnedWorldEntityId, out WorldEntityIdentity identity))
+            {
+                return RecordFailure("Destroy Spawned World Loot", "No spawned world entity is currently registered.", "MissingEntity");
+            }
+
+            WorldItemPickup pickup = identity.GetComponent<WorldItemPickup>();
+            lastDestroyedWorldEntityId = identity.EntityId;
+            lastDestroyedWorldEntityItem = pickup == null ? null : pickup.Item;
+            WorldEntityRegistry.Unregister(identity);
+            DestroyTestObject(identity.gameObject);
+            return RecordWorldEntityResult("Destroy Spawned World Loot", $"Destroyed {lastDestroyedWorldEntityId}.");
+        }
+
+        public PrototypeTestLabOperation RecreateDestroyedWorldLoot()
+        {
+            if (string.IsNullOrWhiteSpace(lastDestroyedWorldEntityId) || lastDestroyedWorldEntityItem == null)
+            {
+                return RecordFailure("Recreate World Loot", "No destroyed persistent world loot is available to recreate.", "MissingSnapshot");
+            }
+
+            Vector3 position = context?.PlayerTransform == null ? Vector3.zero : context.PlayerTransform.position + context.PlayerTransform.forward * 2f + Vector3.up * 0.25f;
+            GameObject pickup = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            pickup.name = $"Restored Test Loot - {lastDestroyedWorldEntityItem.DisplayName}";
+            pickup.transform.SetPositionAndRotation(position, Quaternion.identity);
+            pickup.transform.localScale = Vector3.one * 0.35f;
+            pickup.AddComponent<WorldItemPickup>().Configure(lastDestroyedWorldEntityItem, 1);
+            WorldEntitySpawnResult result = WorldEntityIdentityFactory.RestoreRuntimeIdentity(pickup, lastDestroyedWorldEntityId, "scene.prototype", PersistenceService.LocalWorldId, lastDestroyedWorldEntityItem.Id);
+            if (!result.Succeeded)
+            {
+                DestroyTestObject(pickup);
+                return RecordFailure("Recreate World Loot", result.Message, result.Code);
+            }
+
+            lastSpawnedWorldEntityId = result.Identity.EntityId;
+            lastSpawnedWorldEntityItem = lastDestroyedWorldEntityItem;
+            return RecordWorldEntityResult("Recreate World Loot", $"Recreated {lastSpawnedWorldEntityId}.");
+        }
+
+        public PrototypeTestLabOperation AttemptDuplicateWorldEntityRegistration()
+        {
+            if (!TryResolveLastSpawnedOrRegisteredTestLoot(out WorldEntityIdentity existingIdentity, out ItemDefinition item, out string failureReason))
+            {
+                return RecordWorldEntityFailure("Duplicate World Entity Proof", failureReason, "MissingEntity");
+            }
+
+            GameObject duplicate = new GameObject("Duplicate World Entity Proof");
+            duplicate.name = "Duplicate World Entity Proof";
+            duplicate.AddComponent<WorldItemPickup>().Configure(item, 1);
+            WorldEntitySpawnResult result = WorldEntityIdentityFactory.RestoreRuntimeIdentity(duplicate, lastSpawnedWorldEntityId, existingIdentity.SceneKey, existingIdentity.WorldId, item.Id);
+            if (result.Succeeded)
+            {
+                WorldEntityRegistry.Unregister(result.Identity);
+                DestroyTestObject(duplicate);
+                return RecordWorldEntityFailure("Duplicate World Entity Proof", "Duplicate registration unexpectedly succeeded.", "UnexpectedSuccess");
+            }
+
+            DestroyTestObject(duplicate);
+            return RecordWorldEntityResult("Duplicate World Entity Proof", $"Duplicate rejected: {result.Code}.");
+        }
+
+        private bool TryResolveLastSpawnedOrRegisteredTestLoot(out WorldEntityIdentity identity, out ItemDefinition item, out string failureReason)
+        {
+            identity = null;
+            item = null;
+            failureReason = string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(lastSpawnedWorldEntityId)
+                && WorldEntityRegistry.TryResolve(lastSpawnedWorldEntityId, out identity))
+            {
+                WorldItemPickup pickup = identity.GetComponent<WorldItemPickup>();
+                item = pickup == null ? lastSpawnedWorldEntityItem : pickup.Item;
+                if (item != null)
+                {
+                    return true;
+                }
+
+                failureReason = "The spawned world entity has no item definition to duplicate.";
+                return false;
+            }
+
+            foreach (WorldEntityIdentity candidate in WorldEntityRegistry.RegisteredEntities)
+            {
+                if (candidate == null
+                    || candidate.IdentityKind == WorldEntityIdentityKind.Transient
+                    || (!candidate.name.StartsWith("Persistent Test Loot", StringComparison.Ordinal)
+                        && !candidate.name.StartsWith("Restored Test Loot", StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                WorldItemPickup pickup = candidate.GetComponent<WorldItemPickup>();
+                if (pickup == null || pickup.Item == null)
+                {
+                    continue;
+                }
+
+                identity = candidate;
+                item = pickup.Item;
+                lastSpawnedWorldEntityId = identity.EntityId;
+                lastSpawnedWorldEntityItem = item;
+                return true;
+            }
+
+            failureReason = string.IsNullOrWhiteSpace(lastSpawnedWorldEntityId)
+                ? "Spawn persistent world loot first."
+                : $"World entity '{lastSpawnedWorldEntityId}' is no longer registered. Spawn persistent world loot again.";
+            return false;
+        }
+
+        private PrototypeTestLabOperation RecordWorldEntityResult(string operationName, string message)
+        {
+            lastWorldEntityOperationMessage = message;
+            Debug.Log($"{operationName}: {message}");
+            return RecordSuccess(operationName, message);
+        }
+
+        private PrototypeTestLabOperation RecordWorldEntityFailure(string operationName, string message, string code)
+        {
+            lastWorldEntityOperationMessage = message;
+            return RecordFailure(operationName, message, code);
+        }
+
+        private static void DestroyTestObject(GameObject gameObject)
+        {
+            if (gameObject == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(gameObject);
+                return;
+            }
+
+            UnityEngine.Object.DestroyImmediate(gameObject);
         }
 
         public PrototypeTestLabOperation RunScenario(string scenarioId, ItemDefinition item, QuestDefinition quest, ContractDefinition contract, DamageTypeDefinition damageType)

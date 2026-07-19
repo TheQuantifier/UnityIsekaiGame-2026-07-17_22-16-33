@@ -59,6 +59,35 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void DuplicateWorldEntityProofRejectsCurrentSpawnedEntityAfterMultipleSpawns()
+        {
+            using RuntimeFixture fixture = RuntimeFixture.Create();
+            object service = CreateService(fixture);
+            UnityEngine.Object potion = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(PotionPath);
+
+            try
+            {
+                InvokeStatic(RequiredType("UnityIsekaiGame.WorldEntities.WorldEntityRegistry"), "ClearForTests");
+
+                object firstSpawn = Invoke(service, "SpawnPersistentWorldLoot", potion);
+                Assert.That(Get<bool>(firstSpawn, "Succeeded"), Is.True, Get<string>(firstSpawn, "Message"));
+
+                object secondSpawn = Invoke(service, "SpawnPersistentWorldLoot", potion);
+                Assert.That(Get<bool>(secondSpawn, "Succeeded"), Is.True, Get<string>(secondSpawn, "Message"));
+
+                SetField(service, "lastSpawnedWorldEntityId", string.Empty);
+                object duplicateProof = Invoke(service, "AttemptDuplicateWorldEntityRegistration");
+                Assert.That(Get<bool>(duplicateProof, "Succeeded"), Is.True, Get<string>(duplicateProof, "Message"));
+                Assert.That(Get<string>(duplicateProof, "Message"), Does.Contain("Duplicate rejected"));
+            }
+            finally
+            {
+                InvokeStatic(RequiredType("UnityIsekaiGame.WorldEntities.WorldEntityRegistry"), "ClearForTests");
+                DestroyTestLabWorldLoot();
+            }
+        }
+
+        [Test]
         public void ApplyAndRemoveStatusUsesRuntimeController()
         {
             using RuntimeFixture fixture = RuntimeFixture.Create();
@@ -122,6 +151,13 @@ namespace UnityIsekaiGame.Tests
             return method.Invoke(target, args);
         }
 
+        private static object InvokeStatic(Type type, string methodName, params object[] args)
+        {
+            MethodInfo method = type.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null, $"{methodName} not found on {type.Name}");
+            return method.Invoke(null, args);
+        }
+
         private static object InvokeGeneric(object target, string methodName, Type genericArgument)
         {
             MethodInfo method = target.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -170,6 +206,20 @@ namespace UnityIsekaiGame.Tests
             }
 
             return count;
+        }
+
+        private static void DestroyTestLabWorldLoot()
+        {
+            foreach (GameObject gameObject in UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include))
+            {
+                if (gameObject.name.StartsWith("Persistent Test Loot", StringComparison.Ordinal)
+                    || gameObject.name.StartsWith("Restored Test Loot", StringComparison.Ordinal)
+                    || gameObject.name.StartsWith("Transient Test Loot", StringComparison.Ordinal)
+                    || gameObject.name.StartsWith("Duplicate World Entity Proof", StringComparison.Ordinal))
+                {
+                    UnityEngine.Object.DestroyImmediate(gameObject);
+                }
+            }
         }
 
         private static void InvokeAwake(Component component)

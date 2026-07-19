@@ -33,6 +33,7 @@ namespace UnityIsekaiGame.Development
             "Quests",
             "Persistence",
             "Location",
+            "World Entities",
             "Scenarios",
             "Diagnostics"
         };
@@ -44,6 +45,7 @@ namespace UnityIsekaiGame.Development
         private Text diagnosticsText;
         private Text historyText;
         private Text locationText;
+        private Text worldEntityText;
         private Text itemValueText;
         private Text statusValueText;
         private Text damageValueText;
@@ -127,6 +129,11 @@ namespace UnityIsekaiGame.Development
                 locationText.text = service.BuildLocationSummary();
             }
 
+            if (worldEntityText != null)
+            {
+                worldEntityText.text = service.BuildWorldEntitySummary();
+            }
+
             UpdateSelectorLabels();
             UpdateHistory();
             UpdateSectionButtonStates();
@@ -171,6 +178,7 @@ namespace UnityIsekaiGame.Development
             Transform questSection = AddSection(content, "Quests Section");
             Transform persistenceSection = AddSection(content, "Persistence Section");
             Transform locationSection = AddSection(content, "Location Section");
+            Transform worldEntitySection = AddSection(content, "World Entities Section");
             Transform scenarioSection = AddSection(content, "Scenarios Section");
             Transform diagnosticsSection = AddSection(content, "Diagnostics Section");
 
@@ -182,6 +190,7 @@ namespace UnityIsekaiGame.Development
             BuildQuestSection(questSection, font);
             BuildPersistenceSection(persistenceSection, font);
             BuildLocationSection(locationSection, font);
+            BuildWorldEntitySection(worldEntitySection, font);
             BuildScenarioSection(scenarioSection, font);
             BuildDiagnosticsSection(diagnosticsSection, font);
         }
@@ -278,6 +287,19 @@ namespace UnityIsekaiGame.Development
                 ("Load Location", () => service.Load()),
                 ("Validate Position", () => service.ValidateCurrentLocation()));
             locationText = AddText(parent, font, "Location not available.", 13, 210);
+        }
+
+        private void BuildWorldEntitySection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Refresh", () => service.RefreshWorldEntityDiagnostics()),
+                ("Spawn Persistent", () => service.SpawnPersistentWorldLoot(GetSelected(items, selectedItemIndex))),
+                ("Spawn Transient", () => service.SpawnTransientWorldLoot(GetSelected(items, selectedItemIndex))));
+            AddButtonRow(parent, font,
+                ("Destroy Spawned", () => service.DestroyLastSpawnedWorldLoot()),
+                ("Recreate Saved", () => service.RecreateDestroyedWorldLoot()),
+                ("Duplicate Proof", () => service.AttemptDuplicateWorldEntityRegistration()));
+            worldEntityText = AddText(parent, font, "World entities not available.", 12, 260);
         }
 
         private void BuildScenarioSection(Transform parent, Font font)
