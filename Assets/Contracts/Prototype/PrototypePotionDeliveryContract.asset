@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 22343d95503043eeb28e2027f31a88c7, type: 3}
   m_Name: PrototypePotionDeliveryContract
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Contracts.ContractDefinition
-  contractId: prototype_potion_delivery
+  contractId: contract.prototype-potion-delivery
   displayTitle: Prototype Potion Delivery
   description: Deliver one Health Potion to the prototype delivery crate.
   requesterPerson: {fileID: 0}

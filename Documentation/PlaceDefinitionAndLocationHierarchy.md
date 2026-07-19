@@ -32,16 +32,16 @@ Location triggers report a `PlaceDefinition` stable ID or legacy location string
 
 Category definitions remain the flexible taxonomy and ancestry model. `PlaceKind` is used for validation and simple hierarchy queries, while category membership supports broader filtering. If they differ, validation warns rather than blocking unusual fantasy content.
 
-Prototype place categories use the `place-category.*` namespace to avoid collisions with globally unique `place.*` definition IDs:
+Prototype place categories use the `category.place.*` namespace to avoid collisions with globally unique `place.*` definition IDs:
 
-- `place-category`
-- `place-category.world`
-- `place-category.nation`
-- `place-category.region`
-- `place-category.settlement`
-- `place-category.wilderness`
-- `place-category.point-of-interest`
-- `place-category.building`
+- `category.place`
+- `category.place.world`
+- `category.place.nation`
+- `category.place.region`
+- `category.place.settlement`
+- `category.place.wilderness`
+- `category.place.point-of-interest`
+- `category.place.building`
 
 Prototype tags added:
 
@@ -167,7 +167,7 @@ To create a new place:
 1. Create `Unity Isekai Game/Places/Place`.
 2. Assign a globally unique `place.*` ID.
 3. Assign `PlaceKind`.
-4. Assign a `place-category.*` category.
+4. Assign a `category.place.*` category.
 5. Add only useful tags.
 6. Set parent place when it has a primary container.
 7. Register it in the active `DefinitionCatalog`.

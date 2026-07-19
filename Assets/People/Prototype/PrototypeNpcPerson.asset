@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5f4261908c34a88a510ef2977041e86, type: 3}
   m_Name: PrototypeNpcPerson
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.People.PersonDefinition
-  personId: prototype_npc
+  personId: person.prototype-npc
   displayName: Prototype NPC
   title: Quest Giver
   shortDescription: Prototype-only NPC used to verify person identity, dialogue, and quest flow.
@@ -27,8 +27,7 @@ MonoBehaviour:
   primaryFaction: {fileID: 11400000, guid: 70bb165840944ae696f652b7a5f99744, type: 2}
   publicRoleTitle: Guild Representative
   leadershipOfFaction: {fileID: 0}
-  roleTags:
-  - quest_giver
+  roleTags: []
   factionIdPlaceholder:
   settlementIdPlaceholder:
   importance: 1

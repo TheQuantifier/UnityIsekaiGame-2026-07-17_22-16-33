@@ -2,6 +2,8 @@
 
 Feature 4.2 adds the first real player-state participant on top of the Feature 4.1 save service.
 
+For final Step 4 participant inventory, schema policy, and regression coverage, see `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, and `Documentation/Step4PersistenceRegressionChecklist.md`.
+
 ## Ownership
 
 Inventory and equipment are `Player`-scoped state. The current prototype owner is `local-player`, inside `local-world`, under `local-account`.

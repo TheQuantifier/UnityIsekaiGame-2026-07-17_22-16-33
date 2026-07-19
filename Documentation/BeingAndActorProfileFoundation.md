@@ -37,9 +37,9 @@ Profiles are not mutated in Play Mode. Runtime modifiers remain owned by `Runtim
 
 Added prototype categories:
 
-- `being-category`
-- `being-category.person`
-- `being-category.monster`
+- `category.being`
+- `category.being.person`
+- `category.being.monster`
 
 Added prototype tags:
 
@@ -108,7 +108,7 @@ To create a new being definition:
 
 1. Create `Unity Isekai Game/Beings/Being`.
 2. Assign a globally unique `being.*` ID.
-3. Assign a broad `being-category` category and a small set of useful tags.
+3. Assign a broad `category.being` category and a small set of useful tags.
 4. Fill static intelligence, social, locomotion, and nature metadata.
 5. Register it in the active `DefinitionCatalog`.
 

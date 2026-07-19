@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
   m_Name: StatusBeneficialCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: status.beneficial
+  categoryId: category.status.beneficial
   displayName: Beneficial Status
   description: Runtime status effects that help the target.
   parentCategory: {fileID: 11400000, guid: 213b056aa2ef47b9b6d64f7ed862f710, type: 2}

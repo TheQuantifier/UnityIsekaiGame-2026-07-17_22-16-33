@@ -2,6 +2,8 @@
 
 Feature 4.1 adds the first persistence layer. Feature 4.2 adds player-scoped inventory/equipment persistence, and Feature 4.3 adds player-scoped stats/vitals/status persistence through the same participant architecture. The service still does not persist quests, contracts, position, scene loading, or shared-world restoration.
 
+Step 4 closeout documentation now lives in `Documentation/Step4PersistenceArchitecture.md`, with schema inventory, ownership matrix, limitations, regression checklist, and Step 5 migration guidance in the adjacent Step 4 documents.
+
 ## Architecture
 
 `PersistenceService` is a plain C# coordinator in `UnityIsekaiGame.GameData.Persistence`.

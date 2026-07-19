@@ -171,27 +171,27 @@ namespace UnityIsekaiGame.Places
             switch (kind)
             {
                 case PlaceKind.World:
-                    return "place-category.world";
+                    return "category.place.world";
                 case PlaceKind.Nation:
-                    return "place-category.nation";
+                    return "category.place.nation";
                 case PlaceKind.Region:
-                    return "place-category.region";
+                    return "category.place.region";
                 case PlaceKind.Settlement:
-                    return "place-category.settlement";
+                    return "category.place.settlement";
                 case PlaceKind.District:
-                    return "place-category.district";
+                    return "category.place.district";
                 case PlaceKind.Building:
-                    return "place-category.building";
+                    return "category.place.building";
                 case PlaceKind.Interior:
-                    return "place-category.interior";
+                    return "category.place.interior";
                 case PlaceKind.Dungeon:
-                    return "place-category.dungeon";
+                    return "category.place.dungeon";
                 case PlaceKind.Wilderness:
-                    return "place-category.wilderness";
+                    return "category.place.wilderness";
                 case PlaceKind.Route:
-                    return "place-category.route";
+                    return "category.place.route";
                 case PlaceKind.PointOfInterest:
-                    return "place-category.point-of-interest";
+                    return "category.place.point-of-interest";
                 default:
                     return string.Empty;
             }

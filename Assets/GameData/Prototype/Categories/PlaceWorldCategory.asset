@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
   m_Name: PlaceWorldCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: place-category.world
+  categoryId: category.place.world
   displayName: World Place
   description: Broad place category for worlds.
   parentCategory: {fileID: 11400000, guid: 15cff4f5d3104f01ae23288980ff52f7, type: 2}

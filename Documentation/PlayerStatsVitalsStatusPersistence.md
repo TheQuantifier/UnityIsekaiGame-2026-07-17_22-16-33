@@ -2,6 +2,8 @@
 
 Feature 4.3 adds player-scoped persistence for current vitals and save-eligible active statuses.
 
+For final Step 4 participant inventory, schema policy, and regression coverage, see `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, and `Documentation/Step4PersistenceRegressionChecklist.md`.
+
 ## Ownership
 
 The participant is `Player` scoped and owned by the current local prototype player ID.

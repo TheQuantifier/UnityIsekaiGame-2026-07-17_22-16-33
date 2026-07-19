@@ -178,25 +178,25 @@ namespace UnityIsekaiGame.Factions
             switch (kind)
             {
                 case FactionKind.Nation:
-                    return "faction-category.nation";
+                    return "category.faction.nation";
                 case FactionKind.Government:
-                    return "faction-category.government";
+                    return "category.faction.government";
                 case FactionKind.Guild:
-                    return "faction-category.guild";
+                    return "category.faction.guild";
                 case FactionKind.Company:
-                    return "faction-category.company";
+                    return "category.faction.company";
                 case FactionKind.Military:
-                    return "faction-category.military";
+                    return "category.faction.military";
                 case FactionKind.Religious:
-                    return "faction-category.religious";
+                    return "category.faction.religious";
                 case FactionKind.Criminal:
-                    return "faction-category.criminal";
+                    return "category.faction.criminal";
                 case FactionKind.NobleHouse:
-                    return "faction-category.noble-house";
+                    return "category.faction.noble-house";
                 case FactionKind.SettlementAuthority:
-                    return "faction-category.settlement-authority";
+                    return "category.faction.settlement-authority";
                 case FactionKind.InformalGroup:
-                    return "faction-category.informal";
+                    return "category.faction.informal";
                 default:
                     return string.Empty;
             }

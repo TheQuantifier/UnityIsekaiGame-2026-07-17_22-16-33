@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
   m_Name: PlacePointOfInterestCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: place-category.point-of-interest
+  categoryId: category.place.point-of-interest
   displayName: Point Of Interest Place
   description: Broad place category for points of interest.
   parentCategory: {fileID: 11400000, guid: 15cff4f5d3104f01ae23288980ff52f7, type: 2}

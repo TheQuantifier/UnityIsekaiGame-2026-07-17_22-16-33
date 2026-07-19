@@ -210,7 +210,7 @@ Rules:
 - registered item definitions implement `IGameDefinition`;
 - rarity, quality, and condition definitions are registered alongside other definition assets;
 - new item IDs should be namespaced;
-- existing legacy IDs remain compatible;
+- old pre-alpha prototype item IDs were canonicalized in Feature 4.9 and are not retained as silent aliases;
 - duplicate IDs are detected globally;
 - category and tag references must be present in the configured catalog;
 - lookup by `ItemDefinition` or `IInventoryItemDefinition` uses the shared `DefinitionRegistry`;
@@ -269,7 +269,7 @@ The validator reports but does not mutate assets.
 - No crafting, harvesting, procedural loot generation, shop filtering, or economy behavior exists yet.
 - No item filtering UI exists yet.
 - `Prototype Iron Ore` is catalog content only; it is not spawned in the prototype scene.
-- Legacy item IDs such as `health_potion` remain accepted with warnings.
+- Current first-party prototype item IDs use canonical namespaced IDs such as `item.health-potion`.
 
 ## Future Extensions
 

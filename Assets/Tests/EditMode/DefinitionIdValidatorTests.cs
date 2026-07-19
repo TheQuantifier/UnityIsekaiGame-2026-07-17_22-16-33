@@ -17,7 +17,7 @@ namespace UnityIsekaiGame.Tests
         [Test]
         public void Validate_AcceptsLegacyUnderscoreIdWithNamespaceWarning()
         {
-            DefinitionIdValidationResult result = DefinitionIdValidator.Validate("health_potion");
+            DefinitionIdValidationResult result = DefinitionIdValidator.Validate("legacy_id");
 
             Assert.That(result.IsValid, Is.True, result.GetSummary());
             Assert.That(result.WarningCount, Is.EqualTo(1));

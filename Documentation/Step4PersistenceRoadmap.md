@@ -2,6 +2,8 @@
 
 Step 4 builds persistence incrementally on top of the Step 3 data and taxonomy foundation.
 
+Feature 4.9 adds the closeout documentation and regression coverage for the milestone. Step 4 is implemented but remains pending manual closeout until `Documentation/Step4PersistenceRegressionChecklist.md` passes and the milestone tag is approved.
+
 ## Sequence
 
 1. Feature 4.1: Save-File and Persistence Service Foundation
@@ -90,3 +92,16 @@ The dependency graph now preserves the intended player-state load order even whe
 Recovery remains explicit. Normal load does not silently choose a backup or temp file. The service reports valid backups, corrupt primaries, autosave candidates, and stale temporary files so editor tools, the Save/Load page, or Test Lab can recommend a controlled action.
 
 This feature still does not persist shared-world or region simulation state. It creates the transaction, recovery, and safety foundation those later server-owned participants will need.
+
+## Feature 4.9 Status
+
+Feature 4.9 consolidates the final Step 4 architecture, schema inventory, ownership matrix, known limitations, regression checklist, and Step 5 migration guidance:
+
+- `Documentation/Step4PersistenceArchitecture.md`
+- `Documentation/Step4PersistenceSchemaInventory.md`
+- `Documentation/Step4PersistenceOwnershipMatrix.md`
+- `Documentation/Step4PersistenceKnownLimitations.md`
+- `Documentation/Step4PersistenceRegressionChecklist.md`
+- `Documentation/Step5PersistenceMigrationGuidance.md`
+
+The milestone tag `v0.4.0-persistence-foundation` should be created only after manual closeout is approved.

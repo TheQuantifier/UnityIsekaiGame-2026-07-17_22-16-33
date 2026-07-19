@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
   m_Name: FactionCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: faction-category
+  categoryId: category.faction
   displayName: Faction
   description: Broad category for static faction and organization definitions.
   parentCategory: {fileID: 0}

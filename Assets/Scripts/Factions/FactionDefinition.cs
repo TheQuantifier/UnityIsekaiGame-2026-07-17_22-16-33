@@ -178,7 +178,7 @@ namespace UnityIsekaiGame.Factions
         {
             if (kind == FactionKind.Criminal
                 && primaryCategory != null
-                && ClassificationUtility.IsInCategory(primaryCategory, "faction-category.government"))
+                && ClassificationUtility.IsInCategory(primaryCategory, "category.faction.government"))
             {
                 report.AddWarning($"FactionDefinition '{DisplayName}' is a criminal group categorized as government.");
             }

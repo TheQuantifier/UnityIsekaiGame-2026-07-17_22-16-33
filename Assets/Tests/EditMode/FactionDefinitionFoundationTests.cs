@@ -11,13 +11,13 @@ namespace UnityIsekaiGame.Tests
         [Test]
         public void FactionDefinition_ExposesStableMetadataClassificationAndAuthority()
         {
-            CategoryDefinition category = CreateCategory("faction-category.guild", CategoryDomain.Faction);
+            CategoryDefinition category = CreateCategory("category.faction.guild", CategoryDomain.Faction);
             TagDefinition tag = CreateTag("tag.adventurer", CategoryDomain.General);
             ScriptableObject faction = CreateFaction("faction.guild.adventurers", "Adventurer's Guild", "Guild", category, new[] { tag }, authority: 7);
 
             Assert.That(Get<string>(faction, "Id"), Is.EqualTo("faction.guild.adventurers"));
             Assert.That(Get<object>(faction, "Kind").ToString(), Is.EqualTo("Guild"));
-            Assert.That(ClassificationUtility.IsInCategory((ICategorizableDefinition)faction, "faction-category.guild"), Is.True);
+            Assert.That(ClassificationUtility.IsInCategory((ICategorizableDefinition)faction, "category.faction.guild"), Is.True);
             Assert.That(ClassificationUtility.HasTag((ITaggedDefinition)faction, "tag.adventurer"), Is.True);
             Assert.That((bool)Invoke(faction, "HasAuthority", EnumValue("UnityIsekaiGame.Factions.FactionAuthorityFlags", "IssueContracts")), Is.True);
             Assert.That((bool)Invoke(faction, "HasAuthority", EnumValue("UnityIsekaiGame.Factions.FactionAuthorityFlags", "CollectTaxes")), Is.False);

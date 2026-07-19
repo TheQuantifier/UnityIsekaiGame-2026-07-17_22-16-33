@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b583f31bc4c47b49e4fd097c8c30d5c, type: 3}
   m_Name: BeingMonsterCategory
   m_EditorClassIdentifier: UnityIsekaiGame.GameData::UnityIsekaiGame.GameData.CategoryDefinition
-  categoryId: being-category.monster
+  categoryId: category.being.monster
   displayName: Monster Being
   description: Broad being category for hostile creatures and monsters.
   parentCategory: {fileID: 11400000, guid: 49a86b78c8924b70a4a40e4ec77ded72, type: 2}

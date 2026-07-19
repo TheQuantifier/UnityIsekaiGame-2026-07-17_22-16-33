@@ -113,6 +113,7 @@ Quest and contract persistence is documented in `Documentation/QuestAndContractP
 Player position, scene, and place persistence is documented in `Documentation/PlayerPositionSceneAndPlacePersistence.md`.
 Persistent world-entity identity is documented in `Documentation/PersistentWorldEntityIdentity.md`.
 Persistence integration, recovery, rollback, and failure hardening are documented in `Documentation/PersistenceIntegrationRecoveryAndFailureHardening.md`.
+Final Step 4 persistence closeout documentation lives in `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, `Documentation/Step4PersistenceOwnershipMatrix.md`, `Documentation/Step4PersistenceKnownLimitations.md`, `Documentation/Step4PersistenceRegressionChecklist.md`, and `Documentation/Step5PersistenceMigrationGuidance.md`.
 The editor/development-build Prototype Systems Test Lab is documented in `Documentation/PrototypeSystemsTestLab.md`.
 PrototypeScene usability, zone layout, pickup grouping, and menu layout standards are documented in `Documentation/PrototypeSceneAndMenuUsability.md`.
 
