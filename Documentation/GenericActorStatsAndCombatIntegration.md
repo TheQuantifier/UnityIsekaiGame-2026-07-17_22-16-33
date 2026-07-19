@@ -48,6 +48,8 @@ Status effects apply modifiers through `StatusEffectController` into the actor's
 
 Equipment modifiers are still owned by `PlayerStats` using equipment-slot source identities. Status modifiers use status application IDs, so equipment removal does not remove status modifiers and status expiration does not remove equipment modifiers. Typed resistance modifiers follow the same ownership rules.
 
+Feature 4.3 persists current player vitals and save-eligible statuses, not calculated final stat totals. Attack, Defense, max vitals, and resistances continue to rebuild from actor profile, equipment, and status modifiers after load.
+
 ## Prototype Wiring
 
 The Prototype Player keeps `PlayerStats` for compatibility and status/equipment integration.

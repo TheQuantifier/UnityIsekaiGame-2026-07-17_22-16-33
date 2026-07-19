@@ -12,6 +12,7 @@ namespace UnityIsekaiGame.StatusEffects
         public float elapsedDuration;
         public int stackCount;
         public StatusDurationModel durationModel;
+        public StatusPersistencePolicy persistencePolicy;
         public float tickProgress;
     }
 }

@@ -21,6 +21,7 @@ namespace UnityIsekaiGame.StatusEffects
         [SerializeField, Min(0f)] private float defaultDuration = 8f;
         [SerializeField] private StatusStackingPolicy stackingPolicy = StatusStackingPolicy.RefreshDuration;
         [SerializeField] private StatusRefreshPolicy refreshPolicy = StatusRefreshPolicy.ResetToFullDuration;
+        [SerializeField] private StatusPersistencePolicy persistencePolicy = StatusPersistencePolicy.SaveRemainingDuration;
         [SerializeField, Min(1)] private int maximumStacks = 1;
         [SerializeField] private bool canBeRemoved = true;
         [SerializeField] private bool visibleInHud = true;
@@ -42,6 +43,7 @@ namespace UnityIsekaiGame.StatusEffects
         public float DefaultDuration => defaultDuration;
         public StatusStackingPolicy StackingPolicy => stackingPolicy;
         public StatusRefreshPolicy RefreshPolicy => refreshPolicy;
+        public StatusPersistencePolicy PersistencePolicy => persistencePolicy;
         public int MaximumStacks => Mathf.Max(1, maximumStacks);
         public bool CanBeRemoved => canBeRemoved;
         public bool VisibleInHud => visibleInHud;
@@ -77,6 +79,11 @@ namespace UnityIsekaiGame.StatusEffects
             if (durationModel == StatusDurationModel.Timed && defaultDuration <= 0f)
             {
                 report.AddError($"Timed status effect '{DisplayName}' must have a positive default duration.");
+            }
+
+            if (durationModel == StatusDurationModel.Instant && persistencePolicy != StatusPersistencePolicy.DoNotSave)
+            {
+                report.AddWarning($"Instant status effect '{DisplayName}' should normally use DoNotSave persistence.");
             }
 
             if (durationModel == StatusDurationModel.Instant && (statModifiers?.Length ?? 0) > 0)

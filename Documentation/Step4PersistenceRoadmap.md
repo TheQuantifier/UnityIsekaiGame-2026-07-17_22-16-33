@@ -47,4 +47,10 @@ Feature 4.2 adds a combined `player.inventory-equipment` participant. It is `Pla
 
 The participant validates inventory and equipment together before commit so one item instance cannot appear in both inventory and equipment. It does not persist current vitals, statuses, quests, contracts, position, scene state, world pickups, enemies, or shared-world state.
 
-Feature 4.3 should restore current stats/vitals after equipment has rebuilt max-stat modifiers. This ordering keeps equipment-derived maximums authoritative before current health, mana, or stamina values are applied.
+Feature 4.3 restores current stats/vitals after equipment has rebuilt max-stat modifiers and after save-eligible statuses have rebuilt their modifiers. This ordering keeps equipment/status-derived maximums authoritative before current health, mana, or stamina values are applied.
+
+## Feature 4.3 Status
+
+Feature 4.3 adds `player.stats-vitals-status` after inventory/equipment in the load order. It persists current Health, Mana, Stamina, actor-profile validation metadata, and save-eligible active statuses. Status modifiers and resistance modifiers rebuild from restored statuses rather than raw modifier save data.
+
+Defeated prototype saves are rejected. Timed statuses restore with saved remaining duration; offline elapsed time is not applied yet.

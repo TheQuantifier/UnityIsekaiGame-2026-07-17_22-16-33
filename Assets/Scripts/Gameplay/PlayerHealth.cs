@@ -121,6 +121,21 @@ namespace UnityIsekaiGame.Gameplay
             SetHealth(effectiveMaximumHealth);
         }
 
+        public bool TryRestoreForPersistence(int restoredHealth, out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (restoredHealth <= 0)
+            {
+                failureReason = "Defeated player health is not valid for prototype save restoration.";
+                return false;
+            }
+
+            defeated = false;
+            input?.SetDefeatedInputBlocked(false);
+            SetHealth(Mathf.Clamp(restoredHealth, 1, effectiveMaximumHealth));
+            return true;
+        }
+
         private void SetHealth(int value)
         {
             int clampedHealth = Mathf.Clamp(value, 0, effectiveMaximumHealth);

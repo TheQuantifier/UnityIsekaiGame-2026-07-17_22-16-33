@@ -189,9 +189,19 @@ namespace UnityIsekaiGame.StatusEffects
 
         public List<StatusEffectSaveData> CreateSaveData()
         {
+            return CreateSaveData(saveEligibleOnly: false);
+        }
+
+        public List<StatusEffectSaveData> CreateSaveData(bool saveEligibleOnly)
+        {
             List<StatusEffectSaveData> saveData = new List<StatusEffectSaveData>(activeStatuses.Count);
             for (int i = 0; i < activeStatuses.Count; i++)
             {
+                if (saveEligibleOnly && !ShouldSaveStatus(activeStatuses[i]))
+                {
+                    continue;
+                }
+
                 saveData.Add(activeStatuses[i].CreateSaveData());
             }
 
@@ -377,6 +387,22 @@ namespace UnityIsekaiGame.StatusEffects
             }
 
             return true;
+        }
+
+        private static bool ShouldSaveStatus(RuntimeStatusEffect status)
+        {
+            if (status == null || !status.IsActive || status.Definition == null)
+            {
+                return false;
+            }
+
+            if (status.Definition.DurationModel == StatusDurationModel.Instant)
+            {
+                return false;
+            }
+
+            return status.Definition.PersistencePolicy == StatusPersistencePolicy.SaveRemainingDuration
+                || status.Definition.PersistencePolicy == StatusPersistencePolicy.PersistentUntilRemoved;
         }
 
         private bool RegisterStatModifiers(RuntimeStatusEffect status)

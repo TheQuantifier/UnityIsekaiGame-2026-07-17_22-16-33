@@ -5,6 +5,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Persistence;
+using UnityIsekaiGame.StatusEffects;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -14,12 +15,19 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private DefinitionCatalog definitionCatalog;
         [SerializeField] private PlayerInventory playerInventory;
         [SerializeField] private PlayerEquipment playerEquipment;
+        [SerializeField] private PlayerStats playerStats;
+        [SerializeField] private PlayerHealth playerHealth;
+        [SerializeField] private PlayerMana playerMana;
+        [SerializeField] private PlayerStamina playerStamina;
+        [SerializeField] private StatusEffectController statusEffectController;
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
+        [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private string prototypeSlotId = PersistenceService.PrototypeSlotId;
 
         private PersistenceService service;
         private PrototypePersistenceStateParticipant participant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
+        private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private DefinitionRegistry definitionRegistry;
 
         public PersistenceService Service => service;
@@ -44,13 +52,32 @@ namespace UnityIsekaiGame.Gameplay
                 service.UnregisterParticipant(inventoryEquipmentParticipant);
                 inventoryEquipmentParticipant = null;
             }
+
+            if (service != null && statsVitalsStatusParticipant != null)
+            {
+                service.UnregisterParticipant(statsVitalsStatusParticipant);
+                statsVitalsStatusParticipant = null;
+            }
         }
 
-        public void ConfigurePlayerPersistence(DefinitionCatalog catalog, PlayerInventory inventory, PlayerEquipment equipment)
+        public void ConfigurePlayerPersistence(
+            DefinitionCatalog catalog,
+            PlayerInventory inventory,
+            PlayerEquipment equipment,
+            PlayerStats stats,
+            PlayerHealth health,
+            PlayerMana mana,
+            PlayerStamina stamina,
+            StatusEffectController statusController)
         {
             definitionCatalog = catalog;
             playerInventory = inventory;
             playerEquipment = equipment;
+            playerStats = stats;
+            playerHealth = health;
+            playerMana = mana;
+            playerStamina = stamina;
+            statusEffectController = statusController;
             definitionRegistry = null;
         }
 
@@ -79,6 +106,7 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             EnsurePlayerInventoryEquipmentParticipant();
+            EnsurePlayerStatsVitalsStatusParticipant();
         }
 
         public PersistenceSaveResult SavePrototypeSlot()
@@ -195,6 +223,74 @@ namespace UnityIsekaiGame.Gameplay
             if (playerInventory == null && playerEquipment != null)
             {
                 playerInventory = playerEquipment.GetComponent<PlayerInventory>();
+            }
+
+            GameObject playerRoot = playerInventory == null ? playerEquipment == null ? null : playerEquipment.gameObject : playerInventory.gameObject;
+            if (playerRoot == null && playerStats != null)
+            {
+                playerRoot = playerStats.gameObject;
+            }
+
+            if (playerStats == null)
+            {
+                playerStats = playerRoot == null ? Object.FindAnyObjectByType<PlayerStats>() : playerRoot.GetComponent<PlayerStats>();
+            }
+
+            if (playerHealth == null)
+            {
+                playerHealth = playerRoot == null ? Object.FindAnyObjectByType<PlayerHealth>() : playerRoot.GetComponent<PlayerHealth>();
+            }
+
+            if (playerMana == null)
+            {
+                playerMana = playerRoot == null ? Object.FindAnyObjectByType<PlayerMana>() : playerRoot.GetComponent<PlayerMana>();
+            }
+
+            if (playerStamina == null)
+            {
+                playerStamina = playerRoot == null ? Object.FindAnyObjectByType<PlayerStamina>() : playerRoot.GetComponent<PlayerStamina>();
+            }
+
+            if (statusEffectController == null)
+            {
+                statusEffectController = playerRoot == null ? Object.FindAnyObjectByType<StatusEffectController>() : playerRoot.GetComponent<StatusEffectController>();
+            }
+        }
+
+        private void EnsurePlayerStatsVitalsStatusParticipant()
+        {
+            if (!registerPlayerStatsVitalsStatus || statsVitalsStatusParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerStats == null || playerHealth == null || playerMana == null || playerStamina == null || statusEffectController == null)
+            {
+                Debug.LogWarning("Player stats/vitals/status persistence participant was not registered because one or more prototype player runtime components are missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player stats/vitals/status persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            statsVitalsStatusParticipant = new PlayerStatsVitalsStatusPersistenceParticipant(
+                playerStats,
+                playerHealth,
+                playerMana,
+                playerStamina,
+                statusEffectController,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(statsVitalsStatusParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                statsVitalsStatusParticipant = null;
             }
         }
 

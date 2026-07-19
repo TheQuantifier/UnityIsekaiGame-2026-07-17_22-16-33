@@ -127,6 +127,22 @@ namespace UnityIsekaiGame.Gameplay
             stamina.SetCurrent(stamina.MaximumValue);
         }
 
+        public bool TryRestoreForPersistence(float restoredStamina, out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (float.IsNaN(restoredStamina) || float.IsInfinity(restoredStamina) || restoredStamina < 0f)
+            {
+                failureReason = $"Stamina value {restoredStamina} is invalid for save restoration.";
+                return false;
+            }
+
+            sprintingThisFrame = false;
+            regenerationBlockedUntil = 0f;
+            stamina.SetCurrent(Mathf.Clamp(restoredStamina, 0f, stamina.MaximumValue));
+            exhausted = stamina.IsEmpty;
+            return true;
+        }
+
         public bool CanSpend(float amount)
         {
             return amount <= 0f || stamina.CanSpend(amount);
