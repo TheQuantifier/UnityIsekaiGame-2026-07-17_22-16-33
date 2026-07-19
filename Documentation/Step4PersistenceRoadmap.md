@@ -64,3 +64,9 @@ Current objective keys use authored stage/objective indexes with stage ID valida
 ## Feature 4.5 Status
 
 Feature 4.5 adds optional `player.location` after quests/contracts in the load order. It persists stable scene key `scene.prototype`, current place ID, player root position/rotation, diagnostic scene data, and fallback spawn ID. Same-scene restoration is supported with CharacterController-safe teleport, movement transient reset, current-place refresh, and Reach Location suppression during load. Cross-scene restoration is rejected clearly until a controlled asynchronous scene loading service is added.
+
+## Feature 4.6 Status
+
+Feature 4.6 adds persistent world-entity identity. Authored scene objects use stable IDs such as `entity.scene.prototype.enemy.primary`, runtime spawned objects use generated `entity.<world>.runtime.<guid>` IDs, and restored runtime objects preserve their saved IDs. `WorldEntityRegistry` rejects duplicates and resolves currently loaded identities, while `WorldEntityReference` provides a versioned serializable handle for future save participants.
+
+This is not full world-state persistence. Pickups, enemies, NPCs, doors, containers, and region simulation still need explicit server/world/region participants before their mutable state can be saved. The identity layer exists so those later participants can reference exact world objects safely.

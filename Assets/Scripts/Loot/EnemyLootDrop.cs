@@ -2,7 +2,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Loot
 {
@@ -16,6 +18,9 @@ namespace UnityIsekaiGame.Loot
         [SerializeField, Min(0f)] private float colliderClearance = 0.5f;
         [SerializeField, Min(0f)] private float spawnHeightOffset = 0.25f;
         [SerializeField] private Material pickupMaterial;
+        [SerializeField] private string sceneKey = "scene.prototype";
+        [SerializeField] private string worldId = PersistenceService.LocalWorldId;
+        [SerializeField] private bool assignPersistentWorldEntityIdsToDrops = true;
 
         private readonly List<GameObject> spawnedLoot = new List<GameObject>();
         private readonly ILootRandom random = new UnityLootRandom();
@@ -130,6 +135,14 @@ namespace UnityIsekaiGame.Loot
 
             WorldItemPickup worldPickup = pickup.AddComponent<WorldItemPickup>();
             worldPickup.Configure(roll.Item, roll.Quantity);
+            if (assignPersistentWorldEntityIdsToDrops)
+            {
+                WorldEntitySpawnResult identityResult = WorldEntityIdentityFactory.CreateRuntimeIdentity(pickup, sceneKey, worldId, roll.Item.Id);
+                if (!identityResult.Succeeded)
+                {
+                    Debug.LogWarning($"Dropped loot world-entity identity failed: {identityResult.Message}");
+                }
+            }
 
             spawnedLoot.Add(pickup);
 

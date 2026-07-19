@@ -63,6 +63,8 @@ Added prototype profiles:
 
 The prototype player and prototype enemy in `PrototypeScene` now reference these profiles while preserving their legacy fallback values. `PrototypeNpcPerson` references `being.person` and does not require an actor profile.
 
+Feature 4.6 gives the authored Prototype Enemy and Prototype Dialogue NPC separate `WorldEntityIdentity` values. `BeingDefinition`, `ActorProfileDefinition`, and `PersonDefinition` describe static content; world entity IDs identify specific scene/runtime objects that may later carry mutable world state.
+
 ## Catalog And Validation
 
 `BeingDefinition` and `ActorProfileDefinition` implement `IGameDefinition` and are registered in `PrototypeDefinitionCatalog`.
@@ -122,3 +124,5 @@ To create a new actor profile:
 ## Known Limitations
 
 This feature does not implement full species biology, character creation, body types, visuals, professions, skills, levels, factions, relationships, schedules, AI decisions, damage types, resistances, procedural actors, full save/load, or multiplayer replication. Locomotion and social metadata are classification only and do not drive movement, AI, dialogue, or combat behavior yet.
+
+World entity identity does not change that boundary. It provides actor object handles for future persistence, but actor mutable state still needs explicit server/world/player-owned participants.

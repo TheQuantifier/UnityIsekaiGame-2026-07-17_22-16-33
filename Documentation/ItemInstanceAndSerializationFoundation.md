@@ -140,6 +140,8 @@ Pickups, loot, quest rewards, and contract rewards still grant definition plus q
 
 Future extensions can add generated item instances beside the existing definition path. They should not randomize quality or condition until generation rules and save/load ownership are explicit.
 
+Feature 4.6 adds separate world entity IDs for in-world pickup objects. A pickup's `WorldEntityIdentity` identifies the scene/runtime object that can be collected, while an `ItemInstance` ID identifies the item after it exists in inventory or equipment. These IDs must not be reused for each other.
+
 ## Validation Rules
 
 Static definition validation warns when:
@@ -167,3 +169,4 @@ Recommended next steps:
 2. Add versioned migrations when item-instance payloads change.
 3. Add current vital persistence after equipment max-stat restoration.
 4. Only then make condition, quality, enchantments, or ownership affect gameplay.
+5. Use world entity references for pickup/container source objects only when a world/region participant owns that state.

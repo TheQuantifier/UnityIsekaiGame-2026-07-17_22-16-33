@@ -31,6 +31,8 @@ The maintenance setup organizes scene objects under these parents where possible
 
 Generated zone floors, signs, pickups, status applicators, delivery target, damage dummy, and test points are kept under `4.4B Generated Usability Layout` or the relevant functional parent. Re-running the setup replaces generated objects by stable names.
 
+Scene setup also assigns `WorldEntityIdentity` components to authored prototype objects that are likely future persistence participants or reference targets. These IDs are stable object handles, not static definition IDs.
+
 ## Pickup Groups
 
 The prototype item area should include:
@@ -44,6 +46,8 @@ The prototype item area should include:
 - two Prototype Helmet pickups.
 
 The repeated sword and helmet pickups use the same static `ItemDefinition` assets. Runtime instance identity still comes from the existing inventory item-instance path.
+
+Generated pickups also receive authored world entity IDs so future pickup-state persistence can distinguish "this scene pickup" from the item definition it grants and from any item instance created after collection.
 
 ## Combat, Loot, and Status Areas
 
@@ -105,6 +109,8 @@ The Test Lab now exposes scene `PrototypeTestPoint` objects as a selector and a 
 - `test-point.contract-board`
 - `test-point.investigation-area`
 
+The Test Lab also exposes a `World Entities` section for refreshing registry diagnostics, spawning persistent runtime loot, spawning transient loot, destroying/recreating the last persistent loot by saved ID, and proving duplicate world entity IDs are rejected.
+
 ## Adding New Test Objects
 
 When adding new prototype test objects:
@@ -114,6 +120,7 @@ When adding new prototype test objects:
 - keep labels descriptive and prototype-only;
 - do not duplicate static definitions only to create runtime variety;
 - keep colliders spaced so interaction prompts target one object at a time;
+- assign a stable `WorldEntityIdentity` when the object may later be saved, restored, or referenced by world/region persistence;
 - add a Test Lab shortcut only when it exercises an existing runtime pathway.
 
 ## Known Limitations

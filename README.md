@@ -90,6 +90,7 @@ Current foundations include:
 - Item definitions, item rarity, world pickups, and item taxonomy metadata.
 - Inventory data, stacking, stateful item instances, inventory/equipment save-data DTOs, and inventory UI.
 - Save-file envelope, persistence service, save-slot metadata, atomic local writes, backups, development save/load commands, player-scoped inventory/equipment persistence, player-scoped vital/status persistence, player-scoped quest/contract persistence, and same-scene player scene/place/position persistence.
+- Persistent world-entity identity handles for authored scene objects and runtime spawned world objects.
 - Consumable item use.
 - Health, stamina, and mana.
 - Equipment, generic runtime actor statistics, and typed damage resistance modifiers.
@@ -110,6 +111,7 @@ Player inventory/equipment persistence is documented in `Documentation/PlayerInv
 Player stats/vitals/status persistence is documented in `Documentation/PlayerStatsVitalsStatusPersistence.md`.
 Quest and contract persistence is documented in `Documentation/QuestAndContractPersistence.md`.
 Player position, scene, and place persistence is documented in `Documentation/PlayerPositionSceneAndPlacePersistence.md`.
+Persistent world-entity identity is documented in `Documentation/PersistentWorldEntityIdentity.md`.
 The editor/development-build Prototype Systems Test Lab is documented in `Documentation/PrototypeSystemsTestLab.md`.
 PrototypeScene usability, zone layout, pickup grouping, and menu layout standards are documented in `Documentation/PrototypeSceneAndMenuUsability.md`.
 

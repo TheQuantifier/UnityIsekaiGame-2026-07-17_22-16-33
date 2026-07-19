@@ -67,6 +67,7 @@ The generated Test Lab page includes:
 - contract accept and clear actions;
 - save, load, validate, and delete slot actions;
 - teleport to scene test points;
+- world entity diagnostics, runtime persistent loot spawn, transient loot spawn, destroy/recreate proof, and duplicate-ID rejection proof;
 - scenario buttons for clean baseline, combat setup, full inventory, quest midpoint, contract testing, and persistence round trip;
 - diagnostics and operation history readouts.
 
@@ -86,6 +87,7 @@ Diagnostics currently report:
 - missing core references;
 - duplicate item instance IDs across inventory and equipment;
 - duplicate runtime status application IDs on player and enemy.
+- registered world entity IDs through the World Entities Test Lab section.
 
 The diagnostics are intentionally replaceable. They are meant to catch common prototype setup mistakes, not to replace definition validation, automated tests, or future PlayMode system test suites.
 
@@ -109,8 +111,13 @@ Use the Test Lab only in the existing Tab menu:
 14. Use `Next Quest`, start a quest, and use Talk/Reach/Defeat report buttons to verify quest progress changes in Journal.
 15. Use `Next Contract`, accept a contract, and verify it appears in Journal.
 16. Use the persistence scenario, click `Save`, change player state, click `Load`, and confirm saved player state restores.
-17. Click `Delete Save` once and confirm it requires confirmation. Click it again only if you want to remove the prototype slot.
-18. Close the Tab menu and confirm movement, look, interaction, combat, and normal prototype controls resume.
+17. Open the `World Entities` Test Lab section. Click `Refresh`, then confirm authored PrototypeScene entities are listed.
+18. Select an item and click `Spawn Persistent`; confirm the spawned loot gets an `entity.local-world.runtime.*` ID.
+19. Click `Destroy Spawned`, then `Recreate Saved`; confirm the same runtime world entity ID is restored.
+20. Click `Duplicate Proof`; confirm the lab reports duplicate rejection instead of registering two objects with the same ID.
+21. Click `Spawn Transient`; confirm it appears in-world but is not added to the registered world entity list.
+22. Click `Delete Save` once and confirm it requires confirmation. Click it again only if you want to remove the prototype slot.
+23. Close the Tab menu and confirm movement, look, interaction, combat, and normal prototype controls resume.
 
 ## Known Limitations
 
