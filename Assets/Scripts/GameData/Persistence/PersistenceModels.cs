@@ -7,6 +7,7 @@ namespace UnityIsekaiGame.GameData.Persistence
     {
         Bootstrap = 0,
         ActorBase = 100,
+        IdentityAndProgression = 150,
         Inventory = 200,
         Equipment = 300,
         Statuses = 400,

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.3.13-step-3
+  contentVersion: 0.5.1-step-5
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -158,3 +158,50 @@ MonoBehaviour:
   - {fileID: 11400000, guid: ef042dde41204b11bde31bc23acb1274, type: 2}
   - {fileID: 11400000, guid: f5f2088bf5b5474b8ce0dfca18ff2550, type: 2}
   - {fileID: 11400000, guid: a0ff6caaaf2449c1aacdc72eda1c3f59, type: 2}
+  - {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  - {fileID: 11400000, guid: 1c777db540c0402aaada8617229d458c, type: 2}
+  - {fileID: 11400000, guid: b63fbf28b82b4df68404a71275c200ad, type: 2}
+  - {fileID: 11400000, guid: 8e64194aa47241208d890b7e6884bcbd, type: 2}
+  - {fileID: 11400000, guid: faad786274b14c02bcdc104ae71bf5c3, type: 2}
+  - {fileID: 11400000, guid: 33ec1581a9ac4c32ad6cce032b3a66f6, type: 2}
+  - {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+  - {fileID: 11400000, guid: a88f38bcae5748d1899429844e132634, type: 2}
+  - {fileID: 11400000, guid: 25fb6b176c784a77ba207388b1b8b42a, type: 2}
+  - {fileID: 11400000, guid: 97ec1590897e4e77a47c00c68974960f, type: 2}
+  - {fileID: 11400000, guid: b4809ab63e634d3caec0e3d5b21a069d, type: 2}
+  - {fileID: 11400000, guid: 0d92057dc23343c688cd019dfc069f46, type: 2}
+  - {fileID: 11400000, guid: eeb502dda8bd4662a5248f76da42e003, type: 2}
+  - {fileID: 11400000, guid: 747ecf653fdf4c98a63ca48e316d79d4, type: 2}
+  - {fileID: 11400000, guid: 72d24a9fc74940d7a404479c0f03ce3e, type: 2}
+  - {fileID: 11400000, guid: bd70f669a198432c9c6bdf9b4e02aa6a, type: 2}
+  - {fileID: 11400000, guid: a512dd3ef609446f89e830912e731de3, type: 2}
+  - {fileID: 11400000, guid: 915026e85e324340a61c9d0bef588be8, type: 2}
+  - {fileID: 11400000, guid: 8d847242c716403683233e2822d55e3a, type: 2}
+  - {fileID: 11400000, guid: 41397d16a7f34ad3b466e28a40a27abf, type: 2}
+  - {fileID: 11400000, guid: 462c1e731a9847069b5463ca96fefb7d, type: 2}
+  - {fileID: 11400000, guid: fdc5769e19554115a1787783b98e7705, type: 2}
+  - {fileID: 11400000, guid: a4fb21ba966c41c0bd3b643cc19a3d9a, type: 2}
+  - {fileID: 11400000, guid: e2dcc913fa014f6dbbc5c5deb70a3e68, type: 2}
+  - {fileID: 11400000, guid: ca4b21bdfcb64cbfab3abed51d2f7eca, type: 2}
+  - {fileID: 11400000, guid: 2bc965f2d5734a0783d0c76d4129014f, type: 2}
+  - {fileID: 11400000, guid: a7010ad03cea4e54b53500f538022681, type: 2}
+  - {fileID: 11400000, guid: 04aff63d3e324479b25cb92534f74028, type: 2}
+  - {fileID: 11400000, guid: 3ff07fc0b978464fba2c0941c1887703, type: 2}
+  - {fileID: 11400000, guid: 8df797f33f8544db8fd1944647952b56, type: 2}
+  - {fileID: 11400000, guid: 9886ab69802e43ebbaa24675354f2a01, type: 2}
+  - {fileID: 11400000, guid: 3b607dff9a9c4f109cf9798f37ae830c, type: 2}
+  - {fileID: 11400000, guid: 35821831e7d6480aae8b3a7742822b3f, type: 2}
+  - {fileID: 11400000, guid: 57a2d8d670424e50b9d433d0eb8e6201, type: 2}
+  - {fileID: 11400000, guid: eaf0fe8924f34463b21cf0575130ce6d, type: 2}
+  - {fileID: 11400000, guid: 822437a1977a4cbd882d556949296e0f, type: 2}
+  - {fileID: 11400000, guid: 7bef07a0a7cf493195bd0d70e67ef127, type: 2}
+  - {fileID: 11400000, guid: b0688247386d4e0e9a5ee9635a1a9c15, type: 2}
+  - {fileID: 11400000, guid: 927714d6ad6a489e98baa05514f3c144, type: 2}
+  - {fileID: 11400000, guid: 713370d3685942439d5b0eed0fd99fc9, type: 2}
+  - {fileID: 11400000, guid: 0dee14c0a3dd4062b85b107a16bd307e, type: 2}
+  - {fileID: 11400000, guid: ac8208bad3654522a3605c86bbe586f8, type: 2}
+  - {fileID: 11400000, guid: 1a0538061edb4892bebd84a98196a8e9, type: 2}
+  - {fileID: 11400000, guid: 6b280165bf514b158484860b44e3984c, type: 2}
+  - {fileID: 11400000, guid: 47a0c2c511e24a69b63b00c83e0d73ad, type: 2}
+  - {fileID: 11400000, guid: c8c7ce1062384b51a93229f774e3e6cc, type: 2}
+  - {fileID: 11400000, guid: ddec5815087c4f669d58f25f33dc4c52, type: 2}

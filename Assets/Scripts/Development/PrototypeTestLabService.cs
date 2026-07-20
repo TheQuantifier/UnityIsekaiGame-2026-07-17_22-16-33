@@ -15,6 +15,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
+using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
@@ -54,6 +55,7 @@ namespace UnityIsekaiGame.Development
         {
             context = newContext;
             registry = CreateRegistry(context?.DefinitionCatalog);
+            context?.IdentityProgression?.RegisterDefinitionCache(registry);
             selectorCache.Clear();
         }
 
@@ -107,12 +109,24 @@ namespace UnityIsekaiGame.Development
                 $"Selected Spell: {(context.SpellLoadout == null || context.SpellLoadout.SelectedSpell == null ? "None" : FormatDefinition(context.SpellLoadout.SelectedSpell))}",
                 $"Quests: {(context.QuestLog == null ? 0 : context.QuestLog.Quests.Count)}",
                 $"Contracts: {(context.ContractJournal == null ? 0 : context.ContractJournal.Contracts.Count)}",
+                $"Identity: {FormatIdentityOneLine()}",
                 $"Enemy: {FormatEnemy()}",
                 $"Location: {FormatLocationOneLine()}",
                 $"Definitions: {(registry == null ? 0 : registry.Count)}",
                 $"Persistence Slot: {CurrentSlotId}",
                 $"Modal Active: {PrototypeGameplayModalState.IsModalActive}"
             });
+        }
+
+        public string BuildIdentityProgressionSummary()
+        {
+            if (context?.IdentityProgression == null)
+            {
+                return "Player identity/progression component is missing.";
+            }
+
+            context.IdentityProgression.RegisterDefinitionCache(registry);
+            return context.IdentityProgression.BuildDiagnosticSummary();
         }
 
         public string BuildLocationSummary()
@@ -798,6 +812,207 @@ namespace UnityIsekaiGame.Development
             return RecordSuccess("Validate Current Location", summary.Replace(Environment.NewLine, " | "));
         }
 
+        public PrototypeTestLabOperation ValidateIdentityProgression()
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Validate Identity", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            bool valid = progression.ValidateIdentity(out string failureReason);
+            return Record(valid, "Validate Identity", valid ? "Valid" : "Invalid", valid ? "Identity IDs are distinct and well-formed." : failureReason);
+        }
+
+        public PrototypeTestLabOperation GenerateOrigin(int seed)
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Generate Origin", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            if (registry == null)
+            {
+                return RecordFailure("Generate Origin", "Definition registry is missing.", "MissingRegistry");
+            }
+
+            int effectiveSeed = seed == 0 ? Environment.TickCount : seed;
+            ProgressionOperationResult result = progression.AssignRandomOrigin(registry, effectiveSeed);
+            return Record(result.Succeeded, "Generate Origin", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation ProveOriginAssignmentIsOnceOnly()
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Duplicate Origin Proof", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            if (registry == null)
+            {
+                return RecordFailure("Duplicate Origin Proof", "Definition registry is missing.", "MissingRegistry");
+            }
+
+            ProgressionOperationResult result = progression.AssignRandomOrigin(registry, Environment.TickCount);
+            bool expectedFailure = !result.Succeeded && string.Equals(result.Code, "OriginAlreadyAssigned", StringComparison.Ordinal);
+            return Record(expectedFailure, "Duplicate Origin Proof", expectedFailure ? "Rejected" : result.Code, expectedFailure ? "Second origin assignment was correctly rejected." : result.Message);
+        }
+
+        public PrototypeTestLabOperation ResetIdentityProgression(bool confirmed)
+        {
+            if (!RequireConfirmation("ResetIdentityProgression", confirmed, out PrototypeTestLabOperation confirmation))
+            {
+                return confirmation;
+            }
+
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Reset Identity", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            ProgressionOperationResult result = progression.ResetIdentityProgressionForDevelopment();
+            return Record(result.Succeeded, "Reset Identity", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation AdvanceBirthGiftProgress(float seconds)
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Advance Birth Gift", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            ProgressionOperationResult result = progression.AdvanceBirthGiftProgressForTesting(Mathf.Max(0f, seconds), registry);
+            return Record(result.Succeeded, "Advance Birth Gift", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation ForceBirthGiftAwakening()
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Awaken Birth Gift", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            ProgressionOperationResult result = progression.ForceBirthGiftAwakening(registry);
+            return Record(result.Succeeded, "Awaken Birth Gift", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation AddRole(RoleDefinition role, bool acceptConflicts)
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Add Role", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            RoleAcquisitionResult result = progression.AddRole(role, "test-lab", "manual-test-lab", primary: false, acceptConflicts: acceptConflicts);
+            string message = result.Conflict != null && result.Conflict.HasConflict
+                ? $"{result.Message} Blockers={string.Join(", ", result.Conflict.Blockers.Select(blocker => blocker.roleDefinitionId))}"
+                : result.Message;
+            return Record(result.Succeeded, acceptConflicts ? "Add Role Accepting Conflicts" : "Add Role", result.Code, message);
+        }
+
+        public PrototypeTestLabOperation SuspendFirstActiveRole()
+        {
+            if (!TryGetFirstActiveRole(out PlayerIdentityProgression progression, out RuntimeRoleRecord role, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ProgressionOperationResult result = progression.SuspendRole(role.recordId);
+            return Record(result.Succeeded, "Suspend Role", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation RevokeFirstActiveRole()
+        {
+            if (!TryGetFirstActiveRole(out PlayerIdentityProgression progression, out RuntimeRoleRecord role, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ProgressionOperationResult result = progression.RevokeRole(role.recordId);
+            return Record(result.Succeeded, "Revoke Role", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation AbandonFirstActiveRole()
+        {
+            if (!TryGetFirstActiveRole(out PlayerIdentityProgression progression, out RuntimeRoleRecord role, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ProgressionOperationResult result = progression.AbandonRole(role.recordId);
+            return Record(result.Succeeded, "Abandon Role", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation AddGlobalSocialStatus(SocialStatusDefinition status)
+        {
+            return AddSocialStatus(status, SocialStatusContextKind.Global, string.Empty, "Add Global Status");
+        }
+
+        public PrototypeTestLabOperation AddPlaceSocialStatus(SocialStatusDefinition status, PlaceDefinition place)
+        {
+            string placeId = place == null ? string.Empty : place.Id;
+            return AddSocialStatus(status, SocialStatusContextKind.Place, placeId, "Add Place Status");
+        }
+
+        public PrototypeTestLabOperation ResolveFirstActiveSocialStatus()
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Resolve Social Status", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            RuntimeSocialStatusRecord status = progression.SocialStatuses.FirstOrDefault(record => record.lifecycleState == SocialStatusLifecycleState.Active);
+            if (status == null)
+            {
+                return RecordFailure("Resolve Social Status", "No active social status exists.", "MissingActiveStatus");
+            }
+
+            ProgressionOperationResult result = progression.ResolveSocialStatus(status.recordId, "test-lab-resolved");
+            return Record(result.Succeeded, "Resolve Social Status", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation AddCurrency(CurrencyDefinition currency, long amount)
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Add Currency", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            ProgressionOperationResult result = progression.AddCurrency(currency, Math.Max(0L, amount));
+            return Record(result.Succeeded, "Add Currency", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation SpendCurrency(CurrencyDefinition currency, long amount)
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Spend Currency", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            ProgressionOperationResult result = progression.SpendCurrency(currency, Math.Max(0L, amount));
+            return Record(result.Succeeded, "Spend Currency", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation RecordSuccessfulActivity(float difficulty)
+        {
+            return RecordActivity(ActivityOutcome.Success, difficulty, "Record Success Activity");
+        }
+
+        public PrototypeTestLabOperation RecordFailedActivity(float difficulty)
+        {
+            return RecordActivity(ActivityOutcome.Failure, difficulty, "Record Failure Activity");
+        }
+
+        public PrototypeTestLabOperation RecordParticipation()
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure("Record Participation", "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            ProgressionOperationResult result = progression.RecordParticipation($"participation.test-lab.{Guid.NewGuid():N}", "test-lab", "PrototypeTestLab");
+            return Record(result.Succeeded, "Record Participation", result.Code, result.Message);
+        }
+
         public PrototypeTestLabOperation RefreshWorldEntityDiagnostics()
         {
             return RecordSuccess("World Entity Diagnostics", $"Registered {WorldEntityRegistry.Count} world entity identity object(s).");
@@ -1084,6 +1299,66 @@ namespace UnityIsekaiGame.Development
             return true;
         }
 
+        private bool EnsureIdentityProgression(out PlayerIdentityProgression progression)
+        {
+            progression = context?.IdentityProgression;
+            if (progression == null)
+            {
+                return false;
+            }
+
+            progression.RegisterDefinitionCache(registry);
+            return true;
+        }
+
+        private bool TryGetFirstActiveRole(out PlayerIdentityProgression progression, out RuntimeRoleRecord role, out PrototypeTestLabOperation failure)
+        {
+            role = null;
+            if (!EnsureIdentityProgression(out progression))
+            {
+                failure = RecordFailure("Role Operation", "Player identity/progression component is missing.", "MissingIdentityProgression");
+                return false;
+            }
+
+            role = progression.Roles.FirstOrDefault(record => record.lifecycleState == RoleLifecycleState.Active);
+            if (role != null)
+            {
+                failure = default;
+                return true;
+            }
+
+            failure = RecordFailure("Role Operation", "No active role exists.", "MissingActiveRole");
+            return false;
+        }
+
+        private PrototypeTestLabOperation AddSocialStatus(SocialStatusDefinition status, SocialStatusContextKind contextKind, string contextTargetId, string operationName)
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure(operationName, "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            ProgressionOperationResult result = progression.AddSocialStatus(status, contextKind, contextTargetId, "test-lab", "manual-test-lab");
+            return Record(result.Succeeded, operationName, result.Code, result.Message);
+        }
+
+        private PrototypeTestLabOperation RecordActivity(ActivityOutcome outcome, float difficulty, string operationName)
+        {
+            if (!EnsureIdentityProgression(out PlayerIdentityProgression progression))
+            {
+                return RecordFailure(operationName, "Player identity/progression component is missing.", "MissingIdentityProgression");
+            }
+
+            ProgressionOperationResult result = progression.RecordActivityOutcome(
+                $"activity.test-lab.{Guid.NewGuid():N}",
+                ActivityType.DevelopmentTest,
+                outcome,
+                Mathf.Clamp01(difficulty),
+                "test-lab",
+                "PrototypeTestLab");
+            return Record(result.Succeeded, operationName, result.Code, result.Message);
+        }
+
         private bool RequireConfirmation(string key, bool confirmed, out PrototypeTestLabOperation result)
         {
             result = default;
@@ -1206,6 +1481,21 @@ namespace UnityIsekaiGame.Development
             return context?.EnemyHealth == null
                 ? "Missing"
                 : $"{context.EnemyHealth.CurrentHealth:0.#}/{context.EnemyHealth.MaximumHealth:0.#} Defeated={context.EnemyHealth.IsDefeated}";
+        }
+
+        private string FormatIdentityOneLine()
+        {
+            if (context?.IdentityProgression == null)
+            {
+                return "Missing";
+            }
+
+            RuntimeOriginAssignmentRecord origin = context.IdentityProgression.Origin;
+            RuntimeBirthGiftRecord gift = context.IdentityProgression.BirthGift;
+            OverallLevelBreakdown level = context.IdentityProgression.CalculateOverallLevel();
+            string originId = origin != null && origin.assigned ? origin.originId : "Unassigned";
+            string giftId = string.IsNullOrWhiteSpace(gift?.giftDefinitionId) ? "None" : $"{gift.giftDefinitionId}:{gift.state}";
+            return $"{originId} | Gift={giftId} | Level={level.OverallLevel}";
         }
 
         private string FormatLocationOneLine()

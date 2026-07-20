@@ -13,6 +13,7 @@ This matrix separates static data, player runtime state, account state, shared-w
 | Accepted personal contracts | Player runtime | Yes | Server for multiplayer | Shared boards are not persisted. |
 | Player position | Player runtime | Yes, same-scene | Server for multiplayer | Cross-scene restore deferred. |
 | Player current place | Player runtime | Yes | Server for multiplayer | Place ID plus tracker refresh. |
+| Player identity/progression | Player runtime | Yes | Server for multiplayer | `player.identity-progression`; account/player/person/world-entity IDs stay distinct and shared-world state is not restored by this participant. |
 | Save-slot metadata | Session/local storage metadata | Yes | Server/account service later | Local UI descriptor, not gameplay state. |
 | Play time | Player/account diagnostic | Yes | Server/account service later | Prototype local play time only. |
 | Autosave state | Local player save storage | Yes | Server/account service later | Three local generations plus staging slot. |

@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 754588559c064cffbb14a475a1f8d20f, type: 3}
+  m_Name: SummonedRoyalCourtOrigin
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.OriginDefinition
+  originId: origin.summoned-otherworlder.royal-court
+  displayName: Summoned By Royal Court
+  description: Otherworlder known to the prototype kingdom authority.
+  primaryCategory: {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: 24913325812e4a9e878f22f01dca5b2c, type: 2}
+  family: {fileID: 11400000, guid: 57a2d8d670424e50b9d433d0eb8e6201, type: 2}
+  selectionWeight: 1
+  enabledForAlpha: 1
+  startingStatGrants:
+  - statType: 2
+    value: 2
+  influencedGiftPool:
+  - {fileID: 11400000, guid: 9886ab69802e43ebbaa24675354f2a01, type: 2}
+  - {fileID: 11400000, guid: 3b607dff9a9c4f109cf9798f37ae830c, type: 2}
+  giftWeightModifiers: []
+  giftRarityWeightModifiers: []
+  startingGold:
+    currency: {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+    baseAmount: 75
+    randomVariation: 20
+  startingRole: {fileID: 11400000, guid: 97ec1590897e4e77a47c00c68974960f, type: 2}
+  startingSocialStatuses:
+  - socialStatus: {fileID: 11400000, guid: a512dd3ef609446f89e830912e731de3, type: 2}
+    contextKind: 0
+    factionContext: {fileID: 0}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Otherworld arrival
+  - socialStatus: {fileID: 11400000, guid: 915026e85e324340a61c9d0bef588be8, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Royal protection
+  - socialStatus: {fileID: 11400000, guid: 72d24a9fc74940d7a404479c0f03ce3e, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Court record
+  startingTitle: {fileID: 0}
+  futureHomeReference: royal-guest-quarter
+  futureRelationshipReferences: court-sponsor-placeholder
+  futureFactionObligations: royal-summons-obligation-placeholder
+  futureStartingLocationReference: place.prototype-town

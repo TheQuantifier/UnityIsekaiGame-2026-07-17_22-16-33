@@ -7,10 +7,12 @@ using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Places;
+using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.UI.Inventory;
+using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -25,6 +27,8 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PlayerMana playerMana;
         [SerializeField] private PlayerStamina playerStamina;
         [SerializeField] private StatusEffectController statusEffectController;
+        [SerializeField] private PlayerIdentityProgression playerIdentityProgression;
+        [SerializeField] private OverallLevelConfiguration overallLevelConfiguration;
         [SerializeField] private PlayerQuestLog playerQuestLog;
         [SerializeField] private PlayerContractJournal playerContractJournal;
         [SerializeField] private Transform playerRoot;
@@ -34,6 +38,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private string sceneKey = "scene.prototype";
         [SerializeField] private string defaultSpawnPointId = "spawn.prototype.default";
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
+        [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerQuestContract = true;
         [SerializeField] private bool registerPlayerLocation = true;
@@ -48,6 +53,7 @@ namespace UnityIsekaiGame.Gameplay
 
         private PersistenceService service;
         private PrototypePersistenceStateParticipant participant;
+        private PlayerIdentityProgressionPersistenceParticipant identityProgressionParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerQuestContractPersistenceParticipant questContractParticipant;
@@ -83,6 +89,12 @@ namespace UnityIsekaiGame.Gameplay
                 inventoryEquipmentParticipant = null;
             }
 
+            if (service != null && identityProgressionParticipant != null)
+            {
+                service.UnregisterParticipant(identityProgressionParticipant);
+                identityProgressionParticipant = null;
+            }
+
             if (service != null && statsVitalsStatusParticipant != null)
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
@@ -113,6 +125,7 @@ namespace UnityIsekaiGame.Gameplay
             PlayerMana mana,
             PlayerStamina stamina,
             StatusEffectController statusController,
+            PlayerIdentityProgression identityProgression,
             PlayerQuestLog questLog,
             PlayerContractJournal contractJournal)
         {
@@ -124,6 +137,7 @@ namespace UnityIsekaiGame.Gameplay
             playerMana = mana;
             playerStamina = stamina;
             statusEffectController = statusController;
+            playerIdentityProgression = identityProgression;
             playerQuestLog = questLog;
             playerContractJournal = contractJournal;
             playerRoot = inventory == null ? playerRoot : inventory.transform;
@@ -156,6 +170,7 @@ namespace UnityIsekaiGame.Gameplay
                 }
             }
 
+            EnsurePlayerIdentityProgressionParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerQuestContractParticipant();
@@ -453,6 +468,44 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsurePlayerIdentityProgressionParticipant()
+        {
+            if (!registerPlayerIdentityProgression || identityProgressionParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerIdentityProgression == null)
+            {
+                Debug.LogWarning("Player identity/progression persistence participant was not registered because the prototype player identity/progression component is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player identity/progression persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            DefinitionRegistry registry = GetDefinitionRegistry();
+            playerIdentityProgression.ConfigureIdentity(service.AccountId, service.PlayerId);
+            playerIdentityProgression.RegisterDefinitionCache(registry);
+
+            identityProgressionParticipant = new PlayerIdentityProgressionPersistenceParticipant(
+                playerIdentityProgression,
+                GetDefinitionRegistry,
+                service.PlayerId,
+                service.AccountId);
+
+            service.RegisterParticipant(identityProgressionParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                identityProgressionParticipant = null;
+            }
+        }
+
         private void EnsureRuntimeHelpers()
         {
             if (playTimeTracker == null)
@@ -548,9 +601,29 @@ namespace UnityIsekaiGame.Gameplay
                 playerContractJournal = playerObject == null ? Object.FindAnyObjectByType<PlayerContractJournal>() : playerObject.GetComponent<PlayerContractJournal>();
             }
 
+            if (playerIdentityProgression == null)
+            {
+                playerIdentityProgression = playerObject == null ? Object.FindAnyObjectByType<PlayerIdentityProgression>() : playerObject.GetComponent<PlayerIdentityProgression>();
+            }
+
+            if (playerIdentityProgression == null && playerObject != null)
+            {
+                playerIdentityProgression = playerObject.AddComponent<PlayerIdentityProgression>();
+            }
+
             if (playerRoot == null)
             {
                 playerRoot = playerObject == null ? null : playerObject.transform;
+            }
+
+            if (playerIdentityProgression != null)
+            {
+                WorldEntityIdentity worldEntityIdentity = playerRoot == null ? null : playerRoot.GetComponent<WorldEntityIdentity>();
+                playerIdentityProgression.ConfigureRuntimeReferences(playerStats, worldEntityIdentity, playTimeTracker, overallLevelConfiguration);
+                if (definitionCatalog != null)
+                {
+                    playerIdentityProgression.RegisterDefinitionCache(GetDefinitionRegistry());
+                }
             }
 
             if (playerInput == null)
@@ -756,6 +829,11 @@ namespace UnityIsekaiGame.Gameplay
                 currentPlaceTracker.CurrentPlaceChanged += OnPlaceChanged;
             }
 
+            if (playerIdentityProgression != null)
+            {
+                playerIdentityProgression.ProgressionChanged += OnIdentityProgressionChanged;
+            }
+
             dirtyEventsSubscribed = true;
         }
 
@@ -797,6 +875,11 @@ namespace UnityIsekaiGame.Gameplay
                 statusEffectController.StatusChanged -= OnStatusChanged;
                 statusEffectController.StatusRemoved -= OnStatusChanged;
                 statusEffectController.StatusExpired -= OnStatusChanged;
+            }
+
+            if (playerIdentityProgression != null)
+            {
+                playerIdentityProgression.ProgressionChanged -= OnIdentityProgressionChanged;
             }
 
             if (playerQuestLog != null)
@@ -846,6 +929,16 @@ namespace UnityIsekaiGame.Gameplay
         private void OnPlaceChanged(PlaceDefinition place, bool entered)
         {
             dirtyTracker?.MarkDirty("Player location changed.");
+        }
+
+        private void OnIdentityProgressionChanged(PlayerIdentityProgression progression, bool restoring)
+        {
+            if (restoring)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player identity/progression changed.");
         }
 
         private string ResolveSceneKey()

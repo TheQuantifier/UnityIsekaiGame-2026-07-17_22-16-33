@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0b32e8ec1e644e288e8dc8fba718ec00, type: 3}
+  m_Name: SturdySoulGift
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.BirthGiftDefinition
+  birthGiftId: birth-gift.sturdy-soul
+  displayName: Sturdy Soul
+  description: Immediate innate resilience grant for prototype origin generation.
+  primaryCategory: {fileID: 11400000, guid: 33ec1581a9ac4c32ad6cce032b3a66f6, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  rarity: {fileID: 11400000, guid: d4b0d27a07fa46c085d39f87ffff6cbb, type: 2}
+  selectionWeight: 3
+  giftType: 0
+  grantedAbility:
+    ability: {fileID: 0}
+    futureAbilityId: 
+  permanentStatGrants:
+  - statType: 0
+    value: 3
+  futureGrowthAffinityEntries: []
+  awakeningMode: 0
+  requiredActivePlaytimeSeconds: 0
+  enabledForAlpha: 1
+  futureConditionData: 

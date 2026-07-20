@@ -1,0 +1,71 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 754588559c064cffbb14a475a1f8d20f, type: 3}
+  m_Name: NativeMerchantOrigin
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.OriginDefinition
+  originId: origin.native-born.merchant-family
+  displayName: Native Merchant Family
+  description: Local merchant-family origin with extra starting money and guild context.
+  primaryCategory: {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: cbc90424149442d08874d2e0289da4a8, type: 2}
+  family: {fileID: 11400000, guid: 35821831e7d6480aae8b3a7742822b3f, type: 2}
+  selectionWeight: 1.5
+  enabledForAlpha: 1
+  startingStatGrants:
+  - statType: 1
+    value: 2
+  influencedGiftPool:
+  - {fileID: 11400000, guid: 8df797f33f8544db8fd1944647952b56, type: 2}
+  - {fileID: 11400000, guid: 04aff63d3e324479b25cb92534f74028, type: 2}
+  giftWeightModifiers: []
+  giftRarityWeightModifiers: []
+  startingGold:
+    currency: {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+    baseAmount: 80
+    randomVariation: 25
+  startingRole: {fileID: 11400000, guid: a88f38bcae5748d1899429844e132634, type: 2}
+  startingSocialStatuses:
+  - socialStatus: {fileID: 11400000, guid: 0d92057dc23343c688cd019dfc069f46, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Origin assignment
+  - socialStatus: {fileID: 11400000, guid: eeb502dda8bd4662a5248f76da42e003, type: 2}
+    contextKind: 0
+    factionContext: {fileID: 0}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Origin assignment
+  - socialStatus: {fileID: 11400000, guid: 72d24a9fc74940d7a404479c0f03ce3e, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Origin assignment
+  - socialStatus: {fileID: 11400000, guid: a4fb21ba966c41c0bd3b643cc19a3d9a, type: 2}
+    contextKind: 6
+    factionContext: {fileID: 11400000, guid: 7e01f3a42a04430c94c818e54228d964, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Family trade registration
+  startingTitle: {fileID: 0}
+  futureHomeReference: prototype-market-home
+  futureRelationshipReferences: family.local-merchant
+  futureFactionObligations: merchant-guild-dues-placeholder
+  futureStartingLocationReference: place.prototype-town

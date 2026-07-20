@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 754588559c064cffbb14a475a1f8d20f, type: 3}
+  m_Name: SummonedMageTowerOrigin
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.OriginDefinition
+  originId: origin.summoned-otherworlder.mage-tower
+  displayName: Summoned By Mage Tower
+  description: Otherworlder with arcane-summoning metadata and mana grant.
+  primaryCategory: {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: eac27d0065b44f969205af5ca702cbe7, type: 2}
+  family: {fileID: 11400000, guid: 57a2d8d670424e50b9d433d0eb8e6201, type: 2}
+  selectionWeight: 1
+  enabledForAlpha: 1
+  startingStatGrants:
+  - statType: 2
+    value: 4
+  influencedGiftPool:
+  - {fileID: 11400000, guid: 3ff07fc0b978464fba2c0941c1887703, type: 2}
+  - {fileID: 11400000, guid: 3b607dff9a9c4f109cf9798f37ae830c, type: 2}
+  giftWeightModifiers: []
+  giftRarityWeightModifiers: []
+  startingGold:
+    currency: {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+    baseAmount: 70
+    randomVariation: 20
+  startingRole: {fileID: 11400000, guid: 97ec1590897e4e77a47c00c68974960f, type: 2}
+  startingSocialStatuses:
+  - socialStatus: {fileID: 11400000, guid: a512dd3ef609446f89e830912e731de3, type: 2}
+    contextKind: 0
+    factionContext: {fileID: 0}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Otherworld arrival
+  - socialStatus: {fileID: 11400000, guid: 915026e85e324340a61c9d0bef588be8, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Mage sponsor placeholder
+  - socialStatus: {fileID: 11400000, guid: 72d24a9fc74940d7a404479c0f03ce3e, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Sponsored arrival record
+  startingTitle: {fileID: 0}
+  futureHomeReference: mage-tower-guest-quarter
+  futureRelationshipReferences: mage-sponsor-placeholder
+  futureFactionObligations: mage-tower-study-placeholder
+  futureStartingLocationReference: place.prototype-town

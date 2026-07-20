@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cb5e774828042e99d1bad8d99a40e09, type: 3}
+  m_Name: NativeBornFamily
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.OriginFamilyDefinition
+  originFamilyId: origin-family.native-born
+  displayName: Native Born
+  description: Locals born into the prototype kingdom.
+  primaryCategory: {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: 73dfa74dbb8b4273bc4bfd4edbd2197a, type: 2}
+  selectionWeight: 3
+  enabledForAlpha: 1
+  allowedOrigins:
+  - {fileID: 11400000, guid: 822437a1977a4cbd882d556949296e0f, type: 2}
+  - {fileID: 11400000, guid: 7bef07a0a7cf493195bd0d70e67ef127, type: 2}
+  - {fileID: 11400000, guid: b0688247386d4e0e9a5ee9635a1a9c15, type: 2}
+  giftRarityWeightModifiers: []
+  defaultStartingMoney:
+    currency: {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+    baseAmount: 25
+    randomVariation: 10
+  futureSelectionMetadata: weighted-local-alpha-family
+  futureWorldCultureRestrictions: prototype-kingdom

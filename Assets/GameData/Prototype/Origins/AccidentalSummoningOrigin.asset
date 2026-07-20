@@ -1,0 +1,56 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 754588559c064cffbb14a475a1f8d20f, type: 3}
+  m_Name: AccidentalSummoningOrigin
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.OriginDefinition
+  originId: origin.summoned-otherworlder.accidental
+  displayName: Accidental Summoning
+  description: Otherworlder arrival with no formal sponsor or registry.
+  primaryCategory: {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  family: {fileID: 11400000, guid: 57a2d8d670424e50b9d433d0eb8e6201, type: 2}
+  selectionWeight: 0.7
+  enabledForAlpha: 1
+  startingStatGrants:
+  - statType: 5
+    value: 1
+  influencedGiftPool:
+  - {fileID: 11400000, guid: 04aff63d3e324479b25cb92534f74028, type: 2}
+  - {fileID: 11400000, guid: 3b607dff9a9c4f109cf9798f37ae830c, type: 2}
+  giftWeightModifiers: []
+  giftRarityWeightModifiers: []
+  startingGold:
+    currency: {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+    baseAmount: 10
+    randomVariation: 10
+  startingRole: {fileID: 11400000, guid: b4809ab63e634d3caec0e3d5b21a069d, type: 2}
+  startingSocialStatuses:
+  - socialStatus: {fileID: 11400000, guid: a512dd3ef609446f89e830912e731de3, type: 2}
+    contextKind: 0
+    factionContext: {fileID: 0}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Otherworld arrival
+  - socialStatus: {fileID: 11400000, guid: bd70f669a198432c9c6bdf9b4e02aa6a, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: No sponsor found
+  startingTitle: {fileID: 0}
+  futureHomeReference: unassigned
+  futureRelationshipReferences: none
+  futureFactionObligations: unregistered-arrival-placeholder
+  futureStartingLocationReference: place.prototype-town

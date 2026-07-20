@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1240b98d10f74c419cfb1cc6d399a0a5, type: 3}
+  m_Name: UnregisteredStatus
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.SocialStatusDefinition
+  socialStatusId: social-status.unregistered
+  displayName: Unregistered
+  description: Not yet recorded by a local authority.
+  primaryCategory: {fileID: 11400000, guid: b63fbf28b82b4df68404a71275c200ad, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: 24913325812e4a9e878f22f01dca5b2c, type: 2}
+  permissions: []
+  restrictions: []
+  accessRules: []
+  serviceEligibility: []
+  priceModifier: 0
+  taxModifier: 0
+  statModifiers: []
+  resistanceModifiers: []
+  grantedAbilities: []
+  blockedAbilities: []
+  legalConsequences: []
+  relationshipEffects: []
+  hostilityEffects: []
+  defaultContextKind: 2
+  allowMultipleContexts: 1
+  allowGlobalApplication: 1
+  retainHistory: 1
+  futureExpirationResolutionMetadata: 

@@ -5,6 +5,11 @@ namespace UnityIsekaiGame.Stats
         Equipment,
         StatusEffect,
         Ability,
+        Origin,
+        BirthGift,
+        Role,
+        SocialStatus,
+        Progression,
         Debug,
         Unknown
     }

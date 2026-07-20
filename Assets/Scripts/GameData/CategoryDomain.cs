@@ -13,6 +13,12 @@ namespace UnityIsekaiGame.GameData
         Quest,
         Contract,
         Profession,
-        Damage
+        Damage,
+        Origin,
+        Role,
+        SocialStatus,
+        Currency,
+        Title,
+        BirthGift
     }
 }

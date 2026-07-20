@@ -11,6 +11,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
+using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
 
@@ -27,6 +28,7 @@ namespace UnityIsekaiGame.Development
         {
             "Overview",
             "Player",
+            "Identity 5.1",
             "Inventory",
             "Combat",
             "Statuses",
@@ -48,8 +50,12 @@ namespace UnityIsekaiGame.Development
         private Text worldEntityText;
         private Text persistenceText;
         private Text persistenceIntegrationText;
+        private Text identityProgressionText;
         private Text itemValueText;
         private Text statusValueText;
+        private Text roleValueText;
+        private Text socialStatusValueText;
+        private Text currencyValueText;
         private Text damageValueText;
         private Text questValueText;
         private Text contractValueText;
@@ -61,6 +67,9 @@ namespace UnityIsekaiGame.Development
         private int activeSectionIndex;
         private int selectedItemIndex;
         private int selectedStatusIndex;
+        private int selectedRoleIndex;
+        private int selectedSocialStatusIndex;
+        private int selectedCurrencyIndex;
         private int selectedDamageIndex;
         private int selectedQuestIndex;
         private int selectedContractIndex;
@@ -70,6 +79,9 @@ namespace UnityIsekaiGame.Development
 
         private readonly List<ItemDefinition> items = new List<ItemDefinition>();
         private readonly List<StatusEffectDefinition> statuses = new List<StatusEffectDefinition>();
+        private readonly List<RoleDefinition> roles = new List<RoleDefinition>();
+        private readonly List<SocialStatusDefinition> socialStatuses = new List<SocialStatusDefinition>();
+        private readonly List<CurrencyDefinition> currencies = new List<CurrencyDefinition>();
         private readonly List<DamageTypeDefinition> damageTypes = new List<DamageTypeDefinition>();
         private readonly List<QuestDefinition> quests = new List<QuestDefinition>();
         private readonly List<ContractDefinition> contracts = new List<ContractDefinition>();
@@ -146,6 +158,11 @@ namespace UnityIsekaiGame.Development
                 persistenceIntegrationText.text = service.BuildPersistenceIntegrationSummary();
             }
 
+            if (identityProgressionText != null)
+            {
+                identityProgressionText.text = service.BuildIdentityProgressionSummary();
+            }
+
             UpdateSelectorLabels();
             UpdateHistory();
             UpdateSectionButtonStates();
@@ -184,6 +201,7 @@ namespace UnityIsekaiGame.Development
             Transform content = bodyScrollRect.content;
             Transform overviewSection = AddSection(content, "Overview Section");
             Transform playerSection = AddSection(content, "Player Section");
+            Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
             Transform statusSection = AddSection(content, "Statuses Section");
@@ -196,6 +214,7 @@ namespace UnityIsekaiGame.Development
 
             BuildOverviewSection(overviewSection, font);
             BuildPlayerSection(playerSection, font);
+            BuildIdentityProgressionSection(identitySection, font);
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
             BuildStatusSection(statusSection, font);
@@ -236,6 +255,39 @@ namespace UnityIsekaiGame.Development
                 ("Drain Mana", () => service.DrainMana(GetFloat(amountInput, 25f))),
                 ("Drain Stamina", () => service.DrainStamina(GetFloat(amountInput, 25f))),
                 ("Restore Vitals", () => service.RestoreVitals()));
+        }
+
+        private void BuildIdentityProgressionSection(Transform parent, Font font)
+        {
+            roleValueText = AddSelectorRow(parent, font, "Role", () => CycleSelection(ref selectedRoleIndex, roles.Count, -1), () => CycleSelection(ref selectedRoleIndex, roles.Count, 1));
+            socialStatusValueText = AddSelectorRow(parent, font, "Social", () => CycleSelection(ref selectedSocialStatusIndex, socialStatuses.Count, -1), () => CycleSelection(ref selectedSocialStatusIndex, socialStatuses.Count, 1));
+            currencyValueText = AddSelectorRow(parent, font, "Currency", () => CycleSelection(ref selectedCurrencyIndex, currencies.Count, -1), () => CycleSelection(ref selectedCurrencyIndex, currencies.Count, 1));
+            AddButtonRow(parent, font,
+                ("Validate IDs", () => service.ValidateIdentityProgression()),
+                ("Generate Origin", () => service.GenerateOrigin(GetInt(amountInput, 0))),
+                ("Duplicate Proof", () => service.ProveOriginAssignmentIsOnceOnly()),
+                ("Reset Identity", () => service.ResetIdentityProgression(confirmed: false)));
+            AddButtonRow(parent, font,
+                ("Advance Gift", () => service.AdvanceBirthGiftProgress(GetFloat(amountInput, 300f))),
+                ("Awaken Gift", () => service.ForceBirthGiftAwakening()));
+            AddButtonRow(parent, font,
+                ("Add Role", () => service.AddRole(GetSelected(roles, selectedRoleIndex), acceptConflicts: false)),
+                ("Accept Conflict", () => service.AddRole(GetSelected(roles, selectedRoleIndex), acceptConflicts: true)),
+                ("Suspend Role", () => service.SuspendFirstActiveRole()),
+                ("Revoke Role", () => service.RevokeFirstActiveRole()),
+                ("Abandon Role", () => service.AbandonFirstActiveRole()));
+            AddButtonRow(parent, font,
+                ("Add Global Status", () => service.AddGlobalSocialStatus(GetSelected(socialStatuses, selectedSocialStatusIndex))),
+                ("Add Place Status", () => service.AddPlaceSocialStatus(GetSelected(socialStatuses, selectedSocialStatusIndex), GetSelected(places, selectedPlaceIndex))),
+                ("Resolve Status", () => service.ResolveFirstActiveSocialStatus()));
+            AddButtonRow(parent, font,
+                ("Add Money", () => service.AddCurrency(GetSelected(currencies, selectedCurrencyIndex), GetInt(amountInput, 25))),
+                ("Spend Money", () => service.SpendCurrency(GetSelected(currencies, selectedCurrencyIndex), GetInt(amountInput, 25))));
+            AddButtonRow(parent, font,
+                ("Record Success", () => service.RecordSuccessfulActivity(GetFloat(amountInput, 0.5f))),
+                ("Record Failure", () => service.RecordFailedActivity(GetFloat(amountInput, 0.5f))),
+                ("Participation", () => service.RecordParticipation()));
+            identityProgressionText = AddText(parent, font, "Identity/progression not available.", 12, 320);
         }
 
         private void BuildInventorySection(Transform parent, Font font)
@@ -365,6 +417,9 @@ namespace UnityIsekaiGame.Development
 
             SetOptions(items, service.GetDefinitions<ItemDefinition>(), ref selectedItemIndex);
             SetOptions(statuses, service.GetDefinitions<StatusEffectDefinition>(), ref selectedStatusIndex);
+            SetOptions(roles, service.GetDefinitions<RoleDefinition>(), ref selectedRoleIndex);
+            SetOptions(socialStatuses, service.GetDefinitions<SocialStatusDefinition>(), ref selectedSocialStatusIndex);
+            SetOptions(currencies, service.GetDefinitions<CurrencyDefinition>(), ref selectedCurrencyIndex);
             SetOptions(damageTypes, service.GetDefinitions<DamageTypeDefinition>(), ref selectedDamageIndex);
             SetOptions(quests, service.GetDefinitions<QuestDefinition>(), ref selectedQuestIndex);
             SetOptions(contracts, service.GetDefinitions<ContractDefinition>(), ref selectedContractIndex);
@@ -377,6 +432,9 @@ namespace UnityIsekaiGame.Development
         {
             SetValue(itemValueText, FormatSelected(items, selectedItemIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(statusValueText, FormatSelected(statuses, selectedStatusIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(roleValueText, FormatSelected(roles, selectedRoleIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(socialStatusValueText, FormatSelected(socialStatuses, selectedSocialStatusIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(currencyValueText, FormatSelected(currencies, selectedCurrencyIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(damageValueText, FormatSelected(damageTypes, selectedDamageIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(questValueText, FormatSelected(quests, selectedQuestIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(contractValueText, FormatSelected(contracts, selectedContractIndex, PrototypeTestLabService.FormatDefinition));

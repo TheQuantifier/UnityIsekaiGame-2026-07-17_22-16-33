@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4dd7fef31d32414fa469820ba8bbf84a, type: 3}
+  m_Name: LadyTitle
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.TitleDefinition
+  titleId: title.lady
+  displayName: Lady
+  description: Prototype noble title retained for future identity presentation rules.
+  primaryCategory: {fileID: 11400000, guid: faad786274b14c02bcdc104ae71bf5c3, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  futureCultureReference: prototype-kingdom

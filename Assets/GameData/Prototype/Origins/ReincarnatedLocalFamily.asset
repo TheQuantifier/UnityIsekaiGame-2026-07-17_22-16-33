@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cb5e774828042e99d1bad8d99a40e09, type: 3}
+  m_Name: ReincarnatedLocalFamily
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.OriginFamilyDefinition
+  originFamilyId: origin-family.reincarnated-local
+  displayName: Reincarnated Local
+  description: Local lives with reincarnation-aware prototype metadata.
+  primaryCategory: {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: 73dfa74dbb8b4273bc4bfd4edbd2197a, type: 2}
+  selectionWeight: 1.5
+  enabledForAlpha: 1
+  allowedOrigins:
+  - {fileID: 11400000, guid: 1a0538061edb4892bebd84a98196a8e9, type: 2}
+  - {fileID: 11400000, guid: 6b280165bf514b158484860b44e3984c, type: 2}
+  - {fileID: 11400000, guid: 47a0c2c511e24a69b63b00c83e0d73ad, type: 2}
+  - {fileID: 11400000, guid: c8c7ce1062384b51a93229f774e3e6cc, type: 2}
+  giftRarityWeightModifiers:
+  - rarity: {fileID: 11400000, guid: 0fd091c93e054c37bcc9c68b5b04cd19, type: 2}
+    weightMultiplier: 1.25
+  defaultStartingMoney:
+    currency: {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+    baseAmount: 60
+    randomVariation: 20
+  futureSelectionMetadata: reincarnation-alpha-family
+  futureWorldCultureRestrictions: prototype-kingdom

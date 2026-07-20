@@ -29,6 +29,7 @@ Step 5 will expand core game models. Use this guidance before changing definitio
 | Places | New place definitions need stable IDs and scene-key validation. Dynamic place ownership or state is shared-world/region state. |
 | Factions | Static faction definitions are content. Reputation may be player/account state; wars/control/economy are shared-world state. |
 | Economy and ownership | Treat as shared-world/server-owned unless explicitly player-owned inventory. Do not put market state in local player saves. |
+| Identity and progression | `player.identity-progression` is player-owned. Account/player/person/world-entity IDs must remain distinct. Missing Feature 5.1 payloads are rejected for current development saves. |
 
 ## Required Before Merging Step 5 Persistence Changes
 
@@ -47,3 +48,7 @@ Step 5 will expand core game models. Use this guidance before changing definitio
 ## Save Break Policy
 
 Before alpha, development saves may be invalidated when the model changes. Every intentional break should say which schema changed, why migration is unsafe or not worth building yet, and which manual test data should be recreated.
+
+## Feature 5.1 Break
+
+Feature 5.1 introduces required participant `player.identity-progression` at schema version 1. Saves from Step 4 and earlier are intentionally rejected because they do not contain person identity, origin assignment, starting reward application flags, wallet balances, role lifecycle history, social status history, or birth-gift reward state. Recreate local prototype saves after validating definitions and generating a new origin in the Test Lab.

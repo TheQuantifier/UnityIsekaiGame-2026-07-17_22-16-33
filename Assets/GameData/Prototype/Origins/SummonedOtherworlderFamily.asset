@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cb5e774828042e99d1bad8d99a40e09, type: 3}
+  m_Name: SummonedOtherworlderFamily
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.OriginFamilyDefinition
+  originFamilyId: origin-family.summoned-otherworlder
+  displayName: Summoned Otherworlder
+  description: Otherworld arrivals brought into the prototype world.
+  primaryCategory: {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: eac27d0065b44f969205af5ca702cbe7, type: 2}
+  selectionWeight: 1
+  enabledForAlpha: 1
+  allowedOrigins:
+  - {fileID: 11400000, guid: 927714d6ad6a489e98baa05514f3c144, type: 2}
+  - {fileID: 11400000, guid: 713370d3685942439d5b0eed0fd99fc9, type: 2}
+  - {fileID: 11400000, guid: 0dee14c0a3dd4062b85b107a16bd307e, type: 2}
+  - {fileID: 11400000, guid: ac8208bad3654522a3605c86bbe586f8, type: 2}
+  giftRarityWeightModifiers:
+  - rarity: {fileID: 11400000, guid: b7da72b8c72548219e52a6d4162fe731, type: 2}
+    weightMultiplier: 1.35
+  defaultStartingMoney:
+    currency: {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+    baseAmount: 50
+    randomVariation: 20
+  futureSelectionMetadata: summoned-alpha-family
+  futureWorldCultureRestrictions: otherworld-arrival

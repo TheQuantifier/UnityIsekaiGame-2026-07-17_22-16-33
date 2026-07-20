@@ -9,6 +9,7 @@ using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.GameData.Persistence;
+using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Contracts;
 using UnityIsekaiGame.UI.Quests;
@@ -35,6 +36,7 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private PlayerStamina playerStamina;
         [SerializeField] private PlayerMana playerMana;
         [SerializeField] private StatusEffectController statusEffects;
+        [SerializeField] private PlayerIdentityProgression identityProgression;
         [SerializeField] private InventoryScreenView view;
         [SerializeField] private SpellManagementView spellManagementView;
         [SerializeField] private ContractJournalView contractJournalView;
@@ -676,6 +678,16 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 statusEffects = source.GetComponentInParent<StatusEffectController>();
             }
+
+            if (identityProgression == null)
+            {
+                identityProgression = source.GetComponentInParent<PlayerIdentityProgression>();
+            }
+
+            if (identityProgression == null && source != null)
+            {
+                identityProgression = source.AddComponent<PlayerIdentityProgression>();
+            }
         }
 
         private void SubscribeCharacterSources()
@@ -706,6 +718,11 @@ namespace UnityIsekaiGame.UI.Inventory
                 statusEffects.StatusChanged += OnStatusChanged;
                 statusEffects.StatusRemoved += OnStatusChanged;
                 statusEffects.StatusExpired += OnStatusChanged;
+            }
+
+            if (identityProgression != null)
+            {
+                identityProgression.ProgressionChanged += OnIdentityProgressionChanged;
             }
         }
 
@@ -738,6 +755,11 @@ namespace UnityIsekaiGame.UI.Inventory
                 statusEffects.StatusRemoved -= OnStatusChanged;
                 statusEffects.StatusExpired -= OnStatusChanged;
             }
+
+            if (identityProgression != null)
+            {
+                identityProgression.ProgressionChanged -= OnIdentityProgressionChanged;
+            }
         }
 
         private void OnHealthChanged(int current, int maximum)
@@ -756,6 +778,11 @@ namespace UnityIsekaiGame.UI.Inventory
         }
 
         private void OnStatusChanged(RuntimeStatusEffect status)
+        {
+            Refresh();
+        }
+
+        private void OnIdentityProgressionChanged(PlayerIdentityProgression progression, bool restoring)
         {
             Refresh();
         }
@@ -821,6 +848,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 playerMana,
                 playerStamina,
                 statusEffects,
+                identityProgression,
                 questLog,
                 contractJournal);
 
@@ -859,6 +887,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 PlayerMana = playerMana,
                 PlayerStamina = playerStamina,
                 PlayerStatuses = statusEffects,
+                IdentityProgression = identityProgression,
                 Spellcaster = playerTransform == null ? null : playerTransform.GetComponentInParent<PlayerSpellcaster>(),
                 SpellLoadout = spellLoadout,
                 QuestLog = questLog,

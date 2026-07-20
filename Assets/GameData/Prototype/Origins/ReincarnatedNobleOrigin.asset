@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 754588559c064cffbb14a475a1f8d20f, type: 3}
+  m_Name: ReincarnatedNobleOrigin
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.OriginDefinition
+  originId: origin.reincarnated-local.noble
+  displayName: Reincarnated Noble
+  description: Reincarnated local with noble standing and title.
+  primaryCategory: {fileID: 11400000, guid: e8b6abce1c154752af42a167edcaf848, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: 24913325812e4a9e878f22f01dca5b2c, type: 2}
+  family: {fileID: 11400000, guid: eaf0fe8924f34463b21cf0575130ce6d, type: 2}
+  selectionWeight: 0.7
+  enabledForAlpha: 1
+  startingStatGrants:
+  - statType: 4
+    value: 2
+  influencedGiftPool:
+  - {fileID: 11400000, guid: 9886ab69802e43ebbaa24675354f2a01, type: 2}
+  - {fileID: 11400000, guid: a7010ad03cea4e54b53500f538022681, type: 2}
+  giftWeightModifiers: []
+  giftRarityWeightModifiers: []
+  startingGold:
+    currency: {fileID: 11400000, guid: 8d5f2bba9b8d4f56ad823790337abbad, type: 2}
+    baseAmount: 140
+    randomVariation: 40
+  startingRole: {fileID: 11400000, guid: 25fb6b176c784a77ba207388b1b8b42a, type: 2}
+  startingSocialStatuses:
+  - socialStatus: {fileID: 11400000, guid: 0d92057dc23343c688cd019dfc069f46, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Origin assignment
+  - socialStatus: {fileID: 11400000, guid: 747ecf653fdf4c98a63ca48e316d79d4, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Reincarnated noble family recognition
+  - socialStatus: {fileID: 11400000, guid: 72d24a9fc74940d7a404479c0f03ce3e, type: 2}
+    contextKind: 2
+    factionContext: {fileID: 11400000, guid: 6cd6bc56f8184f45802e6ce0bc9a722c, type: 2}
+    placeContext: {fileID: 0}
+    personContext: {fileID: 0}
+    customContextTargetId: 
+    acquisitionReason: Origin assignment
+  startingTitle: {fileID: 11400000, guid: ca4b21bdfcb64cbfab3abed51d2f7eca, type: 2}
+  futureHomeReference: reincarnated-noble-estate
+  futureRelationshipReferences: reincarnation-family-placeholder
+  futureFactionObligations: noble-obligation-placeholder
+  futureStartingLocationReference: place.prototype-town

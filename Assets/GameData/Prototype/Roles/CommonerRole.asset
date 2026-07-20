@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 19e45096097b4461b7e46cb1c56795ff, type: 3}
+  m_Name: CommonerRole
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.RoleDefinition
+  roleId: role.commoner
+  displayName: Commoner
+  description: Baseline social role for ordinary local residents.
+  primaryCategory: {fileID: 11400000, guid: 1c777db540c0402aaada8617229d458c, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: e1a0084395594246817ec0a1444abeaa, type: 2}
+  statModifiers: []
+  resistanceModifiers: []
+  grantedAbilities: []
+  blockedAbilities: []
+  permissions: []
+  duties: []
+  factionRelationshipReferences: []
+  rulerPersonRelationshipReferences: []
+  employerInstitutionReferences: []
+  periodicPaySupportConfiguration:
+    key: 
+    value: 
+  legalAuthority: []
+  locationAccess: []
+  serviceAccess: []
+  requiredEquipmentOrUniformReferences: []
+  incompatibleRoles: []
+  incompatibilityGroups:
+  - social-stratum
+  suspensionConditionsMetadata: 
+  revocationConditionsMetadata: 
+  futureAbandonmentPolicy: Manual abandonment keeps role history.
+  futureHiddenConflictPolicy: 
+  futureDiscoveryConsequences: 
