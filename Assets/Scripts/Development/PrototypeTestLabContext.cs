@@ -13,6 +13,7 @@ using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.Traits;
 
 namespace UnityIsekaiGame.Development
 {
@@ -29,6 +30,7 @@ namespace UnityIsekaiGame.Development
         public CalculatedStatCollection PlayerCalculatedStats;
         public CharacterResourceCollection PlayerResources;
         public CharacterSkillCollection PlayerSkills;
+        public CharacterTraitCollection PlayerTraits;
         public StatusEffectController PlayerStatuses;
         public PlayerIdentityProgression IdentityProgression;
         public PlayerSpellcaster Spellcaster;

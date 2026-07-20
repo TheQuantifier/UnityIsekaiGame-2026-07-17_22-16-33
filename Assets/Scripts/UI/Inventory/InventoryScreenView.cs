@@ -8,6 +8,7 @@ using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
+using UnityIsekaiGame.Traits;
 using UnityIsekaiGame.UI;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using UnityIsekaiGame.Development;
@@ -294,7 +295,8 @@ namespace UnityIsekaiGame.UI.Inventory
             StatusEffectController statusEffects,
             CharacterAttributes attributes = null,
             CalculatedStatCollection calculatedStats = null,
-            CharacterSkillCollection skills = null)
+            CharacterSkillCollection skills = null,
+            CharacterTraitCollection traits = null)
         {
             EnsureCharacterStatsPanel();
 
@@ -363,6 +365,28 @@ namespace UnityIsekaiGame.UI.Inventory
                         SkillGrade grade = SkillGradeUtility.Clamp((SkillGrade)record.currentGrade);
                         string progress = grade == SkillGrade.AAA ? "Mastered" : $"{record.currentXp} XP";
                         parts.Add($"{FormatDefinitionName(record.skillDefinitionId)} {grade} ({progress})");
+                    }
+
+                    AppendCompactPairs(builder, parts);
+                }
+            }
+
+            if (traits != null)
+            {
+                builder.AppendLine();
+                builder.AppendLine("Traits");
+                IReadOnlyList<TraitSnapshot> knownTraits = traits.GetKnownTraits();
+                if (knownTraits == null || knownTraits.Count == 0)
+                {
+                    builder.AppendLine("None");
+                }
+                else
+                {
+                    List<string> parts = new List<string>();
+                    foreach (TraitSnapshot snapshot in knownTraits)
+                    {
+                        RuntimeTraitRecord record = snapshot.Record;
+                        parts.Add($"{snapshot.PresentationName} {(TraitLifecycleState)record.lifecycleState}");
                     }
 
                     AppendCompactPairs(builder, parts);

@@ -15,6 +15,7 @@ using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.Traits;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.UI.Inventory;
 using UnityIsekaiGame.WorldEntities;
@@ -35,6 +36,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private CalculatedStatCollection playerCalculatedStats;
         [SerializeField] private CharacterResourceCollection playerResources;
         [SerializeField] private CharacterSkillCollection playerSkills;
+        [SerializeField] private CharacterTraitCollection playerTraits;
         [SerializeField] private PlayerSkillActionEventSource playerSkillActionEventSource;
         [SerializeField] private StatusEffectController statusEffectController;
         [SerializeField] private PlayerIdentityProgression playerIdentityProgression;
@@ -51,6 +53,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
+        [SerializeField] private bool registerPlayerTraits = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerQuestContract = true;
@@ -69,6 +72,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerIdentityProgressionPersistenceParticipant identityProgressionParticipant;
         private PlayerAttributesPersistenceParticipant playerAttributesParticipant;
         private PlayerSkillsPersistenceParticipant playerSkillsParticipant;
+        private PlayerTraitsPersistenceParticipant playerTraitsParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
@@ -121,6 +125,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(playerSkillsParticipant);
                 playerSkillsParticipant = null;
+            }
+
+            if (service != null && playerTraitsParticipant != null)
+            {
+                service.UnregisterParticipant(playerTraitsParticipant);
+                playerTraitsParticipant = null;
             }
 
             if (service != null && statsVitalsStatusParticipant != null)
@@ -207,6 +217,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerIdentityProgressionParticipant();
             EnsurePlayerAttributesParticipant();
             EnsurePlayerSkillsParticipant();
+            EnsurePlayerTraitsParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -645,6 +656,43 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsurePlayerTraitsParticipant()
+        {
+            if (!registerPlayerTraits || playerTraitsParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerTraits == null || playerCalculatedStats == null)
+            {
+                Debug.LogWarning("Player Traits persistence participant was not registered because the prototype player Trait collection or calculated stats are missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player Traits persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            playerTraits.Configure(GetDefinitionRegistry(), playerCalculatedStats, playerSkills, service.PlayerId);
+            playerTraitsParticipant = new PlayerTraitsPersistenceParticipant(
+                playerTraits,
+                playerIdentityProgression,
+                playerCalculatedStats,
+                playerSkills,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerTraitsParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerTraitsParticipant = null;
+            }
+        }
+
         private void ResolvePlayerPersistenceReferences()
         {
             if (playerInventory == null)
@@ -713,6 +761,16 @@ namespace UnityIsekaiGame.Gameplay
                 playerSkills = playerObject.AddComponent<CharacterSkillCollection>();
             }
 
+            if (playerTraits == null)
+            {
+                playerTraits = playerObject == null ? Object.FindAnyObjectByType<CharacterTraitCollection>() : playerObject.GetComponent<CharacterTraitCollection>();
+            }
+
+            if (playerTraits == null && playerObject != null)
+            {
+                playerTraits = playerObject.AddComponent<CharacterTraitCollection>();
+            }
+
             if (playerResources == null)
             {
                 playerResources = playerObject == null ? Object.FindAnyObjectByType<CharacterResourceCollection>() : playerObject.GetComponent<CharacterResourceCollection>();
@@ -730,6 +788,7 @@ namespace UnityIsekaiGame.Gameplay
                 playerCalculatedStats?.Configure(registry, playerAttributes);
                 playerResources?.Configure(registry, playerCalculatedStats, service == null ? PersistenceService.LocalPlayerId : service.PlayerId);
                 playerSkills?.Configure(registry, playerCalculatedStats, playerObject == null ? null : playerObject.GetComponent<PlayerSpellLoadout>());
+                playerTraits?.Configure(registry, playerCalculatedStats, playerSkills, service == null ? PersistenceService.LocalPlayerId : service.PlayerId);
                 playerStats?.ConfigureDerivedStats(registry);
                 playerStats?.RefreshEquipmentModifiers();
             }
@@ -1077,6 +1136,12 @@ namespace UnityIsekaiGame.Gameplay
                 playerSkills.HiddenProgressChanged += OnSkillHiddenProgressChanged;
             }
 
+            if (playerTraits != null)
+            {
+                playerTraits.TraitsChanged += OnTraitsChanged;
+                playerTraits.TraitRecordChanged += OnTraitRecordChanged;
+            }
+
             dirtyEventsSubscribed = true;
         }
 
@@ -1146,6 +1211,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 playerSkills.SkillsChanged -= OnSkillsChanged;
                 playerSkills.HiddenProgressChanged -= OnSkillHiddenProgressChanged;
+            }
+
+            if (playerTraits != null)
+            {
+                playerTraits.TraitsChanged -= OnTraitsChanged;
+                playerTraits.TraitRecordChanged -= OnTraitRecordChanged;
             }
 
             if (playerQuestLog != null)
@@ -1275,6 +1346,26 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             dirtyTracker?.MarkDirty("Player hidden Skill learning progress changed.");
+        }
+
+        private void OnTraitsChanged(CharacterTraitCollection traits, TraitOperationResult result, bool restoring)
+        {
+            if (restoring)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player Traits changed.");
+        }
+
+        private void OnTraitRecordChanged(CharacterTraitCollection traits, RuntimeTraitRecord record, bool restoring)
+        {
+            if (restoring)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player Trait record changed.");
         }
 
         private string ResolveSceneKey()

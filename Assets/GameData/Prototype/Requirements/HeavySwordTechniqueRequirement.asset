@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55300000000000000000000000000055, type: 3}
+  m_Name: HeavySwordTechniqueRequirement
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Requirements.RequirementSetDefinition
+  requirementSetId: requirement.heavy-sword-technique
+  displayName: Heavy Sword Technique
+  description: Prototype requirement combining Swordsmanship and physical power.
+  primaryCategory: {fileID: 11400000, guid: 55cc0000000000000000000000000055, type: 2}
+  rootGroup:
+    groupId: heavy-sword-root
+    logicalOperator: 0
+    nodes:
+    - nodeId: skill-swordsmanship-d
+      nodeType: 5
+      comparison: 3
+      targetId: skill.swordsmanship
+      numericValue: 0
+      integerValue: 2
+      booleanValue: 1
+      contextKey: 
+      failureVisibility: 0
+      visibleFailureReason: Swordsmanship D required.
+      obscuredFailureReason: Combat training is insufficient.
+      requiresContext: 0
+    - nodeId: physical-power-eight
+      nodeType: 1
+      comparison: 3
+      targetId: calculated-stat.physical-power
+      numericValue: 8
+      integerValue: 0
+      booleanValue: 1
+      contextKey: 
+      failureVisibility: 0
+      visibleFailureReason: Physical Power 8 required.
+      obscuredFailureReason: Physical capability is insufficient.
+      requiresContext: 0
+    groups: []
+  maximumDepth: 4
+  alphaEnabled: 1
