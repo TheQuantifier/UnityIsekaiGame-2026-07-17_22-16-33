@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Skills;
@@ -296,7 +298,8 @@ namespace UnityIsekaiGame.UI.Inventory
             CharacterAttributes attributes = null,
             CalculatedStatCollection calculatedStats = null,
             CharacterSkillCollection skills = null,
-            CharacterTraitCollection traits = null)
+            CharacterTraitCollection traits = null,
+            CharacterFullSnapshot characterSnapshot = null)
         {
             EnsureCharacterStatsPanel();
 
@@ -311,6 +314,20 @@ namespace UnityIsekaiGame.UI.Inventory
             }
 
             StringBuilder builder = new StringBuilder();
+            if (characterSnapshot != null)
+            {
+                builder.AppendLine("Identity");
+                AppendLine(builder, "Readiness", characterSnapshot.Identity.Readiness.ToString());
+                AppendLine(builder, "Revision", characterSnapshot.Revision.ToString());
+                AppendLine(builder, "Player", string.IsNullOrWhiteSpace(characterSnapshot.Identity.PlayerId) ? "--" : characterSnapshot.Identity.PlayerId);
+                AppendLine(builder, "Person", string.IsNullOrWhiteSpace(characterSnapshot.Identity.PersonId) ? "--" : characterSnapshot.Identity.PersonId);
+                AppendLine(builder, "Actor", string.IsNullOrWhiteSpace(characterSnapshot.Identity.ActorId) ? "--" : characterSnapshot.Identity.ActorId);
+                AppendLine(builder, "Origin", string.IsNullOrWhiteSpace(characterSnapshot.Identity.OriginId) ? "Unassigned" : FormatDefinitionName(characterSnapshot.Identity.OriginId));
+                AppendLine(builder, "Birth Gift", string.IsNullOrWhiteSpace(characterSnapshot.Identity.BirthGiftId) ? "None" : FormatDefinitionName(characterSnapshot.Identity.BirthGiftId));
+                AppendLine(builder, "Overall Level", characterSnapshot.Progression.OverallLevel.OverallLevel.ToString());
+                builder.AppendLine();
+            }
+
             builder.AppendLine("Vitals");
             AppendLine(builder, "Health", health == null ? "--" : $"{FormatNumber(health.CurrentHealth)}/{FormatNumber(health.MaximumHealth)}");
             AppendLine(builder, "Stamina", stamina == null ? "--" : $"{FormatNumber(stamina.CurrentStamina)}/{FormatNumber(stamina.MaximumStamina)}");
@@ -393,8 +410,39 @@ namespace UnityIsekaiGame.UI.Inventory
                 }
             }
 
+            if (characterSnapshot != null)
+            {
+                builder.AppendLine();
+                builder.AppendLine("Social");
+                AppendLine(builder, "Roles", FormatRecordIds(characterSnapshot.Social.Roles, role => role.roleDefinitionId));
+                AppendLine(builder, "Statuses", FormatRecordIds(characterSnapshot.Social.SocialStatuses, status => status.socialStatusDefinitionId));
+                AppendLine(builder, "Titles", FormatRecordIds(characterSnapshot.Social.Titles, title => title.titleDefinitionId));
+                AppendLine(builder, "Wallet", FormatWallet(characterSnapshot.Social.WalletBalances));
+                AppendLine(builder, "Capabilities", characterSnapshot.Capabilities.Capabilities.Count.ToString());
+            }
+
             characterStatsText.text = builder.ToString().TrimEnd();
             statusReadoutView?.SetStatusController(statusEffects);
+        }
+
+        private static string FormatRecordIds<T>(IReadOnlyList<T> records, Func<T, string> selector)
+        {
+            if (records == null || records.Count == 0)
+            {
+                return "None";
+            }
+
+            return string.Join(", ", records.Select(record => FormatDefinitionName(selector(record))).ToArray());
+        }
+
+        private static string FormatWallet(IReadOnlyList<UnityIsekaiGame.Progression.WalletBalanceRecord> balances)
+        {
+            if (balances == null || balances.Count == 0)
+            {
+                return "None";
+            }
+
+            return string.Join(", ", balances.Select(balance => $"{FormatDefinitionName(balance.currencyDefinitionId)} {balance.amount}").ToArray());
         }
 
         public void SetSelectedEquipmentSlot(EquipmentSlotType selectedSlot)

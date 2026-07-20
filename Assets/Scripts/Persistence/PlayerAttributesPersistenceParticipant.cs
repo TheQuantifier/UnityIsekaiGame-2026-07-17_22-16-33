@@ -56,7 +56,11 @@ namespace UnityIsekaiGame.Persistence
                 return PersistenceParticipantSaveResult.Failure("Definition registry is not available for player attributes capture.");
             }
 
-            attributes.Configure(registry);
+            if (!attributes.IsConfigured)
+            {
+                attributes.Configure(registry);
+            }
+
             PlayerAttributesSaveData saveData = attributes.CreateSaveData(identity.PlayerId, identity.PersonId);
             PersistenceParticipantPrepareResult validation = PreparePayload(JsonUtility.ToJson(saveData), CurrentParticipantSchemaVersion);
             if (validation == null || !validation.Succeeded)

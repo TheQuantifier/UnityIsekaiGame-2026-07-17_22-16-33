@@ -113,7 +113,7 @@ The Test Lab now exposes scene `PrototypeTestPoint` objects as a selector and a 
 
 The Test Lab also exposes a `World Entities` section for refreshing registry diagnostics, spawning persistent runtime loot, spawning transient loot, destroying/recreating the last persistent loot by saved ID, and proving duplicate world entity IDs are rejected.
 
-Feature 5.4a adds a `Numbers 5.4a` Test Lab section for Base Attribute and Calculated Stat diagnostics. Feature 5.3 adds a `Skills 5.3` Test Lab section for Skill learning and progression diagnostics. Generated sections remain inside the existing Test Lab page and do not add standalone modals, input actions, or extra right-side menu tabs.
+Feature 5.4a adds a `Numbers 5.4a` Test Lab section for Base Attribute and Calculated Stat diagnostics. Feature 5.3 adds a `Skills 5.3` Test Lab section for Skill learning and progression diagnostics. Feature 5.6 adds a `Character 5.6` section for coordinator readiness, full rebuild, integrity, and snapshot diagnostics. Generated sections remain inside the existing Test Lab page and do not add standalone modals, input actions, or extra right-side menu tabs.
 
 ## Adding New Test Objects
 

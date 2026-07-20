@@ -1,5 +1,6 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using UnityEngine;
+using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
@@ -31,6 +32,7 @@ namespace UnityIsekaiGame.Development
         public CharacterResourceCollection PlayerResources;
         public CharacterSkillCollection PlayerSkills;
         public CharacterTraitCollection PlayerTraits;
+        public CharacterSystemCoordinator CharacterSystem;
         public StatusEffectController PlayerStatuses;
         public PlayerIdentityProgression IdentityProgression;
         public PlayerSpellcaster Spellcaster;

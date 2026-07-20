@@ -32,6 +32,7 @@ namespace UnityIsekaiGame.Development
         {
             "Overview",
             "Player",
+            "Character 5.6",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -58,6 +59,7 @@ namespace UnityIsekaiGame.Development
         private Text worldEntityText;
         private Text persistenceText;
         private Text persistenceIntegrationText;
+        private Text characterSystemText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -184,6 +186,11 @@ namespace UnityIsekaiGame.Development
                 identityProgressionText.text = service.BuildIdentityProgressionSummary();
             }
 
+            if (characterSystemText != null)
+            {
+                characterSystemText.text = service.BuildCharacterSystemSummary(developmentView: true);
+            }
+
             if (attributesCalculatedStatsText != null)
             {
                 attributesCalculatedStatsText.text = service.BuildAttributeCalculatedStatsSummary();
@@ -242,6 +249,7 @@ namespace UnityIsekaiGame.Development
             Transform content = bodyScrollRect.content;
             Transform overviewSection = AddSection(content, "Overview Section");
             Transform playerSection = AddSection(content, "Player Section");
+            Transform feature56Section = AddSection(content, "Character 5.6 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -259,6 +267,7 @@ namespace UnityIsekaiGame.Development
 
             BuildOverviewSection(overviewSection, font);
             BuildPlayerSection(playerSection, font);
+            BuildFeature56Section(feature56Section, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -304,6 +313,19 @@ namespace UnityIsekaiGame.Development
                 ("Drain Mana", () => service.DrainMana(GetFloat(amountInput, 25f))),
                 ("Drain Stamina", () => service.DrainStamina(GetFloat(amountInput, 25f))),
                 ("Restore Vitals", () => service.RestoreVitals()));
+        }
+
+        private void BuildFeature56Section(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Initialize", () => service.InitializeCharacterSystem()),
+                ("Full Rebuild", () => service.RebuildCharacterSystem()),
+                ("Integrity", () => service.ValidateCharacterSystemIntegrity()),
+                ("Snapshot", () => service.SnapshotCharacterSystem()));
+            AddButtonRow(parent, font,
+                ("Refresh", Refresh),
+                ("Diagnostics", () => RunDiagnostics()));
+            characterSystemText = AddText(parent, font, "Character System not available.", 12, 420);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
