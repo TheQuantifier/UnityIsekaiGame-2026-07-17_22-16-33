@@ -23,6 +23,9 @@ namespace UnityIsekaiGame.GameData
         Attribute,
         CalculatedStat,
         Skill,
-        Resource
+        Resource,
+        Trait,
+        Capability,
+        Requirement
     }
 }

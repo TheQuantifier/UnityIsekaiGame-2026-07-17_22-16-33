@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55300000000000000000000000000055, type: 3}
+  m_Name: FireRitualRequirement
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Requirements.RequirementSetDefinition
+  requirementSetId: requirement.fire-ritual
+  displayName: Fire Ritual
+  description: Prototype requirement proving resource checks are read-only and capabilities can participate.
+  primaryCategory: {fileID: 11400000, guid: 55cc0000000000000000000000000055, type: 2}
+  rootGroup:
+    groupId: fire-ritual-root
+    logicalOperator: 0
+    nodes:
+    - nodeId: mana-twenty
+      nodeType: 2
+      comparison: 3
+      targetId: resource.mana
+      numericValue: 20
+      integerValue: 0
+      booleanValue: 1
+      contextKey: 
+      failureVisibility: 0
+      visibleFailureReason: 20 Mana required.
+      obscuredFailureReason: Magical reserve is insufficient.
+      requiresContext: 0
+    - nodeId: mana-sense
+      nodeType: 18
+      comparison: 0
+      targetId: capability.sense.mana
+      numericValue: 0
+      integerValue: 0
+      booleanValue: 1
+      contextKey: 
+      failureVisibility: 1
+      visibleFailureReason: Mana Sense required.
+      obscuredFailureReason: A magical sense is missing.
+      requiresContext: 0
+    groups: []
+  maximumDepth: 4
+  alphaEnabled: 1

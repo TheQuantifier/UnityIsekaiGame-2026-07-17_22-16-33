@@ -32,6 +32,7 @@ Step 5 will expand core game models. Use this guidance before changing definitio
 | Identity and progression | `player.identity-progression` is player-owned. Account/player/person/world-entity IDs must remain distinct. Missing Feature 5.1 payloads are rejected for current development saves. |
 | Base Attributes and Calculated Stats | `player.attributes` persists permanent Base Attribute source/growth records. Calculated Stats are derived caches and should not be saved as authoritative values. Resource maximum metadata is definition data. |
 | Current Resources | Feature 5.4b adds optional `player.resources` for current Health, Stamina, and Mana. Future resource changes should bump or migrate that participant rather than adding current values back into Calculated Stats. |
+| Traits, Capabilities, and Requirements | Feature 5.5 adds optional `player.traits` for acquired Trait runtime records. Capabilities are rebuilt aggregates and Requirements are pure checks, so neither owns persisted state by default. |
 
 ## Required Before Merging Step 5 Persistence Changes
 
@@ -70,3 +71,7 @@ Feature 5.4a does not bump `player.attributes` and does not add a new participan
 ## Feature 5.4b Compatibility
 
 Feature 5.4b introduces optional `player.resources` schema version 1. Saves without it can still load through legacy vitals fields in `player.stats-vitals-status`. New saves should include `player.resources`; recreate local development saves after testing this feature.
+
+## Feature 5.5 Compatibility
+
+Feature 5.5 introduces optional `player.traits` schema version 1. Saves without it remain compatible and load with no player Traits. Saves containing `player.traits` reject unknown Trait IDs, duplicate Trait records, duplicate source records, and invalid lifecycle/discovery values. Capabilities and Requirements do not persist their own state; active Trait effects rebuild after load.

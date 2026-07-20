@@ -13,6 +13,7 @@ using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.Traits;
 using UnityIsekaiGame.UI.Contracts;
 using UnityIsekaiGame.UI.Quests;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -40,6 +41,7 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private StatusEffectController statusEffects;
         [SerializeField] private PlayerIdentityProgression identityProgression;
         [SerializeField] private CharacterSkillCollection playerSkills;
+        [SerializeField] private CharacterTraitCollection playerTraits;
         [SerializeField] private InventoryScreenView view;
         [SerializeField] private SpellManagementView spellManagementView;
         [SerializeField] private ContractJournalView contractJournalView;
@@ -311,7 +313,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 view.Render(inventory.Slots);
                 view.RenderEquipment(equipment == null ? null : equipment.Slots);
                 ResolveCharacterSkills();
-                view.RenderCharacter(playerStats, playerHealth, playerStamina, playerMana, statusEffects, playerStats == null ? null : playerStats.CharacterAttributes, playerStats == null ? null : playerStats.CalculatedStats, playerSkills);
+                view.RenderCharacter(playerStats, playerHealth, playerStamina, playerMana, statusEffects, playerStats == null ? null : playerStats.CharacterAttributes, playerStats == null ? null : playerStats.CalculatedStats, playerSkills, ResolveCharacterTraits());
                 ClampSelection();
                 view.SetSelectedSlot(selectedSlotIndex);
                 view.SetSelectedEquipmentSlot(selectedEquipmentSlot);
@@ -695,6 +697,7 @@ namespace UnityIsekaiGame.UI.Inventory
             }
 
             ResolveCharacterSkills();
+            ResolveCharacterTraits();
         }
 
         private CharacterSkillCollection ResolveCharacterSkills()
@@ -729,6 +732,39 @@ namespace UnityIsekaiGame.UI.Inventory
             }
 
             return playerSkills;
+        }
+
+        private CharacterTraitCollection ResolveCharacterTraits()
+        {
+            GameObject source = itemUser != null ? itemUser : inventory == null ? null : inventory.gameObject;
+            if (playerTraits == null)
+            {
+                playerTraits = playerStats == null ? null : playerStats.GetComponent<CharacterTraitCollection>();
+            }
+
+            if (playerTraits == null && source != null)
+            {
+                playerTraits = source.GetComponentInParent<CharacterTraitCollection>();
+            }
+
+            if (playerTraits == null && source != null)
+            {
+                playerTraits = source.AddComponent<CharacterTraitCollection>();
+            }
+
+            if (playerTraits != null)
+            {
+                DefinitionCatalog catalog = saveLoadDefinitionCatalog;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                catalog = catalog == null ? testLabDefinitionCatalog : catalog;
+#endif
+                if (catalog != null && !playerTraits.IsConfigured)
+                {
+                    playerTraits.Configure(catalog.CreateRegistry(), playerStats == null ? null : playerStats.CalculatedStats, playerSkills, PersistenceService.LocalPlayerId);
+                }
+            }
+
+            return playerTraits;
         }
 
         private void SubscribeCharacterSources()
@@ -770,6 +806,12 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 playerSkills.SkillsChanged += OnSkillsChanged;
                 playerSkills.HiddenProgressChanged += OnSkillHiddenProgressChanged;
+            }
+
+            if (playerTraits != null)
+            {
+                playerTraits.TraitsChanged += OnTraitsChanged;
+                playerTraits.TraitRecordChanged += OnTraitRecordChanged;
             }
         }
 
@@ -813,6 +855,12 @@ namespace UnityIsekaiGame.UI.Inventory
                 playerSkills.SkillsChanged -= OnSkillsChanged;
                 playerSkills.HiddenProgressChanged -= OnSkillHiddenProgressChanged;
             }
+
+            if (playerTraits != null)
+            {
+                playerTraits.TraitsChanged -= OnTraitsChanged;
+                playerTraits.TraitRecordChanged -= OnTraitRecordChanged;
+            }
         }
 
         private void OnHealthChanged(int current, int maximum)
@@ -846,6 +894,16 @@ namespace UnityIsekaiGame.UI.Inventory
         }
 
         private void OnSkillHiddenProgressChanged(CharacterSkillCollection collection, SkillLearningProgressRecord progress, bool restoring)
+        {
+            Refresh();
+        }
+
+        private void OnTraitsChanged(CharacterTraitCollection collection, TraitOperationResult result, bool restoring)
+        {
+            Refresh();
+        }
+
+        private void OnTraitRecordChanged(CharacterTraitCollection collection, RuntimeTraitRecord record, bool restoring)
         {
             Refresh();
         }
@@ -953,6 +1011,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 PlayerCalculatedStats = playerStats == null ? null : playerStats.CalculatedStats,
                 PlayerResources = playerTransform == null ? null : playerTransform.GetComponentInParent<UnityIsekaiGame.ResourceSystem.CharacterResourceCollection>(),
                 PlayerSkills = ResolveCharacterSkills(),
+                PlayerTraits = ResolveCharacterTraits(),
                 PlayerStatuses = statusEffects,
                 IdentityProgression = identityProgression,
                 Spellcaster = playerTransform == null ? null : playerTransform.GetComponentInParent<PlayerSpellcaster>(),

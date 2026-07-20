@@ -19,9 +19,11 @@ using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.ResourceSystem;
+using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
+using UnityIsekaiGame.Traits;
 using UnityIsekaiGame.WorldEntities;
 
 #if UNITY_EDITOR
@@ -65,6 +67,10 @@ namespace UnityIsekaiGame.Development
             }
 
             context?.PlayerSkills?.Configure(registry, context.PlayerCalculatedStats, context.SpellLoadout);
+            if (EnsureTraits(out CharacterTraitCollection traits))
+            {
+                traits.Configure(registry, context.PlayerCalculatedStats, context.PlayerSkills, PersistenceService.LocalPlayerId);
+            }
             selectorCache.Clear();
         }
 
@@ -164,6 +170,188 @@ namespace UnityIsekaiGame.Development
 
             context.PlayerSkills.Configure(registry, context.PlayerCalculatedStats, context.SpellLoadout);
             return context.PlayerSkills.BuildDiagnosticSummary(includeHidden);
+        }
+
+        public string BuildTraitsSummary(bool includeHidden)
+        {
+            if (!EnsureTraits(out CharacterTraitCollection traits))
+            {
+                return "Player Trait collection component is missing.";
+            }
+
+            return traits.BuildDiagnosticSummary(includeHidden);
+        }
+
+        public PrototypeTestLabOperation GrantTrait(TraitDefinition trait, TraitLifecycleState lifecycle, TraitDiscoveryState discovery)
+        {
+            if (!EnsureTraits(out CharacterTraitCollection traits))
+            {
+                return RecordFailure("Grant Trait", "Player Trait collection component is missing.", "MissingTraits");
+            }
+
+            if (trait == null)
+            {
+                return RecordFailure("Grant Trait", "Trait definition is missing.", "MissingTrait");
+            }
+
+            TraitOperationResult result = traits.GrantTrait(new TraitGrantRequest
+            {
+                OwnerId = PersistenceService.LocalPlayerId,
+                TraitDefinitionId = trait.Id,
+                RequestedLifecycle = lifecycle,
+                RequestedDiscovery = discovery,
+                SourceCategory = TraitSourceCategory.Development,
+                SourceId = "test-lab",
+                Reason = "Prototype Test Lab"
+            });
+            return Record(result.Succeeded, $"Grant Trait {lifecycle}", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation GrantTraitDuplicateProof(TraitDefinition trait)
+        {
+            if (trait == null)
+            {
+                return RecordFailure("Trait Duplicate Proof", "Trait definition is missing.", "MissingTrait");
+            }
+
+            GrantTrait(trait, TraitLifecycleState.Active, TraitDiscoveryState.Discovered);
+            return GrantTrait(trait, TraitLifecycleState.Active, TraitDiscoveryState.Discovered);
+        }
+
+        public PrototypeTestLabOperation GrantTraitSecondSource(TraitDefinition trait)
+        {
+            if (!EnsureTraits(out CharacterTraitCollection traits))
+            {
+                return RecordFailure("Trait Second Source", "Player Trait collection component is missing.", "MissingTraits");
+            }
+
+            if (trait == null)
+            {
+                return RecordFailure("Trait Second Source", "Trait definition is missing.", "MissingTrait");
+            }
+
+            TraitOperationResult result = traits.GrantTrait(new TraitGrantRequest
+            {
+                OwnerId = PersistenceService.LocalPlayerId,
+                TraitDefinitionId = trait.Id,
+                RequestedLifecycle = TraitLifecycleState.Active,
+                RequestedDiscovery = TraitDiscoveryState.Discovered,
+                SourceCategory = TraitSourceCategory.Administrative,
+                SourceId = "test-lab.second-source",
+                Reason = "Prototype Test Lab second source"
+            });
+            return Record(result.Succeeded, "Trait Second Source", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation RemoveTraitTestLabSource(TraitDefinition trait)
+        {
+            if (!EnsureTraits(out CharacterTraitCollection traits))
+            {
+                return RecordFailure("Remove Trait Source", "Player Trait collection component is missing.", "MissingTraits");
+            }
+
+            if (trait == null)
+            {
+                return RecordFailure("Remove Trait Source", "Trait definition is missing.", "MissingTrait");
+            }
+
+            TraitOperationResult result = traits.RemoveTraitSource(trait.Id, TraitSourceCategory.Development, "test-lab");
+            return Record(result.Succeeded, "Remove Trait Source", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation SuppressTrait(TraitDefinition trait)
+        {
+            return ChangeTrait(trait, "Suppress Trait", collection => collection.SuppressTrait(trait.Id));
+        }
+
+        public PrototypeTestLabOperation UnsuppressTrait(TraitDefinition trait)
+        {
+            return ChangeTrait(trait, "Unsuppress Trait", collection => collection.UnsuppressTrait(trait.Id));
+        }
+
+        public PrototypeTestLabOperation ActivateTrait(TraitDefinition trait)
+        {
+            return ChangeTrait(trait, "Activate Trait", collection => collection.ActivateTrait(trait.Id));
+        }
+
+        public PrototypeTestLabOperation SetTraitSuspected(TraitDefinition trait)
+        {
+            return ChangeTrait(trait, "Suspect Trait", collection => collection.SetDiscoveryState(trait.Id, TraitDiscoveryState.Suspected));
+        }
+
+        public PrototypeTestLabOperation SetTraitDiscovered(TraitDefinition trait)
+        {
+            return ChangeTrait(trait, "Discover Trait", collection => collection.SetDiscoveryState(trait.Id, TraitDiscoveryState.Discovered));
+        }
+
+        public PrototypeTestLabOperation ReplaceTrait(TraitDefinition replacement)
+        {
+            if (!EnsureTraits(out CharacterTraitCollection traits))
+            {
+                return RecordFailure("Replace Trait", "Player Trait collection component is missing.", "MissingTraits");
+            }
+
+            if (replacement == null)
+            {
+                return RecordFailure("Replace Trait", "Trait definition is missing.", "MissingTrait");
+            }
+
+            IReadOnlyList<string> blockers = traits.GetDevelopmentSnapshot()
+                .Where(snapshot => snapshot.Definition != null
+                    && snapshot.Definition.Id != replacement.Id
+                    && (snapshot.Definition.ConflictGroupIds.Any(group => replacement.ConflictGroupIds.Contains(group))
+                        || snapshot.Definition.IncompatibleTraits.Any(trait => trait != null && trait.Id == replacement.Id)
+                        || replacement.IncompatibleTraits.Any(trait => trait != null && trait.Id == snapshot.Definition.Id)))
+                .Select(snapshot => snapshot.Definition.Id)
+                .ToList();
+            TraitOperationResult result = traits.GrantTrait(new TraitGrantRequest
+            {
+                OwnerId = PersistenceService.LocalPlayerId,
+                TraitDefinitionId = replacement.Id,
+                RequestedLifecycle = TraitLifecycleState.Active,
+                RequestedDiscovery = TraitDiscoveryState.Discovered,
+                SourceCategory = TraitSourceCategory.Development,
+                SourceId = "test-lab.replace",
+                Reason = "Prototype Test Lab replacement",
+                AllowConflictReplacement = true,
+                TraitsAuthorizedForReplacement = blockers
+            });
+            return Record(result.Succeeded, "Replace Trait", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation RebuildTraitEffects()
+        {
+            if (!EnsureTraits(out CharacterTraitCollection traits))
+            {
+                return RecordFailure("Rebuild Traits", "Player Trait collection component is missing.", "MissingTraits");
+            }
+
+            TraitOperationResult result = traits.RebuildTraitEffects();
+            return Record(result.Succeeded, "Rebuild Traits", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation SnapshotTraitsForPersistence()
+        {
+            if (!EnsureTraits(out CharacterTraitCollection traits))
+            {
+                return RecordFailure("Trait Save Snapshot", "Player Trait collection component is missing.", "MissingTraits");
+            }
+
+            PlayerTraitsSaveData saveData = traits.CreateSaveData(PersistenceService.LocalPlayerId, context?.IdentityProgression == null ? string.Empty : context.IdentityProgression.PersonId);
+            bool valid = CharacterTraitCollection.ValidateSaveData(saveData, registry, PersistenceService.LocalPlayerId, out string failureReason);
+            return Record(valid, "Trait Save Snapshot", valid ? "Valid" : "Invalid", valid ? $"Captured {saveData.traits.Count} Trait record(s)." : failureReason);
+        }
+
+        public PrototypeTestLabOperation EvaluateRequirement(RequirementSetDefinition requirement)
+        {
+            if (requirement == null)
+            {
+                return RecordFailure("Evaluate Requirement", "Requirement Set definition is missing.", "MissingRequirement");
+            }
+
+            RequirementEvaluationResult result = CapabilityRequirementEvaluator.Evaluate(requirement, BuildRequirementContext(testLab: true));
+            string failures = result.Passed ? "All nodes passed." : string.Join("; ", result.TestLabFailureReasons);
+            return Record(result.Passed, "Evaluate Requirement", result.Passed ? "Passed" : "Failed", failures);
         }
 
         public string BuildCurrentResourcesSummary()
@@ -1744,6 +1932,65 @@ namespace UnityIsekaiGame.Development
             context.PlayerResources = resources;
             resources.Configure(registry, context.PlayerCalculatedStats, PersistenceService.LocalPlayerId);
             return true;
+        }
+
+        private bool EnsureTraits(out CharacterTraitCollection traits)
+        {
+            traits = context?.PlayerTraits;
+            if (traits == null && context?.PlayerTransform != null)
+            {
+                traits = context.PlayerTransform.GetComponentInParent<CharacterTraitCollection>();
+            }
+
+            if (traits == null && context?.PlayerTransform != null)
+            {
+                traits = context.PlayerTransform.gameObject.AddComponent<CharacterTraitCollection>();
+            }
+
+            if (traits == null)
+            {
+                return false;
+            }
+
+            context.PlayerTraits = traits;
+            traits.Configure(registry, context.PlayerCalculatedStats, context.PlayerSkills, PersistenceService.LocalPlayerId);
+            return true;
+        }
+
+        private PrototypeTestLabOperation ChangeTrait(TraitDefinition trait, string operationName, Func<CharacterTraitCollection, TraitOperationResult> action)
+        {
+            if (!EnsureTraits(out CharacterTraitCollection traits))
+            {
+                return RecordFailure(operationName, "Player Trait collection component is missing.", "MissingTraits");
+            }
+
+            if (trait == null)
+            {
+                return RecordFailure(operationName, "Trait definition is missing.", "MissingTrait");
+            }
+
+            TraitOperationResult result = action(traits);
+            return Record(result.Succeeded, operationName, result.Code, result.Message);
+        }
+
+        private RequirementEvaluationContext BuildRequirementContext(bool testLab)
+        {
+            EnsureTraits(out CharacterTraitCollection traits);
+            EnsureResources(out CharacterResourceCollection resources);
+            EnsureSkills(out CharacterSkillCollection skills);
+            return new RequirementEvaluationContext
+            {
+                Attributes = context?.PlayerAttributes,
+                CalculatedStats = context?.PlayerCalculatedStats,
+                Resources = resources,
+                Skills = skills,
+                Traits = traits,
+                Identity = context?.IdentityProgression,
+                Inventory = context?.Inventory,
+                Equipment = context?.Equipment,
+                Statuses = context?.PlayerStatuses,
+                TestLabDiagnostics = testLab
+            };
         }
 
         private bool TryGetFirstActiveRole(out PlayerIdentityProgression progression, out RuntimeRoleRecord role, out PrototypeTestLabOperation failure)

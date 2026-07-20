@@ -1,0 +1,58 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55100000000000000000000000000055, type: 3}
+  m_Name: ManaSensitiveTrait
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Traits.TraitDefinition
+  traitId: trait.mana-sensitive
+  displayName: Mana Sensitive
+  description: Persistent sensitivity to mana.
+  primaryCategory: {fileID: 11400000, guid: 55ca0000000000000000000000000055, type: 2}
+  tags: []
+  polarity: 0
+  permanenceClass: 0
+  defaultLifecycle: 1
+  defaultDiscovery: 2
+  defaultVisibility: 1
+  alphaEnabled: 1
+  conflictGroupIds: []
+  incompatibleTraits: []
+  calculatedStatContributions:
+  - entryId: magical-power
+    calculatedStat: {fileID: 11400000, guid: c2000000000000000000000000000052, type: 2}
+    kind: 0
+    direction: 0
+    magnitude: 1
+    priority: 0
+  abilityActionGrants:
+  - entryId: detect-mana
+    ability: {fileID: 0}
+    actionOrAbilityId: ability.detect-mana
+    requiredLifecycle: 1
+    requireDiscovered: 0
+    alphaEnabled: 1
+  booleanCapabilityGrants:
+  - entryId: mana-sense
+    capability: {fileID: 11400000, guid: 55d30000000000000000000000000055, type: 2}
+    booleanValue: 1
+    numericValue: 0
+    blocker: 0
+    priority: 0
+    alphaEnabled: 1
+  numericCapabilityGrants: []
+  resistanceGrants: []
+  immunityGrants: []
+  linkedTraitGrants: []
+  skillGrants: []
+  acquisitionRequirements: {fileID: 0}
+  activationRequirements: {fileID: 0}
+  upgradeReplacementMetadata: 
+  futureMetadata: 

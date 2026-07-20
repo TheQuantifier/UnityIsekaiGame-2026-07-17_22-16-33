@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55300000000000000000000000000055, type: 3}
+  m_Name: RoyalAudienceRequirement
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Requirements.RequirementSetDefinition
+  requirementSetId: requirement.royal-audience
+  displayName: Royal Audience
+  description: Prototype contextual social-status requirement.
+  primaryCategory: {fileID: 11400000, guid: 55cc0000000000000000000000000055, type: 2}
+  rootGroup:
+    groupId: royal-audience-root
+    logicalOperator: 0
+    nodes:
+    - nodeId: noble-context
+      nodeType: 8
+      comparison: 0
+      targetId: social-status.nobility
+      numericValue: 0
+      integerValue: 0
+      booleanValue: 1
+      contextKey: government
+      failureVisibility: 0
+      visibleFailureReason: Noble standing in this government is required.
+      obscuredFailureReason: Standing is insufficient.
+      requiresContext: 1
+    groups: []
+  maximumDepth: 4
+  alphaEnabled: 1

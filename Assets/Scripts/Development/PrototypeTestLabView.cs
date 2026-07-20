@@ -13,9 +13,11 @@ using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.Traits;
 
 namespace UnityIsekaiGame.Development
 {
@@ -33,6 +35,7 @@ namespace UnityIsekaiGame.Development
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
+            "Traits 5.5",
             "Skills 5.3",
             "Inventory",
             "Combat",
@@ -58,9 +61,12 @@ namespace UnityIsekaiGame.Development
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
+        private Text traitsText;
         private Text skillsText;
         private Text itemValueText;
         private Text skillValueText;
+        private Text traitValueText;
+        private Text requirementValueText;
         private Text statusValueText;
         private Text roleValueText;
         private Text socialStatusValueText;
@@ -86,6 +92,8 @@ namespace UnityIsekaiGame.Development
         private int selectedPersonIndex;
         private int selectedTestPointIndex;
         private int selectedSkillIndex;
+        private int selectedTraitIndex;
+        private int selectedRequirementIndex;
 
         private readonly List<ItemDefinition> items = new List<ItemDefinition>();
         private readonly List<StatusEffectDefinition> statuses = new List<StatusEffectDefinition>();
@@ -99,6 +107,8 @@ namespace UnityIsekaiGame.Development
         private readonly List<PersonDefinition> people = new List<PersonDefinition>();
         private readonly List<PrototypeTestPoint> testPoints = new List<PrototypeTestPoint>();
         private readonly List<SkillDefinition> skills = new List<SkillDefinition>();
+        private readonly List<TraitDefinition> traits = new List<TraitDefinition>();
+        private readonly List<RequirementSetDefinition> requirements = new List<RequirementSetDefinition>();
         private readonly List<GameObject> sectionRoots = new List<GameObject>();
         private readonly List<Button> sectionButtons = new List<Button>();
 
@@ -189,6 +199,11 @@ namespace UnityIsekaiGame.Development
                 skillsText.text = service.BuildSkillsSummary(includeHidden: true);
             }
 
+            if (traitsText != null)
+            {
+                traitsText.text = service.BuildTraitsSummary(includeHidden: true);
+            }
+
             UpdateSelectorLabels();
             UpdateHistory();
             UpdateSectionButtonStates();
@@ -230,6 +245,7 @@ namespace UnityIsekaiGame.Development
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
+            Transform feature55Section = AddSection(content, "Traits 5.5 Section");
             Transform feature53Section = AddSection(content, "Skills 5.3 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
@@ -246,6 +262,7 @@ namespace UnityIsekaiGame.Development
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
+            BuildFeature55Section(feature55Section, font);
             BuildFeature53Section(feature53Section, font);
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
@@ -358,6 +375,31 @@ namespace UnityIsekaiGame.Development
                 ("Rebuild", () => service.RebuildSkillEffects()),
                 ("Clear Skills", () => service.ClearSkillDevelopmentState(confirmed: false)));
             skillsText = AddText(parent, font, "Skills not available.", 12, 360);
+        }
+
+        private void BuildFeature55Section(Transform parent, Font font)
+        {
+            traitValueText = AddSelectorRow(parent, font, "Trait", () => CycleSelection(ref selectedTraitIndex, traits.Count, -1), () => CycleSelection(ref selectedTraitIndex, traits.Count, 1));
+            requirementValueText = AddSelectorRow(parent, font, "Requirement", () => CycleSelection(ref selectedRequirementIndex, requirements.Count, -1), () => CycleSelection(ref selectedRequirementIndex, requirements.Count, 1));
+            AddButtonRow(parent, font,
+                ("Grant Active", () => service.GrantTrait(GetSelected(traits, selectedTraitIndex), TraitLifecycleState.Active, TraitDiscoveryState.Discovered)),
+                ("Grant Dormant", () => service.GrantTrait(GetSelected(traits, selectedTraitIndex), TraitLifecycleState.Dormant, TraitDiscoveryState.Undiscovered)),
+                ("Duplicate", () => service.GrantTraitDuplicateProof(GetSelected(traits, selectedTraitIndex))),
+                ("Second Source", () => service.GrantTraitSecondSource(GetSelected(traits, selectedTraitIndex))));
+            AddButtonRow(parent, font,
+                ("Remove Source", () => service.RemoveTraitTestLabSource(GetSelected(traits, selectedTraitIndex))),
+                ("Activate", () => service.ActivateTrait(GetSelected(traits, selectedTraitIndex))),
+                ("Suppress", () => service.SuppressTrait(GetSelected(traits, selectedTraitIndex))),
+                ("Unsuppress", () => service.UnsuppressTrait(GetSelected(traits, selectedTraitIndex))));
+            AddButtonRow(parent, font,
+                ("Suspect", () => service.SetTraitSuspected(GetSelected(traits, selectedTraitIndex))),
+                ("Discover", () => service.SetTraitDiscovered(GetSelected(traits, selectedTraitIndex))),
+                ("Replace", () => service.ReplaceTrait(GetSelected(traits, selectedTraitIndex))),
+                ("Rebuild", () => service.RebuildTraitEffects()));
+            AddButtonRow(parent, font,
+                ("Evaluate Req", () => service.EvaluateRequirement(GetSelected(requirements, selectedRequirementIndex))),
+                ("Save Snapshot", () => service.SnapshotTraitsForPersistence()));
+            traitsText = AddText(parent, font, "Traits not available.", 12, 380);
         }
 
         private void BuildFeature54bSection(Transform parent, Font font)
@@ -512,6 +554,8 @@ namespace UnityIsekaiGame.Development
             SetOptions(people, service.GetDefinitions<PersonDefinition>(), ref selectedPersonIndex);
             SetOptions(testPoints, service.GetTestPoints(), ref selectedTestPointIndex);
             SetOptions(skills, service.GetDefinitions<SkillDefinition>(), ref selectedSkillIndex);
+            SetOptions(traits, service.GetDefinitions<TraitDefinition>(), ref selectedTraitIndex);
+            SetOptions(requirements, service.GetDefinitions<RequirementSetDefinition>(), ref selectedRequirementIndex);
         }
 
         private void UpdateSelectorLabels()
@@ -528,6 +572,8 @@ namespace UnityIsekaiGame.Development
             SetValue(personValueText, FormatSelected(people, selectedPersonIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(testPointValueText, FormatSelected(testPoints, selectedTestPointIndex, point => $"{point.DisplayName} ({point.TestPointId})"));
             SetValue(skillValueText, FormatSelected(skills, selectedSkillIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(traitValueText, FormatSelected(traits, selectedTraitIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(requirementValueText, FormatSelected(requirements, selectedRequirementIndex, PrototypeTestLabService.FormatDefinition));
         }
 
         private void UpdateHistory()

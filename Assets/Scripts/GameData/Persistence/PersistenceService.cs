@@ -1338,7 +1338,8 @@ namespace UnityIsekaiGame.GameData.Persistence
             return participantKey switch
             {
                 "player.skills" => new[] { "player.identity-progression", "player.attributes" },
-                "player.inventory-equipment" => new[] { "player.skills" },
+                "player.traits" => new[] { "player.identity-progression", "player.attributes", "player.skills" },
+                "player.inventory-equipment" => new[] { "player.skills", "player.traits" },
                 "player.stats-vitals-status" => new[] { "player.inventory-equipment" },
                 "player.resources" => new[] { "player.stats-vitals-status" },
                 "player.quests-contracts" => new[] { "player.inventory-equipment", "player.resources", "player.stats-vitals-status" },
@@ -1350,6 +1351,7 @@ namespace UnityIsekaiGame.GameData.Persistence
         private static bool IsPlayerDataParticipant(string participantKey)
         {
             return participantKey == "player.skills"
+                || participantKey == "player.traits"
                 || participantKey == "player.inventory-equipment"
                 || participantKey == "player.stats-vitals-status"
                 || participantKey == "player.resources"
