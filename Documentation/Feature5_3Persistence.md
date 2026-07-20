@@ -10,7 +10,7 @@ Feature 5.3 adds a player-scoped persistence participant for Skills.
 - Load phase: `PersistenceLoadPhase.Skills`
 - Dependencies: `player.identity-progression`, `player.attributes`
 
-The participant owns learned Skill records, hidden learning progress, and consumed action-event keys. It does not authoritatively persist Calculated Stat contributions, ability ownership, cached mastery flags, next-threshold values, or UI state. Those are rebuilt from Skill state and definitions after load.
+The participant owns learned Skill records, hidden learning progress, and consumed action-event keys. It does not authoritatively persist Calculated Stat contributions, ability ownership, cached mastery flags, next-threshold values, or UI state. Those are rebuilt from Skill state and definitions after load. Feature 5.4a keeps this boundary: Skills may contribute to Calculated Stats but do not mutate Base Attribute records.
 
 ## Payload
 

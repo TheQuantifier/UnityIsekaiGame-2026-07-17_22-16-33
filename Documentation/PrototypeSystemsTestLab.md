@@ -65,6 +65,7 @@ The generated Test Lab page includes:
 - player/enemy status apply and remove actions;
 - typed damage against player or enemy;
 - enemy defeat and reset actions;
+- Numbers 5.4a controls for Base Attribute growth, removable Strength 100+ source, Calculated Stat contribution tests, rebuild, and invalid-growth proof;
 - quest start and talk/reach/defeat signal actions;
 - contract accept and clear actions;
 - Skill 5.3 controls for hidden learning, valid/missed/blocked action simulation, duplicate action proof, direct grants, XP awards, mastery, cumulative effect rebuild, and explicit Skill development reset;
@@ -95,6 +96,7 @@ Diagnostics currently report:
 - registered world entity IDs through the World Entities Test Lab section.
 - current save-slot state, dirty flag, play time, and last autosave result through the Persistence section.
 - persistence transaction phase, runtime safety, dependency summary, recovery recommendation, consistency audit summary, and runtime state fingerprint through the Persistence section.
+- Base Attribute full/display values and Calculated Stat purpose/resource metadata through the Numbers 5.4a section.
 - learned Skill records and optional hidden learning progress through the Skills 5.3 section.
 
 The diagnostics are intentionally replaceable. They are meant to catch common prototype setup mistakes, not to replace definition validation, automated tests, or future PlayMode system test suites.
@@ -118,24 +120,30 @@ Use the Test Lab only in the existing Tab menu:
 13. Use `Next Damage`, then damage the enemy and reset the enemy. Confirm enemy health/reset behavior still works in the scene.
 14. Use `Next Quest`, start a quest, and use Talk/Reach/Defeat report buttons to verify quest progress changes in Journal.
 15. Use `Next Contract`, accept a contract, and verify it appears in Journal.
-16. Open the `Skills 5.3` section, select Swordsmanship, and confirm hidden progress is visible only in Test Lab.
-17. Click `Valid Use`, then `Missed Use`, and confirm hidden progress increases by one for each.
-18. Click `Blocked` and confirm progress does not increase.
-19. Click `Duplicate` and confirm the repeated event is counted once for the selected Skill.
-20. Use `Many Uses` to reach the threshold, then confirm the Skill becomes learned at `F` and the Character page lists it.
-21. Click `XP +1`, `XP Many`, `Grant C`, `Grant A`, and `Grant AAA` to verify XP, promotion, direct grant promotion, and mastery diagnostics.
-22. Click `Rebuild` and confirm Calculated Stat totals do not duplicate. Press `Clear Skills` once to confirm it asks for confirmation; press it again only if you want to wipe development Skill state.
-23. Use the persistence scenario, click `Save`, change player state, click `Load`, and confirm saved player state restores.
-24. In the Persistence section, click `Fingerprint`, then save manual slot 1, change player state, and load manual slot 1. Confirm the restored state matches expectations and the displayed runtime safety remains safe.
-25. Click `Recovery Scan` and confirm the recovery summary updates without automatically loading or promoting any save file.
-26. Click `Fail Prepare`, then attempt a load and confirm it fails before changing live state. Repeat with `Fail Commit` and confirm the lab reports rollback instead of leaving mixed state. Repeat with `Fail Audit` and confirm rollback is reported.
-27. Open the `World Entities` Test Lab section. Click `Refresh`, then confirm authored PrototypeScene entities are listed.
-28. Select an item and click `Spawn Persistent`; confirm the spawned loot gets an `entity.local-world.runtime.*` ID.
-29. Click `Destroy Spawned`, then `Recreate Saved`; confirm the same runtime world entity ID is restored.
-30. Click `Duplicate Proof`; confirm the lab reports duplicate rejection instead of registering two objects with the same ID.
-31. Click `Spawn Transient`; confirm it appears in-world but is not added to the registered world entity list.
-32. Click `Delete Save` once and confirm it requires confirmation. Click it again only if you want to remove the prototype slot.
-33. Close the Tab menu and confirm movement, look, interaction, combat, and normal prototype controls resume.
+16. Open the `Numbers 5.4a` section. Confirm the summary says Base Attributes and Calculated Stats.
+17. Click `Base +Str` and confirm Strength full value increases fractionally while the display value still floors.
+18. Click `Add Phys Power` and confirm Physical Power changes without changing Strength.
+19. Click `Strength 100+`, then return to Character and confirm the Base Attribute display can exceed 100 while Health/Mana/Stamina remain current/max vitals.
+20. Click `Invalid Base` and confirm negative growth is rejected.
+21. Click `Rebuild Stats` and confirm Calculated Stat totals remain stable and list purpose/resource metadata for maximum Health/Mana/Stamina.
+22. Open the `Skills 5.3` section, select Swordsmanship, and confirm hidden progress is visible only in Test Lab.
+23. Click `Valid Use`, then `Missed Use`, and confirm hidden progress increases by one for each.
+24. Click `Blocked` and confirm progress does not increase.
+25. Click `Duplicate` and confirm the repeated event is counted once for the selected Skill.
+26. Use `Many Uses` to reach the threshold, then confirm the Skill becomes learned at `F` and the Character page lists it.
+27. Click `XP +1`, `XP Many`, `Grant C`, `Grant A`, and `Grant AAA` to verify XP, promotion, direct grant promotion, and mastery diagnostics.
+28. Click `Rebuild` and confirm Calculated Stat totals do not duplicate. Press `Clear Skills` once to confirm it asks for confirmation; press it again only if you want to wipe development Skill state.
+29. Use the persistence scenario, click `Save`, change player state, click `Load`, and confirm saved player state restores.
+30. In the Persistence section, click `Fingerprint`, then save manual slot 1, change player state, and load manual slot 1. Confirm the restored state matches expectations and the displayed runtime safety remains safe.
+31. Click `Recovery Scan` and confirm the recovery summary updates without automatically loading or promoting any save file.
+32. Click `Fail Prepare`, then attempt a load and confirm it fails before changing live state. Repeat with `Fail Commit` and confirm the lab reports rollback instead of leaving mixed state. Repeat with `Fail Audit` and confirm rollback is reported.
+33. Open the `World Entities` Test Lab section. Click `Refresh`, then confirm authored PrototypeScene entities are listed.
+34. Select an item and click `Spawn Persistent`; confirm the spawned loot gets an `entity.local-world.runtime.*` ID.
+35. Click `Destroy Spawned`, then `Recreate Saved`; confirm the same runtime world entity ID is restored.
+36. Click `Duplicate Proof`; confirm the lab reports duplicate rejection instead of registering two objects with the same ID.
+37. Click `Spawn Transient`; confirm it appears in-world but is not added to the registered world entity list.
+38. Click `Delete Save` once and confirm it requires confirmation. Click it again only if you want to remove the prototype slot.
+39. Close the Tab menu and confirm movement, look, interaction, combat, and normal prototype controls resume.
 
 ## Known Limitations
 

@@ -31,7 +31,7 @@ namespace UnityIsekaiGame.Development
             "Overview",
             "Player",
             "Identity 5.1",
-            "Stats 5.2",
+            "Numbers 5.4a",
             "Skills 5.3",
             "Inventory",
             "Combat",
@@ -221,7 +221,7 @@ namespace UnityIsekaiGame.Development
             Transform overviewSection = AddSection(content, "Overview Section");
             Transform playerSection = AddSection(content, "Player Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
-            Transform feature52Section = AddSection(content, "Stats 5.2 Section");
+            Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature53Section = AddSection(content, "Skills 5.3 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
@@ -316,16 +316,16 @@ namespace UnityIsekaiGame.Development
         private void BuildFeature52Section(Transform parent, Font font)
         {
             AddButtonRow(parent, font,
-                ("Train Strength", () => service.AddStrengthTraining()),
-                ("Train All", () => service.AddBalancedAttributeTraining()),
+                ("Base +Str", () => service.AddStrengthTraining()),
+                ("Base +All", () => service.AddBalancedAttributeTraining()),
                 ("Strength 100+", () => service.SetStrengthAboveHundred()),
-                ("Invalid Proof", () => service.AttemptInvalidAttributeGrowth()));
+                ("Invalid Base", () => service.AttemptInvalidAttributeGrowth()));
             AddButtonRow(parent, font,
-                ("Add Power", () => service.AddPhysicalPowerFlat()),
+                ("Add Phys Power", () => service.AddPhysicalPowerFlat()),
                 ("Defense Penalty", () => service.AddPhysicalDefensePenalty()),
-                ("Clear 5.2", () => service.ClearFeature52Contributions()),
-                ("Recalculate", () => service.RecalculateFeature52Stats()));
-            attributesCalculatedStatsText = AddText(parent, font, "Attributes and calculated stats not available.", 12, 360);
+                ("Clear 5.4a", () => service.ClearFeature52Contributions()),
+                ("Rebuild Stats", () => service.RecalculateFeature52Stats()));
+            attributesCalculatedStatsText = AddText(parent, font, "Base Attributes and Calculated Stats not available.", 12, 360);
         }
 
         private void BuildFeature53Section(Transform parent, Font font)

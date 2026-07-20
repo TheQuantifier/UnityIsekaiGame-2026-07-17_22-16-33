@@ -59,7 +59,7 @@ The participant persists exact current Health, Mana, and Stamina.
 
 Saved values must be finite and non-negative. Health must be above zero because defeated prototype saves are not supported.
 
-Vitals restore after statuses rebuild final modifiers. Restore clamps each value to the final maximum and does not refill resources when a maximum increases.
+Vitals restore after statuses rebuild final modifiers. Restore clamps each value to the final maximum and does not refill resources when a maximum increases. Feature 5.4a clarifies that these maximums are Calculated Stats where configured, while current Health/Mana/Stamina remain specialized runtime values.
 
 Stamina and mana restore reset transient regeneration delay state. Stamina also clears stale sprint-frame state and recomputes exhaustion from the restored current value.
 

@@ -296,10 +296,10 @@ namespace UnityIsekaiGame.Stats
         public string BuildDiagnosticSummary()
         {
             EnsureConfiguredFromFallback();
-            List<string> lines = new List<string> { "Feature 5.2 Attributes" };
+            List<string> lines = new List<string> { "Feature 5.4a Base Attributes" };
             foreach (RuntimeAttributeValueRecord record in GetOrderedValues())
             {
-                lines.Add($"{record.attributeId}: {record.currentValue:0.###} (display {Mathf.FloorToInt(record.currentValue)})");
+                lines.Add($"{record.attributeId}: full {record.currentValue:0.###}, display {Mathf.FloorToInt(record.currentValue)}, foundation {record.foundationValue:0.###}, permanent {record.permanentSourceTotal:0.###}, growth {record.growthTotal:0.###}");
             }
 
             lines.Add($"Permanent Sources: {permanentSourceContributions.Count}");

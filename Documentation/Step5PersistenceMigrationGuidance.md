@@ -30,6 +30,7 @@ Step 5 will expand core game models. Use this guidance before changing definitio
 | Factions | Static faction definitions are content. Reputation may be player/account state; wars/control/economy are shared-world state. |
 | Economy and ownership | Treat as shared-world/server-owned unless explicitly player-owned inventory. Do not put market state in local player saves. |
 | Identity and progression | `player.identity-progression` is player-owned. Account/player/person/world-entity IDs must remain distinct. Missing Feature 5.1 payloads are rejected for current development saves. |
+| Base Attributes and Calculated Stats | `player.attributes` persists permanent Base Attribute source/growth records. Calculated Stats are derived caches and should not be saved as authoritative values. Resource maximum metadata is definition data until a future resource feature exists. |
 
 ## Required Before Merging Step 5 Persistence Changes
 
@@ -55,8 +56,12 @@ Feature 5.1 introduces required participant `player.identity-progression` at sch
 
 ## Feature 5.2 Break
 
-Feature 5.2 introduces required participant `player.attributes` at schema version 1. Pre-5.2 development saves are intentionally rejected because they do not contain authoritative Attribute source contributions or action-growth event history. Calculated Stats are not saved as authoritative values; they rebuild from Attribute records and active source-owned systems after load. Delete old local prototype saves before final Feature 5.2 manual testing.
+Feature 5.2 introduces required participant `player.attributes` at schema version 1. Pre-5.2 development saves are intentionally rejected because they do not contain authoritative Base Attribute source contributions or action-growth event history. Calculated Stats are not saved as authoritative values; they rebuild from Base Attribute records and active source-owned systems after load. Delete old local prototype saves before final Feature 5.2 manual testing.
 
 ## Feature 5.3 Break
 
 Feature 5.3 introduces required participant `player.skills` at schema version 1. Pre-5.3 development saves are intentionally rejected because they do not contain hidden Skill learning progress, learned Skill records, consumed action-event keys, direct Skill grants, promotion history, or deterministic Skill effect rebuild metadata. Delete old local prototype saves before final Feature 5.3 manual testing and recreate saves after definition validation.
+
+## Feature 5.4a Compatibility
+
+Feature 5.4a does not bump `player.attributes` and does not add a new participant. It refines terminology to Base Attributes and adds Calculated Stat purpose/resource metadata in definitions. Feature 5.2/5.3 development saves should remain compatible when they use canonical IDs. Pre-5.2 saves remain rejected.

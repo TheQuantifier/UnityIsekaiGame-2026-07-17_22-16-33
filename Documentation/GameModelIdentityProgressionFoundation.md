@@ -14,7 +14,7 @@ Feature 5.1 adds the first player-owned identity/progression model. It is still 
 - Wallet state currently supports `currency.gold`.
 - Overall level is derived, not directly authored: 75% activity and 25% persistent stat contribution by default.
 
-Feature 5.2 update: origin and birth-gift permanent stat rewards now apply as persistent Attribute sources when `CharacterAttributes` is present. Roles and Social Statuses remain active effects, but their legacy modifiers are bridged into Calculated Stat contributions by `ActorStats`.
+Feature 5.4a terminology update: origin and birth-gift permanent stat rewards apply as persistent Base Attribute sources when `CharacterAttributes` is present. Roles and Social Statuses remain active effects, but their legacy modifiers are bridged into Calculated Stat contributions by `ActorStats`.
 
 ## Definitions
 

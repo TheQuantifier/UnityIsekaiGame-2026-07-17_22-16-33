@@ -43,6 +43,17 @@ Step 4 uses one save envelope schema plus independent participant schemas. Do no
 - Migration: none.
 - Stable-ID dependencies: item definition IDs, item instance GUIDs, quality IDs, equipment slot IDs.
 
+## Base Attributes
+
+- Participant: `player.attributes`
+- Payload: `PlayerAttributesSaveData`
+- Current version: `1`
+- Required fields: schema version, player ID, person ID, permanent source contributions, training/growth events.
+- Compatibility: missing pre-5.2 participant data is rejected for current development saves; Feature 5.4a does not bump the schema.
+- Migration: none for pre-5.2 saves.
+- Stable-ID dependencies: Base Attribute IDs, contribution source IDs, growth event IDs.
+- Derived values: Calculated Stats, including maximum Health/Mana/Stamina, are rebuilt from Base Attributes and source-owned contributions and are not saved as authoritative payload values.
+
 ## Skills
 
 - Participant: `player.skills`
@@ -63,6 +74,7 @@ Step 4 uses one save envelope schema plus independent participant schemas. Do no
 - Compatibility: unsupported participant payload versions are rejected; defeated saves are rejected.
 - Migration: none.
 - Stable-ID dependencies: actor profile ID, status definition IDs, status application IDs, source IDs.
+- Feature 5.4a boundary: current Health/Mana/Stamina remain specialized persisted runtime values; their maximums come from Calculated Stats where configured.
 
 ## Quest/Contract
 

@@ -42,6 +42,13 @@ namespace UnityIsekaiGame.Tests
             "calculated-stat.evasion"
         };
 
+        private const string MaximumHealthStatId = "calculated-stat.maximum-health";
+        private const string MaximumStaminaStatId = "calculated-stat.maximum-stamina";
+        private const string MaximumManaStatId = "calculated-stat.maximum-mana";
+        private const string FutureHealthResourceId = "resource.health";
+        private const string FutureStaminaResourceId = "resource.stamina";
+        private const string FutureManaResourceId = "resource.mana";
+
         [Test]
         public void PrototypeCatalog_ResolvesAlphaAttributesAndCalculatedStats()
         {
@@ -59,6 +66,125 @@ namespace UnityIsekaiGame.Tests
                 Assert.That(registry.TryGet(statId, out IGameDefinition stat), Is.True, statId);
                 Assert.That(stat.GetType().FullName, Is.EqualTo("UnityIsekaiGame.Stats.CalculatedStatDefinition"));
                 Assert.That(GetProperty<object>(stat, "Formula"), Is.Not.Null, statId);
+            }
+        }
+
+        [Test]
+        public void BaseAttributes_ArePermanentFractionalValuesWithFloorDisplay()
+        {
+            DefinitionRegistry registry = LoadRegistry();
+            GameObject owner = new GameObject("Base Attribute Fixture");
+            try
+            {
+                Component attributes = owner.AddComponent(RequiredType("UnityIsekaiGame.Stats.CharacterAttributes"));
+                Invoke(attributes, "Configure", registry);
+
+                object contribution = CreateAttributeContribution("attribute.strength", "test.base-attribute.fractional", 0.75f);
+                Array contributions = Array.CreateInstance(RequiredType("UnityIsekaiGame.Stats.RuntimeAttributeSourceContribution"), 1);
+                contributions.SetValue(contribution, 0);
+                object category = Enum.Parse(RequiredType("UnityIsekaiGame.Stats.AttributeGrowthEventCategory"), "Training");
+                object[] args = { "test.base-attribute.fractional", category, contributions, "EditMode Test", null, false };
+
+                Assert.That(Invoke<bool>(attributes, "TryRecordTrainingEvent", args), Is.True, args[4] as string);
+                Assert.That(Invoke<float>(attributes, "GetValue", "attribute.strength"), Is.EqualTo(1.75f).Within(0.0001f));
+                Assert.That(Invoke<int>(attributes, "GetDisplayedValue", "attribute.strength"), Is.EqualTo(1));
+                Assert.That(registry.Contains("attribute.current-strength"), Is.False);
+                Assert.That(registry.Contains("attribute.maximum-strength"), Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
+        public void CalculatedStats_DeclarePurposeAndReservedResourceMaximumLinks()
+        {
+            DefinitionRegistry registry = LoadRegistry();
+
+            AssertResourceMaximum(registry, MaximumHealthStatId, FutureHealthResourceId);
+            AssertResourceMaximum(registry, MaximumStaminaStatId, FutureStaminaResourceId);
+            AssertResourceMaximum(registry, MaximumManaStatId, FutureManaResourceId);
+
+            foreach (string statId in AlphaCalculatedStatIds)
+            {
+                Assert.That(registry.TryGet(statId, out IGameDefinition stat), Is.True, statId);
+                object purpose = GetProperty<object>(stat, "Purpose");
+                Assert.That(Enum.IsDefined(RequiredType("UnityIsekaiGame.Stats.CalculatedStatPurpose"), purpose), Is.True, statId);
+                if (!GetProperty<bool>(stat, "IsResourceMaximum"))
+                {
+                    Assert.That(GetProperty<string>(stat, "LinkedFutureResourceId"), Is.Empty, statId);
+                }
+            }
+        }
+
+        [Test]
+        public void CalculatedStatValidation_RejectsMissingAndDuplicateResourceMappings()
+        {
+            DefinitionRegistry registry = LoadRegistry();
+            Assert.That(registry.TryGet("calculated-stat-formula.physical-power", out IGameDefinition formula), Is.True);
+
+            Type statDefinitionType = RequiredType("UnityIsekaiGame.Stats.CalculatedStatDefinition");
+            ScriptableObject missing = ScriptableObject.CreateInstance(statDefinitionType);
+            ScriptableObject duplicate = ScriptableObject.CreateInstance(statDefinitionType);
+            try
+            {
+                SetField(missing, "statId", "calculated-stat.test-missing-resource");
+                SetField(missing, "displayName", "Test Missing Resource");
+                SetField(missing, "formula", formula);
+                SetField(missing, "purpose", Enum.Parse(RequiredType("UnityIsekaiGame.Stats.CalculatedStatPurpose"), "ResourceMaximum"));
+
+                SetField(duplicate, "statId", "calculated-stat.test-duplicate-health");
+                SetField(duplicate, "displayName", "Test Duplicate Health");
+                SetField(duplicate, "formula", formula);
+                SetField(duplicate, "purpose", Enum.Parse(RequiredType("UnityIsekaiGame.Stats.CalculatedStatPurpose"), "ResourceMaximum"));
+                SetField(duplicate, "linkedFutureResourceId", FutureHealthResourceId);
+
+                Dictionary<string, IGameDefinition> definitions = new Dictionary<string, IGameDefinition>(registry.DefinitionsById)
+                {
+                    { GetProperty<string>(missing, "Id"), (IGameDefinition)missing },
+                    { GetProperty<string>(duplicate, "Id"), (IGameDefinition)duplicate }
+                };
+
+                DefinitionValidationReport report = new DefinitionValidationReport();
+                ((IDefinitionCatalogValidationParticipant)missing).ValidateCatalogDefinition(definitions, report);
+                ((IDefinitionCatalogValidationParticipant)duplicate).ValidateCatalogDefinition(definitions, report);
+
+                Assert.That(report.ErrorCount, Is.GreaterThanOrEqualTo(2), report.GetSummary());
+                Assert.That(report.GetSummary(), Does.Contain("does not declare a linked future resource ID"));
+                Assert.That(report.GetSummary(), Does.Contain("duplicates resource-maximum mapping"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(missing);
+                UnityEngine.Object.DestroyImmediate(duplicate);
+            }
+        }
+
+        [Test]
+        public void TemporaryCalculatedStatContribution_DoesNotMutateBaseAttribute()
+        {
+            DefinitionRegistry registry = LoadRegistry();
+            GameObject owner = new GameObject("Calculated Contribution Fixture");
+            try
+            {
+                Component attributes = owner.AddComponent(RequiredType("UnityIsekaiGame.Stats.CharacterAttributes"));
+                Component calculatedStats = owner.AddComponent(RequiredType("UnityIsekaiGame.Stats.CalculatedStatCollection"));
+                Invoke(attributes, "Configure", registry);
+                Invoke(calculatedStats, "Configure", registry, attributes);
+
+                float initialStrength = Invoke<float>(attributes, "GetValue", "attribute.strength");
+                float initialPower = Invoke<float>(calculatedStats, "GetValue", "calculated-stat.physical-power");
+                object contribution = CreateCalculatedContribution("calculated-stat.physical-power", "test.temporary.source", 5f);
+                object[] args = { contribution, null, false };
+
+                Assert.That(Invoke<bool>(calculatedStats, "AddContribution", args), Is.True, args[1] as string);
+                Assert.That(Invoke<float>(attributes, "GetValue", "attribute.strength"), Is.EqualTo(initialStrength));
+                Assert.That(Invoke<float>(calculatedStats, "GetValue", "calculated-stat.physical-power"), Is.EqualTo(initialPower + 5f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(owner);
             }
         }
 
@@ -176,6 +302,15 @@ namespace UnityIsekaiGame.Tests
             Assert.That(registry.Contains("AttackPower"), Is.False);
             Assert.That(registry.Contains("MaximumHealth"), Is.False);
             Assert.That(registry.Contains("calculated-stat.attack-power"), Is.False);
+            Assert.That(registry.Contains("base-attribute.strength"), Is.False);
+        }
+
+        private static void AssertResourceMaximum(DefinitionRegistry registry, string statId, string expectedResourceId)
+        {
+            Assert.That(registry.TryGet(statId, out IGameDefinition stat), Is.True, statId);
+            Assert.That(GetProperty<object>(stat, "Purpose").ToString(), Is.EqualTo("ResourceMaximum"), statId);
+            Assert.That(GetProperty<bool>(stat, "IsResourceMaximum"), Is.True, statId);
+            Assert.That(GetProperty<string>(stat, "LinkedFutureResourceId"), Is.EqualTo(expectedResourceId), statId);
         }
 
         private static object CreateAttributeContribution(string attributeId, string sourceId, float amount)
@@ -201,6 +336,19 @@ namespace UnityIsekaiGame.Tests
                 value,
                 source,
                 0);
+        }
+
+        private static object CreateCalculatedContribution(string statId, string sourceId, float magnitude)
+        {
+            object contribution = Activator.CreateInstance(RequiredType("UnityIsekaiGame.Stats.RuntimeCalculatedStatContribution"));
+            SetField(contribution, "contributionId", $"{sourceId}.contribution");
+            SetField(contribution, "statId", statId);
+            SetField(contribution, "sourceId", sourceId);
+            SetField(contribution, "sourceCategory", (int)Enum.Parse(RequiredType("UnityIsekaiGame.Stats.CalculatedStatContributionSourceCategory"), "Development"));
+            SetField(contribution, "kind", (int)Enum.Parse(RequiredType("UnityIsekaiGame.Stats.CalculatedStatContributionKind"), "Flat"));
+            SetField(contribution, "direction", (int)Enum.Parse(RequiredType("UnityIsekaiGame.Stats.CalculatedStatContributionDirection"), "Improve"));
+            SetField(contribution, "magnitude", magnitude);
+            return contribution;
         }
 
         private static object CreateStatModifierSource(string sourceTypeName, string sourceId)

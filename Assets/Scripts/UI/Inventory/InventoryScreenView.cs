@@ -309,21 +309,24 @@ namespace UnityIsekaiGame.UI.Inventory
             }
 
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine("Stats");
-            AppendLine(builder, "Max Health", health == null ? "--" : FormatNumber(health.MaximumHealth));
-            AppendLine(builder, "Max Stamina", stamina == null ? "--" : FormatNumber(stamina.MaximumStamina));
-            AppendLine(builder, "Max Mana", mana == null ? "--" : FormatNumber(mana.MaximumMana));
+            builder.AppendLine("Vitals");
+            AppendLine(builder, "Health", health == null ? "--" : $"{FormatNumber(health.CurrentHealth)}/{FormatNumber(health.MaximumHealth)}");
+            AppendLine(builder, "Stamina", stamina == null ? "--" : $"{FormatNumber(stamina.CurrentStamina)}/{FormatNumber(stamina.MaximumStamina)}");
+            AppendLine(builder, "Mana", mana == null ? "--" : $"{FormatNumber(mana.CurrentMana)}/{FormatNumber(mana.MaximumMana)}");
+
+            builder.AppendLine();
+            builder.AppendLine("Combat Summary");
             AppendLine(builder, "Physical Power", stats == null ? "--" : FormatNumber(stats.AttackPower));
             AppendLine(builder, "Physical Defense", stats == null ? "--" : FormatNumber(stats.Defense));
 
             if (attributes != null && attributes.IsConfigured)
             {
                 builder.AppendLine();
-                builder.AppendLine("Attributes");
+                builder.AppendLine("Base Attributes");
                 List<string> parts = new List<string>();
                 foreach (RuntimeAttributeValueRecord record in attributes.GetOrderedValues())
                 {
-                    parts.Add($"{FormatDefinitionName(record.attributeId)} {record.currentValue:0.###}");
+                    parts.Add($"{FormatDefinitionName(record.attributeId)} {Mathf.FloorToInt(record.currentValue)}");
                 }
 
                 AppendCompactPairs(builder, parts);
@@ -336,7 +339,8 @@ namespace UnityIsekaiGame.UI.Inventory
                 List<string> parts = new List<string>();
                 foreach (CalculatedStatDefinition definition in calculatedStats.GetOrderedDefinitions(characterMenuOnly: true))
                 {
-                    parts.Add($"{definition.DisplayName} {FormatNumber(calculatedStats.GetValue(definition.Id))}");
+                    string resource = definition.IsResourceMaximum ? $" [{definition.LinkedFutureResourceId} max]" : string.Empty;
+                    parts.Add($"{definition.DisplayName} {FormatNumber(calculatedStats.GetValue(definition.Id))}{resource}");
                 }
 
                 AppendCompactPairs(builder, parts);

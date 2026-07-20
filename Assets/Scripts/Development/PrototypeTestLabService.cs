@@ -106,7 +106,7 @@ namespace UnityIsekaiGame.Development
                 $"Stamina: {FormatResource(context.PlayerStamina == null ? 0f : context.PlayerStamina.CurrentStamina, context.PlayerStamina == null ? 0f : context.PlayerStamina.MaximumStamina)}",
                 $"Mana: {FormatResource(context.PlayerMana == null ? 0f : context.PlayerMana.CurrentMana, context.PlayerMana == null ? 0f : context.PlayerMana.MaximumMana)}",
                 $"Stats: ATK {FormatNumber(context.PlayerStats == null ? 0f : context.PlayerStats.AttackPower)}, DEF {FormatNumber(context.PlayerStats == null ? 0f : context.PlayerStats.Defense)}",
-                $"Attributes: {(context.PlayerAttributes == null ? "Missing" : context.PlayerAttributes.AttributeValues.Count.ToString())}",
+                $"Base Attributes: {(context.PlayerAttributes == null ? "Missing" : context.PlayerAttributes.AttributeValues.Count.ToString())}",
                 $"Skills: {(context.PlayerSkills == null ? "Missing" : context.PlayerSkills.LearnedSkills.Count.ToString())}",
                 $"Statuses: {FormatStatuses(context.PlayerStatuses)}",
                 $"Inventory: {FormatInventory()}",
@@ -138,7 +138,7 @@ namespace UnityIsekaiGame.Development
         {
             if (context?.PlayerAttributes == null || context.PlayerCalculatedStats == null)
             {
-                return "Player attributes or calculated stats component is missing.";
+                return "Player Base Attributes or Calculated Stats component is missing.";
             }
 
             return string.Join(Environment.NewLine, new[]
@@ -512,14 +512,14 @@ namespace UnityIsekaiGame.Development
 
         public PrototypeTestLabOperation AddStrengthTraining()
         {
-            return AddAttributeTraining(AttributeIds.Strength, 0.25f, "Strength Training");
+            return AddAttributeTraining(AttributeIds.Strength, 0.25f, "Strength Base Attribute Training");
         }
 
         public PrototypeTestLabOperation AddBalancedAttributeTraining()
         {
             if (context?.PlayerAttributes == null)
             {
-                return RecordFailure("Balanced Attribute Training", "Player attributes component is missing.", "MissingAttributes");
+                return RecordFailure("Balanced Base Attribute Training", "Player Base Attributes component is missing.", "MissingAttributes");
             }
 
             List<RuntimeAttributeSourceContribution> contributions = new List<RuntimeAttributeSourceContribution>();
@@ -541,14 +541,14 @@ namespace UnityIsekaiGame.Development
                 contributions,
                 "Prototype Test Lab",
                 out string failureReason);
-            return Record(succeeded, "Balanced Attribute Training", succeeded ? "Recorded" : "Failed", succeeded ? "Added +0.1 to every alpha attribute." : failureReason);
+            return Record(succeeded, "Balanced Base Attribute Training", succeeded ? "Recorded" : "Failed", succeeded ? "Added +0.1 permanent growth to every alpha Base Attribute." : failureReason);
         }
 
         public PrototypeTestLabOperation SetStrengthAboveHundred()
         {
             if (context?.PlayerAttributes == null)
             {
-                return RecordFailure("Set Strength Above 100", "Player attributes component is missing.", "MissingAttributes");
+                return RecordFailure("Set Strength Above 100", "Player Base Attributes component is missing.", "MissingAttributes");
             }
 
             string sourceId = "development.test-lab.strength-above-100";
@@ -560,7 +560,7 @@ namespace UnityIsekaiGame.Development
                 100f,
                 removable: true,
                 out string failureReason);
-            return Record(succeeded, "Set Strength Above 100", succeeded ? "Applied" : "Failed", succeeded ? "Strength has a removable +100 development source." : failureReason);
+            return Record(succeeded, "Set Strength Above 100", succeeded ? "Applied" : "Failed", succeeded ? "Strength has a removable +100 permanent development source." : failureReason);
         }
 
         public PrototypeTestLabOperation AddPhysicalPowerFlat()
@@ -596,25 +596,25 @@ namespace UnityIsekaiGame.Development
                 && context.PlayerCalculatedStats.RemoveContributionsFromSource(CalculatedStatContributionSourceCategory.Development, "development.test-lab.physical-power-flat");
             bool removedDefense = context?.PlayerCalculatedStats != null
                 && context.PlayerCalculatedStats.RemoveContributionsFromSource(CalculatedStatContributionSourceCategory.Development, "development.test-lab.physical-defense-penalty");
-            return RecordSuccess("Clear Feature 5.2 Contributions", $"Cleared development attribute/calculated stat contributions. Power={removedPower} Defense={removedDefense}.");
+            return RecordSuccess("Clear Feature 5.4a Contributions", $"Cleared development Base Attribute/Calculated Stat contributions. Power={removedPower} Defense={removedDefense}.");
         }
 
         public PrototypeTestLabOperation RecalculateFeature52Stats()
         {
             if (context?.PlayerCalculatedStats == null)
             {
-                return RecordFailure("Recalculate Feature 5.2 Stats", "Player calculated stats component is missing.", "MissingCalculatedStats");
+                return RecordFailure("Rebuild Feature 5.4a Stats", "Player Calculated Stats component is missing.", "MissingCalculatedStats");
             }
 
             context.PlayerCalculatedStats.ForceRecalculateAll();
-            return RecordSuccess("Recalculate Feature 5.2 Stats", "Calculated stat cache rebuilt from attributes and active contributions.");
+            return RecordSuccess("Rebuild Feature 5.4a Stats", "Calculated Stat cache rebuilt from Base Attributes and active contributions.");
         }
 
         public PrototypeTestLabOperation AttemptInvalidAttributeGrowth()
         {
             if (context?.PlayerAttributes == null)
             {
-                return RecordFailure("Invalid Attribute Growth Proof", "Player attributes component is missing.", "MissingAttributes");
+                return RecordFailure("Invalid Base Attribute Growth Proof", "Player Base Attributes component is missing.", "MissingAttributes");
             }
 
             bool succeeded = context.PlayerAttributes.TryRecordTrainingEvent(
@@ -632,7 +632,7 @@ namespace UnityIsekaiGame.Development
                 },
                 "Prototype Test Lab",
                 out string failureReason);
-            return Record(!succeeded, "Invalid Attribute Growth Proof", succeeded ? "UnexpectedSuccess" : "Rejected", succeeded ? "Invalid negative growth was unexpectedly accepted." : failureReason);
+            return Record(!succeeded, "Invalid Base Attribute Growth Proof", succeeded ? "UnexpectedSuccess" : "Rejected", succeeded ? "Invalid negative growth was unexpectedly accepted." : failureReason);
         }
 
         public PrototypeTestLabOperation DrainMana(float amount)
@@ -647,7 +647,7 @@ namespace UnityIsekaiGame.Development
         {
             if (context?.PlayerAttributes == null)
             {
-                return RecordFailure(operationName, "Player attributes component is missing.", "MissingAttributes");
+                return RecordFailure(operationName, "Player Base Attributes component is missing.", "MissingAttributes");
             }
 
             bool succeeded = context.PlayerAttributes.TryRecordTrainingEvent(

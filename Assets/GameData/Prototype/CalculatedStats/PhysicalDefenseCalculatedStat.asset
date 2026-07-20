@@ -21,3 +21,5 @@ MonoBehaviour:
   exposedOnCharacterMenu: 1
   sortOrder: 50
   optionalPresentationMaximum: 0
+  purpose: 3
+  linkedFutureResourceId:

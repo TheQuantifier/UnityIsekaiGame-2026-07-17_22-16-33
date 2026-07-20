@@ -116,8 +116,12 @@ namespace UnityIsekaiGame.Skills
                 actionEvent.EventId = CreateRuntimeId("skill-action");
             }
 
+            List<SkillDefinition> matchingDefinitions = definitionsById.Values
+                .Where(skill => skill != null && skill.AlphaEnabled)
+                .ToList();
+
             int changed = 0;
-            foreach (SkillDefinition definition in definitionsById.Values.Where(skill => skill.AlphaEnabled))
+            foreach (SkillDefinition definition in matchingDefinitions)
             {
                 if (!Matches(definition, actionEvent))
                 {

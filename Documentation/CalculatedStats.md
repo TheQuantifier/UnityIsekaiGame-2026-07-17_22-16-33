@@ -1,6 +1,6 @@
 # Calculated Stats
 
-Feature 5.2 introduces Calculated Stats as cached derived runtime values. They are rebuilt from Attributes plus active source-safe contributions.
+Feature 5.4a refines Calculated Stats as cached derived runtime values. They are rebuilt from Base Attributes plus active source-owned contributions.
 
 Alpha Calculated Stats:
 
@@ -30,7 +30,27 @@ Evaluation order:
 8. clamp minimum to zero;
 9. round once to nearest whole.
 
-`CalculatedStatCollection` caches results and emits `CalculatedStatsChanged` after dependencies update. It does not persist calculated values. Saves persist Attributes and active systems persist their own state, then calculated stats are rebuilt after load.
+`CalculatedStatCollection` caches results and emits `CalculatedStatsChanged` after dependencies update. It does not persist calculated values. Saves persist Base Attributes and active systems persist their own state, then calculated stats are rebuilt after load.
+
+Each `CalculatedStatDefinition` now declares a `CalculatedStatPurpose`. The alpha purposes are:
+
+- `General`
+- `ResourceMaximum`
+- `Combat`
+- `Defense`
+- `Utility`
+- `Movement`
+- `Capacity`
+- `Accuracy`
+- `Support`
+
+Resource maximum stats must also declare a linked future resource ID. Feature 5.4a reserves these links without introducing generic current-resource definitions:
+
+- `calculated-stat.maximum-health` -> `resource.health`
+- `calculated-stat.maximum-stamina` -> `resource.stamina`
+- `calculated-stat.maximum-mana` -> `resource.mana`
+
+Health, Stamina, and Mana current values remain specialized runtime values owned by their existing components. The maximum values come from Calculated Stats where configured.
 
 Compatibility path:
 
@@ -40,3 +60,8 @@ Compatibility path:
 - future systems should register `RuntimeCalculatedStatContribution` directly instead of treating legacy base stats as authoritative.
 
 Feature 5.3 Skill grade packages register direct `RuntimeCalculatedStatContribution` entries with source category `Skill`. Each reached grade uses a distinct source ID such as `skill.swordsmanship.grade.f`, so cumulative Skill effects can rebuild without duplicating or replacing lower-grade packages.
+
+See also:
+
+- `Documentation/CalculatedStatsRefinement.md`
+- `Documentation/CharacterNumericalModel.md`

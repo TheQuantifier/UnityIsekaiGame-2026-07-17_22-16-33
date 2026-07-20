@@ -7,6 +7,8 @@ This matrix separates static data, player runtime state, account state, shared-w
 | Item definitions | Static definition | Yes by ID reference | Server/client content validation | ScriptableObjects are not mutable save state. |
 | Inventory contents | Player runtime | Yes | Server for multiplayer | `player.inventory-equipment`. |
 | Equipment | Player runtime | Yes | Server for multiplayer | Restores exact stateful item instances and modifiers rebuild. |
+| Base Attributes | Player/person runtime | Yes | Server for multiplayer | `player.attributes`; persists permanent sources and growth events, not temporary modifiers. |
+| Calculated Stats | Derived runtime cache | No | Rebuilt by authoritative runtime | Rebuilt from Base Attributes plus source-owned contributions; resource maximum metadata is static definition data. |
 | Player vitals | Player runtime | Yes | Server for multiplayer | Health, mana, stamina restore after modifiers. |
 | Player statuses | Player runtime | Yes | Server for multiplayer | Save-eligible statuses only. |
 | Player quests | Player runtime | Yes | Server for multiplayer | Personal quest log. |

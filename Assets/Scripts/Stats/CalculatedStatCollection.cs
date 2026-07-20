@@ -227,11 +227,12 @@ namespace UnityIsekaiGame.Stats
         public string BuildDiagnosticSummary()
         {
             EnsureConfiguredFromFallback();
-            List<string> lines = new List<string> { "Feature 5.2 Calculated Stats" };
+            List<string> lines = new List<string> { "Feature 5.4a Calculated Stats" };
             foreach (CalculatedStatDefinition definition in GetOrderedDefinitions(characterMenuOnly: false))
             {
                 CalculatedStatEvaluationBreakdown breakdown = GetBreakdown(definition.Id);
-                lines.Add($"{definition.DisplayName}: {GetValue(definition.Id):0.###} ({definition.Id}) Attr={breakdown?.AttributeWeightedTotal ?? 0f:0.###} +Flat={breakdown?.PositiveFlatTotal ?? 0f:0.###} -Flat={breakdown?.NegativeFlatTotal ?? 0f:0.###}");
+                string resource = definition.IsResourceMaximum ? $" Resource={definition.LinkedFutureResourceId}" : string.Empty;
+                lines.Add($"{definition.DisplayName}: {GetValue(definition.Id):0.###} ({definition.Id}) Purpose={definition.Purpose}{resource} Attr={breakdown?.AttributeWeightedTotal ?? 0f:0.###} +Flat={breakdown?.PositiveFlatTotal ?? 0f:0.###} -Flat={breakdown?.NegativeFlatTotal ?? 0f:0.###}");
             }
 
             lines.Add($"Contribution Sources: {contributionsBySourceKey.Count}");

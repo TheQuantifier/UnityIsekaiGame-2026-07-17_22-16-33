@@ -13,6 +13,8 @@ namespace UnityIsekaiGame.Tests
     public sealed class SkillsProgressionTests
     {
         private static int configureEventCount;
+        private static Component reentrantSkillCollection;
+        private static DefinitionRegistry reentrantRegistry;
 
         [Test]
         public void SkillGrades_AreOrderedAndAaaIsMastery()
@@ -67,6 +69,33 @@ namespace UnityIsekaiGame.Tests
             finally
             {
                 UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RecordQualifyingAction_SurvivesReentrantConfigureFromSkillEvents()
+        {
+            DefinitionRegistry registry = LoadPrototypeRegistry();
+            GameObject root = CreateSkillCollection(registry, out Component skills);
+            try
+            {
+                object appraisal = Resolve(registry, "skill.appraisal");
+                EventInfo hiddenProgressChanged = skills.GetType().GetEvent("HiddenProgressChanged", BindingFlags.Public | BindingFlags.Instance);
+                Assert.That(hiddenProgressChanged, Is.Not.Null);
+
+                reentrantSkillCollection = skills;
+                reentrantRegistry = registry;
+                Delegate handler = CreateReconfigureHandler(hiddenProgressChanged.EventHandlerType);
+                hiddenProgressChanged.AddEventHandler(skills, handler);
+
+                Assert.DoesNotThrow(() => Invoke(skills, "RecordQualifyingAction", CreateAction("event.reentrant-configure", appraisal, true, true)));
+                AssertHiddenProgress(skills, "skill.appraisal", 1);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                reentrantSkillCollection = null;
+                reentrantRegistry = null;
             }
         }
 
@@ -288,9 +317,27 @@ namespace UnityIsekaiGame.Tests
             return Expression.Lambda(eventHandlerType, Expression.Call(increment), parameters).Compile();
         }
 
+        private static Delegate CreateReconfigureHandler(Type eventHandlerType)
+        {
+            MethodInfo invoke = eventHandlerType.GetMethod("Invoke");
+            ParameterExpression[] parameters = invoke.GetParameters()
+                .Select(parameter => Expression.Parameter(parameter.ParameterType, parameter.Name))
+                .ToArray();
+            MethodInfo reconfigure = typeof(SkillsProgressionTests).GetMethod(nameof(ReconfigureSkillCollectionDuringEvent), BindingFlags.NonPublic | BindingFlags.Static);
+            return Expression.Lambda(eventHandlerType, Expression.Call(reconfigure), parameters).Compile();
+        }
+
         private static void IncrementConfigureEventCount()
         {
             configureEventCount++;
+        }
+
+        private static void ReconfigureSkillCollectionDuringEvent()
+        {
+            if (reentrantSkillCollection != null && reentrantRegistry != null)
+            {
+                Invoke(reentrantSkillCollection, "Configure", reentrantRegistry, null, null);
+            }
         }
 
         private static void AssertResolves(DefinitionRegistry registry, string id)

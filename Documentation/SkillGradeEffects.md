@@ -39,4 +39,4 @@ Lower-grade unlocks remain available after promotion. A higher starting grade un
 
 ## Boundaries
 
-Skills may contribute to Calculated Stats, unlock abilities/actions, unlock capability IDs for future requirement checks, and satisfy future interactions. Skills must not permanently modify Attributes, rewrite identity/origin state, or grant Skill XP bonuses.
+Skills may contribute to Calculated Stats, unlock abilities/actions, unlock capability IDs for future requirement checks, and satisfy future interactions. Skills must not permanently modify Base Attributes, rewrite identity/origin state, or grant Skill XP bonuses.
