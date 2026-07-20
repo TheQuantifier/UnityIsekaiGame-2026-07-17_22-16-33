@@ -1,6 +1,6 @@
 # Player Stats, Vitals, And Status Persistence
 
-Feature 4.3 adds player-scoped persistence for current vitals and save-eligible active statuses.
+Feature 4.3 adds player-scoped persistence for current vitals and save-eligible active statuses. Feature 5.4b keeps this participant for status and legacy vitals compatibility while adding optional `player.resources` for generalized current resources.
 
 For final Step 4 participant inventory, schema policy, and regression coverage, see `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, and `Documentation/Step4PersistenceRegressionChecklist.md`.
 
@@ -20,7 +20,7 @@ In future multiplayer, the authoritative server should capture and restore this 
 
 ## Load Ordering
 
-`player.stats-vitals-status` loads after `player.inventory-equipment`.
+`player.stats-vitals-status` loads after `player.inventory-equipment`. When present, `player.resources` loads after this participant in the Vitals phase and overwrites legacy current Health/Mana/Stamina with generalized resource records.
 
 The intended order is:
 
@@ -59,7 +59,7 @@ The participant persists exact current Health, Mana, and Stamina.
 
 Saved values must be finite and non-negative. Health must be above zero because defeated prototype saves are not supported.
 
-Vitals restore after statuses rebuild final modifiers. Restore clamps each value to the final maximum and does not refill resources when a maximum increases. Feature 5.4a clarifies that these maximums are Calculated Stats where configured, while current Health/Mana/Stamina remain specialized runtime values.
+Vitals restore after statuses rebuild final modifiers. Restore clamps each value to the final maximum and does not refill resources when a maximum increases. Feature 5.4b moves current Health/Mana/Stamina into `CharacterResourceCollection`; these legacy fields remain the fallback for saves without `player.resources`.
 
 Stamina and mana restore reset transient regeneration delay state. Stamina also clears stale sprint-frame state and recomputes exhaustion from the restored current value.
 

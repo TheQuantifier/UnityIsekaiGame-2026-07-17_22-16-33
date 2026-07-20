@@ -44,13 +44,13 @@ Each `CalculatedStatDefinition` now declares a `CalculatedStatPurpose`. The alph
 - `Accuracy`
 - `Support`
 
-Resource maximum stats must also declare a linked future resource ID. Feature 5.4a reserves these links without introducing generic current-resource definitions:
+Resource maximum stats must also declare a linked resource ID:
 
 - `calculated-stat.maximum-health` -> `resource.health`
 - `calculated-stat.maximum-stamina` -> `resource.stamina`
 - `calculated-stat.maximum-mana` -> `resource.mana`
 
-Health, Stamina, and Mana current values remain specialized runtime values owned by their existing components. The maximum values come from Calculated Stats where configured.
+Feature 5.4b adds `ResourceDefinition` assets for these IDs and `CharacterResourceCollection` owns their current runtime values. The existing Health, Stamina, and Mana wrappers remain as compatibility APIs.
 
 Compatibility path:
 
@@ -65,3 +65,4 @@ See also:
 
 - `Documentation/CalculatedStatsRefinement.md`
 - `Documentation/CharacterNumericalModel.md`
+- `Documentation/CurrentResources.md`

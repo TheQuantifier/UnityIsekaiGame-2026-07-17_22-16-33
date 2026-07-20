@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf001a72c7754e66a5b0655ec82a4faa, type: 3}
+  m_Name: ManaResource
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.ResourceSystem.ResourceDefinition
+  resourceId: resource.mana
+  displayName: Mana
+  description: Current magical casting reserve. Spells spend Mana and it regenerates after a delay.
+  primaryCategory: {fileID: 11400000, guid: e83116ef624049249a77d4e0daa6e0f3, type: 2}
+  tags: []
+  alphaEnabled: 1
+  resourceCategory: 2
+  linkedMaximumStat: {fileID: 11400000, guid: c9000000000000000000000000000052, type: 2}
+  minimumValue: 0
+  developmentMaximumFallback: 100
+  initializationPolicy: 0
+  initialFixedValue: 0
+  initialPercentageOfMaximum: 1
+  maximumReconciliationPolicy: 0
+  regenerationEnabled: 1
+  regenerationPerSecond: 8
+  regenerationInterval: 0.25
+  regenerationDelayAfterSpend: 1.5
+  regenerationDelayAfterDamage: 0
+  degenerationEnabled: 0
+  degenerationPerSecond: 0
+  degenerationInterval: 0.25
+  spendAllowed: 1
+  gainAllowed: 1
+  damageAllowed: 0
+  healingAllowed: 0
+  overfillAllowed: 0
+  underflowAllowed: 0
+  persistencePolicy: 0
+  authority: 1
+  uiColor: '#4A7FD6'
+  futureMetadata: Prototype Mana is local-only for now. Multiplayer resource authority is reserved for server-owned runtime state.

@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Input;
+using UnityIsekaiGame.ResourceSystem;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -12,15 +13,18 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField, Min(0)] private int startingHealth;
         [SerializeField] private PlayerStats stats;
         [SerializeField] private PlayerInputReader input;
+        [SerializeField] private CharacterResourceCollection resources;
 
         private int currentHealth;
         private int effectiveMaximumHealth;
         private bool defeated;
+        private bool resourceEventsSubscribed;
 
-        public int CurrentHealth => currentHealth;
-        public int MaximumHealth => effectiveMaximumHealth;
-        public bool IsAtMaximum => currentHealth >= effectiveMaximumHealth;
+        public int CurrentHealth => UseResourceRuntime ? Mathf.RoundToInt(resources.GetCurrent(ResourceIds.Health)) : currentHealth;
+        public int MaximumHealth => UseResourceRuntime ? Mathf.RoundToInt(resources.GetMaximum(ResourceIds.Health)) : effectiveMaximumHealth;
+        public bool IsAtMaximum => CurrentHealth >= MaximumHealth;
         public bool IsDefeated => defeated;
+        private bool UseResourceRuntime => EnsureResourceRuntime() && resources.HasResource(ResourceIds.Health);
         public event Action<int, int> HealthChanged;
         public event Action Defeated;
 
@@ -36,9 +40,14 @@ namespace UnityIsekaiGame.Gameplay
                 input = GetComponent<PlayerInputReader>();
             }
 
+            if (resources == null)
+            {
+                resources = GetComponent<CharacterResourceCollection>();
+            }
+
             effectiveMaximumHealth = GetConfiguredMaximumHealth();
             currentHealth = startingHealth > 0 ? Mathf.Min(startingHealth, effectiveMaximumHealth) : effectiveMaximumHealth;
-            HealthChanged?.Invoke(currentHealth, effectiveMaximumHealth);
+            PublishHealthChanged();
         }
 
         private void OnEnable()
@@ -47,6 +56,13 @@ namespace UnityIsekaiGame.Gameplay
             {
                 stats.StatsChanged += OnStatsChanged;
             }
+
+            if (resources == null)
+            {
+                resources = GetComponent<CharacterResourceCollection>();
+            }
+
+            SubscribeResourceEvents();
         }
 
         private void OnDisable()
@@ -55,6 +71,15 @@ namespace UnityIsekaiGame.Gameplay
             {
                 stats.StatsChanged -= OnStatsChanged;
             }
+
+            if (resources != null)
+            {
+                resources.ResourceChanged -= OnResourceChanged;
+                resources.ResourceMaximumChanged -= OnResourceMaximumChanged;
+                resources.ResourcesRestored -= OnResourcesRestored;
+            }
+
+            resourceEventsSubscribed = false;
         }
 
         private void OnValidate()
@@ -71,6 +96,12 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             int previousHealth = currentHealth;
+            if (UseResourceRuntime)
+            {
+                ResourceChangeResult result = resources.ApplyDamage(ResourceIds.Health, amount, "player.health", "Damage");
+                return Mathf.RoundToInt(result.AppliedAmount);
+            }
+
             SetHealth(currentHealth - amount);
             return previousHealth - currentHealth;
         }
@@ -93,13 +124,13 @@ namespace UnityIsekaiGame.Gameplay
                 GetComponentInParent<IDamageResistanceReceiver>());
             int roundedDamage = calculation.FinalAmount <= 0f ? 0 : Mathf.Max(1, Mathf.RoundToInt(calculation.FinalAmount));
             int damageApplied = Damage(roundedDamage);
-            bool defeatedNow = currentHealth <= 0;
+            bool defeatedNow = CurrentHealth <= 0;
             string message = defeatedNow
                 ? $"Player took {damageApplied} damage and was defeated."
-                : $"Player took {damageApplied} damage after {calculation.Defense:0.#} defense. Health: {currentHealth} / {effectiveMaximumHealth}.";
+                : $"Player took {damageApplied} damage after {calculation.Defense:0.#} defense. Health: {CurrentHealth} / {MaximumHealth}.";
 
             Debug.Log(message);
-            return DamageResult.Success(damageInfo.RawAmount, calculation, damageApplied, currentHealth, defeatedNow, message);
+            return DamageResult.Success(damageInfo.RawAmount, calculation, damageApplied, CurrentHealth, defeatedNow, message);
         }
 
         public int Heal(int amount)
@@ -110,6 +141,12 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             int previousHealth = currentHealth;
+            if (UseResourceRuntime)
+            {
+                ResourceChangeResult result = resources.ApplyHealing(ResourceIds.Health, amount, "player.health", "Heal");
+                return Mathf.RoundToInt(result.AppliedAmount);
+            }
+
             SetHealth(currentHealth + amount);
             return currentHealth - previousHealth;
         }
@@ -118,6 +155,12 @@ namespace UnityIsekaiGame.Gameplay
         {
             defeated = false;
             input?.SetDefeatedInputBlocked(false);
+            if (UseResourceRuntime)
+            {
+                resources.SetCurrent(ResourceIds.Health, resources.GetMaximum(ResourceIds.Health), "player.health", "Reset to maximum", restoration: true);
+                return;
+            }
+
             SetHealth(effectiveMaximumHealth);
         }
 
@@ -132,6 +175,12 @@ namespace UnityIsekaiGame.Gameplay
 
             defeated = false;
             input?.SetDefeatedInputBlocked(false);
+            if (UseResourceRuntime)
+            {
+                resources.SetCurrent(ResourceIds.Health, Mathf.Clamp(restoredHealth, 1, MaximumHealth), "player.health", "Persistence restore", restoration: true);
+                return true;
+            }
+
             SetHealth(Mathf.Clamp(restoredHealth, 1, effectiveMaximumHealth));
             return true;
         }
@@ -145,15 +194,11 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             currentHealth = clampedHealth;
-            HealthChanged?.Invoke(currentHealth, effectiveMaximumHealth);
+            PublishHealthChanged();
 
             if (currentHealth <= 0 && !defeated)
             {
-                defeated = true;
-                input?.SetDefeatedInputBlocked(true);
-                Defeated?.Invoke();
-                Debug.Log("Player defeated. Prototype gameplay input is blocked.");
-                PrototypeHudMessageBus.Show("Defeated - Press R to reset");
+                MarkDefeated();
             }
         }
 
@@ -161,12 +206,83 @@ namespace UnityIsekaiGame.Gameplay
         {
             int previousMaximum = effectiveMaximumHealth;
             effectiveMaximumHealth = GetConfiguredMaximumHealth();
+            if (UseResourceRuntime)
+            {
+                resources.ReconcileResource(ResourceIds.Health);
+                return;
+            }
+
             currentHealth = Mathf.Clamp(currentHealth, 0, effectiveMaximumHealth);
 
             if (previousMaximum != effectiveMaximumHealth)
             {
-                HealthChanged?.Invoke(currentHealth, effectiveMaximumHealth);
+                PublishHealthChanged();
             }
+        }
+
+        private void OnResourceChanged(CharacterResourceCollection collection, ResourceChangeResult result)
+        {
+            if (!string.Equals(result.Request.ResourceId, ResourceIds.Health, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            PublishHealthChanged();
+            if (CurrentHealth <= 0 && !defeated)
+            {
+                MarkDefeated();
+            }
+        }
+
+        private void OnResourceMaximumChanged(CharacterResourceCollection collection, ResourceSnapshot snapshot, float oldMaximum, bool restoring)
+        {
+            if (string.Equals(snapshot.ResourceId, ResourceIds.Health, StringComparison.Ordinal))
+            {
+                PublishHealthChanged();
+            }
+        }
+
+        private void OnResourcesRestored(CharacterResourceCollection collection, bool restoring)
+        {
+            PublishHealthChanged();
+        }
+
+        private void PublishHealthChanged()
+        {
+            HealthChanged?.Invoke(CurrentHealth, MaximumHealth);
+        }
+
+        private bool EnsureResourceRuntime()
+        {
+            if (resources == null)
+            {
+                resources = GetComponent<CharacterResourceCollection>();
+            }
+
+            SubscribeResourceEvents();
+            return resources != null;
+        }
+
+        private void SubscribeResourceEvents()
+        {
+            if (resourceEventsSubscribed || resources == null || !isActiveAndEnabled)
+            {
+                return;
+            }
+
+            resources.ResourceChanged += OnResourceChanged;
+            resources.ResourceMaximumChanged += OnResourceMaximumChanged;
+            resources.ResourcesRestored += OnResourcesRestored;
+            resourceEventsSubscribed = true;
+        }
+
+        private void MarkDefeated()
+        {
+            defeated = true;
+            input?.SetDefeatedInputBlocked(true);
+            Defeated?.Invoke();
+            Debug.Log("Player defeated. Prototype gameplay input is blocked.");
+            PrototypeHudMessageBus.Show("Defeated - Press R to reset");
         }
 
         private int GetConfiguredMaximumHealth()

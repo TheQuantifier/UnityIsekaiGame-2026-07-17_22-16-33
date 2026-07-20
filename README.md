@@ -95,7 +95,7 @@ Current foundations include:
 - Health, stamina, and mana.
 - Equipment, generic runtime actor statistics, and typed damage resistance modifiers.
 - Static being definitions and reusable actor profiles for player/enemy base stats.
-- Persistent player identity, origin, birth gifts, Base Attributes, Calculated Stats, and learned Skill/Proficiency progression.
+- Persistent player identity, origin, birth gifts, Base Attributes, Calculated Stats, Current Resources, and learned Skill/Proficiency progression.
 - Static place definitions and typed reach-location references.
 - Static faction and organization definitions used by quests, contracts, people, and places.
 - Melee combat and shared attack/defense damage handling.
@@ -118,7 +118,7 @@ Final Step 4 persistence closeout documentation lives in `Documentation/Step4Per
 The editor/development-build Prototype Systems Test Lab is documented in `Documentation/PrototypeSystemsTestLab.md`.
 PrototypeScene usability, zone layout, pickup grouping, and menu layout standards are documented in `Documentation/PrototypeSceneAndMenuUsability.md`.
 Skill and Proficiency progression is documented in `Documentation/SkillsAndProgression.md`, `Documentation/SkillLearning.md`, `Documentation/SkillGradeEffects.md`, and `Documentation/Feature5_3Persistence.md`.
-Base Attributes and Calculated Stats are documented in `Documentation/BaseAttributes.md`, `Documentation/CalculatedStatsRefinement.md`, `Documentation/CharacterNumericalModel.md`, and `Documentation/Feature5_4aPersistenceAndMigration.md`.
+Base Attributes, Calculated Stats, and Current Resources are documented in `Documentation/BaseAttributes.md`, `Documentation/CalculatedStatsRefinement.md`, `Documentation/CurrentResources.md`, `Documentation/ResourceDefinitions.md`, `Documentation/ResourceTransactions.md`, `Documentation/CharacterNumericalModel.md`, `Documentation/Feature5_4aPersistenceAndMigration.md`, and `Documentation/Feature5_4bPersistenceAndMigration.md`.
 
 ### Inventory Item Instance Save Foundation
 

@@ -951,6 +951,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 PlayerStamina = playerStamina,
                 PlayerAttributes = playerStats == null ? null : playerStats.CharacterAttributes,
                 PlayerCalculatedStats = playerStats == null ? null : playerStats.CalculatedStats,
+                PlayerResources = playerTransform == null ? null : playerTransform.GetComponentInParent<UnityIsekaiGame.ResourceSystem.CharacterResourceCollection>(),
                 PlayerSkills = ResolveCharacterSkills(),
                 PlayerStatuses = statusEffects,
                 IdentityProgression = identityProgression,

@@ -32,6 +32,7 @@ namespace UnityIsekaiGame.Development
             "Player",
             "Identity 5.1",
             "Numbers 5.4a",
+            "Resources 5.4b",
             "Skills 5.3",
             "Inventory",
             "Combat",
@@ -56,6 +57,7 @@ namespace UnityIsekaiGame.Development
         private Text persistenceIntegrationText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
+        private Text resourcesText;
         private Text skillsText;
         private Text itemValueText;
         private Text skillValueText;
@@ -177,6 +179,11 @@ namespace UnityIsekaiGame.Development
                 attributesCalculatedStatsText.text = service.BuildAttributeCalculatedStatsSummary();
             }
 
+            if (resourcesText != null)
+            {
+                resourcesText.text = service.BuildCurrentResourcesSummary();
+            }
+
             if (skillsText != null)
             {
                 skillsText.text = service.BuildSkillsSummary(includeHidden: true);
@@ -222,6 +229,7 @@ namespace UnityIsekaiGame.Development
             Transform playerSection = AddSection(content, "Player Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
+            Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
             Transform feature53Section = AddSection(content, "Skills 5.3 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
@@ -237,6 +245,7 @@ namespace UnityIsekaiGame.Development
             BuildPlayerSection(playerSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
+            BuildFeature54bSection(feature54bSection, font);
             BuildFeature53Section(feature53Section, font);
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
@@ -349,6 +358,21 @@ namespace UnityIsekaiGame.Development
                 ("Rebuild", () => service.RebuildSkillEffects()),
                 ("Clear Skills", () => service.ClearSkillDevelopmentState(confirmed: false)));
             skillsText = AddText(parent, font, "Skills not available.", 12, 360);
+        }
+
+        private void BuildFeature54bSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Reconcile", () => service.ReconcileResources()),
+                ("Duplicate Event", () => service.ProveResourceDuplicateEvent()),
+                ("Regen Tick", () => service.TickResourceRegeneration()),
+                ("Save Snapshot", () => service.SnapshotResourcesForPersistence()));
+            AddButtonRow(parent, font,
+                ("Damage Health", () => service.DamagePlayer(GetInt(amountInput, 25))),
+                ("Heal Health", () => service.HealPlayer(GetInt(amountInput, 25))),
+                ("Drain Mana", () => service.DrainMana(GetFloat(amountInput, 25f))),
+                ("Drain Stamina", () => service.DrainStamina(GetFloat(amountInput, 25f))));
+            resourcesText = AddText(parent, font, "Current Resources not available.", 12, 360);
         }
 
         private void BuildInventorySection(Transform parent, Font font)

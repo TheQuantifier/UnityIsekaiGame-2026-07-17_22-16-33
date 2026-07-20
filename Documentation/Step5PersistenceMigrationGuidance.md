@@ -30,7 +30,8 @@ Step 5 will expand core game models. Use this guidance before changing definitio
 | Factions | Static faction definitions are content. Reputation may be player/account state; wars/control/economy are shared-world state. |
 | Economy and ownership | Treat as shared-world/server-owned unless explicitly player-owned inventory. Do not put market state in local player saves. |
 | Identity and progression | `player.identity-progression` is player-owned. Account/player/person/world-entity IDs must remain distinct. Missing Feature 5.1 payloads are rejected for current development saves. |
-| Base Attributes and Calculated Stats | `player.attributes` persists permanent Base Attribute source/growth records. Calculated Stats are derived caches and should not be saved as authoritative values. Resource maximum metadata is definition data until a future resource feature exists. |
+| Base Attributes and Calculated Stats | `player.attributes` persists permanent Base Attribute source/growth records. Calculated Stats are derived caches and should not be saved as authoritative values. Resource maximum metadata is definition data. |
+| Current Resources | Feature 5.4b adds optional `player.resources` for current Health, Stamina, and Mana. Future resource changes should bump or migrate that participant rather than adding current values back into Calculated Stats. |
 
 ## Required Before Merging Step 5 Persistence Changes
 
@@ -65,3 +66,7 @@ Feature 5.3 introduces required participant `player.skills` at schema version 1.
 ## Feature 5.4a Compatibility
 
 Feature 5.4a does not bump `player.attributes` and does not add a new participant. It refines terminology to Base Attributes and adds Calculated Stat purpose/resource metadata in definitions. Feature 5.2/5.3 development saves should remain compatible when they use canonical IDs. Pre-5.2 saves remain rejected.
+
+## Feature 5.4b Compatibility
+
+Feature 5.4b introduces optional `player.resources` schema version 1. Saves without it can still load through legacy vitals fields in `player.stats-vitals-status`. New saves should include `player.resources`; recreate local development saves after testing this feature.

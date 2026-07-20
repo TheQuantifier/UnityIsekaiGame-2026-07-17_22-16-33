@@ -24,7 +24,8 @@ Runtime systems own gameplay state. They participate through `IPersistencePartic
 | Prototype development state | `prototype.state` | 1 | Player | `local-player` | Yes | Prototype | None | Yes | `PrototypePersistenceState` | `PrototypePersistenceStateSaveData` |
 | Inventory/equipment | `player.inventory-equipment` | 1 | Player | `local-player` | Yes | Inventory | None | Yes | `PlayerInventory`, `PlayerEquipment` | `PlayerInventoryEquipmentSaveData` |
 | Stats/vitals/statuses | `player.stats-vitals-status` | 1 | Player | `local-player` | Yes | Statuses | `player.inventory-equipment` when present | Yes | `PlayerStats`, `PlayerHealth`, `PlayerMana`, `PlayerStamina`, `StatusEffectController` | `PlayerStatsVitalsStatusSaveData` |
-| Quests/contracts | `player.quests-contracts` | 2 | Player | `local-player` | Yes | QuestsAndContracts | inventory/equipment and stats/vitals/statuses when present | Yes | `PlayerQuestLog`, `PlayerContractJournal` | `PlayerQuestContractSaveData` |
+| Current resources | `player.resources` | 1 | Player | `local-player` | No | Vitals | stats/vitals/statuses when present | Yes | `CharacterResourceCollection` | `PlayerResourcesSaveData` |
+| Quests/contracts | `player.quests-contracts` | 2 | Player | `local-player` | Yes | QuestsAndContracts | inventory/equipment, stats/vitals/statuses, and resources when present | Yes | `PlayerQuestLog`, `PlayerContractJournal` | `PlayerQuestContractSaveData` |
 | Location | `player.location` | 1 | Player | `local-player` | No | PositionAndPlace | `player.quests-contracts` when present | Same-scene only | `Transform`, `PlayerInputReader`, `CurrentPlaceTracker` | `PlayerLocationSaveData` |
 
 All implemented participants use player scope today. No shared-world, account, region-state, enemy-state, pickup-state, container-state, door-state, NPC-runtime, economy, or faction-state participant is implemented.
@@ -36,8 +37,9 @@ The enforced relationship for the full prototype player stack is:
 1. Runtime services and definitions are available.
 2. Inventory/equipment prepare.
 3. Stats/vitals/status prepare.
-4. Quest/contract prepare.
-5. Location prepare.
+4. Current resources prepare when present.
+5. Quest/contract prepare.
+6. Location prepare.
 6. All participant payloads validate.
 7. Rollback snapshot captures current live state.
 8. Inventory/equipment commit.

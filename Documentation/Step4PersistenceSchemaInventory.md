@@ -74,7 +74,7 @@ Step 4 uses one save envelope schema plus independent participant schemas. Do no
 - Compatibility: unsupported participant payload versions are rejected; defeated saves are rejected.
 - Migration: none.
 - Stable-ID dependencies: actor profile ID, status definition IDs, status application IDs, source IDs.
-- Feature 5.4a boundary: current Health/Mana/Stamina remain specialized persisted runtime values; their maximums come from Calculated Stats where configured.
+- Feature 5.4b adds optional `player.resources` schema version 1 for generalized current Health/Mana/Stamina. The older stats/vitals/status payload remains required for status and legacy current-vital restore compatibility.
 
 ## Quest/Contract
 

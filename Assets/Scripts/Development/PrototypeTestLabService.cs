@@ -18,6 +18,7 @@ using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
@@ -58,6 +59,11 @@ namespace UnityIsekaiGame.Development
             context = newContext;
             registry = CreateRegistry(context?.DefinitionCatalog);
             context?.IdentityProgression?.RegisterDefinitionCache(registry);
+            if (EnsureResources(out CharacterResourceCollection resources))
+            {
+                resources.Configure(registry, context.PlayerCalculatedStats, PersistenceService.LocalPlayerId);
+            }
+
             context?.PlayerSkills?.Configure(registry, context.PlayerCalculatedStats, context.SpellLoadout);
             selectorCache.Clear();
         }
@@ -158,6 +164,82 @@ namespace UnityIsekaiGame.Development
 
             context.PlayerSkills.Configure(registry, context.PlayerCalculatedStats, context.SpellLoadout);
             return context.PlayerSkills.BuildDiagnosticSummary(includeHidden);
+        }
+
+        public string BuildCurrentResourcesSummary()
+        {
+            if (!EnsureResources(out CharacterResourceCollection resources))
+            {
+                return "Player resource collection is missing.";
+            }
+
+            return string.Join(Environment.NewLine, new[]
+            {
+                resources.BuildDiagnosticSummary(),
+                string.Empty,
+                $"Wrapper Health: {FormatHealth()}",
+                $"Wrapper Mana: {FormatResource(context.PlayerMana == null ? 0f : context.PlayerMana.CurrentMana, context.PlayerMana == null ? 0f : context.PlayerMana.MaximumMana)}",
+                $"Wrapper Stamina: {FormatResource(context.PlayerStamina == null ? 0f : context.PlayerStamina.CurrentStamina, context.PlayerStamina == null ? 0f : context.PlayerStamina.MaximumStamina)}"
+            });
+        }
+
+        public PrototypeTestLabOperation ReconcileResources()
+        {
+            if (!EnsureResources(out CharacterResourceCollection resources))
+            {
+                return RecordFailure("Reconcile Resources", "Player resource collection is missing.", "MissingResources");
+            }
+
+            int changed = 0;
+            foreach (ResourceSnapshot snapshot in resources.GetSnapshots())
+            {
+                if (resources.ReconcileResource(snapshot.ResourceId))
+                {
+                    changed++;
+                }
+            }
+
+            return RecordSuccess("Reconcile Resources", $"Reconciled {resources.GetSnapshots().Count} resource(s); {changed} current value(s) changed.");
+        }
+
+        public PrototypeTestLabOperation ProveResourceDuplicateEvent()
+        {
+            if (!EnsureResources(out CharacterResourceCollection resources))
+            {
+                return RecordFailure("Resource Duplicate Proof", "Player resource collection is missing.", "MissingResources");
+            }
+
+            string eventId = "resource.test-lab.duplicate-proof";
+            ResourceChangeResult first = resources.TrySpend(ResourceIds.Mana, 1f, "test-lab", "Duplicate proof", eventId);
+            ResourceChangeResult second = resources.TrySpend(ResourceIds.Mana, 1f, "test-lab", "Duplicate proof", eventId);
+            bool passed = first.Succeeded && second.Succeeded && second.AppliedAmount <= CharacterResourceCollection.Epsilon;
+            return Record(passed, "Resource Duplicate Proof", passed ? "Passed" : "Failed", $"First={first.AppliedAmount:0.###}, Second={second.AppliedAmount:0.###}, Mana={resources.GetCurrent(ResourceIds.Mana):0.###}/{resources.GetMaximum(ResourceIds.Mana):0.###}");
+        }
+
+        public PrototypeTestLabOperation TickResourceRegeneration()
+        {
+            if (!EnsureResources(out CharacterResourceCollection resources))
+            {
+                return RecordFailure("Resource Regen Tick", "Player resource collection is missing.", "MissingResources");
+            }
+
+            resources.TrySpend(ResourceIds.Stamina, Mathf.Max(1f, Mathf.Min(5f, resources.GetMaximum(ResourceIds.Stamina))), "test-lab", "Prepare regeneration tick");
+            float before = resources.GetCurrent(ResourceIds.Stamina);
+            resources.TickResources(1f, Time.time + 2f);
+            float after = resources.GetCurrent(ResourceIds.Stamina);
+            return RecordSuccess("Resource Regen Tick", $"Stamina {before:0.###} -> {after:0.###}.");
+        }
+
+        public PrototypeTestLabOperation SnapshotResourcesForPersistence()
+        {
+            if (!EnsureResources(out CharacterResourceCollection resources))
+            {
+                return RecordFailure("Resource Save Snapshot", "Player resource collection is missing.", "MissingResources");
+            }
+
+            PlayerResourcesSaveData saveData = resources.CreateSaveData(PersistenceService.LocalPlayerId, context?.IdentityProgression == null ? string.Empty : context.IdentityProgression.PersonId);
+            bool valid = CharacterResourceCollection.ValidateSaveData(saveData, registry, context?.PlayerCalculatedStats, PersistenceService.LocalPlayerId, out string failureReason);
+            return Record(valid, "Resource Save Snapshot", valid ? "Valid" : "Invalid", valid ? $"Captured {saveData.resources.Count} resource record(s)." : failureReason);
         }
 
         public PrototypeTestLabOperation SimulateSkillAction(SkillDefinition skill, bool executed, bool succeeded, string eventId = "")
@@ -1638,6 +1720,29 @@ namespace UnityIsekaiGame.Development
             }
 
             skills.Configure(registry, context.PlayerCalculatedStats, context.SpellLoadout);
+            return true;
+        }
+
+        private bool EnsureResources(out CharacterResourceCollection resources)
+        {
+            resources = context?.PlayerResources;
+            if (resources == null && context?.PlayerTransform != null)
+            {
+                resources = context.PlayerTransform.GetComponentInParent<CharacterResourceCollection>();
+            }
+
+            if (resources == null && context?.PlayerTransform != null)
+            {
+                resources = context.PlayerTransform.gameObject.AddComponent<CharacterResourceCollection>();
+            }
+
+            if (resources == null)
+            {
+                return false;
+            }
+
+            context.PlayerResources = resources;
+            resources.Configure(registry, context.PlayerCalculatedStats, PersistenceService.LocalPlayerId);
             return true;
         }
 

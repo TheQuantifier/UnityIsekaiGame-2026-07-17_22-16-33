@@ -11,6 +11,7 @@ using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
@@ -32,6 +33,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PlayerStamina playerStamina;
         [SerializeField] private CharacterAttributes playerAttributes;
         [SerializeField] private CalculatedStatCollection playerCalculatedStats;
+        [SerializeField] private CharacterResourceCollection playerResources;
         [SerializeField] private CharacterSkillCollection playerSkills;
         [SerializeField] private PlayerSkillActionEventSource playerSkillActionEventSource;
         [SerializeField] private StatusEffectController statusEffectController;
@@ -50,6 +52,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
+        [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerQuestContract = true;
         [SerializeField] private bool registerPlayerLocation = true;
         [SerializeField] private string prototypeSlotId = PersistenceService.PrototypeSlotId;
@@ -68,6 +71,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerSkillsPersistenceParticipant playerSkillsParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
+        private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
         private PlayerQuestContractPersistenceParticipant questContractParticipant;
         private PlayerLocationPersistenceParticipant playerLocationParticipant;
         private DefinitionRegistry definitionRegistry;
@@ -123,6 +127,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
                 statsVitalsStatusParticipant = null;
+            }
+
+            if (service != null && playerResourcesParticipant != null)
+            {
+                service.UnregisterParticipant(playerResourcesParticipant);
+                playerResourcesParticipant = null;
             }
 
             if (service != null && questContractParticipant != null)
@@ -199,6 +209,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerSkillsParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
+            EnsurePlayerResourcesParticipant();
             EnsurePlayerQuestContractParticipant();
             EnsurePlayerLocationParticipant();
             SubscribeDirtyEvents();
@@ -702,11 +713,22 @@ namespace UnityIsekaiGame.Gameplay
                 playerSkills = playerObject.AddComponent<CharacterSkillCollection>();
             }
 
+            if (playerResources == null)
+            {
+                playerResources = playerObject == null ? Object.FindAnyObjectByType<CharacterResourceCollection>() : playerObject.GetComponent<CharacterResourceCollection>();
+            }
+
+            if (playerResources == null && playerObject != null)
+            {
+                playerResources = playerObject.AddComponent<CharacterResourceCollection>();
+            }
+
             if (definitionCatalog != null)
             {
                 DefinitionRegistry registry = GetDefinitionRegistry();
                 playerAttributes?.Configure(registry);
                 playerCalculatedStats?.Configure(registry, playerAttributes);
+                playerResources?.Configure(registry, playerCalculatedStats, service == null ? PersistenceService.LocalPlayerId : service.PlayerId);
                 playerSkills?.Configure(registry, playerCalculatedStats, playerObject == null ? null : playerObject.GetComponent<PlayerSpellLoadout>());
                 playerStats?.ConfigureDerivedStats(registry);
                 playerStats?.RefreshEquipmentModifiers();
@@ -805,6 +827,42 @@ namespace UnityIsekaiGame.Gameplay
                 {
                     currentPlaceTracker = playerRoot.gameObject.AddComponent<CurrentPlaceTracker>();
                 }
+            }
+        }
+
+        private void EnsurePlayerResourcesParticipant()
+        {
+            if (!registerPlayerResources || playerResourcesParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerResources == null || playerCalculatedStats == null)
+            {
+                Debug.LogWarning("Player resources persistence participant was not registered because the prototype player resource collection or calculated stats are missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player resources persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            playerResources.Configure(GetDefinitionRegistry(), playerCalculatedStats, service.PlayerId);
+            playerResourcesParticipant = new PlayerResourcesPersistenceParticipant(
+                playerResources,
+                playerIdentityProgression,
+                playerCalculatedStats,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerResourcesParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerResourcesParticipant = null;
             }
         }
 
@@ -968,6 +1026,13 @@ namespace UnityIsekaiGame.Gameplay
                 playerStamina.StaminaChanged += OnResourceChanged;
             }
 
+            if (playerResources != null)
+            {
+                playerResources.ResourceChanged += OnPlayerResourceChanged;
+                playerResources.ResourceMaximumChanged += OnPlayerResourceMaximumChanged;
+                playerResources.ResourcesRestored += OnPlayerResourcesRestored;
+            }
+
             if (statusEffectController != null)
             {
                 statusEffectController.StatusAdded += OnStatusChanged;
@@ -1047,6 +1112,13 @@ namespace UnityIsekaiGame.Gameplay
                 playerStamina.StaminaChanged -= OnResourceChanged;
             }
 
+            if (playerResources != null)
+            {
+                playerResources.ResourceChanged -= OnPlayerResourceChanged;
+                playerResources.ResourceMaximumChanged -= OnPlayerResourceMaximumChanged;
+                playerResources.ResourcesRestored -= OnPlayerResourcesRestored;
+            }
+
             if (statusEffectController != null)
             {
                 statusEffectController.StatusAdded -= OnStatusChanged;
@@ -1113,6 +1185,36 @@ namespace UnityIsekaiGame.Gameplay
         private void OnResourceChanged(float current, float maximum)
         {
             dirtyTracker?.MarkDirty("Player resource changed.");
+        }
+
+        private void OnPlayerResourceChanged(CharacterResourceCollection resources, ResourceChangeResult result)
+        {
+            if (result.Request.Restoration)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player resource changed.");
+        }
+
+        private void OnPlayerResourceMaximumChanged(CharacterResourceCollection resources, ResourceSnapshot snapshot, float oldMaximum, bool restoring)
+        {
+            if (restoring)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player resource maximum changed.");
+        }
+
+        private void OnPlayerResourcesRestored(CharacterResourceCollection resources, bool restoring)
+        {
+            if (restoring)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player resources changed.");
         }
 
         private void OnStatusChanged(RuntimeStatusEffect status)

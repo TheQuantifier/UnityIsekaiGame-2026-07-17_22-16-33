@@ -10,7 +10,7 @@ The existing `player.attributes` payload already persists the authoritative Base
 - training/growth events;
 - player ID and person ID.
 
-Calculated Stats are derived caches and are not saved. The new purpose/resource metadata is definition data and validation data, not player runtime state.
+Calculated Stats are derived caches and are not saved. The new purpose/resource metadata is definition data and validation data, not player runtime state. Feature 5.4b adds the current-resource runtime and `player.resources` participant for current Health, Stamina, and Mana values.
 
 ## Compatibility
 

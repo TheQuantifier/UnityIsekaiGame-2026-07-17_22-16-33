@@ -9,6 +9,7 @@ This matrix separates static data, player runtime state, account state, shared-w
 | Equipment | Player runtime | Yes | Server for multiplayer | Restores exact stateful item instances and modifiers rebuild. |
 | Base Attributes | Player/person runtime | Yes | Server for multiplayer | `player.attributes`; persists permanent sources and growth events, not temporary modifiers. |
 | Calculated Stats | Derived runtime cache | No | Rebuilt by authoritative runtime | Rebuilt from Base Attributes plus source-owned contributions; resource maximum metadata is static definition data. |
+| Current Resources | Player current-state runtime | Yes, `player.resources` | Future server authority | Health, Stamina, and Mana current values are player-scoped. Maximums rebuild from Calculated Stats. |
 | Player vitals | Player runtime | Yes | Server for multiplayer | Health, mana, stamina restore after modifiers. |
 | Player statuses | Player runtime | Yes | Server for multiplayer | Save-eligible statuses only. |
 | Player quests | Player runtime | Yes | Server for multiplayer | Personal quest log. |

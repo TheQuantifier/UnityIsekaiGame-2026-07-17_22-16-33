@@ -1,6 +1,6 @@
 # Character Numerical Model
 
-Feature 5.4a separates the current character number layers.
+Feature 5.4b separates the current character number layers.
 
 ## Layers
 
@@ -18,12 +18,12 @@ Calculated Stats:
 - can describe combat outputs, utility values, and resource maximums;
 - not saved as authoritative values.
 
-Current Vitals:
+Current Resources:
 
-- specialized runtime values for Health, Mana, and Stamina;
+- generalized runtime values for Health, Mana, and Stamina;
 - clamp against calculated maximums where configured;
-- remain owned by existing `PlayerHealth`, `PlayerMana`, and `PlayerStamina` components;
-- are not generalized into ResourceDefinitions in Feature 5.4a.
+- are owned by `CharacterResourceCollection`;
+- remain exposed through existing `PlayerHealth`, `PlayerMana`, and `PlayerStamina` wrapper APIs for compatibility.
 
 ## Source Contributions
 
@@ -33,6 +33,6 @@ Temporary or active contributions belong to Calculated Stats. Examples include s
 
 ## Persistence
 
-Base Attribute records are persisted by `player.attributes`. Calculated Stats rebuild after load. Current Health, Mana, and Stamina persist through the existing vitals/status participant work from Step 4.
+Base Attribute records are persisted by `player.attributes`. Calculated Stats rebuild after load. Current Health, Mana, and Stamina now persist through optional `player.resources`, with the older vitals/status payload retained for compatibility.
 
 This model is still local-prototype only, but ownership remains compatible with multiplayer persistence: player-owned values live in player participants, while future shared-world state must remain server-owned.
