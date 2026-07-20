@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Beings;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Stats
 {
@@ -15,18 +16,22 @@ namespace UnityIsekaiGame.Stats
         [SerializeField, Min(0f)] protected float baseAttackPower = 0f;
         [SerializeField, Min(0f)] protected float baseDefense = 0f;
         [SerializeField, Min(0f)] protected float baseMovementSpeed = 0f;
+        [SerializeField] private CharacterAttributes characterAttributes;
+        [SerializeField] private CalculatedStatCollection calculatedStats;
 
         private readonly RuntimeStatCollection runtimeStats = new RuntimeStatCollection();
         private readonly RuntimeResistanceCollection runtimeResistances = new RuntimeResistanceCollection();
         private bool baseStatsConfigured;
 
-        public float MaximumHealth => Mathf.Max(1f, GetRuntimeStatValue(StatType.MaximumHealth));
-        public float MaximumStamina => Mathf.Max(0f, GetRuntimeStatValue(StatType.MaximumStamina));
-        public float MaximumMana => Mathf.Max(0f, GetRuntimeStatValue(StatType.MaximumMana));
-        public float AttackPower => Mathf.Max(0f, GetRuntimeStatValue(StatType.AttackPower));
-        public float Defense => Mathf.Max(0f, GetRuntimeStatValue(StatType.Defense));
-        public float MovementSpeed => Mathf.Max(0f, GetRuntimeStatValue(StatType.MovementSpeed));
+        public float MaximumHealth => Mathf.Max(1f, GetStatValue(StatType.MaximumHealth));
+        public float MaximumStamina => Mathf.Max(0f, GetStatValue(StatType.MaximumStamina));
+        public float MaximumMana => Mathf.Max(0f, GetStatValue(StatType.MaximumMana));
+        public float AttackPower => Mathf.Max(0f, GetStatValue(StatType.AttackPower));
+        public float Defense => Mathf.Max(0f, GetStatValue(StatType.Defense));
+        public float MovementSpeed => Mathf.Max(0f, GetStatValue(StatType.MovementSpeed));
         public ActorProfileDefinition ActorProfile => actorProfile;
+        public CharacterAttributes CharacterAttributes => characterAttributes;
+        public CalculatedStatCollection CalculatedStats => calculatedStats;
         public bool IsInitialized => baseStatsConfigured;
         public ActorProfileInitializationResult LastInitializationResult { get; private set; }
         public bool HasProfileLegacyConflict => actorProfile != null
@@ -49,12 +54,20 @@ namespace UnityIsekaiGame.Stats
             EnsureBaseStatsConfigured();
             runtimeStats.StatChanged += OnRuntimeStatChanged;
             runtimeResistances.ResistanceChanged += OnRuntimeResistanceChanged;
+            if (calculatedStats != null)
+            {
+                calculatedStats.CalculatedStatsChanged += OnCalculatedStatsChanged;
+            }
         }
 
         protected virtual void OnDisable()
         {
             runtimeStats.StatChanged -= OnRuntimeStatChanged;
             runtimeResistances.ResistanceChanged -= OnRuntimeResistanceChanged;
+            if (calculatedStats != null)
+            {
+                calculatedStats.CalculatedStatsChanged -= OnCalculatedStatsChanged;
+            }
         }
 
         protected virtual void OnValidate()
@@ -90,19 +103,32 @@ namespace UnityIsekaiGame.Stats
         public float GetStatValue(StatType statType)
         {
             EnsureBaseStatsConfigured();
+            if (calculatedStats != null
+                && calculatedStats.IsConfigured
+                && StatTypeCalculatedStatBridge.TryGetCalculatedStatId(statType, out string calculatedStatId)
+                && calculatedStats.HasStat(calculatedStatId))
+            {
+                return calculatedStats.GetValue(calculatedStatId);
+            }
+
             return runtimeStats.GetValue(statType);
         }
 
         public bool AddModifier(RuntimeStatModifier modifier)
         {
             EnsureBaseStatsConfigured();
-            return runtimeStats.AddModifier(modifier);
+            bool legacyAdded = runtimeStats.AddModifier(modifier);
+            bool calculatedAdded = TryAddCalculatedContribution(modifier);
+            return legacyAdded || calculatedAdded;
         }
 
         public bool RemoveModifiersFromSource(StatModifierSource source)
         {
             EnsureBaseStatsConfigured();
-            return runtimeStats.RemoveModifiersFromSource(source);
+            bool legacyRemoved = runtimeStats.RemoveModifiersFromSource(source);
+            bool calculatedRemoved = calculatedStats != null
+                && calculatedStats.RemoveContributionsFromSource(StatTypeCalculatedStatBridge.MapSourceCategory(source.SourceType), source.SourceId);
+            return legacyRemoved || calculatedRemoved;
         }
 
         public float GetDirectResistance(DamageTypeDefinition damageType)
@@ -138,6 +164,45 @@ namespace UnityIsekaiGame.Stats
         protected void NotifyStatsChanged()
         {
             StatsChanged?.Invoke();
+        }
+
+        public void ConfigureDerivedStats(DefinitionRegistry registry)
+        {
+            EnsureBaseStatsConfigured();
+            CalculatedStatCollection previousCalculatedStats = calculatedStats;
+
+            if (characterAttributes == null)
+            {
+                characterAttributes = GetComponent<CharacterAttributes>();
+                if (characterAttributes == null)
+                {
+                    characterAttributes = gameObject.AddComponent<CharacterAttributes>();
+                }
+            }
+
+            if (calculatedStats == null)
+            {
+                calculatedStats = GetComponent<CalculatedStatCollection>();
+                if (calculatedStats == null)
+                {
+                    calculatedStats = gameObject.AddComponent<CalculatedStatCollection>();
+                }
+            }
+
+            if (isActiveAndEnabled && previousCalculatedStats != null && previousCalculatedStats != calculatedStats)
+            {
+                previousCalculatedStats.CalculatedStatsChanged -= OnCalculatedStatsChanged;
+            }
+
+            characterAttributes.Configure(registry);
+            calculatedStats.Configure(registry, characterAttributes);
+
+            if (isActiveAndEnabled && calculatedStats != null && previousCalculatedStats != calculatedStats)
+            {
+                calculatedStats.CalculatedStatsChanged += OnCalculatedStatsChanged;
+            }
+
+            NotifyStatsChanged();
         }
 
         protected void EnsureBaseStatsConfigured()
@@ -221,7 +286,56 @@ namespace UnityIsekaiGame.Stats
             return runtimeStats.GetValue(statType);
         }
 
+        private bool TryAddCalculatedContribution(RuntimeStatModifier modifier)
+        {
+            if (calculatedStats == null
+                || !calculatedStats.IsConfigured
+                || !modifier.IsValid
+                || !StatTypeCalculatedStatBridge.TryGetCalculatedStatId(modifier.StatType, out string calculatedStatId)
+                || !calculatedStats.HasStat(calculatedStatId))
+            {
+                return false;
+            }
+
+            RuntimeCalculatedStatContribution contribution = new RuntimeCalculatedStatContribution
+            {
+                contributionId = $"legacy-stat.{modifier.Source.SourceType}.{modifier.Source.SourceId}.{modifier.StatType}.{modifier.Operation}.{modifier.Priority}",
+                statId = calculatedStatId,
+                sourceId = modifier.Source.SourceId,
+                sourceCategory = (int)StatTypeCalculatedStatBridge.MapSourceCategory(modifier.Source.SourceType),
+                priority = modifier.Priority
+            };
+
+            switch (modifier.Operation)
+            {
+                case StatModifierOperation.FlatAdd:
+                    contribution.kind = (int)CalculatedStatContributionKind.Flat;
+                    contribution.direction = (int)(modifier.Value >= 0f ? CalculatedStatContributionDirection.Improve : CalculatedStatContributionDirection.Reduce);
+                    contribution.magnitude = Mathf.Abs(modifier.Value);
+                    break;
+                case StatModifierOperation.PercentAdd:
+                    contribution.kind = (int)CalculatedStatContributionKind.Percent;
+                    contribution.direction = (int)(modifier.Value >= 0f ? CalculatedStatContributionDirection.Improve : CalculatedStatContributionDirection.Reduce);
+                    contribution.magnitude = Mathf.Abs(modifier.Value);
+                    break;
+                case StatModifierOperation.Multiplicative:
+                    contribution.kind = (int)CalculatedStatContributionKind.Multiplier;
+                    contribution.direction = (int)(modifier.Value >= 1f ? CalculatedStatContributionDirection.Improve : CalculatedStatContributionDirection.Reduce);
+                    contribution.magnitude = modifier.Value >= 1f ? modifier.Value - 1f : 1f - Mathf.Max(0f, modifier.Value);
+                    break;
+                default:
+                    return false;
+            }
+
+            return calculatedStats.AddContribution(contribution, out _);
+        }
+
         private void OnRuntimeStatChanged(StatType statType, float value)
+        {
+            NotifyStatsChanged();
+        }
+
+        private void OnCalculatedStatsChanged(CalculatedStatCollection source, IReadOnlyList<string> statIds, bool restoring)
         {
             NotifyStatsChanged();
         }

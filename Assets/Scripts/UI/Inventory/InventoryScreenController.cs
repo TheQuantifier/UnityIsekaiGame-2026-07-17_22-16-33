@@ -10,6 +10,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Progression;
+using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Contracts;
 using UnityIsekaiGame.UI.Quests;
@@ -306,7 +307,7 @@ namespace UnityIsekaiGame.UI.Inventory
             {
                 view.Render(inventory.Slots);
                 view.RenderEquipment(equipment == null ? null : equipment.Slots);
-                view.RenderCharacter(playerStats, playerHealth, playerStamina, playerMana, statusEffects);
+                view.RenderCharacter(playerStats, playerHealth, playerStamina, playerMana, statusEffects, playerStats == null ? null : playerStats.CharacterAttributes, playerStats == null ? null : playerStats.CalculatedStats);
                 ClampSelection();
                 view.SetSelectedSlot(selectedSlotIndex);
                 view.SetSelectedEquipmentSlot(selectedEquipmentSlot);
@@ -886,6 +887,8 @@ namespace UnityIsekaiGame.UI.Inventory
                 PlayerHealth = playerHealth,
                 PlayerMana = playerMana,
                 PlayerStamina = playerStamina,
+                PlayerAttributes = playerStats == null ? null : playerStats.CharacterAttributes,
+                PlayerCalculatedStats = playerStats == null ? null : playerStats.CalculatedStats,
                 PlayerStatuses = statusEffects,
                 IdentityProgression = identityProgression,
                 Spellcaster = playerTransform == null ? null : playerTransform.GetComponentInParent<PlayerSpellcaster>(),

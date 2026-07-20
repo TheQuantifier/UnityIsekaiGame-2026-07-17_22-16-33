@@ -19,6 +19,8 @@ namespace UnityIsekaiGame.GameData
         SocialStatus,
         Currency,
         Title,
-        BirthGift
+        BirthGift,
+        Attribute,
+        CalculatedStat
     }
 }

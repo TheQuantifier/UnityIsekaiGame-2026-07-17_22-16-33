@@ -13,6 +13,7 @@ using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
 
 namespace UnityIsekaiGame.Development
@@ -29,6 +30,7 @@ namespace UnityIsekaiGame.Development
             "Overview",
             "Player",
             "Identity 5.1",
+            "Stats 5.2",
             "Inventory",
             "Combat",
             "Statuses",
@@ -51,6 +53,7 @@ namespace UnityIsekaiGame.Development
         private Text persistenceText;
         private Text persistenceIntegrationText;
         private Text identityProgressionText;
+        private Text attributesCalculatedStatsText;
         private Text itemValueText;
         private Text statusValueText;
         private Text roleValueText;
@@ -163,6 +166,11 @@ namespace UnityIsekaiGame.Development
                 identityProgressionText.text = service.BuildIdentityProgressionSummary();
             }
 
+            if (attributesCalculatedStatsText != null)
+            {
+                attributesCalculatedStatsText.text = service.BuildAttributeCalculatedStatsSummary();
+            }
+
             UpdateSelectorLabels();
             UpdateHistory();
             UpdateSectionButtonStates();
@@ -202,6 +210,7 @@ namespace UnityIsekaiGame.Development
             Transform overviewSection = AddSection(content, "Overview Section");
             Transform playerSection = AddSection(content, "Player Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
+            Transform feature52Section = AddSection(content, "Stats 5.2 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
             Transform statusSection = AddSection(content, "Statuses Section");
@@ -215,6 +224,7 @@ namespace UnityIsekaiGame.Development
             BuildOverviewSection(overviewSection, font);
             BuildPlayerSection(playerSection, font);
             BuildIdentityProgressionSection(identitySection, font);
+            BuildFeature52Section(feature52Section, font);
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
             BuildStatusSection(statusSection, font);
@@ -288,6 +298,21 @@ namespace UnityIsekaiGame.Development
                 ("Record Failure", () => service.RecordFailedActivity(GetFloat(amountInput, 0.5f))),
                 ("Participation", () => service.RecordParticipation()));
             identityProgressionText = AddText(parent, font, "Identity/progression not available.", 12, 320);
+        }
+
+        private void BuildFeature52Section(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Train Strength", () => service.AddStrengthTraining()),
+                ("Train All", () => service.AddBalancedAttributeTraining()),
+                ("Strength 100+", () => service.SetStrengthAboveHundred()),
+                ("Invalid Proof", () => service.AttemptInvalidAttributeGrowth()));
+            AddButtonRow(parent, font,
+                ("Add Power", () => service.AddPhysicalPowerFlat()),
+                ("Defense Penalty", () => service.AddPhysicalDefensePenalty()),
+                ("Clear 5.2", () => service.ClearFeature52Contributions()),
+                ("Recalculate", () => service.RecalculateFeature52Stats()));
+            attributesCalculatedStatsText = AddText(parent, font, "Attributes and calculated stats not available.", 12, 360);
         }
 
         private void BuildInventorySection(Transform parent, Font font)

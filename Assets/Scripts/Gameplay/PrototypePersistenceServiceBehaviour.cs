@@ -9,6 +9,7 @@ using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.UI.Inventory;
@@ -26,6 +27,8 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PlayerHealth playerHealth;
         [SerializeField] private PlayerMana playerMana;
         [SerializeField] private PlayerStamina playerStamina;
+        [SerializeField] private CharacterAttributes playerAttributes;
+        [SerializeField] private CalculatedStatCollection playerCalculatedStats;
         [SerializeField] private StatusEffectController statusEffectController;
         [SerializeField] private PlayerIdentityProgression playerIdentityProgression;
         [SerializeField] private OverallLevelConfiguration overallLevelConfiguration;
@@ -39,6 +42,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private string defaultSpawnPointId = "spawn.prototype.default";
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
         [SerializeField] private bool registerPlayerIdentityProgression = true;
+        [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerQuestContract = true;
         [SerializeField] private bool registerPlayerLocation = true;
@@ -54,6 +58,7 @@ namespace UnityIsekaiGame.Gameplay
         private PersistenceService service;
         private PrototypePersistenceStateParticipant participant;
         private PlayerIdentityProgressionPersistenceParticipant identityProgressionParticipant;
+        private PlayerAttributesPersistenceParticipant playerAttributesParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerQuestContractPersistenceParticipant questContractParticipant;
@@ -93,6 +98,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(identityProgressionParticipant);
                 identityProgressionParticipant = null;
+            }
+
+            if (service != null && playerAttributesParticipant != null)
+            {
+                service.UnregisterParticipant(playerAttributesParticipant);
+                playerAttributesParticipant = null;
             }
 
             if (service != null && statsVitalsStatusParticipant != null)
@@ -171,6 +182,7 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             EnsurePlayerIdentityProgressionParticipant();
+            EnsurePlayerAttributesParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerQuestContractParticipant();
@@ -538,6 +550,41 @@ namespace UnityIsekaiGame.Gameplay
             autosaveCoordinator.Configure(this, autosaveIntervalSeconds);
         }
 
+        private void EnsurePlayerAttributesParticipant()
+        {
+            if (!registerPlayerAttributes || playerAttributesParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerAttributes == null || playerIdentityProgression == null)
+            {
+                Debug.LogWarning("Player attributes persistence participant was not registered because the prototype player attributes or identity/progression component is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player attributes persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            playerAttributes.Configure(GetDefinitionRegistry());
+            playerAttributesParticipant = new PlayerAttributesPersistenceParticipant(
+                playerAttributes,
+                playerIdentityProgression,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerAttributesParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerAttributesParticipant = null;
+            }
+        }
+
         private void ResolvePlayerPersistenceReferences()
         {
             if (playerInventory == null)
@@ -569,6 +616,40 @@ namespace UnityIsekaiGame.Gameplay
             if (playerStats == null)
             {
                 playerStats = playerObject == null ? Object.FindAnyObjectByType<PlayerStats>() : playerObject.GetComponent<PlayerStats>();
+            }
+
+            if (playerObject == null && playerStats != null)
+            {
+                playerObject = playerStats.gameObject;
+            }
+
+            if (playerAttributes == null)
+            {
+                playerAttributes = playerObject == null ? Object.FindAnyObjectByType<CharacterAttributes>() : playerObject.GetComponent<CharacterAttributes>();
+            }
+
+            if (playerAttributes == null && playerObject != null)
+            {
+                playerAttributes = playerObject.AddComponent<CharacterAttributes>();
+            }
+
+            if (playerCalculatedStats == null)
+            {
+                playerCalculatedStats = playerObject == null ? Object.FindAnyObjectByType<CalculatedStatCollection>() : playerObject.GetComponent<CalculatedStatCollection>();
+            }
+
+            if (playerCalculatedStats == null && playerObject != null)
+            {
+                playerCalculatedStats = playerObject.AddComponent<CalculatedStatCollection>();
+            }
+
+            if (definitionCatalog != null)
+            {
+                DefinitionRegistry registry = GetDefinitionRegistry();
+                playerAttributes?.Configure(registry);
+                playerCalculatedStats?.Configure(registry, playerAttributes);
+                playerStats?.ConfigureDerivedStats(registry);
+                playerStats?.RefreshEquipmentModifiers();
             }
 
             if (playerHealth == null)
@@ -834,6 +915,16 @@ namespace UnityIsekaiGame.Gameplay
                 playerIdentityProgression.ProgressionChanged += OnIdentityProgressionChanged;
             }
 
+            if (playerAttributes != null)
+            {
+                playerAttributes.AttributesChanged += OnAttributesChanged;
+            }
+
+            if (playerCalculatedStats != null)
+            {
+                playerCalculatedStats.CalculatedStatsChanged += OnCalculatedStatsChanged;
+            }
+
             dirtyEventsSubscribed = true;
         }
 
@@ -880,6 +971,16 @@ namespace UnityIsekaiGame.Gameplay
             if (playerIdentityProgression != null)
             {
                 playerIdentityProgression.ProgressionChanged -= OnIdentityProgressionChanged;
+            }
+
+            if (playerAttributes != null)
+            {
+                playerAttributes.AttributesChanged -= OnAttributesChanged;
+            }
+
+            if (playerCalculatedStats != null)
+            {
+                playerCalculatedStats.CalculatedStatsChanged -= OnCalculatedStatsChanged;
             }
 
             if (playerQuestLog != null)
@@ -939,6 +1040,26 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             dirtyTracker?.MarkDirty("Player identity/progression changed.");
+        }
+
+        private void OnAttributesChanged(CharacterAttributes attributes, IReadOnlyList<string> attributeIds, bool restoring)
+        {
+            if (restoring)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player attributes changed.");
+        }
+
+        private void OnCalculatedStatsChanged(CalculatedStatCollection stats, IReadOnlyList<string> statIds, bool restoring)
+        {
+            if (restoring)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player calculated stats changed.");
         }
 
         private string ResolveSceneKey()

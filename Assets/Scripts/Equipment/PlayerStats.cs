@@ -58,6 +58,12 @@ namespace UnityIsekaiGame.Equipment
             NotifyStatsChanged();
         }
 
+        public void RefreshEquipmentModifiers()
+        {
+            RecalculateEquipmentModifiers();
+            NotifyStatsChanged();
+        }
+
         private void RecalculateEquipmentModifiers()
         {
             RemoveEquipmentModifiers();

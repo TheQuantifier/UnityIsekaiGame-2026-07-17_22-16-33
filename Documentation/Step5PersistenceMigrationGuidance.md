@@ -52,3 +52,7 @@ Before alpha, development saves may be invalidated when the model changes. Every
 ## Feature 5.1 Break
 
 Feature 5.1 introduces required participant `player.identity-progression` at schema version 1. Saves from Step 4 and earlier are intentionally rejected because they do not contain person identity, origin assignment, starting reward application flags, wallet balances, role lifecycle history, social status history, or birth-gift reward state. Recreate local prototype saves after validating definitions and generating a new origin in the Test Lab.
+
+## Feature 5.2 Break
+
+Feature 5.2 introduces required participant `player.attributes` at schema version 1. Pre-5.2 development saves are intentionally rejected because they do not contain authoritative Attribute source contributions or action-growth event history. Calculated Stats are not saved as authoritative values; they rebuild from Attribute records and active source-owned systems after load. Delete old local prototype saves before final Feature 5.2 manual testing.
