@@ -38,3 +38,5 @@ Compatibility path:
 - `ActorStats` reads calculated values when configured;
 - old `RuntimeStatModifier` callers are bridged into calculated-stat contributions by source category;
 - future systems should register `RuntimeCalculatedStatContribution` directly instead of treating legacy base stats as authoritative.
+
+Feature 5.3 Skill grade packages register direct `RuntimeCalculatedStatContribution` entries with source category `Skill`. Each reached grade uses a distinct source ID such as `skill.swordsmanship.grade.f`, so cumulative Skill effects can rebuild without duplicating or replacing lower-grade packages.

@@ -95,6 +95,7 @@ Current foundations include:
 - Health, stamina, and mana.
 - Equipment, generic runtime actor statistics, and typed damage resistance modifiers.
 - Static being definitions and reusable actor profiles for player/enemy base stats.
+- Persistent player identity, origin, birth gifts, Attributes, Calculated Stats, and learned Skill/Proficiency progression.
 - Static place definitions and typed reach-location references.
 - Static faction and organization definitions used by quests, contracts, people, and places.
 - Melee combat and shared attack/defense damage handling.
@@ -116,6 +117,7 @@ Persistence integration, recovery, rollback, and failure hardening are documente
 Final Step 4 persistence closeout documentation lives in `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, `Documentation/Step4PersistenceOwnershipMatrix.md`, `Documentation/Step4PersistenceKnownLimitations.md`, `Documentation/Step4PersistenceRegressionChecklist.md`, and `Documentation/Step5PersistenceMigrationGuidance.md`.
 The editor/development-build Prototype Systems Test Lab is documented in `Documentation/PrototypeSystemsTestLab.md`.
 PrototypeScene usability, zone layout, pickup grouping, and menu layout standards are documented in `Documentation/PrototypeSceneAndMenuUsability.md`.
+Skill and Proficiency progression is documented in `Documentation/SkillsAndProgression.md`, `Documentation/SkillLearning.md`, `Documentation/SkillGradeEffects.md`, and `Documentation/Feature5_3Persistence.md`.
 
 ### Inventory Item Instance Save Foundation
 

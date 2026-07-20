@@ -9,6 +9,7 @@ namespace UnityIsekaiGame.GameData.Persistence
         ActorBase = 100,
         IdentityAndProgression = 150,
         Attributes = 175,
+        Skills = 190,
         Inventory = 200,
         Equipment = 300,
         Statuses = 400,

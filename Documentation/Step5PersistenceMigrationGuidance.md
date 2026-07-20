@@ -56,3 +56,7 @@ Feature 5.1 introduces required participant `player.identity-progression` at sch
 ## Feature 5.2 Break
 
 Feature 5.2 introduces required participant `player.attributes` at schema version 1. Pre-5.2 development saves are intentionally rejected because they do not contain authoritative Attribute source contributions or action-growth event history. Calculated Stats are not saved as authoritative values; they rebuild from Attribute records and active source-owned systems after load. Delete old local prototype saves before final Feature 5.2 manual testing.
+
+## Feature 5.3 Break
+
+Feature 5.3 introduces required participant `player.skills` at schema version 1. Pre-5.3 development saves are intentionally rejected because they do not contain hidden Skill learning progress, learned Skill records, consumed action-event keys, direct Skill grants, promotion history, or deterministic Skill effect rebuild metadata. Delete old local prototype saves before final Feature 5.3 manual testing and recreate saves after definition validation.

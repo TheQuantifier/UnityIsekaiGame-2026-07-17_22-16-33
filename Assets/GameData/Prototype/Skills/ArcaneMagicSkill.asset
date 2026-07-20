@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 53000000000000000000000000000653, type: 3}
+  m_Name: ArcaneMagicSkill
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Skills.SkillDefinition
+  skillId: skill.arcane-magic
+  displayName: Arcane Magic
+  description: Learned proficiency with arcane spellcasting.
+  primaryCategory: {fileID: 11400000, guid: 53200000000000000000000000000053, type: 2}
+  tags:
+  - {fileID: 11400000, guid: eac27d0065b44f969205af5ca702cbe7, type: 2}
+  - {fileID: 11400000, guid: c9bf96b77e1d449cab0133b5ea15891c, type: 2}
+  alphaEnabled: 1
+  naturalLearning:
+    enabled: 1
+    qualifyingEventId: ability.arcane-bolt
+    actionCategory: 400
+    requiredItemCategory: {fileID: 0}
+    requiredItemTag: {fileID: 0}
+    requiredMagicTag: {fileID: 11400000, guid: c9bf96b77e1d449cab0133b5ea15891c, type: 2}
+    requiredActionTag: {fileID: 0}
+    requiredCount: 50
+    grantedStartingGrade: 0
+  defaultNaturalStartingGrade: 0
+  xpThresholds:
+  - fromGrade: 0
+    xpRequired: 25
+  - fromGrade: 1
+    xpRequired: 50
+  - fromGrade: 2
+    xpRequired: 100
+  - fromGrade: 3
+    xpRequired: 200
+  - fromGrade: 4
+    xpRequired: 400
+  - fromGrade: 5
+    xpRequired: 800
+  - fromGrade: 6
+    xpRequired: 1600
+  gradePackages:
+  - grade: 0
+    calculatedStatContributions:
+    - calculatedStat: {fileID: 11400000, guid: c2000000000000000000000000000052, type: 2}
+      kind: 0
+      direction: 0
+      magnitude: 2
+      priority: 10
+    abilityUnlocks: []
+    capabilityUnlockIds:
+    - capability.magic.arcane.basic
+    futureInteractionMetadata: 
+  - grade: 1
+    calculatedStatContributions:
+    - calculatedStat: {fileID: 11400000, guid: c2000000000000000000000000000052, type: 2}
+      kind: 0
+      direction: 0
+      magnitude: 3
+      priority: 10
+    abilityUnlocks: []
+    capabilityUnlockIds: []
+    futureInteractionMetadata: 
+  abilityUnlocks:
+  - ability: {fileID: 11400000, guid: 639aa4a2f0594102aab8d3119e667cb9, type: 2}
+    futureAbilityOrActionId: 
+    requiredGrade: 0
+    sourceIdentity: skill.arcane-magic.unlock.arcane-bolt
+    alphaAvailable: 1
+    futureMetadata: 
+  - ability: {fileID: 11400000, guid: 0cd85663eeb0438f80077353d3735bc2, type: 2}
+    futureAbilityOrActionId: 
+    requiredGrade: 2
+    sourceIdentity: skill.arcane-magic.unlock.heavy-arcane-bolt
+    alphaAvailable: 1
+    futureMetadata: 
+  directGrantDefaultGrade: 0
+  futureMetadata: 

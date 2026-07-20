@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System;
 using UnityEngine;
 using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.Gameplay;
@@ -21,6 +22,8 @@ namespace UnityIsekaiGame.Magic
         private readonly List<SpellProjectile> activeProjectiles = new List<SpellProjectile>();
         private readonly Dictionary<SpellDefinition, float> cooldowns = new Dictionary<SpellDefinition, float>();
         private readonly AbilityCooldownTracker abilityCooldowns = new AbilityCooldownTracker();
+
+        public event Action<SpellDefinition, SpellCastResult> SpellCastResolved;
 
         private void Awake()
         {
@@ -90,7 +93,9 @@ namespace UnityIsekaiGame.Magic
             cooldowns[spell] = Time.time + spell.Cooldown;
             string message = $"Cast {spell.DisplayName}.";
             Debug.Log(message);
-            return SpellCastResult.Success(message);
+            SpellCastResult result = SpellCastResult.Success(message);
+            SpellCastResolved?.Invoke(spell, result);
+            return result;
         }
 
         public void ResetSpellcasting()
@@ -186,7 +191,9 @@ namespace UnityIsekaiGame.Magic
 
             string message = $"Cast {spell.DisplayName}.";
             Debug.Log(message);
-            return SpellCastResult.Success(message);
+            SpellCastResult castResult = SpellCastResult.Success(message);
+            SpellCastResolved?.Invoke(spell, castResult);
+            return castResult;
         }
 
         private void RegisterProjectile(SpellProjectile projectile)
