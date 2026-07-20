@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Skills;
 
 namespace UnityIsekaiGame.Progression
 {
@@ -16,6 +17,7 @@ namespace UnityIsekaiGame.Progression
         [SerializeField, Min(0f)] private float selectionWeight = 1f;
         [SerializeField] private BirthGiftType giftType = BirthGiftType.PermanentStatGrant;
         [SerializeField] private ProgressionAbilityReference grantedAbility;
+        [SerializeField] private SkillGrantDefinition[] skillGrants;
         [SerializeField] private PermanentStatGrantDefinition[] permanentStatGrants;
         [SerializeField] private PermanentStatGrantDefinition[] futureGrowthAffinityEntries;
         [SerializeField] private BirthGiftAwakeningMode awakeningMode = BirthGiftAwakeningMode.ImmediateAutomatic;
@@ -34,6 +36,7 @@ namespace UnityIsekaiGame.Progression
         public float SelectionWeight => Mathf.Max(0f, selectionWeight);
         public BirthGiftType GiftType => giftType;
         public ProgressionAbilityReference GrantedAbility => grantedAbility;
+        public IReadOnlyList<SkillGrantDefinition> SkillGrants => skillGrants ?? System.Array.Empty<SkillGrantDefinition>();
         public IReadOnlyList<PermanentStatGrantDefinition> PermanentStatGrants => permanentStatGrants ?? System.Array.Empty<PermanentStatGrantDefinition>();
         public IReadOnlyList<PermanentStatGrantDefinition> FutureGrowthAffinityEntries => futureGrowthAffinityEntries ?? System.Array.Empty<PermanentStatGrantDefinition>();
         public BirthGiftAwakeningMode AwakeningMode => awakeningMode;
@@ -103,6 +106,20 @@ namespace UnityIsekaiGame.Progression
                 if (grant == null || !grant.IsValid)
                 {
                     report.AddError($"Birth gift '{DisplayName}' has an invalid permanent stat grant.");
+                }
+            }
+
+            foreach (SkillGrantDefinition grant in SkillGrants)
+            {
+                if (grant == null || grant.Skill == null)
+                {
+                    report.AddError($"Birth gift '{DisplayName}' has a missing Skill grant.");
+                    continue;
+                }
+
+                if (definitionsById == null || !definitionsById.TryGetValue(grant.Skill.Id, out IGameDefinition found) || found is not SkillDefinition)
+                {
+                    report.AddError($"Birth gift '{DisplayName}' references Skill '{grant.Skill.Id}', which is not in the configured catalog.");
                 }
             }
         }

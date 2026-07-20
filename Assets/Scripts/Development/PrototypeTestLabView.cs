@@ -13,6 +13,7 @@ using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
 
@@ -31,6 +32,7 @@ namespace UnityIsekaiGame.Development
             "Player",
             "Identity 5.1",
             "Stats 5.2",
+            "Skills 5.3",
             "Inventory",
             "Combat",
             "Statuses",
@@ -54,7 +56,9 @@ namespace UnityIsekaiGame.Development
         private Text persistenceIntegrationText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
+        private Text skillsText;
         private Text itemValueText;
+        private Text skillValueText;
         private Text statusValueText;
         private Text roleValueText;
         private Text socialStatusValueText;
@@ -79,6 +83,7 @@ namespace UnityIsekaiGame.Development
         private int selectedPlaceIndex;
         private int selectedPersonIndex;
         private int selectedTestPointIndex;
+        private int selectedSkillIndex;
 
         private readonly List<ItemDefinition> items = new List<ItemDefinition>();
         private readonly List<StatusEffectDefinition> statuses = new List<StatusEffectDefinition>();
@@ -91,6 +96,7 @@ namespace UnityIsekaiGame.Development
         private readonly List<PlaceDefinition> places = new List<PlaceDefinition>();
         private readonly List<PersonDefinition> people = new List<PersonDefinition>();
         private readonly List<PrototypeTestPoint> testPoints = new List<PrototypeTestPoint>();
+        private readonly List<SkillDefinition> skills = new List<SkillDefinition>();
         private readonly List<GameObject> sectionRoots = new List<GameObject>();
         private readonly List<Button> sectionButtons = new List<Button>();
 
@@ -171,6 +177,11 @@ namespace UnityIsekaiGame.Development
                 attributesCalculatedStatsText.text = service.BuildAttributeCalculatedStatsSummary();
             }
 
+            if (skillsText != null)
+            {
+                skillsText.text = service.BuildSkillsSummary(includeHidden: true);
+            }
+
             UpdateSelectorLabels();
             UpdateHistory();
             UpdateSectionButtonStates();
@@ -211,6 +222,7 @@ namespace UnityIsekaiGame.Development
             Transform playerSection = AddSection(content, "Player Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Stats 5.2 Section");
+            Transform feature53Section = AddSection(content, "Skills 5.3 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
             Transform statusSection = AddSection(content, "Statuses Section");
@@ -225,6 +237,7 @@ namespace UnityIsekaiGame.Development
             BuildPlayerSection(playerSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
+            BuildFeature53Section(feature53Section, font);
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
             BuildStatusSection(statusSection, font);
@@ -313,6 +326,29 @@ namespace UnityIsekaiGame.Development
                 ("Clear 5.2", () => service.ClearFeature52Contributions()),
                 ("Recalculate", () => service.RecalculateFeature52Stats()));
             attributesCalculatedStatsText = AddText(parent, font, "Attributes and calculated stats not available.", 12, 360);
+        }
+
+        private void BuildFeature53Section(Transform parent, Font font)
+        {
+            skillValueText = AddSelectorRow(parent, font, "Skill", () => CycleSelection(ref selectedSkillIndex, skills.Count, -1), () => CycleSelection(ref selectedSkillIndex, skills.Count, 1));
+            AddButtonRow(parent, font,
+                ("Valid Use", () => service.SimulateSkillAction(GetSelected(skills, selectedSkillIndex), executed: true, succeeded: true)),
+                ("Missed Use", () => service.SimulateSkillAction(GetSelected(skills, selectedSkillIndex), executed: true, succeeded: false)),
+                ("Blocked", () => service.SimulateSkillAction(GetSelected(skills, selectedSkillIndex), executed: false, succeeded: false)));
+            AddButtonRow(parent, font,
+                ("Duplicate", () => service.TestDuplicateSkillAction(GetSelected(skills, selectedSkillIndex))),
+                ("Many Uses", () => service.SimulateManySkillActions(GetSelected(skills, selectedSkillIndex), GetInt(quantityInput, 25))),
+                ("Grant F", () => service.GrantSkill(GetSelected(skills, selectedSkillIndex), SkillGrade.F)));
+            AddButtonRow(parent, font,
+                ("Grant C", () => service.GrantSkill(GetSelected(skills, selectedSkillIndex), SkillGrade.C)),
+                ("Grant A", () => service.GrantSkill(GetSelected(skills, selectedSkillIndex), SkillGrade.A)),
+                ("Grant AAA", () => service.GrantSkill(GetSelected(skills, selectedSkillIndex), SkillGrade.AAA)));
+            AddButtonRow(parent, font,
+                ("XP +1", () => service.AwardSkillXp(GetSelected(skills, selectedSkillIndex), 1)),
+                ("XP Many", () => service.AwardSkillXp(GetSelected(skills, selectedSkillIndex), GetInt(quantityInput, 25))),
+                ("Rebuild", () => service.RebuildSkillEffects()),
+                ("Clear Skills", () => service.ClearSkillDevelopmentState(confirmed: false)));
+            skillsText = AddText(parent, font, "Skills not available.", 12, 360);
         }
 
         private void BuildInventorySection(Transform parent, Font font)
@@ -451,6 +487,7 @@ namespace UnityIsekaiGame.Development
             SetOptions(places, service.GetDefinitions<PlaceDefinition>(), ref selectedPlaceIndex);
             SetOptions(people, service.GetDefinitions<PersonDefinition>(), ref selectedPersonIndex);
             SetOptions(testPoints, service.GetTestPoints(), ref selectedTestPointIndex);
+            SetOptions(skills, service.GetDefinitions<SkillDefinition>(), ref selectedSkillIndex);
         }
 
         private void UpdateSelectorLabels()
@@ -466,6 +503,7 @@ namespace UnityIsekaiGame.Development
             SetValue(placeValueText, FormatSelected(places, selectedPlaceIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(personValueText, FormatSelected(people, selectedPersonIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(testPointValueText, FormatSelected(testPoints, selectedTestPointIndex, point => $"{point.DisplayName} ({point.TestPointId})"));
+            SetValue(skillValueText, FormatSelected(skills, selectedSkillIndex, PrototypeTestLabService.FormatDefinition));
         }
 
         private void UpdateHistory()

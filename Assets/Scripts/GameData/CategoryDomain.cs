@@ -21,6 +21,7 @@ namespace UnityIsekaiGame.GameData
         Title,
         BirthGift,
         Attribute,
-        CalculatedStat
+        CalculatedStat,
+        Skill
     }
 }

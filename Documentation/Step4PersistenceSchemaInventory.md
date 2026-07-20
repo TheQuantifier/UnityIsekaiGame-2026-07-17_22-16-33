@@ -43,6 +43,16 @@ Step 4 uses one save envelope schema plus independent participant schemas. Do no
 - Migration: none.
 - Stable-ID dependencies: item definition IDs, item instance GUIDs, quality IDs, equipment slot IDs.
 
+## Skills
+
+- Participant: `player.skills`
+- Payload: `PlayerSkillsSaveData`
+- Current version: `1`
+- Required fields: schema version, player ID, learned Skill records, hidden learning progress, consumed action-event keys.
+- Compatibility: missing pre-5.3 participant data is rejected for current development saves; no migration is retained.
+- Migration: none.
+- Stable-ID dependencies: SkillDefinition IDs, ability/action unlock IDs, calculated stat IDs, action event IDs.
+
 ## Stats/Vitals/Statuses
 
 - Participant: `player.stats-vitals-status`

@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Persistence;
+using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.WorldEntities;
 
@@ -22,6 +23,7 @@ namespace UnityIsekaiGame.Progression
         [SerializeField] private ActorStats actorStats;
         [SerializeField] private CharacterAttributes characterAttributes;
         [SerializeField] private CalculatedStatCollection calculatedStats;
+        [SerializeField] private CharacterSkillCollection skillCollection;
         [SerializeField] private WorldEntityIdentity worldEntityIdentity;
         [SerializeField] private PlayTimeTracker playTimeTracker;
         [SerializeField] private OverallLevelConfiguration overallLevelConfiguration;
@@ -105,6 +107,7 @@ namespace UnityIsekaiGame.Progression
             actorStats = stats == null ? actorStats : stats;
             characterAttributes = actorStats == null ? characterAttributes : actorStats.CharacterAttributes ?? actorStats.GetComponent<CharacterAttributes>();
             calculatedStats = actorStats == null ? calculatedStats : actorStats.CalculatedStats ?? actorStats.GetComponent<CalculatedStatCollection>();
+            skillCollection = actorStats == null ? skillCollection : actorStats.GetComponent<CharacterSkillCollection>();
             worldEntityIdentity = identity == null ? worldEntityIdentity : identity;
             playTimeTracker = tracker == null ? playTimeTracker : tracker;
             overallLevelConfiguration = levelConfiguration == null ? overallLevelConfiguration : levelConfiguration;
@@ -675,6 +678,11 @@ namespace UnityIsekaiGame.Progression
                 calculatedStats = GetComponent<CalculatedStatCollection>();
             }
 
+            if (skillCollection == null)
+            {
+                skillCollection = GetComponent<CharacterSkillCollection>();
+            }
+
             if (worldEntityIdentity == null)
             {
                 worldEntityIdentity = GetComponent<WorldEntityIdentity>();
@@ -742,6 +750,8 @@ namespace UnityIsekaiGame.Progression
             {
                 AddRole(originDefinition.StartingRole, origin.assignmentSource, originDefinition.Id, primary: true, acceptConflicts: true, restoring: restoring);
             }
+
+            GrantOriginSkills(originDefinition, restoring);
 
             foreach (SocialStatusAssignmentDefinition assignment in originDefinition.StartingSocialStatuses)
             {
@@ -895,6 +905,10 @@ namespace UnityIsekaiGame.Progression
                     AddPermanentStatGrant($"birth-gift.{gift.Id}.{grant.StatType}", gift.Id, grant.StatType, grant.Value);
                 }
             }
+            else if (gift.SkillGrants.Count > 0)
+            {
+                GrantBirthGiftSkills(gift, restoring);
+            }
             else if (gift.GiftType == BirthGiftType.LatentSkill && gift.GrantedAbility != null && !string.IsNullOrWhiteSpace(gift.GrantedAbility.AbilityId))
             {
                 if (!learnedCapabilityIds.Contains(gift.GrantedAbility.AbilityId))
@@ -905,6 +919,38 @@ namespace UnityIsekaiGame.Progression
 
             birthGift.rewardApplied = true;
             RebuildActiveEffects(restoring);
+        }
+
+        private void GrantOriginSkills(OriginDefinition originDefinition, bool restoring)
+        {
+            if (skillCollection == null || originDefinition == null)
+            {
+                return;
+            }
+
+            foreach (SkillGrantDefinition grant in originDefinition.StartingSkillGrants)
+            {
+                if (grant?.Skill != null)
+                {
+                    skillCollection.GrantSkill(grant.Skill, grant.StartingGrade, SkillAcquisitionSource.Origin, grant.Reason, originDefinition.Id, restoring);
+                }
+            }
+        }
+
+        private void GrantBirthGiftSkills(BirthGiftDefinition gift, bool restoring)
+        {
+            if (skillCollection == null || gift == null)
+            {
+                return;
+            }
+
+            foreach (SkillGrantDefinition grant in gift.SkillGrants)
+            {
+                if (grant?.Skill != null)
+                {
+                    skillCollection.GrantSkill(grant.Skill, grant.StartingGrade, SkillAcquisitionSource.BirthGift, grant.Reason, gift.Id, restoring);
+                }
+            }
         }
 
         private void AddPermanentStatGrant(string sourceId, string definitionId, StatType statType, float value)
@@ -1059,6 +1105,10 @@ namespace UnityIsekaiGame.Progression
         {
             definitionRegistry = registry;
             DefinitionLookupCache.SetRegistry(registry);
+            if (skillCollection != null)
+            {
+                skillCollection.Configure(registry, calculatedStats, GetComponent<UnityIsekaiGame.Magic.PlayerSpellLoadout>());
+            }
         }
 
         private RuntimeRoleRecord CreateRoleRecord(string roleId, string source, string context, bool primary)

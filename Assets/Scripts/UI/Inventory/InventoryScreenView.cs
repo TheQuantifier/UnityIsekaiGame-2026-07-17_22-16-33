@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.UI;
@@ -292,7 +293,8 @@ namespace UnityIsekaiGame.UI.Inventory
             PlayerMana mana,
             StatusEffectController statusEffects,
             CharacterAttributes attributes = null,
-            CalculatedStatCollection calculatedStats = null)
+            CalculatedStatCollection calculatedStats = null,
+            CharacterSkillCollection skills = null)
         {
             EnsureCharacterStatsPanel();
 
@@ -338,6 +340,29 @@ namespace UnityIsekaiGame.UI.Inventory
                 }
 
                 AppendCompactPairs(builder, parts);
+            }
+
+            if (skills != null)
+            {
+                builder.AppendLine();
+                builder.AppendLine("Skills");
+                IReadOnlyList<RuntimeSkillRecord> learned = skills.LearnedSkills;
+                if (learned == null || learned.Count == 0)
+                {
+                    builder.AppendLine("None");
+                }
+                else
+                {
+                    List<string> parts = new List<string>();
+                    foreach (RuntimeSkillRecord record in learned)
+                    {
+                        SkillGrade grade = SkillGradeUtility.Clamp((SkillGrade)record.currentGrade);
+                        string progress = grade == SkillGrade.AAA ? "Mastered" : $"{record.currentXp} XP";
+                        parts.Add($"{FormatDefinitionName(record.skillDefinitionId)} {grade} ({progress})");
+                    }
+
+                    AppendCompactPairs(builder, parts);
+                }
             }
 
             characterStatsText.text = builder.ToString().TrimEnd();

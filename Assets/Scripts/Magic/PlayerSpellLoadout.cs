@@ -50,6 +50,25 @@ namespace UnityIsekaiGame.Magic
             return false;
         }
 
+        public SpellLoadoutOperationResult LearnSpell(SpellDefinition spell)
+        {
+            EnsureSlotCapacity();
+            if (spell == null)
+            {
+                return SpellLoadoutOperationResult.Failure("Spell is missing.");
+            }
+
+            if (KnowsSpell(spell))
+            {
+                return SpellLoadoutOperationResult.Success($"{spell.DisplayName} is already known.");
+            }
+
+            List<SpellDefinition> updated = new List<SpellDefinition>(knownSpells ?? Array.Empty<SpellDefinition>());
+            updated.Add(spell);
+            knownSpells = updated.ToArray();
+            return SpellLoadoutOperationResult.Success($"Learned spell {spell.DisplayName}.");
+        }
+
         public SpellDefinition GetSlotSpell(int slotIndex)
         {
             EnsureSlotCapacity();

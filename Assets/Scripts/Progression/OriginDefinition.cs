@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Skills;
 
 namespace UnityIsekaiGame.Progression
 {
@@ -16,6 +17,7 @@ namespace UnityIsekaiGame.Progression
         [SerializeField, Min(0f)] private float selectionWeight = 1f;
         [SerializeField] private bool enabledForAlpha = true;
         [SerializeField] private PermanentStatGrantDefinition[] startingStatGrants;
+        [SerializeField] private SkillGrantDefinition[] startingSkillGrants;
         [SerializeField] private BirthGiftDefinition[] influencedGiftPool;
         [SerializeField] private BirthGiftWeightModifierDefinition[] giftWeightModifiers;
         [SerializeField] private RarityWeightModifierDefinition[] giftRarityWeightModifiers;
@@ -39,6 +41,7 @@ namespace UnityIsekaiGame.Progression
         public float SelectionWeight => Mathf.Max(0f, selectionWeight);
         public bool EnabledForAlpha => enabledForAlpha;
         public IReadOnlyList<PermanentStatGrantDefinition> StartingStatGrants => startingStatGrants ?? System.Array.Empty<PermanentStatGrantDefinition>();
+        public IReadOnlyList<SkillGrantDefinition> StartingSkillGrants => startingSkillGrants ?? System.Array.Empty<SkillGrantDefinition>();
         public IReadOnlyList<BirthGiftDefinition> InfluencedGiftPool => influencedGiftPool ?? System.Array.Empty<BirthGiftDefinition>();
         public IReadOnlyList<BirthGiftWeightModifierDefinition> GiftWeightModifiers => giftWeightModifiers ?? System.Array.Empty<BirthGiftWeightModifierDefinition>();
         public IReadOnlyList<RarityWeightModifierDefinition> GiftRarityWeightModifiers => giftRarityWeightModifiers ?? System.Array.Empty<RarityWeightModifierDefinition>();
@@ -90,6 +93,17 @@ namespace UnityIsekaiGame.Progression
                 {
                     report.AddWarning($"Origin '{DisplayName}' grants {grant.Value:0.##} {grant.StatType}; alpha origin grants should stay small.");
                 }
+            }
+
+            foreach (SkillGrantDefinition grant in StartingSkillGrants)
+            {
+                if (grant == null || grant.Skill == null)
+                {
+                    report.AddError($"Origin '{DisplayName}' has a missing starting Skill grant.");
+                    continue;
+                }
+
+                ValidateDefinitionReference(grant.Skill, nameof(SkillDefinition), definitionsById, report, $"Origin '{DisplayName}' starting Skill");
             }
 
             if (startingGold != null)

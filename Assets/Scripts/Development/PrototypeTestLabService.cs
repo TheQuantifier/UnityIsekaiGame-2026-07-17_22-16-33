@@ -18,6 +18,7 @@ using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.WorldEntities;
@@ -57,6 +58,7 @@ namespace UnityIsekaiGame.Development
             context = newContext;
             registry = CreateRegistry(context?.DefinitionCatalog);
             context?.IdentityProgression?.RegisterDefinitionCache(registry);
+            context?.PlayerSkills?.Configure(registry, context.PlayerCalculatedStats, context.SpellLoadout);
             selectorCache.Clear();
         }
 
@@ -105,6 +107,7 @@ namespace UnityIsekaiGame.Development
                 $"Mana: {FormatResource(context.PlayerMana == null ? 0f : context.PlayerMana.CurrentMana, context.PlayerMana == null ? 0f : context.PlayerMana.MaximumMana)}",
                 $"Stats: ATK {FormatNumber(context.PlayerStats == null ? 0f : context.PlayerStats.AttackPower)}, DEF {FormatNumber(context.PlayerStats == null ? 0f : context.PlayerStats.Defense)}",
                 $"Attributes: {(context.PlayerAttributes == null ? "Missing" : context.PlayerAttributes.AttributeValues.Count.ToString())}",
+                $"Skills: {(context.PlayerSkills == null ? "Missing" : context.PlayerSkills.LearnedSkills.Count.ToString())}",
                 $"Statuses: {FormatStatuses(context.PlayerStatuses)}",
                 $"Inventory: {FormatInventory()}",
                 $"Equipped: {CountEquipped()} item(s)",
@@ -144,6 +147,132 @@ namespace UnityIsekaiGame.Development
                 string.Empty,
                 context.PlayerCalculatedStats.BuildDiagnosticSummary()
             });
+        }
+
+        public string BuildSkillsSummary(bool includeHidden)
+        {
+            if (context?.PlayerSkills == null)
+            {
+                return "Player Skill collection component is missing.";
+            }
+
+            context.PlayerSkills.Configure(registry, context.PlayerCalculatedStats, context.SpellLoadout);
+            return context.PlayerSkills.BuildDiagnosticSummary(includeHidden);
+        }
+
+        public PrototypeTestLabOperation SimulateSkillAction(SkillDefinition skill, bool executed, bool succeeded, string eventId = "")
+        {
+            if (!EnsureSkills(out CharacterSkillCollection skills))
+            {
+                return RecordFailure("Skill Action", "Player Skill collection component is missing.", "MissingSkills");
+            }
+
+            if (skill == null)
+            {
+                return RecordFailure("Skill Action", "Skill definition is missing.", "MissingSkill");
+            }
+
+            SkillActionExecutionEvent actionEvent = SkillActionExecutionEvent.Development(
+                string.IsNullOrWhiteSpace(eventId) ? $"skill-action.test-lab.{Guid.NewGuid():N}" : eventId,
+                skill.NaturalLearning == null ? SkillActionEventCategory.Development : skill.NaturalLearning.ActionCategory,
+                skill.NaturalLearning == null ? skill.Id : skill.NaturalLearning.QualifyingEventId,
+                executed,
+                succeeded);
+            SkillOperationResult result = skills.RecordQualifyingAction(actionEvent);
+            return Record(result.Succeeded, executed ? succeeded ? "Skill Valid Action" : "Skill Missed Action" : "Skill Blocked Action", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation SimulateManySkillActions(SkillDefinition skill, int count)
+        {
+            if (!EnsureSkills(out CharacterSkillCollection skills))
+            {
+                return RecordFailure("Skill Multi Action", "Player Skill collection component is missing.", "MissingSkills");
+            }
+
+            if (skill == null)
+            {
+                return RecordFailure("Skill Multi Action", "Skill definition is missing.", "MissingSkill");
+            }
+
+            int amount = Mathf.Max(1, count);
+            for (int i = 0; i < amount; i++)
+            {
+                SkillActionExecutionEvent actionEvent = SkillActionExecutionEvent.Development(
+                    $"skill-action.test-lab.{Guid.NewGuid():N}",
+                    skill.NaturalLearning == null ? SkillActionEventCategory.Development : skill.NaturalLearning.ActionCategory,
+                    skill.NaturalLearning == null ? skill.Id : skill.NaturalLearning.QualifyingEventId,
+                    executed: true,
+                    succeeded: true);
+                skills.RecordQualifyingAction(actionEvent);
+            }
+
+            return RecordSuccess("Skill Multi Action", $"Simulated {amount} qualifying action(s) for {skill.DisplayName}.");
+        }
+
+        public PrototypeTestLabOperation TestDuplicateSkillAction(SkillDefinition skill)
+        {
+            string eventId = $"skill-action.test-lab.duplicate.{Guid.NewGuid():N}";
+            SimulateSkillAction(skill, executed: true, succeeded: true, eventId);
+            return SimulateSkillAction(skill, executed: true, succeeded: true, eventId);
+        }
+
+        public PrototypeTestLabOperation GrantSkill(SkillDefinition skill, SkillGrade grade)
+        {
+            if (!EnsureSkills(out CharacterSkillCollection skills))
+            {
+                return RecordFailure("Grant Skill", "Player Skill collection component is missing.", "MissingSkills");
+            }
+
+            if (skill == null)
+            {
+                return RecordFailure("Grant Skill", "Skill definition is missing.", "MissingSkill");
+            }
+
+            SkillOperationResult result = skills.GrantSkill(skill, grade, SkillAcquisitionSource.Development, "Prototype Test Lab", "test-lab");
+            return Record(result.Succeeded, $"Grant Skill {grade}", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation AwardSkillXp(SkillDefinition skill, int amount)
+        {
+            if (!EnsureSkills(out CharacterSkillCollection skills))
+            {
+                return RecordFailure("Award Skill XP", "Player Skill collection component is missing.", "MissingSkills");
+            }
+
+            if (skill == null)
+            {
+                return RecordFailure("Award Skill XP", "Skill definition is missing.", "MissingSkill");
+            }
+
+            SkillOperationResult result = skills.AwardSkillUse(skill.Id, amount: Mathf.Max(1, amount));
+            return Record(result.Succeeded, "Award Skill XP", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation RebuildSkillEffects()
+        {
+            if (!EnsureSkills(out CharacterSkillCollection skills))
+            {
+                return RecordFailure("Rebuild Skills", "Player Skill collection component is missing.", "MissingSkills");
+            }
+
+            SkillOperationResult result = skills.RebuildSkillEffects();
+            return Record(result.Succeeded, "Rebuild Skills", result.Code, result.Message);
+        }
+
+        public PrototypeTestLabOperation ClearSkillDevelopmentState(bool confirmed)
+        {
+            if (!RequireConfirmation("ClearSkillDevelopmentState", confirmed, out PrototypeTestLabOperation confirmation))
+            {
+                return confirmation;
+            }
+
+            if (!EnsureSkills(out CharacterSkillCollection skills))
+            {
+                return RecordFailure("Clear Skills", "Player Skill collection component is missing.", "MissingSkills");
+            }
+
+            SkillOperationResult result = skills.ClearDevelopmentState(confirmed: true);
+            return Record(result.Succeeded, "Clear Skills", result.Code, result.Message);
         }
 
         public string BuildLocationSummary()
@@ -1497,6 +1626,18 @@ namespace UnityIsekaiGame.Development
             }
 
             progression.RegisterDefinitionCache(registry);
+            return true;
+        }
+
+        private bool EnsureSkills(out CharacterSkillCollection skills)
+        {
+            skills = context?.PlayerSkills;
+            if (skills == null)
+            {
+                return false;
+            }
+
+            skills.Configure(registry, context.PlayerCalculatedStats, context.SpellLoadout);
             return true;
         }
 
