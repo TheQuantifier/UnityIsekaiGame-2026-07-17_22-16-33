@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d75b4fc12c4644999f82b257cf43b6ed, type: 3}
+  m_Name: MagicalDefenseFormula
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Stats.CalculatedStatFormulaDefinition
+  formulaId: calculated-stat-formula.magical-defense
+  displayName: Magical Defense Formula
+  description: Willpower and mana-capacity alpha formula for magical mitigation.
+  primaryCategory: {fileID: 11400000, guid: 62000000000000000000000000000052, type: 2}
+  tags: []
+  attributeTerms:
+  - attribute: {fileID: 11400000, guid: a6000000000000000000000000000052, type: 2}
+    weight: 0.2
+  - attribute: {fileID: 11400000, guid: a9000000000000000000000000000052, type: 2}
+    weight: 0.2
+  roundingPolicy: 0
+  clampMinimumToZero: 1

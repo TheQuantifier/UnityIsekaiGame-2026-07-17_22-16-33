@@ -9,6 +9,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
+using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
 
 namespace UnityIsekaiGame.Development
@@ -22,6 +23,8 @@ namespace UnityIsekaiGame.Development
         public PlayerHealth PlayerHealth;
         public PlayerMana PlayerMana;
         public PlayerStamina PlayerStamina;
+        public CharacterAttributes PlayerAttributes;
+        public CalculatedStatCollection PlayerCalculatedStats;
         public StatusEffectController PlayerStatuses;
         public PlayerIdentityProgression IdentityProgression;
         public PlayerSpellcaster Spellcaster;

@@ -20,6 +20,8 @@ namespace UnityIsekaiGame.Progression
         [SerializeField] private string playerId = PersistenceService.LocalPlayerId;
         [SerializeField] private string personId;
         [SerializeField] private ActorStats actorStats;
+        [SerializeField] private CharacterAttributes characterAttributes;
+        [SerializeField] private CalculatedStatCollection calculatedStats;
         [SerializeField] private WorldEntityIdentity worldEntityIdentity;
         [SerializeField] private PlayTimeTracker playTimeTracker;
         [SerializeField] private OverallLevelConfiguration overallLevelConfiguration;
@@ -101,6 +103,8 @@ namespace UnityIsekaiGame.Progression
         public void ConfigureRuntimeReferences(ActorStats stats, WorldEntityIdentity identity, PlayTimeTracker tracker, OverallLevelConfiguration levelConfiguration)
         {
             actorStats = stats == null ? actorStats : stats;
+            characterAttributes = actorStats == null ? characterAttributes : actorStats.CharacterAttributes ?? actorStats.GetComponent<CharacterAttributes>();
+            calculatedStats = actorStats == null ? calculatedStats : actorStats.CalculatedStats ?? actorStats.GetComponent<CalculatedStatCollection>();
             worldEntityIdentity = identity == null ? worldEntityIdentity : identity;
             playTimeTracker = tracker == null ? playTimeTracker : tracker;
             overallLevelConfiguration = levelConfiguration == null ? overallLevelConfiguration : levelConfiguration;
@@ -661,6 +665,16 @@ namespace UnityIsekaiGame.Progression
                 actorStats = GetComponent<ActorStats>();
             }
 
+            if (characterAttributes == null)
+            {
+                characterAttributes = GetComponent<CharacterAttributes>();
+            }
+
+            if (calculatedStats == null)
+            {
+                calculatedStats = GetComponent<CalculatedStatCollection>();
+            }
+
             if (worldEntityIdentity == null)
             {
                 worldEntityIdentity = GetComponent<WorldEntityIdentity>();
@@ -921,11 +935,20 @@ namespace UnityIsekaiGame.Progression
             for (int i = 0; i < permanentStatGrants.Count; i++)
             {
                 RuntimePermanentStatGrantRecord grant = permanentStatGrants[i];
-                StatModifierSource source = new StatModifierSource(StatModifierSourceType.Progression, grant.sourceId);
-                if (actorStats.AddModifier(new RuntimeStatModifier(grant.statType, StatModifierOperation.FlatAdd, grant.value, source)))
+                if (characterAttributes != null
+                    && StatTypeCalculatedStatBridge.TryMapPermanentGrantToAttribute(grant.statType, out string attributeId)
+                    && characterAttributes.TryAddPermanentSource(grant.sourceId, MapAttributeSourceCategory(grant.sourceId), attributeId, grant.value, removable: true, out _))
                 {
-                    activeStatSources.Add(source);
                     grant.applied = true;
+                }
+                else
+                {
+                    StatModifierSource source = new StatModifierSource(StatModifierSourceType.Progression, grant.sourceId);
+                    if (actorStats.AddModifier(new RuntimeStatModifier(grant.statType, StatModifierOperation.FlatAdd, grant.value, source)))
+                    {
+                        activeStatSources.Add(source);
+                        grant.applied = true;
+                    }
                 }
             }
 
@@ -997,6 +1020,15 @@ namespace UnityIsekaiGame.Progression
             foreach (StatModifierSource source in activeStatSources)
             {
                 actorStats.RemoveModifiersFromSource(source);
+            }
+
+            if (characterAttributes != null)
+            {
+                for (int i = 0; i < permanentStatGrants.Count; i++)
+                {
+                    characterAttributes.RemovePermanentSource(permanentStatGrants[i].sourceId, out _);
+                    permanentStatGrants[i].applied = false;
+                }
             }
 
             activeStatSources.Clear();
@@ -1125,6 +1157,31 @@ namespace UnityIsekaiGame.Progression
 
         private float CalculatePersistentStatContribution(OverallLevelConfiguration config)
         {
+            if (characterAttributes != null && characterAttributes.IsConfigured)
+            {
+                float normalizationConstant = config == null ? 20f : config.AttributeNormalizationConstant;
+                IReadOnlyCollection<RuntimeAttributeValueRecord> values = characterAttributes.AttributeValues;
+                if (values == null || values.Count == 0)
+                {
+                    return 0f;
+                }
+
+                float attributeTotal = 0f;
+                int count = 0;
+                foreach (RuntimeAttributeValueRecord record in values)
+                {
+                    if (record == null)
+                    {
+                        continue;
+                    }
+
+                    attributeTotal += record.currentValue / (record.currentValue + normalizationConstant);
+                    count++;
+                }
+
+                return count == 0 ? 0f : Mathf.Clamp01(attributeTotal / count);
+            }
+
             if (permanentStatGrants.Count == 0)
             {
                 return 0f;
@@ -1144,6 +1201,21 @@ namespace UnityIsekaiGame.Progression
             }
 
             return Mathf.Clamp01(total / (config == null ? 100f : config.PersistentStatTargetTotal));
+        }
+
+        private static CalculatedStatContributionSourceCategory MapAttributeSourceCategory(string sourceId)
+        {
+            if (sourceId != null && sourceId.StartsWith("origin.", StringComparison.Ordinal))
+            {
+                return CalculatedStatContributionSourceCategory.Origin;
+            }
+
+            if (sourceId != null && sourceId.StartsWith("birth-gift.", StringComparison.Ordinal))
+            {
+                return CalculatedStatContributionSourceCategory.BirthGift;
+            }
+
+            return CalculatedStatContributionSourceCategory.Development;
         }
 
         private void RaiseProgressionChanged(bool restoring)

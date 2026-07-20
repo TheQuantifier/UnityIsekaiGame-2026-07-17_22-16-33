@@ -19,6 +19,7 @@ using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.WorldEntities;
 
 #if UNITY_EDITOR
@@ -103,6 +104,7 @@ namespace UnityIsekaiGame.Development
                 $"Stamina: {FormatResource(context.PlayerStamina == null ? 0f : context.PlayerStamina.CurrentStamina, context.PlayerStamina == null ? 0f : context.PlayerStamina.MaximumStamina)}",
                 $"Mana: {FormatResource(context.PlayerMana == null ? 0f : context.PlayerMana.CurrentMana, context.PlayerMana == null ? 0f : context.PlayerMana.MaximumMana)}",
                 $"Stats: ATK {FormatNumber(context.PlayerStats == null ? 0f : context.PlayerStats.AttackPower)}, DEF {FormatNumber(context.PlayerStats == null ? 0f : context.PlayerStats.Defense)}",
+                $"Attributes: {(context.PlayerAttributes == null ? "Missing" : context.PlayerAttributes.AttributeValues.Count.ToString())}",
                 $"Statuses: {FormatStatuses(context.PlayerStatuses)}",
                 $"Inventory: {FormatInventory()}",
                 $"Equipped: {CountEquipped()} item(s)",
@@ -127,6 +129,21 @@ namespace UnityIsekaiGame.Development
 
             context.IdentityProgression.RegisterDefinitionCache(registry);
             return context.IdentityProgression.BuildDiagnosticSummary();
+        }
+
+        public string BuildAttributeCalculatedStatsSummary()
+        {
+            if (context?.PlayerAttributes == null || context.PlayerCalculatedStats == null)
+            {
+                return "Player attributes or calculated stats component is missing.";
+            }
+
+            return string.Join(Environment.NewLine, new[]
+            {
+                context.PlayerAttributes.BuildDiagnosticSummary(),
+                string.Empty,
+                context.PlayerCalculatedStats.BuildDiagnosticSummary()
+            });
         }
 
         public string BuildLocationSummary()
@@ -364,12 +381,184 @@ namespace UnityIsekaiGame.Development
             return RecordSuccess("Restore Vitals", "Health, mana, and stamina restored to maximum.");
         }
 
+        public PrototypeTestLabOperation AddStrengthTraining()
+        {
+            return AddAttributeTraining(AttributeIds.Strength, 0.25f, "Strength Training");
+        }
+
+        public PrototypeTestLabOperation AddBalancedAttributeTraining()
+        {
+            if (context?.PlayerAttributes == null)
+            {
+                return RecordFailure("Balanced Attribute Training", "Player attributes component is missing.", "MissingAttributes");
+            }
+
+            List<RuntimeAttributeSourceContribution> contributions = new List<RuntimeAttributeSourceContribution>();
+            foreach (string attributeId in AttributeIds.AlphaAttributeIds)
+            {
+                contributions.Add(new RuntimeAttributeSourceContribution
+                {
+                    attributeId = attributeId,
+                    sourceId = "development.test-lab.balanced-training",
+                    sourceCategory = (int)CalculatedStatContributionSourceCategory.Development,
+                    amount = 0.1f,
+                    removable = false
+                });
+            }
+
+            bool succeeded = context.PlayerAttributes.TryRecordTrainingEvent(
+                $"development.attribute-growth.{Guid.NewGuid():N}",
+                AttributeGrowthEventCategory.Development,
+                contributions,
+                "Prototype Test Lab",
+                out string failureReason);
+            return Record(succeeded, "Balanced Attribute Training", succeeded ? "Recorded" : "Failed", succeeded ? "Added +0.1 to every alpha attribute." : failureReason);
+        }
+
+        public PrototypeTestLabOperation SetStrengthAboveHundred()
+        {
+            if (context?.PlayerAttributes == null)
+            {
+                return RecordFailure("Set Strength Above 100", "Player attributes component is missing.", "MissingAttributes");
+            }
+
+            string sourceId = "development.test-lab.strength-above-100";
+            context.PlayerAttributes.RemovePermanentSource(sourceId, out _);
+            bool succeeded = context.PlayerAttributes.TryAddPermanentSource(
+                sourceId,
+                CalculatedStatContributionSourceCategory.Development,
+                AttributeIds.Strength,
+                100f,
+                removable: true,
+                out string failureReason);
+            return Record(succeeded, "Set Strength Above 100", succeeded ? "Applied" : "Failed", succeeded ? "Strength has a removable +100 development source." : failureReason);
+        }
+
+        public PrototypeTestLabOperation AddPhysicalPowerFlat()
+        {
+            return AddCalculatedContribution(
+                "development.test-lab.physical-power-flat",
+                CalculatedStatIds.PhysicalPower,
+                CalculatedStatContributionKind.Flat,
+                CalculatedStatContributionDirection.Improve,
+                5f,
+                "Add Physical Power");
+        }
+
+        public PrototypeTestLabOperation AddPhysicalDefensePenalty()
+        {
+            return AddCalculatedContribution(
+                "development.test-lab.physical-defense-penalty",
+                CalculatedStatIds.PhysicalDefense,
+                CalculatedStatContributionKind.Flat,
+                CalculatedStatContributionDirection.Reduce,
+                3f,
+                "Add Defense Penalty");
+        }
+
+        public PrototypeTestLabOperation ClearFeature52Contributions()
+        {
+            if (context?.PlayerAttributes != null)
+            {
+                context.PlayerAttributes.RemovePermanentSource("development.test-lab.strength-above-100", out _);
+            }
+
+            bool removedPower = context?.PlayerCalculatedStats != null
+                && context.PlayerCalculatedStats.RemoveContributionsFromSource(CalculatedStatContributionSourceCategory.Development, "development.test-lab.physical-power-flat");
+            bool removedDefense = context?.PlayerCalculatedStats != null
+                && context.PlayerCalculatedStats.RemoveContributionsFromSource(CalculatedStatContributionSourceCategory.Development, "development.test-lab.physical-defense-penalty");
+            return RecordSuccess("Clear Feature 5.2 Contributions", $"Cleared development attribute/calculated stat contributions. Power={removedPower} Defense={removedDefense}.");
+        }
+
+        public PrototypeTestLabOperation RecalculateFeature52Stats()
+        {
+            if (context?.PlayerCalculatedStats == null)
+            {
+                return RecordFailure("Recalculate Feature 5.2 Stats", "Player calculated stats component is missing.", "MissingCalculatedStats");
+            }
+
+            context.PlayerCalculatedStats.ForceRecalculateAll();
+            return RecordSuccess("Recalculate Feature 5.2 Stats", "Calculated stat cache rebuilt from attributes and active contributions.");
+        }
+
+        public PrototypeTestLabOperation AttemptInvalidAttributeGrowth()
+        {
+            if (context?.PlayerAttributes == null)
+            {
+                return RecordFailure("Invalid Attribute Growth Proof", "Player attributes component is missing.", "MissingAttributes");
+            }
+
+            bool succeeded = context.PlayerAttributes.TryRecordTrainingEvent(
+                "development.invalid-growth-proof",
+                AttributeGrowthEventCategory.Development,
+                new[]
+                {
+                    new RuntimeAttributeSourceContribution
+                    {
+                        attributeId = AttributeIds.Strength,
+                        sourceId = "development.invalid-growth-proof",
+                        sourceCategory = (int)CalculatedStatContributionSourceCategory.Development,
+                        amount = -1f
+                    }
+                },
+                "Prototype Test Lab",
+                out string failureReason);
+            return Record(!succeeded, "Invalid Attribute Growth Proof", succeeded ? "UnexpectedSuccess" : "Rejected", succeeded ? "Invalid negative growth was unexpectedly accepted." : failureReason);
+        }
+
         public PrototypeTestLabOperation DrainMana(float amount)
         {
             VitalChangeResult result = context?.PlayerMana == null
                 ? VitalChangeResult.Failure(amount, "Player mana is missing.")
                 : context.PlayerMana.Spend(Mathf.Max(0f, amount));
             return Record(result.Succeeded, "Drain Mana", result.Succeeded ? "Spent" : "Failed", result.Message);
+        }
+
+        private PrototypeTestLabOperation AddAttributeTraining(string attributeId, float amount, string operationName)
+        {
+            if (context?.PlayerAttributes == null)
+            {
+                return RecordFailure(operationName, "Player attributes component is missing.", "MissingAttributes");
+            }
+
+            bool succeeded = context.PlayerAttributes.TryRecordTrainingEvent(
+                $"development.attribute-growth.{Guid.NewGuid():N}",
+                AttributeGrowthEventCategory.Development,
+                new[]
+                {
+                    new RuntimeAttributeSourceContribution
+                    {
+                        attributeId = attributeId,
+                        sourceId = $"development.test-lab.{attributeId}",
+                        sourceCategory = (int)CalculatedStatContributionSourceCategory.Development,
+                        amount = amount,
+                        removable = false
+                    }
+                },
+                "Prototype Test Lab",
+                out string failureReason);
+            return Record(succeeded, operationName, succeeded ? "Recorded" : "Failed", succeeded ? $"Added +{amount:0.###} to {attributeId}." : failureReason);
+        }
+
+        private PrototypeTestLabOperation AddCalculatedContribution(string sourceId, string statId, CalculatedStatContributionKind kind, CalculatedStatContributionDirection direction, float magnitude, string operationName)
+        {
+            if (context?.PlayerCalculatedStats == null)
+            {
+                return RecordFailure(operationName, "Player calculated stats component is missing.", "MissingCalculatedStats");
+            }
+
+            context.PlayerCalculatedStats.RemoveContributionsFromSource(CalculatedStatContributionSourceCategory.Development, sourceId);
+            bool succeeded = context.PlayerCalculatedStats.AddContribution(new RuntimeCalculatedStatContribution
+            {
+                contributionId = sourceId,
+                sourceId = sourceId,
+                sourceCategory = (int)CalculatedStatContributionSourceCategory.Development,
+                statId = statId,
+                kind = (int)kind,
+                direction = (int)direction,
+                magnitude = magnitude
+            }, out string failureReason);
+            return Record(succeeded, operationName, succeeded ? "Applied" : "Failed", succeeded ? $"{direction} {statId} by {magnitude:0.###}." : failureReason);
         }
 
         public PrototypeTestLabOperation DrainStamina(float amount)

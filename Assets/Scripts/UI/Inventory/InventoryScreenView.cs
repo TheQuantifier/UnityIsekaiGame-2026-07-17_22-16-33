@@ -6,6 +6,7 @@ using UnityEngine.UI;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.StatusEffects;
+using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.UI;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using UnityIsekaiGame.Development;
@@ -289,7 +290,9 @@ namespace UnityIsekaiGame.UI.Inventory
             PlayerHealth health,
             PlayerStamina stamina,
             PlayerMana mana,
-            StatusEffectController statusEffects)
+            StatusEffectController statusEffects,
+            CharacterAttributes attributes = null,
+            CalculatedStatCollection calculatedStats = null)
         {
             EnsureCharacterStatsPanel();
 
@@ -308,8 +311,34 @@ namespace UnityIsekaiGame.UI.Inventory
             AppendLine(builder, "Max Health", health == null ? "--" : FormatNumber(health.MaximumHealth));
             AppendLine(builder, "Max Stamina", stamina == null ? "--" : FormatNumber(stamina.MaximumStamina));
             AppendLine(builder, "Max Mana", mana == null ? "--" : FormatNumber(mana.MaximumMana));
-            AppendLine(builder, "Attack", stats == null ? "--" : FormatNumber(stats.AttackPower));
-            AppendLine(builder, "Defense", stats == null ? "--" : FormatNumber(stats.Defense));
+            AppendLine(builder, "Physical Power", stats == null ? "--" : FormatNumber(stats.AttackPower));
+            AppendLine(builder, "Physical Defense", stats == null ? "--" : FormatNumber(stats.Defense));
+
+            if (attributes != null && attributes.IsConfigured)
+            {
+                builder.AppendLine();
+                builder.AppendLine("Attributes");
+                List<string> parts = new List<string>();
+                foreach (RuntimeAttributeValueRecord record in attributes.GetOrderedValues())
+                {
+                    parts.Add($"{FormatDefinitionName(record.attributeId)} {record.currentValue:0.###}");
+                }
+
+                AppendCompactPairs(builder, parts);
+            }
+
+            if (calculatedStats != null && calculatedStats.IsConfigured)
+            {
+                builder.AppendLine();
+                builder.AppendLine("Calculated Stats");
+                List<string> parts = new List<string>();
+                foreach (CalculatedStatDefinition definition in calculatedStats.GetOrderedDefinitions(characterMenuOnly: true))
+                {
+                    parts.Add($"{definition.DisplayName} {FormatNumber(calculatedStats.GetValue(definition.Id))}");
+                }
+
+                AppendCompactPairs(builder, parts);
+            }
 
             characterStatsText.text = builder.ToString().TrimEnd();
             statusReadoutView?.SetStatusController(statusEffects);
@@ -767,9 +796,9 @@ namespace UnityIsekaiGame.UI.Inventory
                 ? CreateCharacterStatsRoot(parent)
                 : characterStatsRoot;
 
-            characterStatsText = CreateDetailsText("Character Stats And Status", characterStatsRoot.transform, font, 16, FontStyle.Normal, TextAnchor.UpperLeft);
+            characterStatsText = CreateDetailsText("Character Stats And Status", characterStatsRoot.transform, font, 12, FontStyle.Normal, TextAnchor.UpperLeft);
             RectTransform rectTransform = characterStatsText.rectTransform;
-            rectTransform.anchorMin = new Vector2(0f, 0.62f);
+            rectTransform.anchorMin = new Vector2(0f, 0.28f);
             rectTransform.anchorMax = Vector2.one;
             rectTransform.offsetMin = new Vector2(18f, 16f);
             rectTransform.offsetMax = new Vector2(-18f, -16f);
@@ -779,7 +808,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 : statusReadoutText;
             RectTransform statusRect = statusReadoutText.rectTransform;
             statusRect.anchorMin = Vector2.zero;
-            statusRect.anchorMax = new Vector2(1f, 0.58f);
+            statusRect.anchorMax = new Vector2(1f, 0.25f);
             statusRect.offsetMin = new Vector2(18f, 16f);
             statusRect.offsetMax = new Vector2(-18f, -8f);
 
@@ -803,7 +832,7 @@ namespace UnityIsekaiGame.UI.Inventory
             rectTransform.anchorMax = new Vector2(0f, 1f);
             rectTransform.pivot = new Vector2(0f, 1f);
             rectTransform.anchoredPosition = new Vector2(410f, -56f);
-            rectTransform.sizeDelta = new Vector2(430f, 330f);
+            rectTransform.sizeDelta = new Vector2(430f, 470f);
 
             Image image = root.GetComponent<Image>();
             image.color = new Color(0.08f, 0.1f, 0.12f, 0.95f);
@@ -825,6 +854,39 @@ namespace UnityIsekaiGame.UI.Inventory
         private static string FormatNumber(float value)
         {
             return value.ToString("0.##");
+        }
+
+        private static string FormatDefinitionName(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return "Unknown";
+            }
+
+            int index = id.IndexOf('.');
+            string name = index >= 0 && index + 1 < id.Length ? id.Substring(index + 1) : id;
+            return System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(name.Replace('-', ' '));
+        }
+
+        private static void AppendCompactPairs(StringBuilder builder, IReadOnlyList<string> parts)
+        {
+            if (parts == null || parts.Count == 0)
+            {
+                builder.AppendLine("None");
+                return;
+            }
+
+            for (int i = 0; i < parts.Count; i += 2)
+            {
+                builder.Append(parts[i]);
+                if (i + 1 < parts.Count)
+                {
+                    builder.Append(" | ");
+                    builder.Append(parts[i + 1]);
+                }
+
+                builder.AppendLine();
+            }
         }
 
         private static GameObject CreateDetailsRoot(Transform parent)

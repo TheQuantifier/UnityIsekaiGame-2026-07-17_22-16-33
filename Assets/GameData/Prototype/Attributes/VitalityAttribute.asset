@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9e8d64f44f544db09a1b521cc15cf91d, type: 3}
+  m_Name: VitalityAttribute
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Stats.AttributeDefinition
+  attributeId: attribute.vitality
+  displayName: Vitality
+  description: Long-term life force, recovery, and body resilience.
+  primaryCategory: {fileID: 11400000, guid: 61000000000000000000000000000052, type: 2}
+  tags: []
+  foundationValue: 1
+  alphaActionGrowthAmount: 0.05
+  displayRoundingPolicy: 0
+  contributionMetadata: Feeds maximum health and physical and magical defense.

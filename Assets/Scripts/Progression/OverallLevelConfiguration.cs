@@ -22,6 +22,7 @@ namespace UnityIsekaiGame.Progression
         [SerializeField, Min(1f)] private float accountAgeTargetDays = 30f;
         [SerializeField, Min(1)] private int participationTargetCount = 20;
         [SerializeField, Min(1f)] private float persistentStatTargetTotal = 100f;
+        [SerializeField, Min(1f)] private float attributeNormalizationConstant = 20f;
         [SerializeField] private StatType[] eligiblePersistentStats =
         {
             StatType.MaximumHealth,
@@ -46,6 +47,7 @@ namespace UnityIsekaiGame.Progression
         public float AccountAgeTargetDays => Mathf.Max(1f, accountAgeTargetDays);
         public int ParticipationTargetCount => Mathf.Max(1, participationTargetCount);
         public float PersistentStatTargetTotal => Mathf.Max(1f, persistentStatTargetTotal);
+        public float AttributeNormalizationConstant => Mathf.Max(1f, attributeNormalizationConstant);
         public StatType[] EligiblePersistentStats => eligiblePersistentStats ?? System.Array.Empty<StatType>();
     }
 }
