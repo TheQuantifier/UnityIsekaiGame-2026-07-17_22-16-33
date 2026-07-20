@@ -1,4 +1,4 @@
-# Step 3 Regression Checklist
+﻿# Step 3 Regression Checklist
 
 Use this checklist before merging Step 3 data or taxonomy changes.
 
@@ -43,7 +43,7 @@ Use this checklist before merging Step 3 data or taxonomy changes.
 
 ## Manual Prototype Regression
 
-1. Open `Assets/Scenes/PrototypeScene.unity`.
+1. Open `Assets/_Project/Scenes/Prototype/PrototypeScene.unity`.
 2. Enter Play Mode.
 3. Move, look, jump, sprint, and verify normal controls.
 4. Pick up the potion, sword, helmet, and ore pickups.

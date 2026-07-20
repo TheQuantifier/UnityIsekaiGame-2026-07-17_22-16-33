@@ -1,4 +1,4 @@
-# Unity Isekai Game
+﻿# Unity Isekai Game
 
 ## Overview
 
@@ -78,7 +78,7 @@ The codebase should favor modular systems and expansion points rather than hard-
 
 ## Current Prototype Status
 
-The current focus is building reusable core systems in `Assets/Scenes/PrototypeScene.unity` before creating the first full town.
+The current focus is building reusable core systems in `Assets/_Project/Scenes/Prototype/PrototypeScene.unity` before creating the first full town.
 
 Current foundations include:
 
@@ -117,6 +117,7 @@ Persistence integration, recovery, rollback, and failure hardening are documente
 Final Step 4 persistence closeout documentation lives in `Documentation/Step4PersistenceArchitecture.md`, `Documentation/Step4PersistenceSchemaInventory.md`, `Documentation/Step4PersistenceOwnershipMatrix.md`, `Documentation/Step4PersistenceKnownLimitations.md`, `Documentation/Step4PersistenceRegressionChecklist.md`, and `Documentation/Step5PersistenceMigrationGuidance.md`.
 The editor/development-build Prototype Systems Test Lab is documented in `Documentation/PrototypeSystemsTestLab.md`.
 PrototypeScene usability, zone layout, pickup grouping, and menu layout standards are documented in `Documentation/PrototypeSceneAndMenuUsability.md`.
+Project folder ownership and M1 placement rules are documented in `Documentation/ProjectStructureOrganization.md`.
 Skill and Proficiency progression is documented in `Documentation/SkillsAndProgression.md`, `Documentation/SkillLearning.md`, `Documentation/SkillGradeEffects.md`, and `Documentation/Feature5_3Persistence.md`.
 Base Attributes, Calculated Stats, and Current Resources are documented in `Documentation/BaseAttributes.md`, `Documentation/CalculatedStatsRefinement.md`, `Documentation/CurrentResources.md`, `Documentation/ResourceDefinitions.md`, `Documentation/ResourceTransactions.md`, `Documentation/CharacterNumericalModel.md`, `Documentation/Feature5_4aPersistenceAndMigration.md`, and `Documentation/Feature5_4bPersistenceAndMigration.md`.
 Step 5 Character System closeout documentation lives in `Documentation/CharacterSystemOverview.md`, `Documentation/CharacterOwnershipAndIdentity.md`, `Documentation/CharacterInitializationAndRestore.md`, `Documentation/CharacterSnapshotsAndQueries.md`, `Documentation/CharacterMutationBoundaries.md`, `Documentation/CharacterSystemPersistence.md`, `Documentation/CharacterSystemIntegrationContract.md`, and `Documentation/Step5Completion.md`.

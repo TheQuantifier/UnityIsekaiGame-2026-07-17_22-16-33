@@ -1,8 +1,8 @@
-# Prototype Scene and Menu Usability
+﻿# Prototype Scene and Menu Usability
 
 Step 4 persistence closeout keeps this scene layout intact. Use `Documentation/Step4PersistenceRegressionChecklist.md` for final persistence, Save/Load, Test Lab, world-entity, and supported-resolution checks.
 
-Maintenance 4.4B is a prototype usability and presentation pass for `Assets/Scenes/PrototypeScene.unity`. It keeps the scene as a systems laboratory rather than a final town, dungeon, or art pass.
+Maintenance 4.4B is a prototype usability and presentation pass for `Assets/_Project/Scenes/Prototype/PrototypeScene.unity`. It keeps the scene as a systems laboratory rather than a final town, dungeon, or art pass.
 
 ## Scene Zone Layout
 

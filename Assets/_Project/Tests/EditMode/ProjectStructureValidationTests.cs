@@ -1,0 +1,128 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
+using NUnit.Framework;
+
+namespace UnityIsekaiGame.Tests
+{
+    public sealed class ProjectStructureValidationTests
+    {
+        [Test]
+        public void ProjectOwnedAssetsLiveUnderProjectRoot()
+        {
+            string[] allowed = { "_Project", "ThirdParty", "StreamingAssets" };
+            HashSet<string> allowedNames = new HashSet<string>(allowed, StringComparer.Ordinal);
+
+            foreach (string directory in Directory.GetDirectories("Assets"))
+            {
+                string name = Path.GetFileName(directory);
+                Assert.That(allowedNames, Does.Contain(name), $"Unexpected top-level Assets folder: {directory}");
+            }
+        }
+
+        [Test]
+        public void KnownMovedAssetsExistAtCanonicalPaths()
+        {
+            Assert.That(File.Exists("Assets/_Project/Runtime/Core/Definitions/UnityIsekaiGame.GameData.asmdef"), Is.True);
+            Assert.That(File.Exists("Assets/_Project/Prototype/Content/GameData/PrototypeDefinitionCatalog.asset"), Is.True);
+            Assert.That(File.Exists("Assets/_Project/Scenes/Prototype/PrototypeScene.unity"), Is.True);
+            Assert.That(File.Exists("Assets/_Project/Content/Characters/Attributes/StrengthAttribute.asset"), Is.True);
+            Assert.That(File.Exists("Assets/_Project/Content/Characters/CalculatedStats/Definitions/MaximumHealthCalculatedStat.asset"), Is.True);
+            Assert.That(File.Exists("Assets/_Project/Content/Characters/Resources/HealthResource.asset"), Is.True);
+            Assert.That(File.Exists("Assets/_Project/Prototype/Content/Items/HealthPotion.asset"), Is.True);
+        }
+
+        [Test]
+        public void MovedAssetsPreserveKnownGuids()
+        {
+            AssertMetaGuid("Assets/_Project/Scenes/Prototype/PrototypeScene.unity.meta", "e05b77e4d2cc25845adb762e95d51873");
+            AssertMetaGuid("Assets/_Project/Prototype/Content/GameData/PrototypeDefinitionCatalog.asset.meta", "357d3d18865946889262f9bf55802d62");
+        }
+
+        [Test]
+        public void NoDuplicateAssetGuidsExist()
+        {
+            Dictionary<string, string> seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string metaPath in Directory.GetFiles("Assets", "*.meta", SearchOption.AllDirectories))
+            {
+                string guid = ReadGuid(metaPath);
+                Assert.That(guid, Is.Not.Empty, $"Missing GUID in {metaPath}");
+
+                if (seen.TryGetValue(guid, out string existingPath))
+                {
+                    Assert.Fail($"Duplicate GUID {guid} in {existingPath} and {metaPath}");
+                }
+
+                seen.Add(guid, metaPath);
+            }
+        }
+
+        [Test]
+        public void NoObsoleteHardcodedProjectPathsRemain()
+        {
+            string[] obsoleteFragments =
+            {
+                "Assets/Scripts/",
+                "Assets/Tests/",
+                "Assets/GameData/",
+                "Assets/Scenes/",
+                "Assets/Items/",
+                "Assets/StatusEffects/",
+                "Assets/Materials/"
+            };
+
+            string[] roots = { "Assets/_Project", "Documentation", "ProjectSettings", "Packages" };
+
+            foreach (string root in roots)
+            {
+                if (!Directory.Exists(root))
+                {
+                    continue;
+                }
+
+                foreach (string file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
+                {
+                    string normalized = file.Replace('\\', '/');
+                    if (normalized.EndsWith("/ProjectStructureValidationMenu.cs", StringComparison.Ordinal) ||
+                        normalized.EndsWith("/ProjectStructureValidationTests.cs", StringComparison.Ordinal) ||
+                        normalized.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) ||
+                        normalized.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+                        normalized.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string text;
+                    try
+                    {
+                        text = File.ReadAllText(file);
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                    }
+
+                    for (int i = 0; i < obsoleteFragments.Length; i++)
+                    {
+                        Assert.That(text, Does.Not.Contain(obsoleteFragments[i]), $"{normalized} contains obsolete path {obsoleteFragments[i]}");
+                    }
+                }
+            }
+        }
+
+        private static void AssertMetaGuid(string metaPath, string expectedGuid)
+        {
+            Assert.That(File.Exists(metaPath), Is.True, $"Missing meta file: {metaPath}");
+            Assert.That(ReadGuid(metaPath), Is.EqualTo(expectedGuid), metaPath);
+        }
+
+        private static string ReadGuid(string metaPath)
+        {
+            string text = File.ReadAllText(metaPath);
+            Match match = Regex.Match(text, @"^guid:\s*(\w+)", RegexOptions.Multiline);
+            return match.Success ? match.Groups[1].Value : string.Empty;
+        }
+    }
+}

@@ -1,4 +1,4 @@
-# Prototype Systems Test Lab
+﻿# Prototype Systems Test Lab
 
 Maintenance 4.4A adds a centralized development-only test surface for the current prototype systems. The Test Lab is not final gameplay UI. It is a replaceable QA and debugging page inside the existing Tab menu so prototype systems can be exercised without creating one-off scene buttons, modal windows, or temporary Text objects.
 
@@ -6,7 +6,7 @@ For final Step 4 persistence closeout coverage, use the persistence section step
 
 ## Development Boundary
 
-The runtime Test Lab scripts live under `Assets/Scripts/Development` and are wrapped in `UNITY_EDITOR || DEVELOPMENT_BUILD`.
+The runtime Test Lab scripts live under `Assets/_Project/Development/TestLab` and are wrapped in `UNITY_EDITOR || DEVELOPMENT_BUILD`.
 
 The Tab menu integration is also guarded by the same compiler symbols. Release builds should not expose the Test Lab page, menu button, service, or helper APIs.
 
@@ -109,7 +109,7 @@ The diagnostics are intentionally replaceable. They are meant to catch common pr
 
 Use the Test Lab only in the existing Tab menu:
 
-1. Open `Assets/Scenes/PrototypeScene.unity`.
+1. Open `Assets/_Project/Scenes/Prototype/PrototypeScene.unity`.
 2. Enter Play Mode.
 3. Press Tab.
 4. Confirm the existing Inventory, Character, Spells, and Journal pages still open and behave normally.

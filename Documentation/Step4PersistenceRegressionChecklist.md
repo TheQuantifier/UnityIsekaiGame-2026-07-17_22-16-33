@@ -1,4 +1,4 @@
-# Step 4 Persistence Regression Checklist
+﻿# Step 4 Persistence Regression Checklist
 
 Use this checklist for the final Step 4 manual closeout. Step 4 should not be tagged until this passes.
 
@@ -23,7 +23,7 @@ If Unity batchmode exits without test XML, do not count that as tests passed. Ru
 
 ## End-To-End Manual Sequence
 
-1. Open `Assets/Scenes/PrototypeScene.unity`.
+1. Open `Assets/_Project/Scenes/Prototype/PrototypeScene.unity`.
 2. Run definition validation.
 3. Run world-entity validation.
 4. Run all EditMode tests.

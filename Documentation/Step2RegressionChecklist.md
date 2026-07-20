@@ -1,6 +1,6 @@
-# Step 2 Regression Checklist
+﻿# Step 2 Regression Checklist
 
-Use this checklist after changing core systems. Start from `Assets/Scenes/PrototypeScene.unity` with a clean Console unless a test says otherwise.
+Use this checklist after changing core systems. Start from `Assets/_Project/Scenes/Prototype/PrototypeScene.unity` with a clean Console unless a test says otherwise.
 
 ## Movement And Input
 

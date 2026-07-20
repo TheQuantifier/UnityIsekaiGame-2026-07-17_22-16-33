@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0b32e8ec1e644e288e8dc8fba718ec00, type: 3}
+  m_Name: LatentArcaneBoltGift
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Progression.BirthGiftDefinition
+  birthGiftId: birth-gift.latent-arcane-bolt
+  displayName: Latent Arcane Bolt
+  description: Rare latent skill gift that records ability ownership without touching loadout rules yet.
+  primaryCategory: {fileID: 11400000, guid: 33ec1581a9ac4c32ad6cce032b3a66f6, type: 2}
+  tags:
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  - {fileID: 11400000, guid: eac27d0065b44f969205af5ca702cbe7, type: 2}
+  rarity: {fileID: 11400000, guid: b7da72b8c72548219e52a6d4162fe731, type: 2}
+  selectionWeight: 0.5
+  giftType: 1
+  grantedAbility:
+    ability: {fileID: 0}
+    futureAbilityId: ability.arcane-bolt
+  permanentStatGrants: []
+  futureGrowthAffinityEntries: []
+  awakeningMode: 1
+  requiredActivePlaytimeSeconds: 300
+  enabledForAlpha: 1
+  futureConditionData: active-playtime
