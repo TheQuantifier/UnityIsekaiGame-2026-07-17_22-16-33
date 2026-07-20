@@ -60,7 +60,11 @@ namespace UnityIsekaiGame.Persistence
                 return PersistenceParticipantSaveResult.Failure("Definition registry is not available for player resources capture.");
             }
 
-            resources.Configure(registry, calculatedStats, ownerId);
+            if (!resources.IsConfigured)
+            {
+                resources.Configure(registry, calculatedStats, ownerId);
+            }
+
             string personId = identity == null ? string.Empty : identity.PersonId;
             PlayerResourcesSaveData saveData = resources.CreateSaveData(ownerId, personId);
             PersistenceParticipantPrepareResult validation = PreparePayload(JsonUtility.ToJson(saveData), CurrentParticipantSchemaVersion);

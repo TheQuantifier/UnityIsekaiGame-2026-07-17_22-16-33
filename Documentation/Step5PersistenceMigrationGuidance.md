@@ -33,6 +33,7 @@ Step 5 will expand core game models. Use this guidance before changing definitio
 | Base Attributes and Calculated Stats | `player.attributes` persists permanent Base Attribute source/growth records. Calculated Stats are derived caches and should not be saved as authoritative values. Resource maximum metadata is definition data. |
 | Current Resources | Feature 5.4b adds optional `player.resources` for current Health, Stamina, and Mana. Future resource changes should bump or migrate that participant rather than adding current values back into Calculated Stats. |
 | Traits, Capabilities, and Requirements | Feature 5.5 adds optional `player.traits` for acquired Trait runtime records. Capabilities are rebuilt aggregates and Requirements are pure checks, so neither owns persisted state by default. |
+| Character System coordinator | Feature 5.6 adds `CharacterSystemCoordinator`, snapshots, queries, readiness, and integrity diagnostics. It is not a new persistence participant. Existing subsystem participants remain authoritative and the coordinator becomes `Ready` only after restore/rebuild ordering completes. |
 
 ## Required Before Merging Step 5 Persistence Changes
 
@@ -75,3 +76,7 @@ Feature 5.4b introduces optional `player.resources` schema version 1. Saves with
 ## Feature 5.5 Compatibility
 
 Feature 5.5 introduces optional `player.traits` schema version 1. Saves without it remain compatible and load with no player Traits. Saves containing `player.traits` reject unknown Trait IDs, duplicate Trait records, duplicate source records, and invalid lifecycle/discovery values. Capabilities and Requirements do not persist their own state; active Trait effects rebuild after load.
+
+## Feature 5.6 Compatibility
+
+Feature 5.6 does not add a new save payload or schema version. It finalizes restore order and readiness around existing Step 5 participants. If a future change makes the coordinator persist aggregate state, that state must be split back into the owning participants or explicitly justified as a new participant; derived snapshots and revision caches should not become authoritative save data.

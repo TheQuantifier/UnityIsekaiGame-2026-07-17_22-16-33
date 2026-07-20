@@ -1,4 +1,5 @@
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.CharacterSystem;
 using UnityEngine;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Contracts;
@@ -42,6 +43,7 @@ namespace UnityIsekaiGame.UI.Inventory
         [SerializeField] private PlayerIdentityProgression identityProgression;
         [SerializeField] private CharacterSkillCollection playerSkills;
         [SerializeField] private CharacterTraitCollection playerTraits;
+        [SerializeField] private CharacterSystemCoordinator characterSystem;
         [SerializeField] private InventoryScreenView view;
         [SerializeField] private SpellManagementView spellManagementView;
         [SerializeField] private ContractJournalView contractJournalView;
@@ -69,6 +71,7 @@ namespace UnityIsekaiGame.UI.Inventory
         private int selectedContractIndex;
         private int selectedQuestIndex;
         private DefinitionCatalog playerSkillsConfiguredCatalog;
+        private bool refreshing;
 
         private void Awake()
         {
@@ -308,42 +311,55 @@ namespace UnityIsekaiGame.UI.Inventory
 
         private void Refresh()
         {
-            if (view != null && inventory != null)
+            if (refreshing)
             {
-                view.Render(inventory.Slots);
-                view.RenderEquipment(equipment == null ? null : equipment.Slots);
-                ResolveCharacterSkills();
-                view.RenderCharacter(playerStats, playerHealth, playerStamina, playerMana, statusEffects, playerStats == null ? null : playerStats.CharacterAttributes, playerStats == null ? null : playerStats.CalculatedStats, playerSkills, ResolveCharacterTraits());
-                ClampSelection();
-                view.SetSelectedSlot(selectedSlotIndex);
-                view.SetSelectedEquipmentSlot(selectedEquipmentSlot);
-                RenderHoveredSlotDetails();
-                UpdateEquipmentActions();
+                return;
             }
 
-            if (spellManagementView != null)
+            refreshing = true;
+            try
             {
-                ClampKnownSpellSelection();
-                spellManagementView.Render(spellLoadout, selectedKnownSpellIndex);
-            }
+                if (view != null && inventory != null)
+                {
+                    view.Render(inventory.Slots);
+                    view.RenderEquipment(equipment == null ? null : equipment.Slots);
+                    ResolveCharacterSkills();
+                    view.RenderCharacter(playerStats, playerHealth, playerStamina, playerMana, statusEffects, playerStats == null ? null : playerStats.CharacterAttributes, playerStats == null ? null : playerStats.CalculatedStats, playerSkills, ResolveCharacterTraits(), characterSystem == null ? null : characterSystem.GetSnapshot(developmentView: false));
+                    ClampSelection();
+                    view.SetSelectedSlot(selectedSlotIndex);
+                    view.SetSelectedEquipmentSlot(selectedEquipmentSlot);
+                    RenderHoveredSlotDetails();
+                    UpdateEquipmentActions();
+                }
 
-            if (contractJournalView != null)
-            {
-                ClampContractSelection();
-                contractJournalView.Render(contractJournal == null ? null : contractJournal.Contracts, selectedContractIndex);
-            }
+                if (spellManagementView != null)
+                {
+                    ClampKnownSpellSelection();
+                    spellManagementView.Render(spellLoadout, selectedKnownSpellIndex);
+                }
 
-            if (questJournalView != null)
-            {
-                ClampQuestSelection();
-                questJournalView.Render(questLog == null ? null : questLog.Quests, selectedQuestIndex);
-            }
+                if (contractJournalView != null)
+                {
+                    ClampContractSelection();
+                    contractJournalView.Render(contractJournal == null ? null : contractJournal.Contracts, selectedContractIndex);
+                }
 
-            view?.RefreshSaveLoad();
+                if (questJournalView != null)
+                {
+                    ClampQuestSelection();
+                    questJournalView.Render(questLog == null ? null : questLog.Quests, selectedQuestIndex);
+                }
+
+                view?.RefreshSaveLoad();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            view?.RefreshTestLab();
+                view?.RefreshTestLab();
 #endif
+            }
+            finally
+            {
+                refreshing = false;
+            }
         }
 
         public void UseSelectedItem()
@@ -698,6 +714,37 @@ namespace UnityIsekaiGame.UI.Inventory
 
             ResolveCharacterSkills();
             ResolveCharacterTraits();
+            ResolveCharacterSystem();
+        }
+
+        private CharacterSystemCoordinator ResolveCharacterSystem()
+        {
+            GameObject source = itemUser != null ? itemUser : inventory == null ? null : inventory.gameObject;
+            if (characterSystem == null && playerStats != null)
+            {
+                characterSystem = playerStats.GetComponent<CharacterSystemCoordinator>();
+            }
+
+            if (characterSystem == null && source != null)
+            {
+                characterSystem = source.GetComponentInParent<CharacterSystemCoordinator>();
+            }
+
+            if (characterSystem == null && source != null)
+            {
+                characterSystem = source.AddComponent<CharacterSystemCoordinator>();
+            }
+
+            DefinitionCatalog catalog = saveLoadDefinitionCatalog;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            catalog = catalog == null ? testLabDefinitionCatalog : catalog;
+#endif
+            if (characterSystem != null && catalog != null && !characterSystem.IsReady)
+            {
+                characterSystem.InitializeFromRegistry(catalog.CreateRegistry(), restoring: false, addMissingCore: true);
+            }
+
+            return characterSystem;
         }
 
         private CharacterSkillCollection ResolveCharacterSkills()
@@ -813,6 +860,13 @@ namespace UnityIsekaiGame.UI.Inventory
                 playerTraits.TraitsChanged += OnTraitsChanged;
                 playerTraits.TraitRecordChanged += OnTraitRecordChanged;
             }
+
+            if (characterSystem != null)
+            {
+                characterSystem.CharacterRevisionChanged += OnCharacterRevisionChanged;
+                characterSystem.CharacterReady += OnCharacterReady;
+                characterSystem.CharacterDisposed += OnCharacterDisposed;
+            }
         }
 
         private void UnsubscribeCharacterSources()
@@ -861,6 +915,13 @@ namespace UnityIsekaiGame.UI.Inventory
                 playerTraits.TraitsChanged -= OnTraitsChanged;
                 playerTraits.TraitRecordChanged -= OnTraitRecordChanged;
             }
+
+            if (characterSystem != null)
+            {
+                characterSystem.CharacterRevisionChanged -= OnCharacterRevisionChanged;
+                characterSystem.CharacterReady -= OnCharacterReady;
+                characterSystem.CharacterDisposed -= OnCharacterDisposed;
+            }
         }
 
         private void OnHealthChanged(int current, int maximum)
@@ -904,6 +965,21 @@ namespace UnityIsekaiGame.UI.Inventory
         }
 
         private void OnTraitRecordChanged(CharacterTraitCollection collection, RuntimeTraitRecord record, bool restoring)
+        {
+            Refresh();
+        }
+
+        private void OnCharacterRevisionChanged(CharacterSystemCoordinator coordinator, long revision, bool restoring, string reason)
+        {
+            Refresh();
+        }
+
+        private void OnCharacterReady(CharacterSystemCoordinator coordinator, bool restoring)
+        {
+            Refresh();
+        }
+
+        private void OnCharacterDisposed(CharacterSystemCoordinator coordinator, bool restoring)
         {
             Refresh();
         }
@@ -1012,6 +1088,7 @@ namespace UnityIsekaiGame.UI.Inventory
                 PlayerResources = playerTransform == null ? null : playerTransform.GetComponentInParent<UnityIsekaiGame.ResourceSystem.CharacterResourceCollection>(),
                 PlayerSkills = ResolveCharacterSkills(),
                 PlayerTraits = ResolveCharacterTraits(),
+                CharacterSystem = ResolveCharacterSystem(),
                 PlayerStatuses = statusEffects,
                 IdentityProgression = identityProgression,
                 Spellcaster = playerTransform == null ? null : playerTransform.GetComponentInParent<PlayerSpellcaster>(),

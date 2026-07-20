@@ -56,7 +56,11 @@ namespace UnityIsekaiGame.Persistence
                 return PersistenceParticipantSaveResult.Failure("Definition registry is not available for player Skills capture.");
             }
 
-            skills.Configure(registry);
+            if (!skills.IsConfigured)
+            {
+                skills.Configure(registry);
+            }
+
             PlayerSkillsSaveData saveData = skills.CreateSaveData(identity.PlayerId, identity.PersonId);
             PersistenceParticipantPrepareResult validation = PreparePayload(JsonUtility.ToJson(saveData), CurrentParticipantSchemaVersion);
             if (validation == null || !validation.Succeeded)

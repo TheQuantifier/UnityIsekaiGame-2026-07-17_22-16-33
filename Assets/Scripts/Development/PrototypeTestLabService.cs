@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.Abilities;
+using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
@@ -71,6 +72,8 @@ namespace UnityIsekaiGame.Development
             {
                 traits.Configure(registry, context.PlayerCalculatedStats, context.PlayerSkills, PersistenceService.LocalPlayerId);
             }
+
+            EnsureCharacterSystem(out _);
             selectorCache.Clear();
         }
 
@@ -120,6 +123,7 @@ namespace UnityIsekaiGame.Development
                 $"Stats: ATK {FormatNumber(context.PlayerStats == null ? 0f : context.PlayerStats.AttackPower)}, DEF {FormatNumber(context.PlayerStats == null ? 0f : context.PlayerStats.Defense)}",
                 $"Base Attributes: {(context.PlayerAttributes == null ? "Missing" : context.PlayerAttributes.AttributeValues.Count.ToString())}",
                 $"Skills: {(context.PlayerSkills == null ? "Missing" : context.PlayerSkills.LearnedSkills.Count.ToString())}",
+                $"Character System: {FormatCharacterReadinessOneLine()}",
                 $"Statuses: {FormatStatuses(context.PlayerStatuses)}",
                 $"Inventory: {FormatInventory()}",
                 $"Equipped: {CountEquipped()} item(s)",
@@ -180,6 +184,60 @@ namespace UnityIsekaiGame.Development
             }
 
             return traits.BuildDiagnosticSummary(includeHidden);
+        }
+
+        public string BuildCharacterSystemSummary(bool developmentView)
+        {
+            if (!EnsureCharacterSystem(out CharacterSystemCoordinator character))
+            {
+                return "Character System coordinator is missing.";
+            }
+
+            return character.BuildDiagnosticSummary(developmentView);
+        }
+
+        public PrototypeTestLabOperation InitializeCharacterSystem()
+        {
+            if (!EnsureCharacterSystem(out CharacterSystemCoordinator character, initialize: false))
+            {
+                return RecordFailure("Initialize Character System", "Character System coordinator is missing.", "MissingCharacterSystem");
+            }
+
+            bool succeeded = character.InitializeFromRegistry(registry, restoring: false, addMissingCore: true);
+            return Record(succeeded, "Initialize Character System", succeeded ? "Ready" : "Failed", succeeded ? $"Readiness={character.Readiness}, Revision={character.Revision}." : character.LastFailureReason);
+        }
+
+        public PrototypeTestLabOperation RebuildCharacterSystem()
+        {
+            if (!EnsureCharacterSystem(out CharacterSystemCoordinator character))
+            {
+                return RecordFailure("Rebuild Character System", "Character System coordinator is missing.", "MissingCharacterSystem");
+            }
+
+            bool succeeded = character.FullRebuild(restoring: false, reason: "TestLabFullRebuild");
+            return Record(succeeded, "Rebuild Character System", succeeded ? "Rebuilt" : "Failed", succeeded ? $"Readiness={character.Readiness}, Revision={character.Revision}." : character.LastFailureReason);
+        }
+
+        public PrototypeTestLabOperation ValidateCharacterSystemIntegrity()
+        {
+            if (!EnsureCharacterSystem(out CharacterSystemCoordinator character))
+            {
+                return RecordFailure("Character Integrity", "Character System coordinator is missing.", "MissingCharacterSystem");
+            }
+
+            CharacterIntegrityReport report = character.ValidateIntegrity();
+            return Record(report.Passed, "Character Integrity", report.Passed ? "Passed" : "Failed", report.GetSummary());
+        }
+
+        public PrototypeTestLabOperation SnapshotCharacterSystem()
+        {
+            if (!EnsureCharacterSystem(out CharacterSystemCoordinator character))
+            {
+                return RecordFailure("Character Snapshot", "Character System coordinator is missing.", "MissingCharacterSystem");
+            }
+
+            CharacterFullSnapshot snapshot = character.GetSnapshot(developmentView: true);
+            return RecordSuccess("Character Snapshot", $"Captured schema {snapshot.SchemaVersion}, revision {snapshot.Revision}, person {snapshot.Identity.PersonId}, actor {snapshot.Identity.ActorId}.");
         }
 
         public PrototypeTestLabOperation GrantTrait(TraitDefinition trait, TraitLifecycleState lifecycle, TraitDiscoveryState discovery)
@@ -349,7 +407,9 @@ namespace UnityIsekaiGame.Development
                 return RecordFailure("Evaluate Requirement", "Requirement Set definition is missing.", "MissingRequirement");
             }
 
-            RequirementEvaluationResult result = CapabilityRequirementEvaluator.Evaluate(requirement, BuildRequirementContext(testLab: true));
+            RequirementEvaluationResult result = EnsureCharacterSystem(out CharacterSystemCoordinator character) && character.IsReady
+                ? character.Query.EvaluateRequirement(requirement)
+                : CapabilityRequirementEvaluator.Evaluate(requirement, BuildRequirementContext(testLab: true));
             string failures = result.Passed ? "All nodes passed." : string.Join("; ", result.TestLabFailureReasons);
             return Record(result.Passed, "Evaluate Requirement", result.Passed ? "Passed" : "Failed", failures);
         }
@@ -1855,6 +1915,7 @@ namespace UnityIsekaiGame.Development
             AddDuplicateInstanceDiagnostics(lines);
             AddDuplicateStatusDiagnostics(lines, "Player", context?.PlayerStatuses);
             AddDuplicateStatusDiagnostics(lines, "Enemy", context?.EnemyStatuses);
+            AddCharacterSystemDiagnostics(lines);
             AddReferenceDiagnostic(lines, "Inventory", context?.Inventory);
             AddReferenceDiagnostic(lines, "Equipment", context?.Equipment);
             AddReferenceDiagnostic(lines, "Quest Log", context?.QuestLog);
@@ -1954,6 +2015,33 @@ namespace UnityIsekaiGame.Development
 
             context.PlayerTraits = traits;
             traits.Configure(registry, context.PlayerCalculatedStats, context.PlayerSkills, PersistenceService.LocalPlayerId);
+            return true;
+        }
+
+        private bool EnsureCharacterSystem(out CharacterSystemCoordinator character, bool initialize = true)
+        {
+            character = context?.CharacterSystem;
+            if (character == null && context?.PlayerTransform != null)
+            {
+                character = context.PlayerTransform.GetComponentInParent<CharacterSystemCoordinator>();
+            }
+
+            if (character == null && context?.PlayerTransform != null)
+            {
+                character = context.PlayerTransform.gameObject.AddComponent<CharacterSystemCoordinator>();
+            }
+
+            if (character == null)
+            {
+                return false;
+            }
+
+            context.CharacterSystem = character;
+            if (initialize && !character.IsReady)
+            {
+                character.InitializeFromRegistry(registry, restoring: false, addMissingCore: true);
+            }
+
             return true;
         }
 
@@ -2180,6 +2268,13 @@ namespace UnityIsekaiGame.Development
             return $"{originId} | Gift={giftId} | Level={level.OverallLevel}";
         }
 
+        private string FormatCharacterReadinessOneLine()
+        {
+            return context?.CharacterSystem == null
+                ? "Missing"
+                : $"{context.CharacterSystem.Readiness} rev {context.CharacterSystem.Revision}";
+        }
+
         private string FormatLocationOneLine()
         {
             if (context?.Persistence == null)
@@ -2240,6 +2335,19 @@ namespace UnityIsekaiGame.Development
             }
 
             lines.Add(duplicates.Count == 0 ? $"{label} duplicate status IDs: none" : $"{label} duplicate status IDs: {string.Join(", ", duplicates)}");
+        }
+
+        private void AddCharacterSystemDiagnostics(List<string> lines)
+        {
+            if (!EnsureCharacterSystem(out CharacterSystemCoordinator character))
+            {
+                lines.Add("Character System: missing coordinator");
+                return;
+            }
+
+            CharacterIntegrityReport report = character.ValidateIntegrity();
+            lines.Add($"Character System: {character.Readiness}, revision {character.Revision}, integrity {(report.Passed ? "passed" : "failed")}");
+            lines.Add($"Duplicate CharacterSystemCoordinator components: {(character.GetComponents<CharacterSystemCoordinator>().Length > 1 ? "found" : "none")}");
         }
 
         private static void AddReferenceDiagnostic(List<string> lines, string label, UnityEngine.Object value)
