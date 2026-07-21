@@ -10,16 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 389db4201f024a3895f7c81a530a3538, type: 3}
-  m_Name: PrototypeSword
+  m_Name: PrototypeShield
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Inventory.ItemDefinition
-  itemId: item.prototype-sword
-  displayName: Prototype Sword
-  description: A test sword for the Main Hand slot.
+  itemId: item.prototype-shield
+  displayName: Prototype Shield
+  description: A test shield for the Off Hand slot.
   icon: {fileID: 0}
-  primaryCategory: {fileID: 11400000, guid: 6afd94d3e57d4226a5c8be8ca8000420, type: 2}
+  primaryCategory: {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
   tags:
-  - {fileID: 11400000, guid: df0054e4a4374b2f8ed05e4917ae9182, type: 2}
-  - {fileID: 11400000, guid: 66c3a1f27a6b4a1c9be0262fd8660111, type: 2}
+  - {fileID: 11400000, guid: 66c3a1f27a6b4a1c9be0262fd8660110, type: 2}
   - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
   rarity: {fileID: 11400000, guid: d4b0d27a07fa46c085d39f87ffff6cbb, type: 2}
   instanceMode: 1
@@ -28,20 +27,20 @@ MonoBehaviour:
   useEffects: []
   equipment:
     equippable: 1
-    slotType: 4
+    slotType: 5
     statModifiers:
       maximumHealth: 0
       maximumStamina: 0
       maximumMana: 0
-      attackPower: 5
-      defense: 0
+      attackPower: 0
+      defense: 2
     resistanceModifiers: []
     meleeWeapon:
-      weapon: 1
-      attackName: Prototype Slash
-      baseDamage: 10
-      attackRange: 2.5
-      attackCooldown: 0.75
-      staminaCost: 12
-      hitRadius: 0.45
-      damageType: {fileID: 11400000, guid: 4ff1c2abd80244cdaace238049bef76b, type: 2}
+      weapon: 0
+      attackName: Shield Bash
+      baseDamage: 2
+      attackRange: 1
+      attackCooldown: 1
+      staminaCost: 4
+      hitRadius: 0.35
+      damageType: {fileID: 0}

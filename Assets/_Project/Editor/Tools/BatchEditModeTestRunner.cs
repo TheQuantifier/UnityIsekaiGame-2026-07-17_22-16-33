@@ -21,11 +21,19 @@ namespace UnityIsekaiGame.Editor
 
             try
             {
-                ExecutionSettings settings = new ExecutionSettings(new Filter
+                Filter filter = new Filter
                 {
                     testMode = TestMode.EditMode,
                     assemblyNames = new[] { "UnityIsekaiGame.EditModeTests" }
-                })
+                };
+
+                string testFilter = ResolveArgument("-testFilter");
+                if (!string.IsNullOrWhiteSpace(testFilter))
+                {
+                    filter.groupNames = new[] { testFilter };
+                }
+
+                ExecutionSettings settings = new ExecutionSettings(filter)
                 {
                     runSynchronously = true
                 };
@@ -54,16 +62,21 @@ namespace UnityIsekaiGame.Editor
 
         private static string ResolveResultsPath()
         {
+            return ResolveArgument("-testResults") ?? DefaultResultsPath;
+        }
+
+        private static string ResolveArgument(string name)
+        {
             string[] args = Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
-                if (string.Equals(args[i], "-testResults", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
                 {
                     return args[i + 1];
                 }
             }
 
-            return DefaultResultsPath;
+            return null;
         }
 
         private sealed class BatchCallbacks : ICallbacks

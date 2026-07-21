@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.CharacterSystem;
+using UnityIsekaiGame.Combat.CombatState;
+using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Stats;
@@ -18,6 +20,8 @@ namespace UnityIsekaiGame.Combat
 
         private const int DefaultProcessedAttackLimit = 1024;
         private readonly IDamageHealingService damageHealingService;
+        private readonly IDefensiveActionService defensiveActionService;
+        private readonly CombatStateService combatStateService;
         private readonly Dictionary<string, AttackResolutionResult> processedAttackResults = new Dictionary<string, AttackResolutionResult>(StringComparer.Ordinal);
         private readonly Queue<string> processedAttackOrder = new Queue<string>();
         private readonly int processedAttackLimit;
@@ -31,13 +35,25 @@ namespace UnityIsekaiGame.Combat
         public event Action<AttackResolutionResult> AttackDamageApplied;
 
         public AttackResolutionService()
-            : this(new DamageHealingService(), DefaultProcessedAttackLimit)
+            : this(new DamageHealingService(), null, DefaultProcessedAttackLimit)
         {
         }
 
         public AttackResolutionService(IDamageHealingService damageHealingService, int processedAttackLimit = DefaultProcessedAttackLimit)
+            : this(damageHealingService, null, processedAttackLimit)
+        {
+        }
+
+        public AttackResolutionService(IDamageHealingService damageHealingService, IDefensiveActionService defensiveActionService, int processedAttackLimit = DefaultProcessedAttackLimit)
+            : this(damageHealingService, defensiveActionService, null, processedAttackLimit)
+        {
+        }
+
+        public AttackResolutionService(IDamageHealingService damageHealingService, IDefensiveActionService defensiveActionService, CombatStateService combatStateService, int processedAttackLimit = DefaultProcessedAttackLimit)
         {
             this.damageHealingService = damageHealingService ?? new DamageHealingService();
+            this.defensiveActionService = defensiveActionService;
+            this.combatStateService = combatStateService;
             this.processedAttackLimit = Mathf.Max(16, processedAttackLimit);
         }
 
@@ -59,6 +75,7 @@ namespace UnityIsekaiGame.Combat
                 RememberProcessedAttack(request.TransactionId, result);
             }
 
+            RecordCombatActivity(result);
             EmitExecutionEvents(result);
             return result;
         }
@@ -153,6 +170,67 @@ namespace UnityIsekaiGame.Combat
 
             bool critical = request.CriticalChance > 0f && request.CriticalRoll < Mathf.Clamp01(request.CriticalChance);
             float damageAmount = critical ? request.BaseDamage * request.CriticalMultiplier : request.BaseDamage;
+            DefenseResolutionResult defenseResult = ResolveActiveDefense(request, attacker.ActorId, target.ActorId, damageAmount, critical, execute);
+            if (defenseResult != null && !defenseResult.Succeeded && IsTerminalDefenseFailure(defenseResult.Code))
+            {
+                return AttackResolutionResult.Create(
+                    preview: !execute,
+                    processed: execute,
+                    duplicate: false,
+                    AttackOutcome.Blocked,
+                    defenseResult.Code,
+                    defenseResult.Message,
+                    request,
+                    attacker.ActorId,
+                    target.ActorId,
+                    string.Empty,
+                    accuracy,
+                    evasion,
+                    normalizedAccuracy,
+                    normalizedEvasion,
+                    unclampedHitChance,
+                    finalHitChance,
+                    hit: true,
+                    critical,
+                    damageAmount,
+                    requirement.Passed,
+                    requirement.Summary,
+                    requirement.FailureReasons,
+                    damageResult: null,
+                    defenseResult);
+            }
+
+            float damageAfterDefense = defenseResult == null ? damageAmount : defenseResult.RemainingDamage;
+            if (defenseResult != null && defenseResult.DamageFullyPrevented)
+            {
+                AttackOutcome preventedOutcome = critical ? AttackOutcome.CriticalHit : AttackOutcome.Hit;
+                return AttackResolutionResult.Create(
+                    preview: !execute,
+                    processed: execute,
+                    duplicate: false,
+                    preventedOutcome,
+                    execute ? AttackResolutionResultCode.Processed : AttackResolutionResultCode.Preview,
+                    $"{preventedOutcome}: active defense prevented all damage.",
+                    request,
+                    attacker.ActorId,
+                    target.ActorId,
+                    string.Empty,
+                    accuracy,
+                    evasion,
+                    normalizedAccuracy,
+                    normalizedEvasion,
+                    unclampedHitChance,
+                    finalHitChance,
+                    hit: true,
+                    critical,
+                    damageAmount,
+                    requirement.Passed,
+                    requirement.Summary,
+                    requirement.FailureReasons,
+                    damageResult: null,
+                    defenseResult);
+            }
+
             string damageTransactionId = DeriveDamageTransactionId(request.TransactionId);
             DamageApplicationRequest damageRequest = new DamageApplicationRequest(
                 damageTransactionId,
@@ -161,7 +239,7 @@ namespace UnityIsekaiGame.Combat
                 target.ActorId,
                 request.TargetObject,
                 request.DamageType,
-                damageAmount,
+                damageAfterDefense,
                 BuildDamageReason(request, critical),
                 request.AuthorityValidated);
             DamageApplicationResult damageResult = execute
@@ -172,7 +250,7 @@ namespace UnityIsekaiGame.Combat
                 ? execute ? AttackResolutionResultCode.Processed : AttackResolutionResultCode.Preview
                 : AttackResolutionResultCode.DamageFailed;
             string message = damageResult.Succeeded
-                ? $"{logicalOutcome}: final attack damage {damageAmount:0.###}; damage pipeline {damageResult.Code}."
+                ? $"{logicalOutcome}: final attack damage {damageAmount:0.###}; active defense {damageAfterDefense:0.###}; damage pipeline {damageResult.Code}."
                 : $"Attack hit, but damage pipeline failed: {damageResult.Message}";
 
             return AttackResolutionResult.Create(
@@ -198,7 +276,46 @@ namespace UnityIsekaiGame.Combat
                 requirement.Passed,
                 requirement.Summary,
                 requirement.FailureReasons,
-                damageResult);
+                damageResult,
+                defenseResult);
+        }
+
+        private DefenseResolutionResult ResolveActiveDefense(AttackResolutionRequest request, string attackerActorId, string targetActorId, float damageAmount, bool critical, bool execute)
+        {
+            if (defensiveActionService == null)
+            {
+                return null;
+            }
+
+            string defenseTransactionId = DefensiveActionService.ReadString(request.Metadata, "defense.transaction-id", DefensiveActionService.DeriveDefenseTransactionId(request.TransactionId));
+            DefenseResolutionRequest defenseRequest = new DefenseResolutionRequest(
+                defenseTransactionId,
+                request.TransactionId,
+                attackerActorId,
+                request.AttackerObject,
+                targetActorId,
+                request.TargetObject,
+                request.DamageType,
+                request.SourceType,
+                damageAmount,
+                DefensiveActionService.ReadDefenseRoll(request.Metadata),
+                critical,
+                DefensiveActionService.ReadBool(request.Metadata, "defense.blockable", true),
+                DefensiveActionService.ReadBool(request.Metadata, "defense.parryable", true),
+                DefensiveActionService.ReadBool(request.Metadata, "defense.dodgeable", true),
+                request.DamageType != null && request.DamageType.IsTrueDamage,
+                DefensiveActionService.ReadBool(request.Metadata, "defense.allow-true-active", true),
+                DefensiveActionService.ReadString(request.Metadata, "defense.expected-state-id"),
+                Time.time,
+                request.AuthorityValidated);
+            return execute ? defensiveActionService.Resolve(defenseRequest) : defensiveActionService.PreviewResolve(defenseRequest);
+        }
+
+        private static bool IsTerminalDefenseFailure(string code)
+        {
+            return string.Equals(code, DefensiveActionResultCode.InvalidRoll, StringComparison.Ordinal)
+                || string.Equals(code, DefensiveActionResultCode.InvalidRequest, StringComparison.Ordinal)
+                || string.Equals(code, DefensiveActionResultCode.MissingActor, StringComparison.Ordinal);
         }
 
         private static bool ValidateRequestShape(AttackResolutionRequest request, out AttackOutcome outcome, out string code, out string message)
@@ -462,7 +579,11 @@ namespace UnityIsekaiGame.Combat
                     CriticalHit?.Invoke(result);
                 }
 
-                if (result.DamageResult != null && result.DamageResult.Succeeded)
+                if (result.DefenseResult != null && result.DefenseResult.DamageFullyPrevented)
+                {
+                    AttackDamagePrevented?.Invoke(result);
+                }
+                else if (result.DamageResult != null && result.DamageResult.Succeeded)
                 {
                     if (result.DamageResult.HealthChanged)
                     {
@@ -476,6 +597,16 @@ namespace UnityIsekaiGame.Combat
             }
 
             AttackProcessed?.Invoke(result);
+        }
+
+        private void RecordCombatActivity(AttackResolutionResult result)
+        {
+            if (combatStateService == null || result == null || result.Preview || result.Duplicate || !result.Processed)
+            {
+                return;
+            }
+
+            combatStateService.RecordAttackResult(result);
         }
 
         private void RememberProcessedAttack(string transactionId, AttackResolutionResult result)

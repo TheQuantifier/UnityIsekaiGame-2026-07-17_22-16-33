@@ -8,6 +8,7 @@ using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.CombatState;
+using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
@@ -45,7 +46,8 @@ namespace UnityIsekaiGame.Development
         private readonly List<PrototypeTestLabOperation> history = new List<PrototypeTestLabOperation>();
         private readonly HashSet<string> pendingConfirmations = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<Type, List<IGameDefinition>> selectorCache = new Dictionary<Type, List<IGameDefinition>>();
-        private readonly AttackResolutionService attackResolutionService = new AttackResolutionService();
+        private readonly DefensiveActionService defensiveActionService = new DefensiveActionService();
+        private readonly AttackResolutionService attackResolutionService;
         private PrototypeTestLabContext context;
         private DefinitionRegistry registry;
         private int historyLimit = DefaultHistoryLimit;
@@ -55,6 +57,7 @@ namespace UnityIsekaiGame.Development
         private ItemDefinition lastDestroyedWorldEntityItem;
         private string lastWorldEntityOperationMessage;
         private string lastAttackTransactionId;
+        private string lastDefenseActivationTransactionId;
         private string lastCombatStateTransactionId;
         private string lastCombatStateSplitTransactionId;
         private string lastLifecycleTransactionId;
@@ -68,6 +71,11 @@ namespace UnityIsekaiGame.Development
         public IReadOnlyList<PrototypeTestLabOperation> History => history;
         public DefinitionRegistry Registry => registry;
         public string CurrentSlotId => context?.Persistence == null ? PersistenceService.PrototypeSlotId : context.Persistence.PrototypeSlotId;
+
+        public PrototypeTestLabService()
+        {
+            attackResolutionService = new AttackResolutionService(new DamageHealingService(), defensiveActionService);
+        }
 
         public void Configure(PrototypeTestLabContext newContext)
         {
@@ -1210,6 +1218,75 @@ namespace UnityIsekaiGame.Development
             return Record(result.Succeeded, "Environmental 6.2 Attack", result.Code, FormatAttackResolution(result));
         }
 
+        public string BuildDefensiveActionSummary()
+        {
+            GameObject player = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            GameObject enemy = context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject;
+            EnsureAttackResolutionRuntime(player, needsResource: true);
+            EnsureAttackResolutionRuntime(enemy, needsResource: true);
+            string playerId = ResolveActorId(player);
+            string enemyId = ResolveActorId(enemy);
+            string playerDefense = FormatActiveDefense(playerId);
+            string enemyDefense = FormatActiveDefense(enemyId);
+            string playerStamina = FormatResource(player, ResourceIds.Stamina);
+            string enemyStamina = FormatResource(enemy, ResourceIds.Stamina);
+            return $"Player Defense: {playerDefense}\nEnemy Defense: {enemyDefense}\nPlayer Stamina: {playerStamina}\nEnemy Stamina: {enemyStamina}";
+        }
+
+        public PrototypeTestLabOperation PreviewDefenseActivation(DefensiveActionDefinition definition, bool targetPlayer)
+        {
+            if (!TryBuildDefenseActivationRequest(definition, targetPlayer, reuseTransaction: false, out DefenseActivationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            DefenseActivationResult result = defensiveActionService.PreviewActivate(request);
+            return Record(result.Succeeded, "Preview 6.6 Defense", result.Code, FormatDefenseActivation(result));
+        }
+
+        public PrototypeTestLabOperation ActivateDefense(DefensiveActionDefinition definition, bool targetPlayer, bool reuseTransaction)
+        {
+            if (!TryBuildDefenseActivationRequest(definition, targetPlayer, reuseTransaction, out DefenseActivationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            DefenseActivationResult result = defensiveActionService.Activate(request);
+            return Record(result.Succeeded, reuseTransaction ? "Activate 6.6 Defense Reuse" : "Activate 6.6 Defense", result.Code, FormatDefenseActivation(result));
+        }
+
+        public PrototypeTestLabOperation CancelDefense(bool targetPlayer)
+        {
+            GameObject target = targetPlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            if (target == null)
+            {
+                return RecordFailure("Cancel 6.6 Defense", "Defense target is missing.", "MissingTarget");
+            }
+
+            DefenseCancellationRequest request = new DefenseCancellationRequest(
+                $"development.defense-action.cancel.{Guid.NewGuid():N}",
+                ResolveActorId(target),
+                target,
+                DefenseCancellationReason.Explicit,
+                now: Time.time);
+            DefenseCancellationResult result = defensiveActionService.Cancel(request);
+            return Record(result.Succeeded, "Cancel 6.6 Defense", result.Code, FormatDefenseCancellation(result));
+        }
+
+        public PrototypeTestLabOperation PreviewDefensiveAttack(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float defenseRoll, bool targetPlayer)
+        {
+            AttackResolutionRequest request = CreateDefensiveAttackRequest(damageType, amount, baseHitChance, hitRoll, defenseRoll, targetPlayer, ResolveAttackTransactionId(reuse: false));
+            AttackResolutionResult result = attackResolutionService.PreviewAttack(request);
+            return Record(result.Succeeded, "Preview 6.6 Defensive Attack", result.Code, FormatAttackResolution(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteDefensiveAttack(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float defenseRoll, bool targetPlayer, bool reuseTransaction)
+        {
+            AttackResolutionRequest request = CreateDefensiveAttackRequest(damageType, amount, baseHitChance, hitRoll, defenseRoll, targetPlayer, ResolveAttackTransactionId(reuseTransaction));
+            AttackResolutionResult result = attackResolutionService.ExecuteAttack(request);
+            return Record(result.Succeeded, reuseTransaction ? "Execute 6.6 Defensive Attack Reuse" : "Execute 6.6 Defensive Attack", result.Code, FormatAttackResolution(result));
+        }
+
         public string BuildCombatStateSummary()
         {
             CombatStateService combatState = EnsureCombatStateRuntime();
@@ -1659,7 +1736,33 @@ namespace UnityIsekaiGame.Development
                 "Prototype Test Lab");
         }
 
-        private AttackResolutionRequest CreateAttackResolutionRequest(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float criticalChance, float criticalRoll, float criticalMultiplier, float distance, float maximumRange, bool targetEnemy, bool sourcePlayer, string transactionId)
+        private AttackResolutionRequest CreateDefensiveAttackRequest(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float defenseRoll, bool targetPlayer, string transactionId)
+        {
+            Dictionary<string, string> metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["defense.roll"] = Mathf.Clamp(defenseRoll, 0f, 0.999f).ToString("0.###"),
+                ["defense.blockable"] = "true",
+                ["defense.parryable"] = "true",
+                ["defense.dodgeable"] = "true",
+                ["defense.allow-true-active"] = "true"
+            };
+            return CreateAttackResolutionRequest(
+                damageType,
+                amount,
+                baseHitChance,
+                hitRoll,
+                criticalChance: 0f,
+                criticalRoll: 0.5f,
+                criticalMultiplier: AttackResolutionRequest.DefaultCriticalMultiplier,
+                distance: 1f,
+                maximumRange: 2f,
+                targetEnemy: !targetPlayer,
+                sourcePlayer: !targetPlayer,
+                transactionId,
+                metadata);
+        }
+
+        private AttackResolutionRequest CreateAttackResolutionRequest(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float criticalChance, float criticalRoll, float criticalMultiplier, float distance, float maximumRange, bool targetEnemy, bool sourcePlayer, string transactionId, IReadOnlyDictionary<string, string> metadata = null)
         {
             GameObject source = sourcePlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
             GameObject target = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
@@ -1683,7 +1786,83 @@ namespace UnityIsekaiGame.Development
                 suppliedDistance: Mathf.Max(0f, distance),
                 hasMaximumRange: maximumRange >= 0f,
                 maximumRange: Mathf.Max(0f, maximumRange),
-                originatingActionId: "development.attack-resolution-test");
+                originatingActionId: "development.attack-resolution-test",
+                metadata: metadata);
+        }
+
+        private bool TryBuildDefenseActivationRequest(DefensiveActionDefinition definition, bool targetPlayer, bool reuseTransaction, out DefenseActivationRequest request, out PrototypeTestLabOperation failure)
+        {
+            request = default;
+            failure = default;
+            if (definition == null)
+            {
+                failure = RecordFailure("6.6 Defense Activation", "No defensive action selected.", "MissingDefinition");
+                return false;
+            }
+
+            GameObject target = targetPlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            if (target == null)
+            {
+                failure = RecordFailure("6.6 Defense Activation", "Defense target is missing.", "MissingTarget");
+                return false;
+            }
+
+            EnsureAttackResolutionRuntime(target, needsResource: true);
+            request = new DefenseActivationRequest(
+                ResolveDefenseActivationTransactionId(reuseTransaction),
+                ResolveActorId(target),
+                target,
+                definition,
+                sourceEquipmentId: string.Empty,
+                sourceActionId: "development.test-lab",
+                now: Time.time,
+                authorityValidated: true);
+            return true;
+        }
+
+        private string FormatActiveDefense(string actorId)
+        {
+            if (string.IsNullOrWhiteSpace(actorId) || !defensiveActionService.TryGetActiveDefense(actorId, out DefensiveActionStateSnapshot snapshot))
+            {
+                return "None";
+            }
+
+            string expiration = snapshot.HasExpiration ? $" expires={Mathf.Max(0f, snapshot.ExpiresAt - Time.time):0.###}s" : " persistent";
+            return $"{snapshot.Definition.DisplayName} ({snapshot.DefinitionId}) state={snapshot.State}{expiration}";
+        }
+
+        private static string FormatResource(GameObject owner, string resourceId)
+        {
+            CharacterResourceCollection resources = owner == null ? null : owner.GetComponentInParent<CharacterResourceCollection>();
+            if (resources == null || !resources.TryGetResource(resourceId, out ResourceSnapshot snapshot))
+            {
+                return "Missing";
+            }
+
+            return $"{snapshot.Current:0.###}/{snapshot.Maximum:0.###}";
+        }
+
+        private static string FormatDefenseActivation(DefenseActivationResult result)
+        {
+            if (result == null)
+            {
+                return "Defense activation result is missing.";
+            }
+
+            string state = result.State == null ? "State=None" : $"State={result.State.StateId} action={result.State.DefinitionId} runtime={result.State.State}";
+            string stamina = result.StaminaResult == null ? "Stamina=None" : $"Stamina={result.StaminaResult.Code} {result.StaminaResult.OldCurrent:0.###}->{result.StaminaResult.NewCurrent:0.###} duplicate={result.StaminaResult.DuplicateEvent}";
+            return $"{state} preview={result.Preview} duplicate={result.Duplicate} {stamina}. {result.Message}";
+        }
+
+        private static string FormatDefenseCancellation(DefenseCancellationResult result)
+        {
+            if (result == null)
+            {
+                return "Defense cancellation result is missing.";
+            }
+
+            string state = result.RemovedState == null ? "State=None" : $"Removed={result.RemovedState.DefinitionId} state={result.RemovedState.StateId}";
+            return $"{state} preview={result.Preview} duplicate={result.Duplicate}. {result.Message}";
         }
 
         private void EnsureAttackResolutionRuntime(GameObject actor, bool needsResource)
@@ -1980,6 +2159,17 @@ namespace UnityIsekaiGame.Development
             return lastAttackTransactionId;
         }
 
+        private string ResolveDefenseActivationTransactionId(bool reuse)
+        {
+            if (reuse && !string.IsNullOrWhiteSpace(lastDefenseActivationTransactionId))
+            {
+                return lastDefenseActivationTransactionId;
+            }
+
+            lastDefenseActivationTransactionId = $"development.defense-action.activate.{Guid.NewGuid():N}";
+            return lastDefenseActivationTransactionId;
+        }
+
         private string ResolveCombatStateTransactionId(bool reuse)
         {
             if (reuse && !string.IsNullOrWhiteSpace(lastCombatStateTransactionId))
@@ -2034,7 +2224,10 @@ namespace UnityIsekaiGame.Development
             string damage = result.DamageResult == null
                 ? "Damage=None"
                 : $"Damage={result.DamageResult.Code} final={result.DamageResult.FinalDamageAmount:0.###} Health={result.DamageResult.OldHealth:0.###}->{result.DamageResult.NewHealth:0.###}";
-            return $"{result.Outcome} hitChance={result.FinalHitChance:0.###} roll={result.HitRoll:0.###} crit={result.Critical} critRoll={result.CriticalRoll:0.###} dmgAfterCrit={result.DamageAfterCritical:0.###} duplicate={result.Duplicate} {damage}. {result.Message}";
+            string defense = result.DefenseResult == null
+                ? "Defense=None"
+                : $"Defense={result.DefenseResult.Outcome} action={result.DefenseResult.DefensiveActionId} chance={result.DefenseResult.FinalDefenseChance:0.###} roll={result.DefenseResult.Request.Roll:0.###} prevented={result.DefenseResult.PreventedDamage:0.###} remaining={result.DefenseResult.RemainingDamage:0.###} consumed={result.DefenseResult.Consumed}";
+            return $"{result.Outcome} hitChance={result.FinalHitChance:0.###} roll={result.HitRoll:0.###} crit={result.Critical} critRoll={result.CriticalRoll:0.###} dmgAfterCrit={result.DamageAfterCritical:0.###} duplicate={result.Duplicate} {defense} {damage}. {result.Message}";
         }
 
         private bool TryBuildCombatEngagementRequest(
