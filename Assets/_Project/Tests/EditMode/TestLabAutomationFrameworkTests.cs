@@ -385,6 +385,46 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void DefaultPrototypeSuites_RegisterStep3ThroughStep6()
+        {
+            TestLabAutomationRegistry registry = new TestLabAutomationRegistry();
+
+            PrototypeStep3AutomationSuites.RegisterDefaults(registry);
+            PrototypeStep4AutomationSuites.RegisterDefaults(registry);
+            PrototypeStep5AutomationSuites.RegisterDefaults(registry);
+            PrototypeStep6AutomationSuites.RegisterDefaults(registry);
+
+            TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(registry);
+
+            Assert.That(validation.Succeeded, Is.True, string.Join(Environment.NewLine, validation.Errors));
+            Assert.That(registry.Suites.Select(suite => suite.SuiteId), Is.EqualTo(new[]
+            {
+                "feature.3.runtime-taxonomy",
+                "feature.4.1.save-file-foundation",
+                "feature.4.2.inventory-equipment-persistence",
+                "feature.4.3.vitals-status-persistence",
+                "feature.4.4.quest-contract-persistence",
+                "feature.4.5.location-persistence",
+                "feature.4.6.world-entity-identity",
+                "feature.4.7.save-slots-autosave-load-ui",
+                "feature.4.8.persistence-recovery-hardening",
+                "feature.5.1.identity-origin-progression",
+                "feature.5.2-5.4a.attributes-calculated-stats",
+                "feature.5.3.skills-progression",
+                "feature.5.4b.current-resources",
+                "feature.5.5.traits-requirements",
+                "feature.5.6.character-integration",
+                "feature.6.1.damage-healing",
+                "feature.6.2.attack-resolution",
+                "feature.6.3.lifecycle",
+                "feature.6.4.ongoing-effects",
+                "feature.6.5.combat-state",
+                "feature.6.6.defensive-actions",
+                "feature.6.7.combat-execution"
+            }));
+        }
+
+        [Test]
         public void RuntimeGameplayAssembly_DoesNotReferenceAutomationTypes()
         {
             string gameplayAsmdef = File.ReadAllText("Assets/_Project/Runtime/UnityIsekaiGame.Gameplay.asmdef");

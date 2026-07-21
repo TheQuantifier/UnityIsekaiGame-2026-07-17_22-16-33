@@ -3933,6 +3933,9 @@ namespace UnityIsekaiGame.Development
         {
             if (automationRegistry.Suites.Count == 0)
             {
+                PrototypeStep3AutomationSuites.RegisterDefaults(automationRegistry);
+                PrototypeStep4AutomationSuites.RegisterDefaults(automationRegistry);
+                PrototypeStep5AutomationSuites.RegisterDefaults(automationRegistry);
                 PrototypeStep6AutomationSuites.RegisterDefaults(automationRegistry);
             }
 

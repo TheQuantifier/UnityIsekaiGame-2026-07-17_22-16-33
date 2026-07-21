@@ -88,10 +88,25 @@ Reports include project name, Unity version, platform, run ID, run mode, start/e
 
 The existing Test Lab manual controls remain available. The Automation section adds suite and scenario selectors, run buttons, rerun/cancel/clear controls, export buttons, validation, stop-on-first-failure, and auto-scroll toggles.
 
-## Initial Suites
+## Registered Suites
 
-Maintenance M2 registers representative suites for completed Step 6 features:
+Maintenance M2 registers representative suites for completed runtime-heavy features:
 
+- Step 3 Runtime Taxonomy: item instances, equipment, statuses, typed damage, quest/contract signals, location diagnostics, and world-entity diagnostics.
+- Feature 4.1 Save File Foundation.
+- Feature 4.2 Inventory and Equipment Persistence.
+- Feature 4.3 Vitals and Status Persistence.
+- Feature 4.4 Quest and Contract Persistence.
+- Feature 4.5 Location Persistence.
+- Feature 4.6 World Entity Identity.
+- Feature 4.7 Save Slots and Autosave.
+- Feature 4.8 Persistence Recovery Hardening.
+- Feature 5.1 Identity and Origin Progression.
+- Feature 5.2/5.4a Attributes and Calculated Stats.
+- Feature 5.3 Skills and Progression.
+- Feature 5.4b Current Resources.
+- Feature 5.5 Traits and Requirements.
+- Feature 5.6 Character System Integration.
 - Feature 6.1 Damage and Healing.
 - Feature 6.2 Attack Resolution.
 - Feature 6.3 Defeat, Unconsciousness, Death, and Revival.
