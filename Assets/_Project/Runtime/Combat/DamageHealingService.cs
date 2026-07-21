@@ -9,7 +9,7 @@ using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Combat
 {
-    public sealed class DamageHealingService
+    public sealed class DamageHealingService : IDamageHealingService
     {
         public event Action<DamageApplicationResult> DamageResolved;
         public event Action<DamageApplicationResult> DamagePrevented;

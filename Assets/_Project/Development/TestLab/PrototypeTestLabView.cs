@@ -52,6 +52,13 @@ namespace UnityIsekaiGame.Development
         private PrototypeTestLabService service;
         private InputField quantityInput;
         private InputField amountInput;
+        private InputField attackHitChanceInput;
+        private InputField attackHitRollInput;
+        private InputField attackCriticalChanceInput;
+        private InputField attackCriticalRollInput;
+        private InputField attackCriticalMultiplierInput;
+        private InputField attackDistanceInput;
+        private InputField attackMaximumRangeInput;
         private Text overviewText;
         private Text latestOperationText;
         private Text diagnosticsText;
@@ -458,6 +465,25 @@ namespace UnityIsekaiGame.Development
 
         private void BuildCombatSection(Transform parent, Font font)
         {
+            AddHeader(parent, font, "Feature 6.2 Attack Resolution");
+            attackHitChanceInput = AddInputRow(parent, font, "Hit Chance", "0.75");
+            attackHitRollInput = AddInputRow(parent, font, "Hit Roll", "0.10");
+            attackCriticalChanceInput = AddInputRow(parent, font, "Crit Chance", "0.25");
+            attackCriticalRollInput = AddInputRow(parent, font, "Crit Roll", "0.10");
+            attackCriticalMultiplierInput = AddInputRow(parent, font, "Crit Mult", "1.5");
+            attackDistanceInput = AddInputRow(parent, font, "Distance", "1");
+            attackMaximumRangeInput = AddInputRow(parent, font, "Max Range", "2");
+            AddButtonRow(parent, font,
+                ("Fresh Tx", () => service.GenerateAttackTransaction()),
+                ("Preview P>E", () => service.PreviewAttackResolution(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalChanceInput, 0.25f), GetFloat(attackCriticalRollInput, 0.1f), GetFloat(attackCriticalMultiplierInput, 1.5f), GetFloat(attackDistanceInput, 1f), GetFloat(attackMaximumRangeInput, 2f), targetEnemy: true, sourcePlayer: true)),
+                ("Execute P>E", () => service.ExecuteAttackResolution(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalChanceInput, 0.25f), GetFloat(attackCriticalRollInput, 0.1f), GetFloat(attackCriticalMultiplierInput, 1.5f), GetFloat(attackDistanceInput, 1f), GetFloat(attackMaximumRangeInput, 2f), targetEnemy: true, sourcePlayer: true, reuseTransaction: false)),
+                ("Reuse Tx", () => service.ExecuteAttackResolution(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalChanceInput, 0.25f), GetFloat(attackCriticalRollInput, 0.1f), GetFloat(attackCriticalMultiplierInput, 1.5f), GetFloat(attackDistanceInput, 1f), GetFloat(attackMaximumRangeInput, 2f), targetEnemy: true, sourcePlayer: true, reuseTransaction: true)));
+            AddButtonRow(parent, font,
+                ("Preview E>P", () => service.PreviewAttackResolution(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalChanceInput, 0.25f), GetFloat(attackCriticalRollInput, 0.1f), GetFloat(attackCriticalMultiplierInput, 1.5f), GetFloat(attackDistanceInput, 1f), GetFloat(attackMaximumRangeInput, 2f), targetEnemy: false, sourcePlayer: false)),
+                ("Execute E>P", () => service.ExecuteAttackResolution(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalChanceInput, 0.25f), GetFloat(attackCriticalRollInput, 0.1f), GetFloat(attackCriticalMultiplierInput, 1.5f), GetFloat(attackDistanceInput, 1f), GetFloat(attackMaximumRangeInput, 2f), targetEnemy: false, sourcePlayer: false, reuseTransaction: false)),
+                ("Env>P", () => service.ExecuteEnvironmentalAttack(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitRollInput, 0.1f))),
+                ("Out Range", () => service.PreviewAttackResolution(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), 0.95f, 0.1f, 0f, 0.5f, 1.5f, 999f, 1f, targetEnemy: true, sourcePlayer: true)));
+            AddHeader(parent, font, "Feature 6.1 Damage/Healing");
             AddButtonRow(parent, font,
                 ("Preview 6.1", () => service.PreviewPipelineDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetPlayer: true)),
                 ("Damage 6.1", () => service.ApplyPipelineDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetPlayer: true)),
