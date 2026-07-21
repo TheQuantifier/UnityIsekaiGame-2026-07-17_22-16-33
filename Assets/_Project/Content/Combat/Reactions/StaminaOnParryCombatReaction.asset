@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68000000000000000000000000000002, type: 3}
+  m_Name: StaminaOnParryCombatReaction
+  m_EditorClassIdentifier: UnityIsekaiGame.Gameplay::UnityIsekaiGame.Combat.Reactions.CombatReactionDefinition
+  reactionId: combat-reaction.stamina-on-parry
+  displayName: Stamina On Parry
+  description: Restores Stamina to the owner after a committed parry trigger.
+  icon: {fileID: 0}
+  primaryCategory: {fileID: 0}
+  tags: []
+  triggerTypes:
+  - 11
+  ownershipSide: 2
+  targetPolicy: 3
+  procChance: 1
+  priority: 5
+  operationType: 4
+  amount: 8
+  multiplier: 0
+  damageType: {fileID: 0}
+  ongoingEffect: {fileID: 0}
+  resource: {fileID: 11400000, guid: 33ab61af4db4471fa5c1792434f3ab27, type: 2}
+  requirements: {fileID: 0}
+  requiredCapabilityIds: []
+  excludedCapabilityIds: []
+  requiredContextTags: []
+  excludedContextTags: []
+  maximumExecutionsPerChain: 1
+  recursionPolicy: 0

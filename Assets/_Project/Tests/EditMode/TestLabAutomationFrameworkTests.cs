@@ -420,7 +420,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.6.4.ongoing-effects",
                 "feature.6.5.combat-state",
                 "feature.6.6.defensive-actions",
-                "feature.6.7.combat-execution"
+                "feature.6.7.combat-execution",
+                "feature.6.8.combat-reactions"
             }));
         }
 

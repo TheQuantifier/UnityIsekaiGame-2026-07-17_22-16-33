@@ -12,6 +12,7 @@ using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
+using UnityIsekaiGame.Combat.Reactions;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Factions;
@@ -50,6 +51,7 @@ namespace UnityIsekaiGame.Development
         private readonly Dictionary<Type, List<IGameDefinition>> selectorCache = new Dictionary<Type, List<IGameDefinition>>();
         private readonly DefensiveActionService defensiveActionService = new DefensiveActionService();
         private readonly AttackResolutionService attackResolutionService;
+        private CombatReactionService combatReactionService;
         private CombatExecutionService combatExecutionService = new CombatExecutionService();
         private readonly TestLabAutomationRegistry automationRegistry = new TestLabAutomationRegistry();
         private readonly TestLabAutomationReportExporter automationReportExporter = new TestLabAutomationReportExporter();
@@ -119,6 +121,7 @@ namespace UnityIsekaiGame.Development
             EnsureCombatStateRuntime();
             EnsureOngoingEffectRuntime(targetEnemy: false);
             EnsureOngoingEffectRuntime(targetEnemy: true);
+            EnsureCombatReactionRuntime();
             EnsureAutomation();
             selectorCache.Clear();
         }
@@ -301,6 +304,8 @@ namespace UnityIsekaiGame.Development
             EnsureCombatStateRuntime().ClearTransientStateForRestore();
             EnsureOngoingEffectRuntime(targetEnemy: false)?.ClearTransientStateForRestore();
             EnsureOngoingEffectRuntime(targetEnemy: true)?.ClearTransientStateForRestore();
+            EnsureCombatReactionRuntime()?.ClearTransientStateForRestore();
+            EnsureCombatReactionRuntime()?.ClearAllSources();
             ongoingEffectClockSeconds = 0f;
             combatStateClockSeconds = 0f;
             combatExecutionClockSeconds = 0f;
@@ -2123,6 +2128,107 @@ namespace UnityIsekaiGame.Development
             return Record(result.Succeeded, preview ? "Preview Cancel Ongoing Effect" : "Cancel Ongoing Effect", result.Code, FormatOngoingCancellationResult(result));
         }
 
+        public string BuildCombatReactionSummary()
+        {
+            CombatReactionService service = EnsureCombatReactionRuntime();
+            IReadOnlyList<CombatReactionSourceRegistration> registrations = service == null ? Array.Empty<CombatReactionSourceRegistration>() : service.Registrations;
+            string selected = string.Join(Environment.NewLine, GetDefinitions<CombatReactionDefinition>().Select(definition => $"{definition.DisplayName} ({definition.Id}) Triggers={string.Join(",", definition.TriggerTypes)} Op={definition.OperationType} Target={definition.TargetPolicy} Chance={definition.ProcChance:0.###} Priority={definition.Priority}").Take(8));
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Feature 6.8 Combat Reactions",
+                $"Registered Sources: {registrations.Count}",
+                registrations.Count == 0 ? "Sources: None" : $"Sources: {string.Join(" | ", registrations.Select(registration => $"{registration.Definition.Id}@{registration.OwnerActorId}:{registration.SourceStableId}:{registration.SourceInstanceId}"))}",
+                string.IsNullOrWhiteSpace(selected) ? "Definitions: None" : selected
+            });
+        }
+
+        public PrototypeTestLabOperation RegisterCombatReaction(CombatReactionDefinition definition, bool ownerPlayer)
+        {
+            CombatReactionService service = EnsureCombatReactionRuntime();
+            GameObject owner = ownerPlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            if (service == null || owner == null || definition == null)
+            {
+                return RecordFailure("Register 6.8 Reaction", "Combat reaction service, owner, or definition is missing.", CombatReactionResultCode.MissingDefinition);
+            }
+
+            EnsureAttackResolutionRuntime(owner, needsResource: true);
+            string ownerActorId = ResolveActorId(owner);
+            CombatReactionSourceRegistration registration = new CombatReactionSourceRegistration(
+                $"development.reaction.{definition.Id}.{ownerActorId}",
+                ownerActorId,
+                owner,
+                CombatReactionSourceKind.Development,
+                $"development.{definition.Id}",
+                "prototype-test-lab",
+                0,
+                definition);
+            CombatReactionSourceRegistration registered = service.RegisterSource(registration);
+            return RecordSuccess("Register 6.8 Reaction", $"Registered {registered.Definition.Id} for {(ownerPlayer ? "player" : "enemy")} actor {ownerActorId}.");
+        }
+
+        public PrototypeTestLabOperation ClearCombatReactions()
+        {
+            CombatReactionService service = EnsureCombatReactionRuntime();
+            service?.ClearAllSources();
+            service?.ClearTransientStateForRestore();
+            return RecordSuccess("Clear 6.8 Reactions", "Combat reaction sources and transient chain state cleared.");
+        }
+
+        public PrototypeTestLabOperation PreviewCombatReactionDamage(CombatReactionDefinition definition)
+        {
+            return RunCombatReactionDamage(definition, execute: false, critical: false, rootId: $"development.reaction.preview.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatReactionDamage(CombatReactionDefinition definition)
+        {
+            return RunCombatReactionDamage(definition, execute: true, critical: false, rootId: $"development.reaction.execute.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatReactionCritical(CombatReactionDefinition definition)
+        {
+            return RunCombatReactionDamage(definition, execute: true, critical: true, rootId: $"development.reaction.critical.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatReactionDuplicateProof(CombatReactionDefinition definition)
+        {
+            string rootId = $"development.reaction.duplicate.{Guid.NewGuid():N}";
+            PrototypeTestLabOperation first = RunCombatReactionDamage(definition, execute: true, critical: false, rootId: rootId);
+            PrototypeTestLabOperation second = RunCombatReactionDamage(definition, execute: true, critical: false, rootId: rootId);
+            bool succeeded = first.Succeeded && second.Succeeded && second.Code == CombatReactionResultCode.Duplicate;
+            return Record(succeeded, "Duplicate 6.8 Reaction Proof", second.Code, $"First={first.Code} Second={second.Code}. {second.Message}");
+        }
+
+        private PrototypeTestLabOperation RunCombatReactionDamage(CombatReactionDefinition definition, bool execute, bool critical, string rootId)
+        {
+            if (definition == null)
+            {
+                return RecordFailure("6.8 Reaction", "Combat reaction definition is missing.", CombatReactionResultCode.MissingDefinition);
+            }
+
+            CombatReactionService service = EnsureCombatReactionRuntime();
+            GameObject source = context?.PlayerTransform?.gameObject;
+            GameObject target = context?.EnemyTransform?.gameObject;
+            if (service == null || source == null || target == null)
+            {
+                return RecordFailure("6.8 Reaction", "Combat reaction service, source, or target is missing.", CombatReactionResultCode.MissingTarget);
+            }
+
+            EnsureAttackResolutionRuntime(source, needsResource: true);
+            EnsureAttackResolutionRuntime(target, needsResource: true);
+            CombatReactionTriggerContext trigger = new CombatReactionTriggerContext(
+                critical ? CombatReactionTriggerType.CriticalHit : CombatReactionTriggerType.DamageApplied,
+                rootId,
+                ResolveActorId(source),
+                source,
+                ResolveActorId(target),
+                target,
+                actualDamage: 25f,
+                critical: critical,
+                damageType: GetDefinitions<DamageTypeDefinition>().FirstOrDefault());
+            CombatReactionChainResult result = execute ? service.ExecuteTrigger(trigger) : service.PreviewTrigger(trigger);
+            return Record(result.Succeeded, execute ? critical ? "Execute 6.8 Critical Reaction" : "Execute 6.8 Reaction" : "Preview 6.8 Reaction", result.Code, FormatCombatReactionChain(result));
+        }
+
         private DamageApplicationRequest CreatePipelineDamageRequest(DamageTypeDefinition damageType, float amount, bool targetPlayer, string transactionId)
         {
             GameObject source = targetPlayer ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
@@ -2687,6 +2793,33 @@ namespace UnityIsekaiGame.Development
             return service;
         }
 
+        private CombatReactionService EnsureCombatReactionRuntime()
+        {
+            GameObject host = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            if (host == null)
+            {
+                return combatReactionService;
+            }
+
+            if (combatReactionService == null)
+            {
+                combatReactionService = host.GetComponentInParent<CombatReactionService>();
+            }
+
+            if (combatReactionService == null)
+            {
+                combatReactionService = host.AddComponent<CombatReactionService>();
+            }
+
+            OngoingEffectService ongoing = EnsureOngoingEffectRuntime(targetEnemy: true) ?? EnsureOngoingEffectRuntime(targetEnemy: false);
+            if (ongoing != null)
+            {
+                combatReactionService.Configure(ongoing);
+            }
+
+            return combatReactionService;
+        }
+
         private bool TryBuildOngoingEffectRequest(
             OngoingEffectDefinition definition,
             bool targetEnemy,
@@ -3046,6 +3179,19 @@ namespace UnityIsekaiGame.Development
             }
 
             return $"Instance={result.InstanceId} Definition={result.DefinitionId} Preview={result.Preview} Duplicate={result.Duplicate}. {result.Message}";
+        }
+
+        private static string FormatCombatReactionChain(CombatReactionChainResult result)
+        {
+            if (result == null)
+            {
+                return "Combat reaction result is missing.";
+            }
+
+            string reactions = result.Reactions.Count == 0
+                ? "None"
+                : string.Join(" | ", result.Reactions.Select(reaction => $"{reaction.DefinitionId}:{reaction.Code}:Succeeded={reaction.Succeeded}:Preview={reaction.Preview}:Duplicate={reaction.Duplicate}:Amount={reaction.FinalAmount:0.###}:Tx={reaction.TransactionId}"));
+            return $"Trigger={result.RootContext?.TriggerType} Preview={result.Preview} Depth={result.Depth} Reactions={result.Reactions.Count}. {result.Message} {reactions}";
         }
 
         private HealingApplicationRequest CreatePipelineHealingRequest(float amount, bool targetPlayer, string transactionId)

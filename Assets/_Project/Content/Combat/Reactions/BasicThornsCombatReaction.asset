@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68000000000000000000000000000002, type: 3}
+  m_Name: BasicThornsCombatReaction
+  m_EditorClassIdentifier: UnityIsekaiGame.Gameplay::UnityIsekaiGame.Combat.Reactions.CombatReactionDefinition
+  reactionId: combat-reaction.basic-thorns
+  displayName: Basic Thorns
+  description: Deals a small physical retaliation when the owner takes committed damage.
+  icon: {fileID: 0}
+  primaryCategory: {fileID: 0}
+  tags: []
+  triggerTypes:
+  - 5
+  ownershipSide: 2
+  targetPolicy: 1
+  procChance: 1
+  priority: 20
+  operationType: 1
+  amount: 5
+  multiplier: 0.1
+  damageType: {fileID: 11400000, guid: b5e0014699c74ca5b54041aa6e7f12a7, type: 2}
+  ongoingEffect: {fileID: 0}
+  resource: {fileID: 0}
+  requirements: {fileID: 0}
+  requiredCapabilityIds: []
+  excludedCapabilityIds: []
+  requiredContextTags: []
+  excludedContextTags: []
+  maximumExecutionsPerChain: 1
+  recursionPolicy: 0
