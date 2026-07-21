@@ -196,7 +196,8 @@ namespace UnityIsekaiGame.ResourceSystem
             bool becameEmpty,
             bool leftEmpty,
             bool becameFull,
-            bool leftFull)
+            bool leftFull,
+            bool duplicateEvent)
         {
             Succeeded = succeeded;
             Code = string.IsNullOrWhiteSpace(code) ? succeeded ? "Success" : "Failed" : code;
@@ -214,6 +215,7 @@ namespace UnityIsekaiGame.ResourceSystem
             LeftEmpty = leftEmpty;
             BecameFull = becameFull;
             LeftFull = leftFull;
+            DuplicateEvent = duplicateEvent;
         }
 
         public bool Succeeded { get; }
@@ -232,15 +234,16 @@ namespace UnityIsekaiGame.ResourceSystem
         public bool LeftEmpty { get; }
         public bool BecameFull { get; }
         public bool LeftFull { get; }
+        public bool DuplicateEvent { get; }
 
-        public static ResourceChangeResult Success(ResourceChangeRequest request, float requestedAmount, float appliedAmount, float oldCurrent, float newCurrent, float minimum, float maximum, bool clamped, bool partial, bool becameEmpty, bool leftEmpty, bool becameFull, bool leftFull, string message = "Resource changed.")
+        public static ResourceChangeResult Success(ResourceChangeRequest request, float requestedAmount, float appliedAmount, float oldCurrent, float newCurrent, float minimum, float maximum, bool clamped, bool partial, bool becameEmpty, bool leftEmpty, bool becameFull, bool leftFull, string message = "Resource changed.", bool duplicateEvent = false)
         {
-            return new ResourceChangeResult(true, "Success", message, request, requestedAmount, appliedAmount, oldCurrent, newCurrent, minimum, maximum, clamped, partial, becameEmpty, leftEmpty, becameFull, leftFull);
+            return new ResourceChangeResult(true, "Success", message, request, requestedAmount, appliedAmount, oldCurrent, newCurrent, minimum, maximum, clamped, partial, becameEmpty, leftEmpty, becameFull, leftFull, duplicateEvent);
         }
 
         public static ResourceChangeResult Failure(ResourceChangeRequest request, string code, string message, float current = 0f, float minimum = 0f, float maximum = 0f)
         {
-            return new ResourceChangeResult(false, code, message, request, request.Amount, 0f, current, current, minimum, maximum, false, false, false, false, false, false);
+            return new ResourceChangeResult(false, code, message, request, request.Amount, 0f, current, current, minimum, maximum, false, false, false, false, false, false, false);
         }
     }
 }

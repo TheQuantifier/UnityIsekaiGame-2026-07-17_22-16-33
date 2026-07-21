@@ -209,7 +209,7 @@ namespace UnityIsekaiGame.ResourceSystem
 
             if (!string.IsNullOrWhiteSpace(request.EventId) && !processedEventIds.Add(request.EventId))
             {
-                return ResourceChangeResult.Success(request, request.Amount, 0f, record.currentValue, record.currentValue, minimum, maximum, false, false, false, false, false, false, "Duplicate resource event ignored.");
+                return ResourceChangeResult.Success(request, request.Amount, 0f, record.currentValue, record.currentValue, minimum, maximum, false, false, false, false, false, false, "Duplicate resource event ignored.", duplicateEvent: true);
             }
 
             if (!ValidateOperationAllowed(definition, request, out string failureReason))

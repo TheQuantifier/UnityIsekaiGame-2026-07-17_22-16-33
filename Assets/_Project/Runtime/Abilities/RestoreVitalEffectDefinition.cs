@@ -1,5 +1,9 @@
 using UnityEngine;
+using UnityIsekaiGame.CharacterSystem;
+using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.ResourceSystem;
+using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Abilities
 {
@@ -66,6 +70,17 @@ namespace UnityIsekaiGame.Abilities
 
         private EffectExecutionResult CanRestoreHealth(GameObject target)
         {
+            if (CanUseHealingPipeline(target))
+            {
+                HealingApplicationResult preview = new DamageHealingService().PreviewHealing(CreateHealingRequest(target, amount, string.Empty));
+                if (preview.Succeeded)
+                {
+                    return preview.FinalHealingAmount > CharacterResourceCollection.Epsilon
+                        ? EffectExecutionResult.Success("Health can be restored.")
+                        : EffectExecutionResult.Failure(EffectExecutionStatus.NoStateChange, "Health is already full.");
+                }
+            }
+
             PlayerHealth health = target.GetComponentInParent<PlayerHealth>();
             if (health == null)
             {
@@ -105,6 +120,15 @@ namespace UnityIsekaiGame.Abilities
 
         private EffectExecutionResult RestoreHealth(GameObject target, float multiplier)
         {
+            if (CanUseHealingPipeline(target))
+            {
+                float restoreAmount = amount * Mathf.Max(0f, multiplier);
+                HealingApplicationResult healingResult = new DamageHealingService().ApplyHealing(CreateHealingRequest(target, restoreAmount, DisplayName));
+                return healingResult.Succeeded && healingResult.HealthChanged
+                    ? EffectExecutionResult.Success(healingResult.Message, healingResult.FinalHealingAmount)
+                    : EffectExecutionResult.Failure(EffectExecutionStatus.NoStateChange, healingResult.Message);
+            }
+
             PlayerHealth health = target.GetComponentInParent<PlayerHealth>();
             int healed = health.Heal(Mathf.RoundToInt(amount * Mathf.Max(0f, multiplier)));
             return healed > 0
@@ -126,6 +150,42 @@ namespace UnityIsekaiGame.Abilities
             return result.Succeeded
                 ? EffectExecutionResult.Success(result.Message, result.ChangedAmount)
                 : EffectExecutionResult.Failure(EffectExecutionStatus.NoStateChange, result.Message);
+        }
+
+        private static bool CanUseHealingPipeline(GameObject target)
+        {
+            return target != null
+                && target.GetComponentInParent<CharacterResourceCollection>() != null
+                && !string.IsNullOrWhiteSpace(ResolveActorId(target));
+        }
+
+        private static HealingApplicationRequest CreateHealingRequest(GameObject target, float restoreAmount, string reason)
+        {
+            return new HealingApplicationRequest(
+                string.Empty,
+                ResolveActorId(target),
+                target,
+                ResolveActorId(target),
+                target,
+                restoreAmount,
+                reason);
+        }
+
+        private static string ResolveActorId(GameObject actor)
+        {
+            if (actor == null)
+            {
+                return string.Empty;
+            }
+
+            CharacterSystemCoordinator character = actor.GetComponentInParent<CharacterSystemCoordinator>();
+            if (character != null && !string.IsNullOrWhiteSpace(character.ActorId))
+            {
+                return character.ActorId;
+            }
+
+            WorldEntityIdentity identity = actor.GetComponentInParent<WorldEntityIdentity>();
+            return identity == null ? string.Empty : identity.EntityId;
         }
     }
 }

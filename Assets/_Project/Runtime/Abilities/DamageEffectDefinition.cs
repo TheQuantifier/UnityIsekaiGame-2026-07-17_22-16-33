@@ -1,7 +1,10 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.ResourceSystem;
+using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Abilities
 {
@@ -43,9 +46,9 @@ namespace UnityIsekaiGame.Abilities
                 return EffectExecutionResult.Failure(EffectExecutionStatus.UnsupportedTarget, $"{DisplayName} requires a source with attack power.");
             }
 
-            return context.Target.GetComponentInParent<IDamageable>() == null
-                ? EffectExecutionResult.Failure(EffectExecutionStatus.UnsupportedTarget, $"{context.Target.name} cannot take damage.")
-                : EffectExecutionResult.Success($"{DisplayName} can damage target.");
+            return CanUseDamagePipeline(in context) || context.Target.GetComponentInParent<IDamageable>() != null
+                ? EffectExecutionResult.Success($"{DisplayName} can damage target.")
+                : EffectExecutionResult.Failure(EffectExecutionStatus.UnsupportedTarget, $"{context.Target.name} cannot take damage.");
         }
 
         public override EffectExecutionResult Execute(in EffectExecutionContext context)
@@ -56,12 +59,74 @@ namespace UnityIsekaiGame.Abilities
                 return canExecute;
             }
 
+            if (TryExecuteDamagePipeline(in context, out EffectExecutionResult pipelineResult))
+            {
+                return pipelineResult;
+            }
+
             DamagePacket packet = CreateDamagePacket(in context, out float amount);
             DamageInfo damageInfo = new DamageInfo(amount, context.Source, context.TargetPosition, context.Direction, damageType, packet);
             DamageResult damageResult = context.Target.GetComponentInParent<IDamageable>().ApplyDamage(in damageInfo);
             return damageResult.Applied
                 ? EffectExecutionResult.Success(damageResult.Message, damageResult.AppliedAmount)
                 : EffectExecutionResult.Failure(EffectExecutionStatus.BlockedOrImmune, damageResult.Message);
+        }
+
+        private bool CanUseDamagePipeline(in EffectExecutionContext context)
+        {
+            if (typedDamageType == null || typedComponents != null && typedComponents.Length > 0)
+            {
+                return false;
+            }
+
+            return context.Target.GetComponentInParent<CharacterResourceCollection>() != null
+                && !string.IsNullOrWhiteSpace(ResolveActorId(context.Target));
+        }
+
+        private bool TryExecuteDamagePipeline(in EffectExecutionContext context, out EffectExecutionResult result)
+        {
+            result = default;
+            if (!CanUseDamagePipeline(in context))
+            {
+                return false;
+            }
+
+            float scaledBaseAmount = baseAmount * Mathf.Max(0f, context.MagnitudeMultiplier);
+            float amount = CombatStatUtility.CalculatePreMitigationDamage(scaledBaseAmount, context.Source, attackPowerScaling);
+            DamageHealingService service = new DamageHealingService();
+            DamageApplicationRequest request = new DamageApplicationRequest(
+                string.Empty,
+                ResolveActorId(context.Source),
+                context.Source,
+                ResolveActorId(context.Target),
+                context.Target,
+                typedDamageType,
+                amount,
+                DisplayName);
+            DamageApplicationResult damageResult = service.ApplyDamage(request);
+            result = damageResult.Succeeded && damageResult.HealthChanged
+                ? EffectExecutionResult.Success(damageResult.Message, damageResult.FinalDamageAmount)
+                : damageResult.Succeeded
+                    ? EffectExecutionResult.Failure(EffectExecutionStatus.BlockedOrImmune, damageResult.Message)
+                    : EffectExecutionResult.Failure(EffectExecutionStatus.UnsupportedTarget, damageResult.Message);
+            return true;
+        }
+
+        private static string ResolveActorId(GameObject actor)
+        {
+            if (actor == null)
+            {
+                return string.Empty;
+            }
+
+            CharacterSystemCoordinator character = actor.GetComponentInParent<CharacterSystemCoordinator>();
+            if (character != null && !string.IsNullOrWhiteSpace(character.ActorId))
+            {
+                return character.ActorId;
+            }
+
+            WorldEntityIdentity identity = actor.GetComponentInParent<WorldEntityIdentity>();
+            return identity == null ? string.Empty : identity.EntityId;
         }
 
         public override void ValidateDefinition(UnityIsekaiGame.GameData.DefinitionValidationReport report)

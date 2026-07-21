@@ -10,23 +10,23 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 955727b101414908a1c0dfe2fc956909, type: 3}
-  m_Name: BluntDamage
+  m_Name: HolyDamage
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Combat.DamageTypeDefinition
-  damageTypeId: damage.physical.blunt
-  displayName: Blunt
-  description: Impact physical damage.
+  damageTypeId: damage.magic.holy
+  displayName: Holy
+  description: Sacred or cleansing magical damage.
   icon: {fileID: 0}
-  primaryCategory: {fileID: 11400000, guid: 17f5e1e3a84f4a12865446ca875b0474, type: 2}
+  primaryCategory: {fileID: 11400000, guid: b9ee7e9488964bdd826ae3ae8f36e6ce, type: 2}
   tags:
-  - {fileID: 11400000, guid: 62c90b192cb1406ba17cdd6ff6a23cd4, type: 2}
+  - {fileID: 11400000, guid: eac27d0065b44f969205af5ca702cbe7, type: 2}
   - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
-  parentDamageType: {fileID: 11400000, guid: b5e0014699c74ca5b54041aa6e7f12a7, type: 2}
-  family: 0
-  generalDefenseApplies: 1
+  parentDamageType: {fileID: 11400000, guid: f5f2088bf5b5474b8ce0dfca18ff2550, type: 2}
+  family: 3
+  generalDefenseApplies: 0
   enforceMinimumDamage: 1
   minimumDamage: 1
   trueDamage: 0
   canonicalAlphaDamageType: 1
-  resistanceCapabilityId: capability.damage-resistance.physical-blunt
-  immunityCapabilityId: capability.damage-immunity.physical-blunt
-  presentationNotes: Prototype enemy melee impact damage.
+  resistanceCapabilityId: capability.damage-resistance.magic-holy
+  immunityCapabilityId: capability.damage-immunity.magic-holy
+  presentationNotes: Canonical alpha holy damage.

@@ -1088,6 +1088,62 @@ namespace UnityIsekaiGame.Development
             return Record(result.Applied, "Apply Typed Damage", result.Applied ? "Applied" : "Failed", result.Message);
         }
 
+        public PrototypeTestLabOperation PreviewPipelineDamage(DamageTypeDefinition damageType, float amount, bool targetPlayer)
+        {
+            if (damageType == null)
+            {
+                return RecordFailure("Preview 6.1 Damage", "No damage type selected.", "MissingDefinition");
+            }
+
+            DamageApplicationRequest request = CreatePipelineDamageRequest(damageType, amount, targetPlayer, string.Empty);
+            DamageApplicationResult result = new DamageHealingService().PreviewDamage(request);
+            string message = result.Succeeded
+                ? $"{damageType.DisplayName}: requested {result.RequestedAmount:0.###}, defense {result.DefenseApplied:0.###}, resistance {result.ResistanceFraction:0.###}, final {result.FinalDamageAmount:0.###}, Health {result.OldHealth:0.###}->{result.NewHealth:0.###}."
+                : result.Message;
+            return Record(result.Succeeded, "Preview 6.1 Damage", result.Code, message);
+        }
+
+        public PrototypeTestLabOperation ApplyPipelineDamage(DamageTypeDefinition damageType, float amount, bool targetPlayer)
+        {
+            if (damageType == null)
+            {
+                return RecordFailure("Apply 6.1 Damage", "No damage type selected.", "MissingDefinition");
+            }
+
+            DamageApplicationRequest request = CreatePipelineDamageRequest(damageType, amount, targetPlayer, $"development.damage-healing.{Guid.NewGuid():N}");
+            DamageApplicationResult result = new DamageHealingService().ApplyDamage(request);
+            string message = result.Succeeded
+                ? $"{damageType.DisplayName}: final {result.FinalDamageAmount:0.###}, Health {result.OldHealth:0.###}->{result.NewHealth:0.###}, Changed={result.HealthChanged}, Immune={result.Immune}, Duplicate={result.Duplicate}."
+                : result.Message;
+            return Record(result.Succeeded, "Apply 6.1 Damage", result.Code, message);
+        }
+
+        public PrototypeTestLabOperation ApplyPipelineHealing(float amount, bool targetPlayer)
+        {
+            HealingApplicationRequest request = CreatePipelineHealingRequest(amount, targetPlayer, $"development.damage-healing.{Guid.NewGuid():N}");
+            HealingApplicationResult result = new DamageHealingService().ApplyHealing(request);
+            string message = result.Succeeded
+                ? $"Healing final {result.FinalHealingAmount:0.###}, overheal {result.OverhealAmount:0.###}, Health {result.OldHealth:0.###}->{result.NewHealth:0.###}, Changed={result.HealthChanged}, Duplicate={result.Duplicate}."
+                : result.Message;
+            return Record(result.Succeeded, "Apply 6.1 Healing", result.Code, message);
+        }
+
+        public PrototypeTestLabOperation ProvePipelineDuplicate(DamageTypeDefinition damageType, float amount)
+        {
+            if (damageType == null)
+            {
+                return RecordFailure("6.1 Duplicate Proof", "No damage type selected.", "MissingDefinition");
+            }
+
+            string transactionId = $"development.damage-healing.duplicate.{Guid.NewGuid():N}";
+            DamageHealingService service = new DamageHealingService();
+            DamageApplicationResult first = service.ApplyDamage(CreatePipelineDamageRequest(damageType, amount, targetPlayer: true, transactionId: transactionId));
+            DamageApplicationResult second = service.ApplyDamage(CreatePipelineDamageRequest(damageType, amount, targetPlayer: true, transactionId: transactionId));
+            bool succeeded = first.Succeeded && second.Succeeded && second.Duplicate && !second.HealthChanged;
+            string message = $"First={first.Code} changed={first.HealthChanged}; second={second.Code} duplicate={second.Duplicate} changed={second.HealthChanged}.";
+            return Record(succeeded, "6.1 Duplicate Proof", succeeded ? "DuplicateProtected" : "UnexpectedResult", message);
+        }
+
         public PrototypeTestLabOperation ResetEnemy()
         {
             context?.EnemyAttack?.ResetCooldown();
@@ -1095,6 +1151,52 @@ namespace UnityIsekaiGame.Development
             context?.EnemyStatuses?.ClearTemporaryStatuses();
             context?.EnemyHealth?.ResetToMaximum();
             return RecordSuccess("Reset Enemy", "Enemy health, cooldown, controller state, and temporary statuses reset.");
+        }
+
+        private DamageApplicationRequest CreatePipelineDamageRequest(DamageTypeDefinition damageType, float amount, bool targetPlayer, string transactionId)
+        {
+            GameObject source = targetPlayer ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
+            GameObject target = targetPlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            return new DamageApplicationRequest(
+                transactionId,
+                ResolveActorId(source),
+                source,
+                ResolveActorId(target),
+                target,
+                damageType,
+                Mathf.Max(0f, amount),
+                "Prototype Test Lab");
+        }
+
+        private HealingApplicationRequest CreatePipelineHealingRequest(float amount, bool targetPlayer, string transactionId)
+        {
+            GameObject source = context?.PlayerTransform?.gameObject;
+            GameObject target = targetPlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            return new HealingApplicationRequest(
+                transactionId,
+                ResolveActorId(source),
+                source,
+                ResolveActorId(target),
+                target,
+                Mathf.Max(0f, amount),
+                "Prototype Test Lab");
+        }
+
+        private static string ResolveActorId(GameObject actor)
+        {
+            if (actor == null)
+            {
+                return string.Empty;
+            }
+
+            CharacterSystemCoordinator character = actor.GetComponentInParent<CharacterSystemCoordinator>();
+            if (character != null && !string.IsNullOrWhiteSpace(character.ActorId))
+            {
+                return character.ActorId;
+            }
+
+            WorldEntityIdentity identity = actor.GetComponentInParent<WorldEntityIdentity>();
+            return identity == null ? string.Empty : identity.EntityId;
         }
 
         public PrototypeTestLabOperation DefeatEnemy(DamageTypeDefinition damageType)

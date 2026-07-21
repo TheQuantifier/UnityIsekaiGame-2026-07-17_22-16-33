@@ -25,4 +25,8 @@ MonoBehaviour:
   generalDefenseApplies: 0
   enforceMinimumDamage: 1
   minimumDamage: 1
+  trueDamage: 0
+  canonicalAlphaDamageType: 0
+  resistanceCapabilityId: capability.damage-resistance.magic
+  immunityCapabilityId: capability.damage-immunity.magic
   presentationNotes: Prototype parent type for magical attacks.

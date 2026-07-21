@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 955727b101414908a1c0dfe2fc956909, type: 3}
-  m_Name: BluntDamage
+  m_Name: PiercingDamage
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Combat.DamageTypeDefinition
-  damageTypeId: damage.physical.blunt
-  displayName: Blunt
-  description: Impact physical damage.
+  damageTypeId: damage.physical.piercing
+  displayName: Piercing
+  description: Focused physical puncture damage.
   icon: {fileID: 0}
   primaryCategory: {fileID: 11400000, guid: 17f5e1e3a84f4a12865446ca875b0474, type: 2}
   tags:
@@ -27,6 +27,6 @@ MonoBehaviour:
   minimumDamage: 1
   trueDamage: 0
   canonicalAlphaDamageType: 1
-  resistanceCapabilityId: capability.damage-resistance.physical-blunt
-  immunityCapabilityId: capability.damage-immunity.physical-blunt
-  presentationNotes: Prototype enemy melee impact damage.
+  resistanceCapabilityId: capability.damage-resistance.physical-piercing
+  immunityCapabilityId: capability.damage-immunity.physical-piercing
+  presentationNotes: Canonical alpha piercing damage for spears, arrows, and thrusts.

@@ -53,6 +53,7 @@ namespace UnityIsekaiGame.Development
         private InputField quantityInput;
         private InputField amountInput;
         private Text overviewText;
+        private Text latestOperationText;
         private Text diagnosticsText;
         private Text historyText;
         private Text locationText;
@@ -212,6 +213,7 @@ namespace UnityIsekaiGame.Development
             }
 
             UpdateSelectorLabels();
+            UpdateLatestOperation();
             UpdateHistory();
             UpdateSectionButtonStates();
         }
@@ -245,6 +247,8 @@ namespace UnityIsekaiGame.Development
             AddHeader(layoutRoot.transform, font, "Development Actions - Editor/Development Builds Only");
             AddSectionTabs(layoutRoot.transform, font);
             bodyScrollRect = AddBodyScroll(layoutRoot.transform);
+            latestOperationText = AddText(layoutRoot.transform, font, "Last Result: No operations yet.", 12, 44);
+            latestOperationText.color = new Color(0.86f, 0.92f, 0.96f, 1f);
 
             Transform content = bodyScrollRect.content;
             Transform overviewSection = AddSection(content, "Overview Section");
@@ -455,6 +459,11 @@ namespace UnityIsekaiGame.Development
         private void BuildCombatSection(Transform parent, Font font)
         {
             AddButtonRow(parent, font,
+                ("Preview 6.1", () => service.PreviewPipelineDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetPlayer: true)),
+                ("Damage 6.1", () => service.ApplyPipelineDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetPlayer: true)),
+                ("Heal 6.1", () => service.ApplyPipelineHealing(GetFloat(amountInput, 25f), targetPlayer: true)),
+                ("Duplicate 6.1", () => service.ProvePipelineDuplicate(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f))));
+            AddButtonRow(parent, font,
                 ("Damage Enemy", () => service.ApplyTypedDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetEnemy: true, sourcePlayer: true)),
                 ("Damage Player", () => service.ApplyTypedDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetEnemy: false, sourcePlayer: false)),
                 ("Defeat Enemy", () => service.DefeatEnemy(GetSelected(damageTypes, selectedDamageIndex))),
@@ -618,6 +627,24 @@ namespace UnityIsekaiGame.Development
             }
 
             historyText.text = builder.Length == 0 ? "No operations yet." : builder.ToString().TrimEnd();
+        }
+
+        private void UpdateLatestOperation()
+        {
+            if (latestOperationText == null)
+            {
+                return;
+            }
+
+            if (service == null || service.History.Count == 0)
+            {
+                latestOperationText.text = "Last Result: No operations yet.";
+                return;
+            }
+
+            PrototypeTestLabOperation operation = service.History[0];
+            string status = operation.Succeeded ? "OK" : "FAIL";
+            latestOperationText.text = $"Last Result: {status} {operation.OperationName} [{operation.Code}] {operation.Message}";
         }
 
         private void RunDiagnostics()
