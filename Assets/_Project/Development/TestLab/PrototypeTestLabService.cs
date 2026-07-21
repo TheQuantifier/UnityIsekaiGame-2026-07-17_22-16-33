@@ -42,6 +42,7 @@ namespace UnityIsekaiGame.Development
         private readonly List<PrototypeTestLabOperation> history = new List<PrototypeTestLabOperation>();
         private readonly HashSet<string> pendingConfirmations = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<Type, List<IGameDefinition>> selectorCache = new Dictionary<Type, List<IGameDefinition>>();
+        private readonly AttackResolutionService attackResolutionService = new AttackResolutionService();
         private PrototypeTestLabContext context;
         private DefinitionRegistry registry;
         private int historyLimit = DefaultHistoryLimit;
@@ -50,6 +51,7 @@ namespace UnityIsekaiGame.Development
         private string lastDestroyedWorldEntityId;
         private ItemDefinition lastDestroyedWorldEntityItem;
         private string lastWorldEntityOperationMessage;
+        private string lastAttackTransactionId;
 
         public event Action HistoryChanged;
 
@@ -1144,6 +1146,49 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "6.1 Duplicate Proof", succeeded ? "DuplicateProtected" : "UnexpectedResult", message);
         }
 
+        public PrototypeTestLabOperation GenerateAttackTransaction()
+        {
+            lastAttackTransactionId = AttackDeterministicRoll.NewTransactionId("development.attack-resolution");
+            return RecordSuccess("Generate 6.2 Attack Transaction", $"Attack transaction ID: {lastAttackTransactionId}");
+        }
+
+        public PrototypeTestLabOperation PreviewAttackResolution(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float criticalChance, float criticalRoll, float criticalMultiplier, float distance, float maximumRange, bool targetEnemy, bool sourcePlayer)
+        {
+            AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, amount, baseHitChance, hitRoll, criticalChance, criticalRoll, criticalMultiplier, distance, maximumRange, targetEnemy, sourcePlayer, transactionId: ResolveAttackTransactionId(reuse: false));
+            AttackResolutionResult result = attackResolutionService.PreviewAttack(request);
+            return Record(result.Succeeded, "Preview 6.2 Attack", result.Code, FormatAttackResolution(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteAttackResolution(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float criticalChance, float criticalRoll, float criticalMultiplier, float distance, float maximumRange, bool targetEnemy, bool sourcePlayer, bool reuseTransaction)
+        {
+            AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, amount, baseHitChance, hitRoll, criticalChance, criticalRoll, criticalMultiplier, distance, maximumRange, targetEnemy, sourcePlayer, ResolveAttackTransactionId(reuseTransaction));
+            AttackResolutionResult result = attackResolutionService.ExecuteAttack(request);
+            return Record(result.Succeeded, reuseTransaction ? "Execute 6.2 Attack Reuse" : "Execute 6.2 Attack", result.Code, FormatAttackResolution(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteEnvironmentalAttack(DamageTypeDefinition damageType, float amount, float hitRoll)
+        {
+            AttackResolutionRequest request = new AttackResolutionRequest(
+                ResolveAttackTransactionId(reuse: false),
+                AttackSourceType.Environmental,
+                null,
+                string.Empty,
+                context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject,
+                ResolveActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject),
+                damageType,
+                Mathf.Max(0f, amount),
+                hitRoll,
+                0.5f,
+                baseHitChance: 0.95f,
+                criticalChance: 0f,
+                criticalMultiplier: AttackResolutionRequest.DefaultCriticalMultiplier,
+                hasSuppliedDistance: false,
+                hasMaximumRange: false,
+                originatingActionId: "development.environmental-test");
+            AttackResolutionResult result = attackResolutionService.ExecuteAttack(request);
+            return Record(result.Succeeded, "Environmental 6.2 Attack", result.Code, FormatAttackResolution(result));
+        }
+
         public PrototypeTestLabOperation ResetEnemy()
         {
             context?.EnemyAttack?.ResetCooldown();
@@ -1166,6 +1211,97 @@ namespace UnityIsekaiGame.Development
                 damageType,
                 Mathf.Max(0f, amount),
                 "Prototype Test Lab");
+        }
+
+        private AttackResolutionRequest CreateAttackResolutionRequest(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float criticalChance, float criticalRoll, float criticalMultiplier, float distance, float maximumRange, bool targetEnemy, bool sourcePlayer, string transactionId)
+        {
+            GameObject source = sourcePlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            GameObject target = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
+            EnsureAttackResolutionRuntime(source, needsResource: false);
+            EnsureAttackResolutionRuntime(target, needsResource: true);
+            return new AttackResolutionRequest(
+                transactionId,
+                sourcePlayer ? AttackSourceType.Weapon : AttackSourceType.Unarmed,
+                source,
+                ResolveActorId(source),
+                target,
+                ResolveActorId(target),
+                damageType,
+                Mathf.Max(0f, amount),
+                hitRoll,
+                criticalRoll,
+                Mathf.Clamp01(baseHitChance),
+                Mathf.Clamp01(criticalChance),
+                Mathf.Max(1f, criticalMultiplier),
+                hasSuppliedDistance: distance >= 0f,
+                suppliedDistance: Mathf.Max(0f, distance),
+                hasMaximumRange: maximumRange >= 0f,
+                maximumRange: Mathf.Max(0f, maximumRange),
+                originatingActionId: "development.attack-resolution-test");
+        }
+
+        private void EnsureAttackResolutionRuntime(GameObject actor, bool needsResource)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            WorldEntityIdentity identity = actor.GetComponentInParent<WorldEntityIdentity>();
+            if (identity == null)
+            {
+                identity = actor.AddComponent<WorldEntityIdentity>();
+                identity.TryInitializeRuntime($"entity.local-world.runtime.attack-test-lab.{Guid.NewGuid():N}", "scene.prototype", PersistenceService.LocalWorldId, PersistenceScope.RegionOrScene, "development.attack-resolution", out _);
+            }
+
+            CharacterAttributes attributes = actor.GetComponentInParent<CharacterAttributes>();
+            if (attributes == null)
+            {
+                attributes = actor.AddComponent<CharacterAttributes>();
+            }
+
+            CalculatedStatCollection stats = actor.GetComponentInParent<CalculatedStatCollection>();
+            if (stats == null)
+            {
+                stats = actor.AddComponent<CalculatedStatCollection>();
+            }
+
+            attributes.Configure(registry);
+            stats.Configure(registry, attributes);
+            if (needsResource)
+            {
+                CharacterResourceCollection resources = actor.GetComponentInParent<CharacterResourceCollection>();
+                if (resources == null)
+                {
+                    resources = actor.AddComponent<CharacterResourceCollection>();
+                }
+
+                resources.Configure(registry, stats, PersistenceService.LocalPlayerId);
+            }
+        }
+
+        private string ResolveAttackTransactionId(bool reuse)
+        {
+            if (reuse && !string.IsNullOrWhiteSpace(lastAttackTransactionId))
+            {
+                return lastAttackTransactionId;
+            }
+
+            lastAttackTransactionId = AttackDeterministicRoll.NewTransactionId("development.attack-resolution");
+            return lastAttackTransactionId;
+        }
+
+        private static string FormatAttackResolution(AttackResolutionResult result)
+        {
+            if (result == null)
+            {
+                return "Attack result is missing.";
+            }
+
+            string damage = result.DamageResult == null
+                ? "Damage=None"
+                : $"Damage={result.DamageResult.Code} final={result.DamageResult.FinalDamageAmount:0.###} Health={result.DamageResult.OldHealth:0.###}->{result.DamageResult.NewHealth:0.###}";
+            return $"{result.Outcome} hitChance={result.FinalHitChance:0.###} roll={result.HitRoll:0.###} crit={result.Critical} critRoll={result.CriticalRoll:0.###} dmgAfterCrit={result.DamageAfterCritical:0.###} duplicate={result.Duplicate} {damage}. {result.Message}";
         }
 
         private HealingApplicationRequest CreatePipelineHealingRequest(float amount, bool targetPlayer, string transactionId)
