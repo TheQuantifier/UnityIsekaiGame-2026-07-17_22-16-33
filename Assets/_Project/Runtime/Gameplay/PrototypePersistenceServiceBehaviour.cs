@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
@@ -60,6 +61,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerTraits = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
+        [SerializeField] private bool registerPlayerCombatExecution = true;
         [SerializeField] private bool registerPlayerActorLifecycle = true;
         [SerializeField] private bool registerPlayerOngoingEffects = true;
         [SerializeField] private bool registerPlayerQuestContract = true;
@@ -82,11 +84,13 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
+        private PlayerCombatExecutionPersistenceParticipant playerCombatExecutionParticipant;
         private PlayerActorLifecyclePersistenceParticipant playerActorLifecycleParticipant;
         private PlayerOngoingEffectsPersistenceParticipant playerOngoingEffectsParticipant;
         private PlayerQuestContractPersistenceParticipant questContractParticipant;
         private PlayerLocationPersistenceParticipant playerLocationParticipant;
         private DefinitionRegistry definitionRegistry;
+        private CombatExecutionService combatExecutionService;
         private bool dirtyEventsSubscribed;
 
         public PersistenceService Service => service;
@@ -98,6 +102,7 @@ namespace UnityIsekaiGame.Gameplay
         public GameSaveDirtyTracker DirtyTracker => dirtyTracker;
         public AutosaveCoordinator Autosave => autosaveCoordinator;
         public DefinitionCatalog DefinitionCatalog => definitionCatalog;
+        public CombatExecutionService CombatExecution => combatExecutionService ??= new CombatExecutionService();
 
         private void Awake()
         {
@@ -158,6 +163,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(playerActorLifecycleParticipant);
                 playerActorLifecycleParticipant = null;
+            }
+
+            if (service != null && playerCombatExecutionParticipant != null)
+            {
+                service.UnregisterParticipant(playerCombatExecutionParticipant);
+                playerCombatExecutionParticipant = null;
             }
 
             if (service != null && playerOngoingEffectsParticipant != null)
@@ -247,6 +258,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
             EnsurePlayerActorLifecycleParticipant();
+            EnsurePlayerCombatExecutionParticipant();
             EnsurePlayerOngoingEffectsParticipant();
             EnsurePlayerQuestContractParticipant();
             EnsurePlayerLocationParticipant();
@@ -1002,6 +1014,26 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsurePlayerCombatExecutionParticipant()
+        {
+            if (!registerPlayerCombatExecution || playerCombatExecutionParticipant != null)
+            {
+                return;
+            }
+
+            playerCombatExecutionParticipant = new PlayerCombatExecutionPersistenceParticipant(
+                CombatExecution,
+                service.PlayerId,
+                () => playerIdentityProgression == null ? string.Empty : playerIdentityProgression.PersonId);
+
+            service.RegisterParticipant(playerCombatExecutionParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerCombatExecutionParticipant = null;
+            }
+        }
+
         private void EnsurePlayerOngoingEffectsParticipant()
         {
             if (!registerPlayerOngoingEffects || playerOngoingEffectsParticipant != null)
@@ -1245,6 +1277,13 @@ namespace UnityIsekaiGame.Gameplay
                 playerActorLifecycle.ActorRevived += OnActorLifecycleChanged;
             }
 
+            if (combatExecutionService != null)
+            {
+                combatExecutionService.CombatExecutionCommitted += OnCombatExecutionCommitted;
+                combatExecutionService.CooldownChanged += OnCombatExecutionChanged;
+                combatExecutionService.ExecutionCompleted += OnCombatExecutionChanged;
+            }
+
             if (playerOngoingEffects != null)
             {
                 playerOngoingEffects.OngoingEffectApplied += OnOngoingEffectApplicationChanged;
@@ -1356,6 +1395,13 @@ namespace UnityIsekaiGame.Gameplay
                 playerActorLifecycle.ActorRevived -= OnActorLifecycleChanged;
             }
 
+            if (combatExecutionService != null)
+            {
+                combatExecutionService.CombatExecutionCommitted -= OnCombatExecutionCommitted;
+                combatExecutionService.CooldownChanged -= OnCombatExecutionChanged;
+                combatExecutionService.ExecutionCompleted -= OnCombatExecutionChanged;
+            }
+
             if (playerOngoingEffects != null)
             {
                 playerOngoingEffects.OngoingEffectApplied -= OnOngoingEffectApplicationChanged;
@@ -1459,6 +1505,26 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             dirtyTracker?.MarkDirty("Player actor lifecycle changed.");
+        }
+
+        private void OnCombatExecutionCommitted(CombatExecutionCommitted committed)
+        {
+            if (committed == null)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player combat execution changed.");
+        }
+
+        private void OnCombatExecutionChanged(CombatExecutionResult result)
+        {
+            if (result == null || result.Preview || result.Duplicate)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player combat execution changed.");
         }
 
         private void OnOngoingEffectApplicationChanged(OngoingEffectApplicationResult result)
