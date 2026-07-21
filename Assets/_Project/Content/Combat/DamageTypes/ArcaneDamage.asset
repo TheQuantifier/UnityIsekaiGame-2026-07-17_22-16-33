@@ -27,4 +27,8 @@ MonoBehaviour:
   generalDefenseApplies: 0
   enforceMinimumDamage: 1
   minimumDamage: 1
+  trueDamage: 0
+  canonicalAlphaDamageType: 1
+  resistanceCapabilityId: capability.damage-resistance.magic-arcane
+  immunityCapabilityId: capability.damage-immunity.magic-arcane
   presentationNotes: Prototype Arcane Bolt and Heavy Arcane Bolt damage.

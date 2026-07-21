@@ -7,6 +7,7 @@ namespace UnityIsekaiGame.Combat
         Elemental,
         Spiritual,
         Toxin,
-        Prototype
+        Prototype,
+        True
     }
 }

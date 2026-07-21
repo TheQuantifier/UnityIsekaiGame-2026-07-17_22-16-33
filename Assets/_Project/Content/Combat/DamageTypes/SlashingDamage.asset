@@ -26,4 +26,8 @@ MonoBehaviour:
   generalDefenseApplies: 1
   enforceMinimumDamage: 1
   minimumDamage: 1
+  trueDamage: 0
+  canonicalAlphaDamageType: 1
+  resistanceCapabilityId: capability.damage-resistance.physical-slashing
+  immunityCapabilityId: capability.damage-immunity.physical-slashing
   presentationNotes: Prototype sword and melee cutting damage.

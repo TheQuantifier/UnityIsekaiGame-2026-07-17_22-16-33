@@ -1,6 +1,10 @@
 using UnityEngine;
 using UnityIsekaiGame.Abilities;
+using UnityIsekaiGame.CharacterSystem;
+using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.ResourceSystem;
+using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Inventory
 {
@@ -27,6 +31,13 @@ namespace UnityIsekaiGame.Inventory
             }
 
             PlayerHealth health = FindHealth(context.User);
+            if (health == null && CanUseHealingPipeline(context.User))
+            {
+                HealingApplicationResult preview = new DamageHealingService().PreviewHealing(CreateHealingRequest(context.User, healingAmount, string.Empty));
+                failureReason = preview.Succeeded && preview.FinalHealingAmount <= CharacterResourceCollection.Epsilon ? "Health is already full." : preview.Message;
+                return preview.Succeeded && preview.FinalHealingAmount > CharacterResourceCollection.Epsilon;
+            }
+
             if (health == null)
             {
                 failureReason = "No player health component found.";
@@ -53,6 +64,13 @@ namespace UnityIsekaiGame.Inventory
             }
 
             PlayerHealth health = FindHealth(context.User);
+            if (health == null && CanUseHealingPipeline(context.User))
+            {
+                HealingApplicationResult result = new DamageHealingService().ApplyHealing(CreateHealingRequest(context.User, healingAmount, context.Item == null ? "Item healing" : context.Item.Id));
+                Debug.Log(result.Message);
+                return;
+            }
+
             if (health == null)
             {
                 return;
@@ -84,6 +102,42 @@ namespace UnityIsekaiGame.Inventory
 
             PlayerHealth health = user.GetComponentInParent<PlayerHealth>();
             return health != null ? health : user.GetComponentInChildren<PlayerHealth>();
+        }
+
+        private static bool CanUseHealingPipeline(GameObject target)
+        {
+            return target != null
+                && target.GetComponentInParent<CharacterResourceCollection>() != null
+                && !string.IsNullOrWhiteSpace(ResolveActorId(target));
+        }
+
+        private static HealingApplicationRequest CreateHealingRequest(GameObject target, float restoreAmount, string reason)
+        {
+            return new HealingApplicationRequest(
+                string.Empty,
+                ResolveActorId(target),
+                target,
+                ResolveActorId(target),
+                target,
+                restoreAmount,
+                reason);
+        }
+
+        private static string ResolveActorId(GameObject actor)
+        {
+            if (actor == null)
+            {
+                return string.Empty;
+            }
+
+            CharacterSystemCoordinator character = actor.GetComponentInParent<CharacterSystemCoordinator>();
+            if (character != null && !string.IsNullOrWhiteSpace(character.ActorId))
+            {
+                return character.ActorId;
+            }
+
+            WorldEntityIdentity identity = actor.GetComponentInParent<WorldEntityIdentity>();
+            return identity == null ? string.Empty : identity.EntityId;
         }
     }
 }
