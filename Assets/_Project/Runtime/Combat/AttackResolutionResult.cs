@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityIsekaiGame.Combat.Defense;
 
 namespace UnityIsekaiGame.Combat
 {
@@ -33,7 +34,8 @@ namespace UnityIsekaiGame.Combat
             bool requirementPassed,
             string requirementSummary,
             IReadOnlyList<string> requirementFailureReasons,
-            DamageApplicationResult damageResult)
+            DamageApplicationResult damageResult,
+            DefenseResolutionResult defenseResult)
         {
             Succeeded = succeeded;
             Preview = preview;
@@ -67,6 +69,7 @@ namespace UnityIsekaiGame.Combat
             RequirementSummary = requirementSummary ?? string.Empty;
             RequirementFailureReasons = requirementFailureReasons == null ? Array.Empty<string>() : new List<string>(requirementFailureReasons);
             DamageResult = damageResult;
+            DefenseResult = defenseResult;
         }
 
         public bool Succeeded { get; }
@@ -111,8 +114,9 @@ namespace UnityIsekaiGame.Combat
         public string RequirementSummary { get; }
         public IReadOnlyList<string> RequirementFailureReasons { get; }
         public DamageApplicationResult DamageResult { get; }
+        public DefenseResolutionResult DefenseResult { get; }
         public bool DamagePipelineSucceeded => DamageResult == null || DamageResult.Succeeded;
-        public bool DamagePrevented => DamageResult != null && DamageResult.Succeeded && DamageResult.FinalDamageAmount <= UnityIsekaiGame.ResourceSystem.CharacterResourceCollection.Epsilon;
+        public bool DamagePrevented => DefenseResult != null && DefenseResult.DamageFullyPrevented || DamageResult != null && DamageResult.Succeeded && DamageResult.FinalDamageAmount <= UnityIsekaiGame.ResourceSystem.CharacterResourceCollection.Epsilon;
         public bool DamageApplied => DamageResult != null && DamageResult.HealthChanged;
         public bool DamageDuplicate => DamageResult != null && DamageResult.Duplicate;
 
@@ -139,7 +143,8 @@ namespace UnityIsekaiGame.Combat
             bool requirementPassed,
             string requirementSummary,
             IReadOnlyList<string> requirementFailureReasons,
-            DamageApplicationResult damageResult)
+            DamageApplicationResult damageResult,
+            DefenseResolutionResult defenseResult = null)
         {
             bool succeeded = (outcome == AttackOutcome.Miss || outcome == AttackOutcome.Hit || outcome == AttackOutcome.CriticalHit)
                 && (damageResult == null || damageResult.Succeeded);
@@ -171,7 +176,8 @@ namespace UnityIsekaiGame.Combat
                 requirementPassed,
                 requirementSummary,
                 requirementFailureReasons,
-                damageResult);
+                damageResult,
+                defenseResult);
         }
 
         public AttackResolutionResult AsDuplicate()
@@ -204,7 +210,8 @@ namespace UnityIsekaiGame.Combat
                 RequirementPassed,
                 RequirementSummary,
                 RequirementFailureReasons,
-                DamageResult);
+                DamageResult,
+                DefenseResult);
         }
     }
 }

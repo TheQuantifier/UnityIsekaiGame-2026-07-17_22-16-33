@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.CombatState;
+using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Factions;
@@ -42,6 +43,7 @@ namespace UnityIsekaiGame.Development
             "Skills 5.3",
             "Inventory",
             "Combat",
+            "Defense 6.6",
             "Combat State 6.5",
             "Lifecycle 6.3",
             "Ongoing 6.4",
@@ -82,6 +84,7 @@ namespace UnityIsekaiGame.Development
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
         private Text lifecycleText;
+        private Text defensiveActionsText;
         private Text combatStateText;
         private Text ongoingEffectsText;
         private Text traitsText;
@@ -95,6 +98,7 @@ namespace UnityIsekaiGame.Development
         private Text socialStatusValueText;
         private Text currencyValueText;
         private Text damageValueText;
+        private Text defenseValueText;
         private Text ongoingEffectValueText;
         private Text questValueText;
         private Text contractValueText;
@@ -110,6 +114,7 @@ namespace UnityIsekaiGame.Development
         private int selectedSocialStatusIndex;
         private int selectedCurrencyIndex;
         private int selectedDamageIndex;
+        private int selectedDefenseIndex;
         private int selectedOngoingEffectIndex;
         private int selectedQuestIndex;
         private int selectedContractIndex;
@@ -126,6 +131,7 @@ namespace UnityIsekaiGame.Development
         private readonly List<SocialStatusDefinition> socialStatuses = new List<SocialStatusDefinition>();
         private readonly List<CurrencyDefinition> currencies = new List<CurrencyDefinition>();
         private readonly List<DamageTypeDefinition> damageTypes = new List<DamageTypeDefinition>();
+        private readonly List<DefensiveActionDefinition> defensiveActions = new List<DefensiveActionDefinition>();
         private readonly List<OngoingEffectDefinition> ongoingEffects = new List<OngoingEffectDefinition>();
         private readonly List<QuestDefinition> quests = new List<QuestDefinition>();
         private readonly List<ContractDefinition> contracts = new List<ContractDefinition>();
@@ -235,6 +241,11 @@ namespace UnityIsekaiGame.Development
                 combatStateText.text = service.BuildCombatStateSummary();
             }
 
+            if (defensiveActionsText != null)
+            {
+                defensiveActionsText.text = service.BuildDefensiveActionSummary();
+            }
+
             if (ongoingEffectsText != null)
             {
                 ongoingEffectsText.text = service.BuildOngoingEffectsSummary();
@@ -299,6 +310,7 @@ namespace UnityIsekaiGame.Development
             Transform feature53Section = AddSection(content, "Skills 5.3 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
+            Transform defensiveActionsSection = AddSection(content, "Defensive Actions Section");
             Transform combatStateSection = AddSection(content, "Combat State Section");
             Transform lifecycleSection = AddSection(content, "Lifecycle Section");
             Transform ongoingEffectsSection = AddSection(content, "Ongoing Effects Section");
@@ -320,6 +332,7 @@ namespace UnityIsekaiGame.Development
             BuildFeature53Section(feature53Section, font);
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
+            BuildDefensiveActionsSection(defensiveActionsSection, font);
             BuildCombatStateSection(combatStateSection, font);
             BuildLifecycleSection(lifecycleSection, font);
             BuildOngoingEffectsSection(ongoingEffectsSection, font);
@@ -337,6 +350,7 @@ namespace UnityIsekaiGame.Development
             itemValueText = AddSelectorRow(parent, font, "Item", () => CycleSelection(ref selectedItemIndex, items.Count, -1), () => CycleSelection(ref selectedItemIndex, items.Count, 1));
             statusValueText = AddSelectorRow(parent, font, "Status", () => CycleSelection(ref selectedStatusIndex, statuses.Count, -1), () => CycleSelection(ref selectedStatusIndex, statuses.Count, 1));
             damageValueText = AddSelectorRow(parent, font, "Damage", () => CycleSelection(ref selectedDamageIndex, damageTypes.Count, -1), () => CycleSelection(ref selectedDamageIndex, damageTypes.Count, 1));
+            defenseValueText = AddSelectorRow(parent, font, "Defense", () => CycleSelection(ref selectedDefenseIndex, defensiveActions.Count, -1), () => CycleSelection(ref selectedDefenseIndex, defensiveActions.Count, 1));
             ongoingEffectValueText = AddSelectorRow(parent, font, "Ongoing", () => CycleSelection(ref selectedOngoingEffectIndex, ongoingEffects.Count, -1), () => CycleSelection(ref selectedOngoingEffectIndex, ongoingEffects.Count, 1));
             questValueText = AddSelectorRow(parent, font, "Quest", () => CycleSelection(ref selectedQuestIndex, quests.Count, -1), () => CycleSelection(ref selectedQuestIndex, quests.Count, 1));
             contractValueText = AddSelectorRow(parent, font, "Contract", () => CycleSelection(ref selectedContractIndex, contracts.Count, -1), () => CycleSelection(ref selectedContractIndex, contracts.Count, 1));
@@ -532,6 +546,30 @@ namespace UnityIsekaiGame.Development
                 ("Damage Player", () => service.ApplyTypedDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetEnemy: false, sourcePlayer: false)),
                 ("Defeat Enemy", () => service.DefeatEnemy(GetSelected(damageTypes, selectedDamageIndex))),
                 ("Reset Enemy", () => service.ResetEnemy()));
+        }
+
+        private void BuildDefensiveActionsSection(Transform parent, Font font)
+        {
+            AddHeader(parent, font, "Feature 6.6 Defensive Actions / Reactive Combat");
+            AddButtonRow(parent, font,
+                ("Preview P", () => service.PreviewDefenseActivation(GetSelected(defensiveActions, selectedDefenseIndex), targetPlayer: true)),
+                ("Activate P", () => service.ActivateDefense(GetSelected(defensiveActions, selectedDefenseIndex), targetPlayer: true, reuseTransaction: false)),
+                ("Reuse P", () => service.ActivateDefense(GetSelected(defensiveActions, selectedDefenseIndex), targetPlayer: true, reuseTransaction: true)),
+                ("Cancel P", () => service.CancelDefense(targetPlayer: true)));
+            AddButtonRow(parent, font,
+                ("Preview E", () => service.PreviewDefenseActivation(GetSelected(defensiveActions, selectedDefenseIndex), targetPlayer: false)),
+                ("Activate E", () => service.ActivateDefense(GetSelected(defensiveActions, selectedDefenseIndex), targetPlayer: false, reuseTransaction: false)),
+                ("Reuse E", () => service.ActivateDefense(GetSelected(defensiveActions, selectedDefenseIndex), targetPlayer: false, reuseTransaction: true)),
+                ("Cancel E", () => service.CancelDefense(targetPlayer: false)));
+            AddButtonRow(parent, font,
+                ("Preview E>P", () => service.PreviewDefensiveAttack(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalRollInput, 0.1f), targetPlayer: true)),
+                ("Execute E>P", () => service.ExecuteDefensiveAttack(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalRollInput, 0.1f), targetPlayer: true, reuseTransaction: false)),
+                ("Reuse E>P", () => service.ExecuteDefensiveAttack(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalRollInput, 0.1f), targetPlayer: true, reuseTransaction: true)));
+            AddButtonRow(parent, font,
+                ("Preview P>E", () => service.PreviewDefensiveAttack(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalRollInput, 0.1f), targetPlayer: false)),
+                ("Execute P>E", () => service.ExecuteDefensiveAttack(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalRollInput, 0.1f), targetPlayer: false, reuseTransaction: false)),
+                ("Reuse P>E", () => service.ExecuteDefensiveAttack(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), GetFloat(attackHitChanceInput, 0.75f), GetFloat(attackHitRollInput, 0.1f), GetFloat(attackCriticalRollInput, 0.1f), targetPlayer: false, reuseTransaction: true)));
+            defensiveActionsText = AddText(parent, font, "Defensive actions not available.", 12, 320);
         }
 
         private void BuildCombatStateSection(Transform parent, Font font)
@@ -746,6 +784,7 @@ namespace UnityIsekaiGame.Development
             SetOptions(socialStatuses, service.GetDefinitions<SocialStatusDefinition>(), ref selectedSocialStatusIndex);
             SetOptions(currencies, service.GetDefinitions<CurrencyDefinition>(), ref selectedCurrencyIndex);
             SetOptions(damageTypes, service.GetDefinitions<DamageTypeDefinition>(), ref selectedDamageIndex);
+            SetOptions(defensiveActions, service.GetDefinitions<DefensiveActionDefinition>(), ref selectedDefenseIndex);
             SetOptions(ongoingEffects, service.GetDefinitions<OngoingEffectDefinition>(), ref selectedOngoingEffectIndex);
             SetOptions(quests, service.GetDefinitions<QuestDefinition>(), ref selectedQuestIndex);
             SetOptions(contracts, service.GetDefinitions<ContractDefinition>(), ref selectedContractIndex);
@@ -765,6 +804,7 @@ namespace UnityIsekaiGame.Development
             SetValue(socialStatusValueText, FormatSelected(socialStatuses, selectedSocialStatusIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(currencyValueText, FormatSelected(currencies, selectedCurrencyIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(damageValueText, FormatSelected(damageTypes, selectedDamageIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(defenseValueText, FormatSelected(defensiveActions, selectedDefenseIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(ongoingEffectValueText, FormatSelected(ongoingEffects, selectedOngoingEffectIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(questValueText, FormatSelected(quests, selectedQuestIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(contractValueText, FormatSelected(contracts, selectedContractIndex, PrototypeTestLabService.FormatDefinition));

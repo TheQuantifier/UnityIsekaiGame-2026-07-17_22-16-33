@@ -244,7 +244,7 @@ namespace UnityIsekaiGame.ResourceSystem
             record.currentValue = constrained;
             record.lastKnownMaximum = maximum;
             record.lastChangedAtUtc = DateTime.UtcNow.ToString("O");
-            record.lastChangedAtPlaytimeSeconds = 0d;
+            record.lastChangedAtPlaytimeSeconds = CurrentPlaytimeSeconds;
             record.lastChangeSource = request.SourceId;
             record.lastChangeReason = request.Reason;
             AddLifetime(record, request.Operation, applied);
@@ -685,13 +685,15 @@ namespace UnityIsekaiGame.ResourceSystem
         {
             if (operation == ResourceChangeOperation.Spend && definition.RegenerationDelayAfterSpend > 0f)
             {
-                record.regenerationBlockedUntil = Time.time + definition.RegenerationDelayAfterSpend;
+                record.regenerationBlockedUntil = CurrentPlaytimeSeconds + definition.RegenerationDelayAfterSpend;
             }
             else if (operation == ResourceChangeOperation.Damage && definition.RegenerationDelayAfterDamage > 0f)
             {
-                record.regenerationBlockedUntil = Time.time + definition.RegenerationDelayAfterDamage;
+                record.regenerationBlockedUntil = CurrentPlaytimeSeconds + definition.RegenerationDelayAfterDamage;
             }
         }
+
+        private static float CurrentPlaytimeSeconds => Application.isPlaying ? Time.time : 0f;
 
         private static void AddLifetime(RuntimeResourceRecord record, ResourceChangeOperation operation, float applied)
         {

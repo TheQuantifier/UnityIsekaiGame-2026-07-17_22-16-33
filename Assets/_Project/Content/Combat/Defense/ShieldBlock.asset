@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 66c3a1f27a6b4a1c9be0262fd8660001, type: 3}
+  m_Name: ShieldBlock
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Combat.Defense.DefensiveActionDefinition
+  defensiveActionId: defense-action.shield-block
+  displayName: Shield Block
+  description: A short block window that absorbs a flat amount of blockable damage.
+  actionType: 2
+  activationStaminaCost: 0
+  successStaminaCost: 4
+  failureStaminaCost: 2
+  baseChance: 0.75
+  minimumChance: 0.05
+  maximumChance: 0.95
+  contributingStatId: calculated-stat.physical-defense
+  statContributionScale: 0.25
+  contributingSkillId: 
+  skillContributionScale: 0
+  requiresEquipmentSource: 1
+  requiredEquipmentCategoryId: 
+  requiredEquipmentTagId: tag.shield-compatible
+  timingWindowSeconds: 0.75
+  maintained: 0
+  consumedAfterAttempt: 1
+  reductionMode: 1
+  flatReduction: 20
+  percentageReduction: 0
+  fullPreventionThreshold: 0
+  allowsTrueDamageDefense: 0
+  allowsCriticalDefense: 1
+  applicableDamageTypes: []
+  notes: Prototype shield-style block requiring an equipped shield-compatible item.

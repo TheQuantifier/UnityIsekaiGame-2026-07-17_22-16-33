@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 66c3a1f27a6b4a1c9be0262fd8660001, type: 3}
+  m_Name: BasicDodge
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Combat.Defense.DefensiveActionDefinition
+  defensiveActionId: defense-action.basic-dodge
+  displayName: Basic Dodge
+  description: A short evasive window that fully prevents dodgeable attacks on success.
+  actionType: 4
+  activationStaminaCost: 0
+  successStaminaCost: 8
+  failureStaminaCost: 4
+  baseChance: 0.55
+  minimumChance: 0.05
+  maximumChance: 0.95
+  contributingStatId: calculated-stat.evasion
+  statContributionScale: 0.25
+  contributingSkillId: 
+  skillContributionScale: 0
+  requiresEquipmentSource: 0
+  requiredEquipmentCategoryId: 
+  requiredEquipmentTagId: 
+  timingWindowSeconds: 0.4
+  maintained: 0
+  consumedAfterAttempt: 1
+  reductionMode: 0
+  flatReduction: 0
+  percentageReduction: 0
+  fullPreventionThreshold: 0
+  allowsTrueDamageDefense: 1
+  allowsCriticalDefense: 1
+  applicableDamageTypes: []
+  notes: Prototype dodge.
