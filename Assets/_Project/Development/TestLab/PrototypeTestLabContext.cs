@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
@@ -33,6 +34,7 @@ namespace UnityIsekaiGame.Development
         public CalculatedStatCollection PlayerCalculatedStats;
         public CharacterResourceCollection PlayerResources;
         public ActorLifecycleController PlayerLifecycle;
+        public CombatStateService CombatState;
         public OngoingEffectService PlayerOngoingEffects;
         public CharacterSkillCollection PlayerSkills;
         public CharacterTraitCollection PlayerTraits;

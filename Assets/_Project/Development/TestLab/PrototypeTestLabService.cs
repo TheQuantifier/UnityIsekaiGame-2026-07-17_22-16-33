@@ -7,6 +7,7 @@ using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
@@ -54,9 +55,13 @@ namespace UnityIsekaiGame.Development
         private ItemDefinition lastDestroyedWorldEntityItem;
         private string lastWorldEntityOperationMessage;
         private string lastAttackTransactionId;
+        private string lastCombatStateTransactionId;
+        private string lastCombatStateSplitTransactionId;
         private string lastLifecycleTransactionId;
         private string lastOngoingEffectTransactionId;
+        private float combatStateClockSeconds;
         private float ongoingEffectClockSeconds;
+        private readonly Dictionary<string, GameObject> combatStateTestActors = new Dictionary<string, GameObject>(StringComparer.Ordinal);
 
         public event Action HistoryChanged;
 
@@ -83,6 +88,7 @@ namespace UnityIsekaiGame.Development
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
             EnsureLifecycleRuntime(context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject, ref context.EnemyLifecycle, needsResource: true);
+            EnsureCombatStateRuntime();
             EnsureOngoingEffectRuntime(targetEnemy: false);
             EnsureOngoingEffectRuntime(targetEnemy: true);
             selectorCache.Clear();
@@ -1204,6 +1210,232 @@ namespace UnityIsekaiGame.Development
             return Record(result.Succeeded, "Environmental 6.2 Attack", result.Code, FormatAttackResolution(result));
         }
 
+        public string BuildCombatStateSummary()
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            EnsureCombatStateTestParticipants();
+            string playerId = ResolveCombatStateActorId(GetCombatStateTestActor("A"));
+            string enemyId = ResolveCombatStateActorId(GetCombatStateTestActor("B"));
+            ActorCombatStateSnapshot player = combatState == null ? null : combatState.GetCombatState(playerId);
+            ActorCombatStateSnapshot enemy = combatState == null ? null : combatState.GetCombatState(enemyId);
+            ActorCombatStateSnapshot c = combatState == null ? null : combatState.GetCombatState(ResolveCombatStateActorId(GetCombatStateTestActor("C")));
+            ActorCombatStateSnapshot d = combatState == null ? null : combatState.GetCombatState(ResolveCombatStateActorId(GetCombatStateTestActor("D")));
+            CombatEncounterSnapshot encounter = null;
+            if (combatState != null)
+            {
+                encounter = combatState.GetEncounterForActor(playerId);
+                if (encounter == null)
+                {
+                    encounter = combatState.GetEncounterForActor(enemyId);
+                }
+            }
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Feature 6.5 Combat State",
+                $"Clock: {combatStateClockSeconds:0.###}s Timeout: {(combatState == null ? 10f : combatState.CombatTimeoutSeconds):0.###}s",
+                FormatCombatStateSnapshot("A Player", player),
+                FormatCombatStateSnapshot("B Enemy", enemy),
+                FormatCombatStateSnapshot("C Mock", c),
+                FormatCombatStateSnapshot("D Mock", d),
+                FormatCombatEncounter(encounter),
+                $"Last Combat Tx: {(string.IsNullOrWhiteSpace(lastCombatStateTransactionId) ? "None" : lastCombatStateTransactionId)}",
+                $"Last Split Tx: {(string.IsNullOrWhiteSpace(lastCombatStateSplitTransactionId) ? "None" : lastCombatStateSplitTransactionId)}"
+            });
+        }
+
+        public PrototypeTestLabOperation GenerateCombatStateTransaction()
+        {
+            lastCombatStateTransactionId = $"development.combat-state.{Guid.NewGuid():N}";
+            return RecordSuccess("Generate 6.5 Combat Transaction", lastCombatStateTransactionId);
+        }
+
+        public PrototypeTestLabOperation PreviewExplicitCombatEngagement()
+        {
+            if (!TryBuildCombatEngagementRequest(CombatActivityClassification.ExplicitEngagement, reuseTransaction: false, out CombatStateService service, out CombatEngagementRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            CombatEntryResult result = service.PreviewEnterCombat(request);
+            return Record(result.Succeeded, "Preview 6.5 Engagement", result.Code, FormatCombatEntryResult(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteExplicitCombatEngagement(bool reuseTransaction)
+        {
+            if (!TryBuildCombatEngagementRequest(CombatActivityClassification.ExplicitEngagement, reuseTransaction, out CombatStateService service, out CombatEngagementRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            CombatEntryResult result = service.EnterCombat(request);
+            return Record(result.Succeeded, reuseTransaction ? "Execute 6.5 Engagement Reuse" : "Execute 6.5 Engagement", result.Code, FormatCombatEntryResult(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatStateAttack(DamageTypeDefinition damageType, bool miss, bool blocked, bool prevented)
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            if (combatState == null)
+            {
+                return RecordFailure("6.5 Attack", "Combat State service is missing.", "MissingCombatState");
+            }
+
+            float hitRoll = miss ? 0.99f : 0.1f;
+            float distance = blocked ? 999f : 1f;
+            float amount = prevented ? 0f : 10f;
+            AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, amount, 0.75f, hitRoll, 0f, 0.5f, 1.5f, distance, 2f, targetEnemy: true, sourcePlayer: true, ResolveCombatStateTransactionId(reuse: false));
+            AttackResolutionResult attack = attackResolutionService.ExecuteAttack(request);
+            CombatEntryResult combat = combatState.RecordAttackResult(attack);
+            string operation = blocked ? "Blocked 6.5 Attack" : miss ? "Miss 6.5 Attack" : prevented ? "Prevented 6.5 Attack" : "Hit 6.5 Attack";
+            bool expectedOutcome = blocked ? !attack.Succeeded && !combat.Succeeded : attack.Succeeded && combat.Succeeded;
+            return Record(expectedOutcome, operation, attack.Succeeded ? combat.Code : attack.Code, $"{FormatAttackResolution(attack)} Combat={FormatCombatEntryResult(combat)}");
+        }
+
+        public PrototypeTestLabOperation AdvanceCombatState(float deltaSeconds)
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            if (combatState == null)
+            {
+                return RecordFailure("Advance 6.5 Combat", "Combat State service is missing.", "MissingCombatState");
+            }
+
+            float delta = Mathf.Max(0f, deltaSeconds);
+            combatStateClockSeconds += delta;
+            CombatStateProcessResult result = combatState.AdvanceTime(delta);
+            return RecordSuccess("Advance 6.5 Combat", FormatCombatProcessResult(result));
+        }
+
+        public PrototypeTestLabOperation ForceCombatExit(bool targetEnemy)
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            GameObject actor = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
+            string actorId = ResolveCombatStateActorId(actor);
+            CombatExitResult result = combatState == null
+                ? null
+                : combatState.LeaveCombat(new CombatExitRequest(ResolveCombatStateTransactionId(reuse: false), actorId, actor, CombatExitReason.Forced, authoritative: true));
+            return Record(result != null && result.Succeeded, targetEnemy ? "Force Enemy Combat Exit" : "Force Player Combat Exit", result == null ? "MissingCombatState" : result.Code, FormatCombatExitResult(result));
+        }
+
+        public PrototypeTestLabOperation EndCurrentCombatEncounter()
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            string playerId = ResolveCombatStateActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject);
+            CombatEncounterSnapshot encounter = combatState == null ? null : combatState.GetEncounterForActor(playerId);
+            if (combatState == null || encounter == null)
+            {
+                return RecordFailure("End 6.5 Encounter", "No active combat encounter is available.", "MissingEncounter");
+            }
+
+            CombatEncounterSnapshot ended = combatState.EndEncounter(new CombatEncounterEndRequest(ResolveCombatStateTransactionId(reuse: false), encounter.EncounterId, CombatEncounterCompletionReason.Forced, authoritative: true));
+            return Record(ended != null && !ended.Active, "End 6.5 Encounter", ended == null ? "MissingEncounter" : "Success", FormatCombatEncounter(ended));
+        }
+
+        public PrototypeTestLabOperation PrepareCombatStateSplitParticipants()
+        {
+            EnsureCombatStateTestParticipants();
+            string summary = string.Join(" | ", new[] { "A", "B", "C", "D" }.Select(key => $"{key}={ResolveCombatStateActorId(GetCombatStateTestActor(key))}"));
+            return RecordSuccess("Prepare 6.5 Split Participants", summary);
+        }
+
+        public PrototypeTestLabOperation EngageCombatStateParticipants(string firstKey, string secondKey)
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            GameObject first = GetCombatStateTestActor(firstKey);
+            GameObject second = GetCombatStateTestActor(secondKey);
+            if (combatState == null || first == null || second == null)
+            {
+                return RecordFailure($"Engage {firstKey}-{secondKey}", "Combat State service or participant is missing.", "MissingReference");
+            }
+
+            CombatEntryResult result = combatState.EnterCombat(new CombatEngagementRequest(
+                ResolveCombatStateTransactionId(reuse: false),
+                ResolveCombatStateActorId(first),
+                first,
+                ResolveCombatStateActorId(second),
+                second,
+                CombatActivityClassification.ExplicitEngagement,
+                "development.test-lab.split",
+                hostile: true,
+                authorityValidated: true));
+            return Record(result.Succeeded, $"Engage {firstKey}-{secondKey}", result.Code, FormatCombatEntryResult(result));
+        }
+
+        public PrototypeTestLabOperation EndCombatStateEngagement(string firstKey, string secondKey, bool reuseTransaction)
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            GameObject first = GetCombatStateTestActor(firstKey);
+            GameObject second = GetCombatStateTestActor(secondKey);
+            if (combatState == null || first == null || second == null)
+            {
+                return RecordFailure($"End {firstKey}-{secondKey}", "Combat State service or participant is missing.", "MissingReference");
+            }
+
+            CombatEncounterSplitResult result = combatState.EndEngagement(new CombatEngagementEndRequest(
+                ResolveCombatStateSplitTransactionId(reuseTransaction),
+                string.Empty,
+                ResolveCombatStateActorId(first),
+                ResolveCombatStateActorId(second),
+                CombatExitReason.Forced,
+                authoritative: true));
+            return Record(result.Succeeded, $"End {firstKey}-{secondKey}", result.Code, FormatCombatSplitResult(result));
+        }
+
+        public PrototypeTestLabOperation ProcessCombatStateConnectivity()
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            string actorId = ResolveCombatStateActorId(GetCombatStateTestActor("A"));
+            CombatEncounterSnapshot encounter = combatState == null ? null : combatState.GetEncounterForActor(actorId);
+            if (combatState == null || encounter == null)
+            {
+                return RecordFailure("Process 6.5 Connectivity", "No active A encounter is available.", "MissingEncounter");
+            }
+
+            CombatEncounterSplitResult result = combatState.ProcessEncounterConnectivity(ResolveCombatStateSplitTransactionId(reuse: false), encounter.EncounterId);
+            return Record(result.Succeeded, "Process 6.5 Connectivity", result.Code, FormatCombatSplitResult(result));
+        }
+
+        public PrototypeTestLabOperation ForceCombatStateParticipantExit(string key)
+        {
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            GameObject actor = GetCombatStateTestActor(key);
+            string actorId = ResolveCombatStateActorId(actor);
+            CombatExitResult result = combatState == null
+                ? null
+                : combatState.LeaveCombat(new CombatExitRequest(ResolveCombatStateTransactionId(reuse: false), actorId, actor, CombatExitReason.Forced, authoritative: true));
+            return Record(result != null && result.Succeeded, $"Force {key} Combat Exit", result == null ? "MissingCombatState" : result.Code, FormatCombatExitResult(result));
+        }
+
+        public PrototypeTestLabOperation KillCombatStateParticipant(string key)
+        {
+            GameObject actor = GetCombatStateTestActor(key);
+            if (actor == null)
+            {
+                return RecordFailure($"Kill {key}", "Combat State participant is missing.", "MissingReference");
+            }
+
+            ActorLifecycleController lifecycle = actor.GetComponentInParent<ActorLifecycleController>();
+            CharacterResourceCollection resources = actor.GetComponentInParent<CharacterResourceCollection>();
+            if (lifecycle == null || resources == null)
+            {
+                return RecordFailure($"Kill {key}", "Combat State participant lifecycle or resources are missing.", "MissingLifecycle");
+            }
+
+            ActorLifecycleResult death = lifecycle.ExecuteDeath(new LifecycleDeathRequest($"development.combat-state.kill.{Guid.NewGuid():N}", ResolveCombatStateActorId(GetCombatStateTestActor("A")), GetCombatStateTestActor("A"), ResolveCombatStateActorId(actor), actor, LifecycleTriggerKind.ExplicitDeath));
+            CombatStateProcessResult process = EnsureCombatStateRuntime()?.AdvanceTime(0f);
+            return Record(death.Succeeded, $"Kill {key}", death.Code, $"{death.Message} Combat={FormatCombatProcessResult(process)}");
+        }
+
+        public PrototypeTestLabOperation ValidateCombatStateIntegrity()
+        {
+            CombatStateIntegrityResult result = EnsureCombatStateRuntime()?.ValidateIntegrity();
+            if (result == null)
+            {
+                return RecordFailure("Validate 6.5 Integrity", "Combat State service is missing.", "MissingCombatState");
+            }
+
+            string message = result.Diagnostics.Count == 0 ? "Combat State integrity is valid." : string.Join(" | ", result.Diagnostics);
+            return Record(result.Succeeded, "Validate 6.5 Integrity", result.Succeeded ? "Valid" : CombatStateResultCode.IntegrityViolation, message);
+        }
+
         public PrototypeTestLabOperation ResetEnemy()
         {
             context?.EnemyAttack?.ResetCooldown();
@@ -1514,6 +1746,102 @@ namespace UnityIsekaiGame.Development
             lifecycle.Configure(null, resources, character, traits);
         }
 
+        private CombatStateService EnsureCombatStateRuntime()
+        {
+            GameObject owner = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            CombatStateService service = context?.CombatState;
+            if (service == null && owner != null)
+            {
+                service = owner.GetComponentInParent<CombatStateService>();
+            }
+
+            if (service == null && owner != null)
+            {
+                service = owner.AddComponent<CombatStateService>();
+            }
+
+            CombatStatePolicyDefinition policy = registry == null
+                ? null
+                : registry.DefinitionsById.Values.OfType<CombatStatePolicyDefinition>().OrderBy(definition => definition.Id).FirstOrDefault();
+            service?.Configure(policy);
+            service?.SetClock(combatStateClockSeconds);
+            if (context != null)
+            {
+                context.CombatState = service;
+            }
+
+            return service;
+        }
+
+        private void EnsureCombatStateTestParticipants()
+        {
+            EnsureCombatStateRuntime();
+            RegisterCombatStateTestActor("A", context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject);
+            RegisterCombatStateTestActor("B", context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject);
+            EnsureCombatStateMockActor("C");
+            EnsureCombatStateMockActor("D");
+        }
+
+        private void RegisterCombatStateTestActor(string key, GameObject actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            EnsureAttackResolutionRuntime(actor, needsResource: true);
+            if (string.Equals(key, "A", StringComparison.Ordinal))
+            {
+                EnsureLifecycleRuntime(actor, ref context.PlayerLifecycle, needsResource: true);
+            }
+            else if (string.Equals(key, "B", StringComparison.Ordinal))
+            {
+                EnsureLifecycleRuntime(actor, ref context.EnemyLifecycle, needsResource: true);
+            }
+            else
+            {
+                ActorLifecycleController lifecycle = actor.GetComponentInParent<ActorLifecycleController>();
+                EnsureLifecycleRuntime(actor, ref lifecycle, needsResource: true);
+            }
+
+            combatStateTestActors[key] = actor;
+        }
+
+        private GameObject EnsureCombatStateMockActor(string key)
+        {
+            if (combatStateTestActors.TryGetValue(key, out GameObject existing) && existing != null)
+            {
+                return existing;
+            }
+
+            GameObject root = context?.PlayerTransform == null ? null : context.PlayerTransform.root.gameObject;
+            GameObject actor = new GameObject($"Combat State Test Actor {key}");
+            if (root != null)
+            {
+                actor.transform.SetParent(root.transform);
+                actor.transform.position = context.PlayerTransform.position + context.PlayerTransform.right * (string.Equals(key, "C", StringComparison.Ordinal) ? 2f : 3f);
+            }
+
+            WorldEntityIdentity identity = actor.AddComponent<WorldEntityIdentity>();
+            identity.TryInitializeRuntime($"entity.local-world.runtime.combat-state-test-lab.{key.ToLowerInvariant()}.{Guid.NewGuid():N}", "scene.prototype", PersistenceService.LocalWorldId, PersistenceScope.SessionOnly, "development.combat-state-test-lab", out _);
+            EnsureAttackResolutionRuntime(actor, needsResource: true);
+            ActorLifecycleController lifecycle = actor.GetComponentInParent<ActorLifecycleController>();
+            EnsureLifecycleRuntime(actor, ref lifecycle, needsResource: true);
+            combatStateTestActors[key] = actor;
+            return actor;
+        }
+
+        private GameObject GetCombatStateTestActor(string key)
+        {
+            EnsureCombatStateTestParticipants();
+            if (combatStateTestActors.TryGetValue(key, out GameObject actor) && actor != null)
+            {
+                return actor;
+            }
+
+            return null;
+        }
+
         private OngoingEffectService EnsureOngoingEffectRuntime(bool targetEnemy)
         {
             GameObject actor = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
@@ -1652,6 +1980,28 @@ namespace UnityIsekaiGame.Development
             return lastAttackTransactionId;
         }
 
+        private string ResolveCombatStateTransactionId(bool reuse)
+        {
+            if (reuse && !string.IsNullOrWhiteSpace(lastCombatStateTransactionId))
+            {
+                return lastCombatStateTransactionId;
+            }
+
+            lastCombatStateTransactionId = $"development.combat-state.{Guid.NewGuid():N}";
+            return lastCombatStateTransactionId;
+        }
+
+        private string ResolveCombatStateSplitTransactionId(bool reuse)
+        {
+            if (reuse && !string.IsNullOrWhiteSpace(lastCombatStateSplitTransactionId))
+            {
+                return lastCombatStateSplitTransactionId;
+            }
+
+            lastCombatStateSplitTransactionId = $"development.combat-state.split.{Guid.NewGuid():N}";
+            return lastCombatStateSplitTransactionId;
+        }
+
         private string ResolveLifecycleTransactionId(bool reuse)
         {
             if (reuse && !string.IsNullOrWhiteSpace(lastLifecycleTransactionId))
@@ -1685,6 +2035,106 @@ namespace UnityIsekaiGame.Development
                 ? "Damage=None"
                 : $"Damage={result.DamageResult.Code} final={result.DamageResult.FinalDamageAmount:0.###} Health={result.DamageResult.OldHealth:0.###}->{result.DamageResult.NewHealth:0.###}";
             return $"{result.Outcome} hitChance={result.FinalHitChance:0.###} roll={result.HitRoll:0.###} crit={result.Critical} critRoll={result.CriticalRoll:0.###} dmgAfterCrit={result.DamageAfterCritical:0.###} duplicate={result.Duplicate} {damage}. {result.Message}";
+        }
+
+        private bool TryBuildCombatEngagementRequest(
+            CombatActivityClassification classification,
+            bool reuseTransaction,
+            out CombatStateService service,
+            out CombatEngagementRequest request,
+            out PrototypeTestLabOperation failure)
+        {
+            service = EnsureCombatStateRuntime();
+            request = default;
+            failure = default;
+            GameObject source = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            GameObject target = context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject;
+            if (service == null || source == null || target == null)
+            {
+                failure = RecordFailure("6.5 Combat Engagement", "Combat State service, player, or enemy is missing.", "MissingReference");
+                return false;
+            }
+
+            request = new CombatEngagementRequest(
+                ResolveCombatStateTransactionId(reuseTransaction),
+                ResolveCombatStateActorId(source),
+                source,
+                ResolveCombatStateActorId(target),
+                target,
+                classification,
+                "development.test-lab",
+                hostile: true,
+                authorityValidated: true);
+            return true;
+        }
+
+        private static string FormatCombatStateSnapshot(string label, ActorCombatStateSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return $"{label}: Missing";
+            }
+
+            float remaining = Mathf.Max(0f, snapshot.DisengageEligibleAt - snapshot.LastActivityAt);
+            return $"{label}: {snapshot.State} Actor={snapshot.ActorId} Encounter={(string.IsNullOrWhiteSpace(snapshot.EncounterId) ? "None" : snapshot.EncounterId)} Participants={snapshot.ParticipantCount} Engagements={snapshot.ActiveEngagementCount} Entered={snapshot.EnteredAt:0.###} Last={snapshot.LastActivityAt:0.###} TimeoutWindow={remaining:0.###} Rev={snapshot.Revision} Reason={snapshot.TransitionReason}";
+        }
+
+        private static string FormatCombatEntryResult(CombatEntryResult result)
+        {
+            if (result == null)
+            {
+                return "Combat entry result is missing.";
+            }
+
+            return $"{result.SourceActorId}->{result.TargetActorId} Encounter={result.EncounterId} Engagement={result.EngagementId} Created={result.EncounterCreated} Added={result.SourceParticipantAdded}/{result.TargetParticipantAdded} Merged={result.EncounterMerged} Preview={result.Preview} Duplicate={result.Duplicate}. {result.Message}";
+        }
+
+        private static string FormatCombatExitResult(CombatExitResult result)
+        {
+            if (result == null)
+            {
+                return "Combat exit result is missing.";
+            }
+
+            return $"{result.ActorId} left Encounter={result.EncounterId} Reason={result.Reason} EndedEngagements={result.EngagementsEnded.Count} Preview={result.Preview} Duplicate={result.Duplicate}. {result.Message}";
+        }
+
+        private static string FormatCombatProcessResult(CombatStateProcessResult result)
+        {
+            if (result == null)
+            {
+                return "Combat process result is missing.";
+            }
+
+            return $"Delta={result.DeltaSeconds:0.###} Exits={result.ProcessedExits} Capped={result.Capped} Splits={result.SplitResults.Count} EndedEncounters={result.EndedEncounters.Count}";
+        }
+
+        private static string FormatCombatSplitResult(CombatEncounterSplitResult result)
+        {
+            if (result == null)
+            {
+                return "Combat split result is missing.";
+            }
+
+            string created = result.CreatedEncounterIds.Count == 0 ? "None" : string.Join(", ", result.CreatedEncounterIds);
+            string left = result.ParticipantsLeftCombat.Count == 0 ? "None" : string.Join(", ", result.ParticipantsLeftCombat);
+            string components = result.Components.Count == 0
+                ? "None"
+                : string.Join(" | ", result.Components.Select(component => $"{component.EncounterId}{(component.RetainedOriginalEncounterId ? "*" : string.Empty)} P=[{string.Join(",", component.ParticipantIds)}] E=[{string.Join(",", component.EngagementIds)}]"));
+            string ended = result.EndedEngagementIds.Count == 0 ? "None" : string.Join(", ", result.EndedEngagementIds);
+            return $"Original={result.OriginalEncounterId} Survivor={result.SurvivingEncounterId} Created={created} EndedEdges={ended} Left={left} Components={components} Duplicate={result.Duplicate}. {result.Message}";
+        }
+
+        private static string FormatCombatEncounter(CombatEncounterSnapshot encounter)
+        {
+            if (encounter == null)
+            {
+                return "Encounter: None";
+            }
+
+            string participants = encounter.ParticipantIds.Count == 0 ? "None" : string.Join(", ", encounter.ParticipantIds);
+            string engagements = encounter.Engagements.Count == 0 ? "None" : string.Join(" | ", encounter.Engagements.Select(engagement => $"{engagement.EngagementId}:{engagement.SourceActorId}<->{engagement.TargetActorId}:{(engagement.Active ? "Active" : engagement.EndReason.ToString())}"));
+            return $"Encounter: {encounter.EncounterId} Active={encounter.Active} Created={encounter.CreatedAt:0.###} Last={encounter.LastActivityAt:0.###} Participants=[{participants}] Engagements=[{engagements}] Completion={encounter.CompletionReason}";
         }
 
         private static string FormatLifecycleResult(ActorLifecycleResult result)
@@ -1805,6 +2255,17 @@ namespace UnityIsekaiGame.Development
             if (character != null && !string.IsNullOrWhiteSpace(character.ActorId))
             {
                 return character.ActorId;
+            }
+
+            WorldEntityIdentity identity = actor.GetComponentInParent<WorldEntityIdentity>();
+            return identity == null ? string.Empty : identity.EntityId;
+        }
+
+        private static string ResolveCombatStateActorId(GameObject actor)
+        {
+            if (actor == null)
+            {
+                return string.Empty;
             }
 
             WorldEntityIdentity identity = actor.GetComponentInParent<WorldEntityIdentity>();

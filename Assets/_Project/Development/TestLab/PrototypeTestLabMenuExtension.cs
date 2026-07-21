@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
@@ -151,6 +152,12 @@ namespace UnityIsekaiGame.Development
                 ? menuController.Inventory == null ? null : menuController.Inventory.transform
                 : menuController.ItemUser.transform;
             Transform enemyTransform = enemyHealth == null ? null : enemyHealth.transform;
+            CombatStateService combatState = playerTransform == null ? Object.FindAnyObjectByType<CombatStateService>() : playerTransform.GetComponentInParent<CombatStateService>();
+            if (combatState == null && playerTransform != null)
+            {
+                combatState = playerTransform.gameObject.AddComponent<CombatStateService>();
+            }
+
             OngoingEffectService playerOngoingEffects = playerTransform == null ? null : playerTransform.GetComponentInParent<OngoingEffectService>();
             if (playerOngoingEffects == null && playerTransform != null)
             {
@@ -176,6 +183,7 @@ namespace UnityIsekaiGame.Development
                 PlayerCalculatedStats = menuController.PlayerStats == null ? null : menuController.PlayerStats.CalculatedStats,
                 PlayerResources = playerTransform == null ? null : playerTransform.GetComponentInParent<CharacterResourceCollection>(),
                 PlayerLifecycle = playerTransform == null ? null : playerTransform.GetComponentInParent<ActorLifecycleController>(),
+                CombatState = combatState,
                 PlayerOngoingEffects = playerOngoingEffects,
                 PlayerSkills = menuController.RuntimeSkills,
                 PlayerTraits = menuController.RuntimeTraits,
