@@ -68,6 +68,15 @@ namespace UnityIsekaiGame.Combat.OngoingEffects
             currentTimeSeconds = Mathf.Max(0f, nowSeconds);
         }
 
+        public void ClearTransientStateForRestore()
+        {
+            activeInstances.Clear();
+            processedApplicationTransactions.Clear();
+            processedCancellationTransactions.Clear();
+            processedTickTransactions.Clear();
+            currentTimeSeconds = 0f;
+        }
+
         public OngoingEffectApplicationResult PreviewApplyOngoingEffect(OngoingEffectApplicationRequest request)
         {
             return ApplyInternal(request, execute: false);

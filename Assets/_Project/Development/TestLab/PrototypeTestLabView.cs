@@ -1,5 +1,6 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
@@ -10,6 +11,7 @@ using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
@@ -54,6 +56,7 @@ namespace UnityIsekaiGame.Development
             "Persistence",
             "Location",
             "World Entities",
+            "Automation",
             "Scenarios",
             "Diagnostics"
         };
@@ -90,6 +93,7 @@ namespace UnityIsekaiGame.Development
         private Text combatExecutionText;
         private Text combatStateText;
         private Text ongoingEffectsText;
+        private Text automationText;
         private Text traitsText;
         private Text skillsText;
         private Text itemValueText;
@@ -103,6 +107,8 @@ namespace UnityIsekaiGame.Development
         private Text damageValueText;
         private Text defenseValueText;
         private Text combatExecutionValueText;
+        private Text automationSuiteValueText;
+        private Text automationScenarioValueText;
         private Text ongoingEffectValueText;
         private Text questValueText;
         private Text contractValueText;
@@ -120,6 +126,8 @@ namespace UnityIsekaiGame.Development
         private int selectedDamageIndex;
         private int selectedDefenseIndex;
         private int selectedCombatExecutionIndex;
+        private int selectedAutomationSuiteIndex;
+        private int selectedAutomationScenarioIndex;
         private int selectedOngoingEffectIndex;
         private int selectedQuestIndex;
         private int selectedContractIndex;
@@ -138,6 +146,8 @@ namespace UnityIsekaiGame.Development
         private readonly List<DamageTypeDefinition> damageTypes = new List<DamageTypeDefinition>();
         private readonly List<DefensiveActionDefinition> defensiveActions = new List<DefensiveActionDefinition>();
         private readonly List<CombatExecutionDefinition> combatExecutions = new List<CombatExecutionDefinition>();
+        private readonly List<ITestLabAutomationSuite> automationSuites = new List<ITestLabAutomationSuite>();
+        private readonly List<ITestLabAutomationScenario> automationScenarios = new List<ITestLabAutomationScenario>();
         private readonly List<OngoingEffectDefinition> ongoingEffects = new List<OngoingEffectDefinition>();
         private readonly List<QuestDefinition> quests = new List<QuestDefinition>();
         private readonly List<ContractDefinition> contracts = new List<ContractDefinition>();
@@ -149,6 +159,10 @@ namespace UnityIsekaiGame.Development
         private readonly List<RequirementSetDefinition> requirements = new List<RequirementSetDefinition>();
         private readonly List<GameObject> sectionRoots = new List<GameObject>();
         private readonly List<Button> sectionButtons = new List<Button>();
+        private bool automationStopOnFirstFailure;
+        private bool automationAutoScroll = true;
+        private bool automationCancelRequested;
+        private Coroutine automationRunCoroutine;
 
         private void OnEnable()
         {
@@ -257,6 +271,11 @@ namespace UnityIsekaiGame.Development
                 combatExecutionText.text = service.BuildCombatExecutionSummary();
             }
 
+            if (automationText != null)
+            {
+                automationText.text = service.BuildAutomationSummary();
+            }
+
             if (ongoingEffectsText != null)
             {
                 ongoingEffectsText.text = service.BuildOngoingEffectsSummary();
@@ -331,6 +350,7 @@ namespace UnityIsekaiGame.Development
             Transform persistenceSection = AddSection(content, "Persistence Section");
             Transform locationSection = AddSection(content, "Location Section");
             Transform worldEntitySection = AddSection(content, "World Entities Section");
+            Transform automationSection = AddSection(content, "Automation Section");
             Transform scenarioSection = AddSection(content, "Scenarios Section");
             Transform diagnosticsSection = AddSection(content, "Diagnostics Section");
 
@@ -354,6 +374,7 @@ namespace UnityIsekaiGame.Development
             BuildPersistenceSection(persistenceSection, font);
             BuildLocationSection(locationSection, font);
             BuildWorldEntitySection(worldEntitySection, font);
+            BuildAutomationSection(automationSection, font);
             BuildScenarioSection(scenarioSection, font);
             BuildDiagnosticsSection(diagnosticsSection, font);
         }
@@ -783,6 +804,29 @@ namespace UnityIsekaiGame.Development
             worldEntityText = AddText(parent, font, "World entities not available.", 12, 260);
         }
 
+        private void BuildAutomationSection(Transform parent, Font font)
+        {
+            AddHeader(parent, font, "Automated Test Lab Scenario Runner");
+            automationSuiteValueText = AddSelectorRow(parent, font, "Suite", () => CycleAutomationSuite(-1), () => CycleAutomationSuite(1));
+            automationScenarioValueText = AddSelectorRow(parent, font, "Scenario", () => CycleSelection(ref selectedAutomationScenarioIndex, automationScenarios.Count, -1), () => CycleSelection(ref selectedAutomationScenarioIndex, automationScenarios.Count, 1));
+            AddButtonRow(parent, font,
+                ("Run Scenario", () => service.RunAutomationScenario(GetSelected(automationSuites, selectedAutomationSuiteIndex)?.SuiteId, GetSelected(automationScenarios, selectedAutomationScenarioIndex)?.ScenarioId, automationStopOnFirstFailure)),
+                ("Run Suite", () => StartAutomationBatch(TestLabAutomationRunMode.CurrentSuite)),
+                ("Run Quick", () => StartAutomationBatch(TestLabAutomationRunMode.AllQuickSuites)),
+                ("Run All", () => StartAutomationBatch(TestLabAutomationRunMode.AllSuites)));
+            AddButtonRow(parent, font,
+                ("Rerun Failed", () => service.RerunFailedAutomation(automationStopOnFirstFailure)),
+                ("Cancel", CancelAutomationBatch),
+                ("Clear", () => service.ClearAutomationResults()),
+                ("Validate", () => service.ValidateAutomationRegistration()));
+            AddButtonRow(parent, font,
+                ("Export JSON", () => service.ExportAutomationJsonReport()),
+                ("Export MD", () => service.ExportAutomationMarkdownReport()),
+                ("Stop On Fail", ToggleAutomationStopOnFirstFailure),
+                ("Auto Scroll", ToggleAutomationAutoScroll));
+            automationText = AddText(parent, font, "Automation not run.", 12, 520);
+        }
+
         private void BuildScenarioSection(Transform parent, Font font)
         {
             AddButtonRow(parent, font,
@@ -819,6 +863,8 @@ namespace UnityIsekaiGame.Development
             SetOptions(damageTypes, service.GetDefinitions<DamageTypeDefinition>(), ref selectedDamageIndex);
             SetOptions(defensiveActions, service.GetDefinitions<DefensiveActionDefinition>(), ref selectedDefenseIndex);
             SetOptions(combatExecutions, service.GetDefinitions<CombatExecutionDefinition>(), ref selectedCombatExecutionIndex);
+            SetOptions(automationSuites, service.GetAutomationSuites(), ref selectedAutomationSuiteIndex);
+            RefreshAutomationScenarioOptions();
             SetOptions(ongoingEffects, service.GetDefinitions<OngoingEffectDefinition>(), ref selectedOngoingEffectIndex);
             SetOptions(quests, service.GetDefinitions<QuestDefinition>(), ref selectedQuestIndex);
             SetOptions(contracts, service.GetDefinitions<ContractDefinition>(), ref selectedContractIndex);
@@ -840,6 +886,8 @@ namespace UnityIsekaiGame.Development
             SetValue(damageValueText, FormatSelected(damageTypes, selectedDamageIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(defenseValueText, FormatSelected(defensiveActions, selectedDefenseIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(combatExecutionValueText, FormatSelected(combatExecutions, selectedCombatExecutionIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(automationSuiteValueText, FormatSelected(automationSuites, selectedAutomationSuiteIndex, suite => $"{suite.DisplayName} ({suite.SuiteId})"));
+            SetValue(automationScenarioValueText, FormatSelected(automationScenarios, selectedAutomationScenarioIndex, scenario => $"{scenario.DisplayName} ({scenario.ScenarioId})"));
             SetValue(ongoingEffectValueText, FormatSelected(ongoingEffects, selectedOngoingEffectIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(questValueText, FormatSelected(quests, selectedQuestIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(contractValueText, FormatSelected(contracts, selectedContractIndex, PrototypeTestLabService.FormatDefinition));
@@ -948,6 +996,132 @@ namespace UnityIsekaiGame.Development
             }
 
             Refresh();
+        }
+
+        private void CycleAutomationSuite(int direction)
+        {
+            CycleSelection(ref selectedAutomationSuiteIndex, automationSuites.Count, direction);
+            RefreshAutomationScenarioOptions();
+            Refresh();
+        }
+
+        private void RefreshAutomationScenarioOptions()
+        {
+            ITestLabAutomationSuite selectedSuite = GetSelected(automationSuites, selectedAutomationSuiteIndex);
+            SetOptions(automationScenarios, selectedSuite == null ? Array.Empty<ITestLabAutomationScenario>() : selectedSuite.Scenarios, ref selectedAutomationScenarioIndex);
+        }
+
+        private void ToggleAutomationStopOnFirstFailure()
+        {
+            automationStopOnFirstFailure = !automationStopOnFirstFailure;
+            if (latestOperationText != null)
+            {
+                latestOperationText.text = $"Automation Stop On Fail: {(automationStopOnFirstFailure ? "On" : "Off")}";
+            }
+        }
+
+        private void ToggleAutomationAutoScroll()
+        {
+            automationAutoScroll = !automationAutoScroll;
+            if (automationAutoScroll && bodyScrollRect != null)
+            {
+                bodyScrollRect.verticalNormalizedPosition = 0f;
+            }
+        }
+
+        private void StartAutomationBatch(TestLabAutomationRunMode runMode)
+        {
+            if (automationRunCoroutine != null)
+            {
+                if (latestOperationText != null)
+                {
+                    latestOperationText.text = "Automation is already running. Press Cancel before starting another batch.";
+                }
+
+                return;
+            }
+
+            List<(string SuiteId, string ScenarioId)> selections = BuildAutomationSelections(runMode);
+            automationCancelRequested = false;
+            automationRunCoroutine = StartCoroutine(RunAutomationBatch(runMode, selections));
+        }
+
+        private List<(string SuiteId, string ScenarioId)> BuildAutomationSelections(TestLabAutomationRunMode runMode)
+        {
+            List<(string SuiteId, string ScenarioId)> selections = new List<(string SuiteId, string ScenarioId)>();
+            if (runMode == TestLabAutomationRunMode.CurrentSuite)
+            {
+                ITestLabAutomationSuite suite = GetSelected(automationSuites, selectedAutomationSuiteIndex);
+                if (suite != null)
+                {
+                    foreach (ITestLabAutomationScenario scenario in suite.Scenarios)
+                    {
+                        selections.Add((suite.SuiteId, scenario.ScenarioId));
+                    }
+                }
+
+                return selections;
+            }
+
+            bool quickOnly = runMode == TestLabAutomationRunMode.AllQuickSuites;
+            foreach (ITestLabAutomationSuite suite in automationSuites)
+            {
+                if (suite == null || !suite.IncludeInRunAll)
+                {
+                    continue;
+                }
+
+                foreach (ITestLabAutomationScenario scenario in suite.Scenarios)
+                {
+                    if (!quickOnly || scenario.IncludeInQuickRun || scenario.Category == TestLabAutomationCategory.Quick)
+                    {
+                        selections.Add((suite.SuiteId, scenario.ScenarioId));
+                    }
+                }
+            }
+
+            return selections;
+        }
+
+        private IEnumerator RunAutomationBatch(TestLabAutomationRunMode runMode, IReadOnlyList<(string SuiteId, string ScenarioId)> selections)
+        {
+            service.BeginAutomationBatch(runMode);
+            Refresh();
+            yield return null;
+
+            for (int i = 0; i < selections.Count; i++)
+            {
+                if (automationCancelRequested)
+                {
+                    break;
+                }
+
+                (string suiteId, string scenarioId) = selections[i];
+                PrototypeTestLabOperation operation = service.RunAutomationScenarioInBatch(suiteId, scenarioId, automationStopOnFirstFailure);
+                Refresh();
+                if (automationAutoScroll && bodyScrollRect != null)
+                {
+                    bodyScrollRect.verticalNormalizedPosition = 0f;
+                }
+
+                if (automationStopOnFirstFailure && !operation.Succeeded)
+                {
+                    break;
+                }
+
+                yield return null;
+            }
+
+            service.CompleteAutomationBatch(automationCancelRequested);
+            Refresh();
+            automationRunCoroutine = null;
+            automationCancelRequested = false;
+        }
+
+        private void CancelAutomationBatch()
+        {
+            automationCancelRequested = true;
+            service.CancelAutomation();
         }
 
         private void SetActiveSection(int sectionIndex)

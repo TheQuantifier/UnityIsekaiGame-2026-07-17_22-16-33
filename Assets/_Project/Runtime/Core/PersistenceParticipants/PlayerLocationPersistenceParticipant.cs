@@ -194,7 +194,7 @@ namespace UnityIsekaiGame.Persistence
             }
 
             PlayerSpawnPoint spawn = ResolveSpawn(saveData.spawnPointId, place) ?? ResolveSpawn(defaultSpawnPointId, place) ?? ResolveAnySpawn(place);
-            bool useFallback = !IsPositionSafe(savedPosition);
+            bool useFallback = !IsPositionSafe(savedPosition, out string fallbackReason);
             if (useFallback && spawn == null)
             {
                 return PersistenceParticipantPrepareResult.Failure("Saved player position is unsafe and no fallback spawn point is available.");
@@ -207,7 +207,7 @@ namespace UnityIsekaiGame.Persistence
                 return PersistenceParticipantPrepareResult.Failure("Resolved player location target is invalid.");
             }
 
-            return PersistenceParticipantPrepareResult.Success(new PreparedPlayerLocation(saveData, place, targetPosition, targetRotation, useFallback, spawn));
+            return PersistenceParticipantPrepareResult.Success(new PreparedPlayerLocation(saveData, place, savedPosition, targetPosition, targetRotation, useFallback, spawn, fallbackReason));
         }
 
         public PersistenceParticipantCommitResult CommitPreparedPayload(object preparedPayload)
@@ -260,7 +260,14 @@ namespace UnityIsekaiGame.Persistence
 
                     if (prepared.FallbackUsed)
                     {
-                        LocationFallbackUsed?.Invoke(new LocationFallbackEventArgs(prepared.SaveData.sceneKey, prepared.SaveData.placeId, prepared.TargetPosition, prepared.SpawnPoint == null ? string.Empty : prepared.SpawnPoint.SpawnPointId, "Saved position was unsafe; used fallback spawn."));
+                        LocationFallbackUsed?.Invoke(new LocationFallbackEventArgs(
+                            prepared.SaveData.sceneKey,
+                            prepared.SaveData.placeId,
+                            prepared.SavedPosition,
+                            prepared.TargetPosition,
+                            prepared.SpawnPoint == null ? string.Empty : prepared.SpawnPoint.SpawnPointId,
+                            prepared.FallbackReason,
+                            $"Saved position was unsafe; used fallback spawn. Reason={prepared.FallbackReason} Saved={Format(prepared.SavedPosition)} Fallback={Format(prepared.TargetPosition)} Spawn='{(prepared.SpawnPoint == null ? string.Empty : prepared.SpawnPoint.SpawnPointId)}'."));
                     }
 
                     LocationRestoreCompleted?.Invoke(new LocationRestoreEventArgs(prepared.SaveData.sceneKey, prepared.Place, prepared.TargetPosition, prepared.TargetRotation, prepared.FallbackUsed));
@@ -337,19 +344,55 @@ namespace UnityIsekaiGame.Persistence
                 || PlaceHierarchyUtility.ContainsOrIs(spawnPlace, savedPlace);
         }
 
-        private static bool IsPositionSafe(Vector3 position)
+        private bool IsPositionSafe(Vector3 position, out string failureReason)
         {
+            failureReason = string.Empty;
             if (!IsFinite(position))
             {
+                failureReason = "PositionNotFinite";
                 return false;
             }
 
-            if (!Physics.Raycast(position + Vector3.up * GroundProbeHeight, Vector3.down, GroundProbeHeight + GroundProbeDistance, ~0, QueryTriggerInteraction.Ignore))
+            if (!HasGroundBelow(position))
             {
+                failureReason = "NoGroundBelowSavedPosition";
                 return false;
             }
 
-            return !Physics.CheckSphere(position + Vector3.up * 0.9f, 0.35f, ~0, QueryTriggerInteraction.Ignore);
+            Collider[] overlaps = Physics.OverlapSphere(position + Vector3.up * 0.9f, 0.35f, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < overlaps.Length; i++)
+            {
+                Collider overlap = overlaps[i];
+                if (overlap != null && !IsPlayerOwnedCollider(overlap))
+                {
+                    failureReason = "BodySpaceOverlapsCollision";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool HasGroundBelow(Vector3 position)
+        {
+            RaycastHit[] hits = Physics.RaycastAll(position + Vector3.up * GroundProbeHeight, Vector3.down, GroundProbeHeight + GroundProbeDistance, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                Collider hitCollider = hits[i].collider;
+                if (hitCollider != null && !IsPlayerOwnedCollider(hitCollider))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsPlayerOwnedCollider(Collider candidate)
+        {
+            return playerRoot != null
+                && candidate != null
+                && (candidate.transform == playerRoot || candidate.transform.IsChildOf(playerRoot));
         }
 
         private static bool IsFinite(Vector3 value)
@@ -377,6 +420,11 @@ namespace UnityIsekaiGame.Persistence
             }
 
             return new Quaternion(value.x / magnitude, value.y / magnitude, value.z / magnitude, value.w / magnitude);
+        }
+
+        private static string Format(Vector3 value)
+        {
+            return $"{value.x:0.###},{value.y:0.###},{value.z:0.###}";
         }
 
         private static string ResolveLoadedSceneKey()
@@ -407,22 +455,26 @@ namespace UnityIsekaiGame.Persistence
 
         private sealed class PreparedPlayerLocation
         {
-            public PreparedPlayerLocation(PlayerLocationSaveData saveData, PlaceDefinition place, Vector3 targetPosition, Quaternion targetRotation, bool fallbackUsed, PlayerSpawnPoint spawnPoint)
+            public PreparedPlayerLocation(PlayerLocationSaveData saveData, PlaceDefinition place, Vector3 savedPosition, Vector3 targetPosition, Quaternion targetRotation, bool fallbackUsed, PlayerSpawnPoint spawnPoint, string fallbackReason)
             {
                 SaveData = saveData;
                 Place = place;
+                SavedPosition = savedPosition;
                 TargetPosition = targetPosition;
                 TargetRotation = targetRotation;
                 FallbackUsed = fallbackUsed;
                 SpawnPoint = spawnPoint;
+                FallbackReason = string.IsNullOrWhiteSpace(fallbackReason) ? string.Empty : fallbackReason;
             }
 
             public PlayerLocationSaveData SaveData { get; }
             public PlaceDefinition Place { get; }
+            public Vector3 SavedPosition { get; }
             public Vector3 TargetPosition { get; }
             public Quaternion TargetRotation { get; }
             public bool FallbackUsed { get; }
             public PlayerSpawnPoint SpawnPoint { get; }
+            public string FallbackReason { get; }
         }
     }
 
@@ -446,19 +498,23 @@ namespace UnityIsekaiGame.Persistence
 
     public sealed class LocationFallbackEventArgs : EventArgs
     {
-        public LocationFallbackEventArgs(string sceneKey, string placeId, Vector3 fallbackPosition, string spawnPointId, string message)
+        public LocationFallbackEventArgs(string sceneKey, string placeId, Vector3 savedPosition, Vector3 fallbackPosition, string spawnPointId, string reason, string message)
         {
             SceneKey = sceneKey;
             PlaceId = placeId;
+            SavedPosition = savedPosition;
             FallbackPosition = fallbackPosition;
             SpawnPointId = spawnPointId;
+            Reason = string.IsNullOrWhiteSpace(reason) ? string.Empty : reason;
             Message = message;
         }
 
         public string SceneKey { get; }
         public string PlaceId { get; }
+        public Vector3 SavedPosition { get; }
         public Vector3 FallbackPosition { get; }
         public string SpawnPointId { get; }
+        public string Reason { get; }
         public string Message { get; }
     }
 }

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
@@ -50,6 +51,18 @@ namespace UnityIsekaiGame.Development
         private readonly DefensiveActionService defensiveActionService = new DefensiveActionService();
         private readonly AttackResolutionService attackResolutionService;
         private CombatExecutionService combatExecutionService = new CombatExecutionService();
+        private readonly TestLabAutomationRegistry automationRegistry = new TestLabAutomationRegistry();
+        private readonly TestLabAutomationReportExporter automationReportExporter = new TestLabAutomationReportExporter();
+        private TestLabAutomationRunner automationRunner;
+        private TestLabAutomationResult lastAutomationResult;
+        private readonly List<TestLabScenarioResult> automationBatchScenarios = new List<TestLabScenarioResult>();
+        private DateTime automationBatchStartedAtUtc;
+        private string automationBatchRunId;
+        private TestLabAutomationRunMode automationBatchMode;
+        private bool automationBatchCancelled;
+        private int automationBatchCounter;
+        private bool automationBatchRunning;
+        private bool suppressExpectedAutomationWarnings;
         private PrototypeTestLabContext context;
         private DefinitionRegistry registry;
         private int historyLimit = DefaultHistoryLimit;
@@ -106,7 +119,260 @@ namespace UnityIsekaiGame.Development
             EnsureCombatStateRuntime();
             EnsureOngoingEffectRuntime(targetEnemy: false);
             EnsureOngoingEffectRuntime(targetEnemy: true);
+            EnsureAutomation();
             selectorCache.Clear();
+        }
+
+        public IReadOnlyList<ITestLabAutomationSuite> GetAutomationSuites()
+        {
+            EnsureAutomation();
+            return automationRegistry.Suites;
+        }
+
+        public IReadOnlyList<ITestLabAutomationScenario> GetAutomationScenarios(string suiteId)
+        {
+            EnsureAutomation();
+            return automationRegistry.TryGetSuite(suiteId, out ITestLabAutomationSuite suite)
+                ? suite.Scenarios
+                : Array.Empty<ITestLabAutomationScenario>();
+        }
+
+        public string BuildAutomationSummary()
+        {
+            EnsureAutomation();
+            TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(automationRegistry);
+            if (lastAutomationResult == null)
+            {
+                return $"{validation.ToSummary()}\nSuites: {automationRegistry.Suites.Count}\nNo automation run yet.";
+            }
+
+            List<string> lines = new List<string>
+            {
+                validation.ToSummary(),
+                $"Run: {lastAutomationResult.RunId} ({lastAutomationResult.RunMode}) Cancelled={lastAutomationResult.Cancelled}",
+                $"Scenarios: {lastAutomationResult.PassedScenarios} passed, {lastAutomationResult.FailedScenarios} failed, {lastAutomationResult.ErrorScenarios} error, {lastAutomationResult.SkippedScenarios} skipped, {lastAutomationResult.CancelledScenarios} cancelled.",
+                $"Steps: {lastAutomationResult.TotalSteps}. Elapsed: {lastAutomationResult.Elapsed.TotalSeconds:0.###}s."
+            };
+
+            foreach (TestLabScenarioResult scenario in lastAutomationResult.Scenarios)
+            {
+                lines.Add($"{scenario.Status}: {scenario.SuiteId}/{scenario.ScenarioId} - {scenario.DisplayName}");
+                TestLabAutomationStepResult failedStep = scenario.Steps.FirstOrDefault(step => step.Status == TestLabAutomationStatus.Failed || step.Status == TestLabAutomationStatus.Error);
+                if (failedStep != null)
+                {
+                    lines.Add($"  Failed Step: {failedStep.StepId} Expected='{failedStep.Expected}' Actual='{failedStep.Actual}' Tx='{failedStep.TransactionId}'");
+                    if (!string.IsNullOrWhiteSpace(failedStep.Diagnostics))
+                    {
+                        lines.Add($"  Diagnostics: {failedStep.Diagnostics}");
+                    }
+                }
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateAutomationRegistration()
+        {
+            EnsureAutomation();
+            TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(automationRegistry);
+            string message = validation.ToSummary();
+            if (validation.Errors.Count > 0)
+            {
+                message += Environment.NewLine + string.Join(Environment.NewLine, validation.Errors);
+            }
+
+            if (validation.Warnings.Count > 0)
+            {
+                message += Environment.NewLine + string.Join(Environment.NewLine, validation.Warnings);
+            }
+
+            return Record(validation.Succeeded, "Validate Test Lab Automation", validation.Succeeded ? "Valid" : "Invalid", message);
+        }
+
+        public PrototypeTestLabOperation RunAutomationScenario(string suiteId, string scenarioId, bool stopOnFirstFailure)
+        {
+            EnsureAutomation();
+            lastAutomationResult = automationRunner.RunScenario(suiteId, scenarioId, CreateAutomationOptions(stopOnFirstFailure));
+            return Record(!lastAutomationResult.HasFailures, "Run Automation Scenario", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
+        }
+
+        public PrototypeTestLabOperation RunAutomationSuite(string suiteId, bool stopOnFirstFailure)
+        {
+            EnsureAutomation();
+            lastAutomationResult = automationRunner.RunSuite(suiteId, CreateAutomationOptions(stopOnFirstFailure));
+            return Record(!lastAutomationResult.HasFailures, "Run Automation Suite", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
+        }
+
+        public PrototypeTestLabOperation RunAutomationQuick(bool stopOnFirstFailure)
+        {
+            EnsureAutomation();
+            lastAutomationResult = automationRunner.RunAll(quickOnly: true, CreateAutomationOptions(stopOnFirstFailure));
+            return Record(!lastAutomationResult.HasFailures, "Run Quick Automation", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
+        }
+
+        public PrototypeTestLabOperation RunAutomationAll(bool stopOnFirstFailure)
+        {
+            EnsureAutomation();
+            lastAutomationResult = automationRunner.RunAll(quickOnly: false, CreateAutomationOptions(stopOnFirstFailure));
+            return Record(!lastAutomationResult.HasFailures, "Run All Automation", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
+        }
+
+        public PrototypeTestLabOperation RerunFailedAutomation(bool stopOnFirstFailure)
+        {
+            EnsureAutomation();
+            lastAutomationResult = automationRunner.RerunFailed(CreateAutomationOptions(stopOnFirstFailure));
+            return Record(!lastAutomationResult.HasFailures, "Rerun Failed Automation", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
+        }
+
+        public PrototypeTestLabOperation BeginAutomationBatch(TestLabAutomationRunMode runMode)
+        {
+            EnsureAutomation();
+            automationBatchCounter++;
+            automationBatchRunId = $"ui-batch-{automationBatchCounter:0000}";
+            automationBatchMode = runMode;
+            automationBatchStartedAtUtc = DateTime.UtcNow;
+            automationBatchCancelled = false;
+            automationBatchScenarios.Clear();
+            UpdateAutomationBatchResult();
+            return RecordSuccess("Begin Automation Batch", $"Started {runMode} automation batch {automationBatchRunId}.");
+        }
+
+        public PrototypeTestLabOperation RunAutomationScenarioInBatch(string suiteId, string scenarioId, bool stopOnFirstFailure)
+        {
+            EnsureAutomation();
+            if (string.IsNullOrWhiteSpace(automationBatchRunId))
+            {
+                BeginAutomationBatch(TestLabAutomationRunMode.SelectedScenario);
+            }
+
+            automationBatchRunning = true;
+            TestLabAutomationResult scenarioResult;
+            try
+            {
+                scenarioResult = automationRunner.RunScenario(suiteId, scenarioId, CreateAutomationOptions(stopOnFirstFailure));
+            }
+            finally
+            {
+                automationBatchRunning = false;
+            }
+
+            automationBatchScenarios.AddRange(scenarioResult.Scenarios);
+            UpdateAutomationBatchResult();
+            LogAutomationScenarioFailures(scenarioResult);
+            return Record(!scenarioResult.HasFailures, "Run Automation Batch Scenario", scenarioResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(scenarioResult));
+        }
+
+        public PrototypeTestLabOperation CompleteAutomationBatch(bool cancelled)
+        {
+            automationBatchCancelled = cancelled;
+            UpdateAutomationBatchResult();
+            string status = cancelled ? "Cancelled" : lastAutomationResult != null && lastAutomationResult.HasFailures ? "Failed" : "Passed";
+            return Record(status == "Passed", "Complete Automation Batch", status, FormatAutomationRun(lastAutomationResult));
+        }
+
+        public PrototypeTestLabOperation CancelAutomation()
+        {
+            EnsureAutomation();
+            automationBatchCancelled = true;
+            automationRunner.Cancel();
+            return RecordSuccess("Cancel Automation", "Cancellation requested. The current synchronous scenario will finish its current step before remaining scenarios are marked cancelled.");
+        }
+
+        public PrototypeTestLabOperation ClearAutomationResults()
+        {
+            lastAutomationResult = null;
+            return RecordSuccess("Clear Automation Results", "Automation result summary cleared.");
+        }
+
+        public PrototypeTestLabOperation ResetAutomationRuntimeState()
+        {
+            RestoreVitals();
+            ResetLifecycleForAutomation(context?.PlayerLifecycle, PersistenceService.LocalPlayerId);
+            ResetLifecycleForAutomation(context?.EnemyLifecycle, string.Empty);
+            ClearTemporaryStatuses();
+            defensiveActionService.ClearTransientStateForRestore();
+            combatExecutionService.RestoreFromSaveData(new CombatExecutionSaveData
+            {
+                schemaVersion = CombatExecutionSaveData.CurrentSchemaVersion,
+                playerId = PersistenceService.LocalPlayerId,
+                personId = context?.IdentityProgression == null ? string.Empty : context.IdentityProgression.PersonId,
+                cooldowns = new List<CombatExecutionCooldownSaveData>()
+            }, PersistenceService.LocalPlayerId, out _, restoring: true);
+            EnsureCombatStateRuntime().ClearTransientStateForRestore();
+            EnsureOngoingEffectRuntime(targetEnemy: false)?.ClearTransientStateForRestore();
+            EnsureOngoingEffectRuntime(targetEnemy: true)?.ClearTransientStateForRestore();
+            ongoingEffectClockSeconds = 0f;
+            combatStateClockSeconds = 0f;
+            combatExecutionClockSeconds = 0f;
+            lastAttackTransactionId = string.Empty;
+            lastDefenseActivationTransactionId = string.Empty;
+            lastCombatStateTransactionId = string.Empty;
+            lastCombatStateSplitTransactionId = string.Empty;
+            lastCombatExecutionBeginTransactionId = string.Empty;
+            lastCombatExecutionCommitTransactionId = string.Empty;
+            lastCombatExecutionInstanceId = string.Empty;
+            lastLifecycleTransactionId = string.Empty;
+            lastOngoingEffectTransactionId = string.Empty;
+            ResetEnemy();
+            return RecordSuccess("Reset Automation Runtime", "Runtime automation baseline restored without expected optional-action warnings.");
+        }
+
+        private static void ResetLifecycleForAutomation(ActorLifecycleController lifecycle, string playerId)
+        {
+            if (lifecycle == null)
+            {
+                return;
+            }
+
+            lifecycle.RestoreFromSaveData(new ActorLifecycleSaveData
+            {
+                schemaVersion = ActorLifecycleSaveData.CurrentSchemaVersion,
+                playerId = playerId ?? string.Empty,
+                personId = string.Empty,
+                actorId = lifecycle.ActorId,
+                policyId = string.Empty,
+                lifecycleState = ActorLifecycleState.Active.ToString()
+            }, playerId ?? string.Empty, lifecycle.ActorId, out _, restoring: true);
+        }
+
+        public PrototypeTestLabOperation RunExpectedAutomationFailure(Func<PrototypeTestLabOperation> action)
+        {
+            if (action == null)
+            {
+                return RecordFailure("Expected Automation Failure", "No expected-failure action was provided.", "MissingAction");
+            }
+
+            suppressExpectedAutomationWarnings = true;
+            try
+            {
+                return action();
+            }
+            finally
+            {
+                suppressExpectedAutomationWarnings = false;
+            }
+        }
+
+        public PrototypeTestLabOperation ExportAutomationJsonReport()
+        {
+            if (lastAutomationResult == null)
+            {
+                return RecordFailure("Export Automation JSON", "Run automation before exporting a report.", "NoResult");
+            }
+
+            string path = automationReportExporter.ExportJson(lastAutomationResult);
+            return RecordSuccess("Export Automation JSON", $"Exported JSON report to {path}.");
+        }
+
+        public PrototypeTestLabOperation ExportAutomationMarkdownReport()
+        {
+            if (lastAutomationResult == null)
+            {
+                return RecordFailure("Export Automation Markdown", "Run automation before exporting a report.", "NoResult");
+            }
+
+            string path = automationReportExporter.ExportMarkdown(lastAutomationResult);
+            return RecordSuccess("Export Automation Markdown", $"Exported Markdown report to {path}.");
         }
 
         public IReadOnlyList<TDefinition> GetDefinitions<TDefinition>()
@@ -1150,6 +1416,16 @@ namespace UnityIsekaiGame.Development
             return Record(result.Succeeded, "Apply 6.1 Damage", result.Code, message);
         }
 
+        public PrototypeTestLabOperation PreviewPipelineHealing(float amount, bool targetPlayer)
+        {
+            HealingApplicationRequest request = CreatePipelineHealingRequest(amount, targetPlayer, string.Empty);
+            HealingApplicationResult result = new DamageHealingService().PreviewHealing(request);
+            string message = result.Succeeded
+                ? $"Healing final {result.FinalHealingAmount:0.###}, overheal {result.OverhealAmount:0.###}, Health {result.OldHealth:0.###}->{result.NewHealth:0.###}, Changed={result.HealthChanged}, Duplicate={result.Duplicate}."
+                : result.Message;
+            return Record(result.Succeeded, "Preview 6.1 Healing", result.Code, message);
+        }
+
         public PrototypeTestLabOperation ApplyPipelineHealing(float amount, bool targetPlayer)
         {
             HealingApplicationRequest request = CreatePipelineHealingRequest(amount, targetPlayer, $"development.damage-healing.{Guid.NewGuid():N}");
@@ -1485,7 +1761,7 @@ namespace UnityIsekaiGame.Development
             float hitRoll = miss ? 0.99f : 0.1f;
             float distance = blocked ? 999f : 1f;
             float amount = prevented ? 0f : 10f;
-            AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, amount, 0.75f, hitRoll, 0f, 0.5f, 1.5f, distance, 2f, targetEnemy: true, sourcePlayer: true, ResolveCombatStateTransactionId(reuse: false));
+            AttackResolutionRequest request = CreateCombatStateAttackResolutionRequest(damageType, amount, 0.75f, hitRoll, 0f, 0.5f, 1.5f, distance, 2f, ResolveCombatStateTransactionId(reuse: false));
             AttackResolutionResult attack = attackResolutionService.ExecuteAttack(request);
             CombatEntryResult combat = combatState.RecordAttackResult(attack);
             string operation = blocked ? "Blocked 6.5 Attack" : miss ? "Miss 6.5 Attack" : prevented ? "Prevented 6.5 Attack" : "Hit 6.5 Attack";
@@ -1916,6 +2192,34 @@ namespace UnityIsekaiGame.Development
                 metadata: metadata);
         }
 
+        private AttackResolutionRequest CreateCombatStateAttackResolutionRequest(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float criticalChance, float criticalRoll, float criticalMultiplier, float distance, float maximumRange, string transactionId)
+        {
+            EnsureCombatStateTestParticipants();
+            GameObject source = GetCombatStateTestActor("A");
+            GameObject target = GetCombatStateTestActor("B");
+            EnsureAttackResolutionRuntime(source, needsResource: false);
+            EnsureAttackResolutionRuntime(target, needsResource: true);
+            return new AttackResolutionRequest(
+                transactionId,
+                AttackSourceType.Weapon,
+                source,
+                ResolveCombatStateActorId(source),
+                target,
+                ResolveCombatStateActorId(target),
+                damageType,
+                Mathf.Max(0f, amount),
+                hitRoll,
+                criticalRoll,
+                Mathf.Clamp01(baseHitChance),
+                Mathf.Clamp01(criticalChance),
+                Mathf.Max(1f, criticalMultiplier),
+                hasSuppliedDistance: distance >= 0f,
+                suppliedDistance: Mathf.Max(0f, distance),
+                hasMaximumRange: maximumRange >= 0f,
+                maximumRange: Mathf.Max(0f, maximumRange),
+                originatingActionId: "development.combat-state-attack-test");
+        }
+
         private bool TryBuildDefenseActivationRequest(DefensiveActionDefinition definition, bool targetPlayer, bool reuseTransaction, out DefenseActivationRequest request, out PrototypeTestLabOperation failure)
         {
             request = default;
@@ -2331,7 +2635,8 @@ namespace UnityIsekaiGame.Development
 
         private OngoingEffectService EnsureOngoingEffectRuntime(bool targetEnemy)
         {
-            GameObject actor = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
+            PrototypeTestLabContext labContext = context;
+            GameObject actor = targetEnemy ? labContext?.EnemyTransform?.gameObject : labContext?.PlayerTransform?.gameObject;
             if (actor == null)
             {
                 return null;
@@ -2339,13 +2644,14 @@ namespace UnityIsekaiGame.Development
 
             if (targetEnemy)
             {
-                EnsureLifecycleRuntime(actor, ref context.EnemyLifecycle, needsResource: true);
+                EnsureLifecycleRuntime(actor, ref labContext.EnemyLifecycle, needsResource: true);
             }
             else
             {
-                EnsureLifecycleRuntime(actor, ref context.PlayerLifecycle, needsResource: true);
+                EnsureLifecycleRuntime(actor, ref labContext.PlayerLifecycle, needsResource: true);
             }
-            OngoingEffectService service = targetEnemy ? context?.EnemyOngoingEffects : context?.PlayerOngoingEffects;
+
+            OngoingEffectService service = targetEnemy ? labContext.EnemyOngoingEffects : labContext.PlayerOngoingEffects;
             if (service == null)
             {
                 service = actor.GetComponentInParent<OngoingEffectService>();
@@ -2356,15 +2662,26 @@ namespace UnityIsekaiGame.Development
                 service = actor.AddComponent<OngoingEffectService>();
             }
 
-            service.Configure(actor.GetComponentInParent<CharacterSystemCoordinator>());
+            if (service == null)
+            {
+                return null;
+            }
+
+            CharacterSystemCoordinator coordinator = actor.GetComponentInParent<CharacterSystemCoordinator>();
+            if (coordinator == null && !targetEnemy)
+            {
+                return null;
+            }
+
+            service.Configure(coordinator);
             service.SetClock(ongoingEffectClockSeconds);
             if (targetEnemy)
             {
-                context.EnemyOngoingEffects = service;
+                labContext.EnemyOngoingEffects = service;
             }
             else
             {
-                context.PlayerOngoingEffects = service;
+                labContext.PlayerOngoingEffects = service;
             }
 
             return service;
@@ -3612,6 +3929,55 @@ namespace UnityIsekaiGame.Development
             }
         }
 
+        private void EnsureAutomation()
+        {
+            if (automationRegistry.Suites.Count == 0)
+            {
+                PrototypeStep6AutomationSuites.RegisterDefaults(automationRegistry);
+            }
+
+            if (automationRunner == null)
+            {
+                automationRunner = new TestLabAutomationRunner(this, automationRegistry, new PrototypeTestLabAutomationResetCoordinator());
+            }
+        }
+
+        private static TestLabAutomationOptions CreateAutomationOptions(bool stopOnFirstFailure)
+        {
+            return new TestLabAutomationOptions
+            {
+                StopOnFirstFailure = stopOnFirstFailure,
+                IncludeExtended = true,
+                MaximumFrameWait = 120
+            };
+        }
+
+        private static string FormatAutomationRun(TestLabAutomationResult result)
+        {
+            if (result == null)
+            {
+                return "No automation result.";
+            }
+
+            return $"Run {result.RunId}: {result.PassedScenarios} passed, {result.FailedScenarios} failed, {result.ErrorScenarios} error, {result.SkippedScenarios} skipped, {result.CancelledScenarios} cancelled, {result.TotalSteps} steps.";
+        }
+
+        private void UpdateAutomationBatchResult()
+        {
+            if (string.IsNullOrWhiteSpace(automationBatchRunId))
+            {
+                return;
+            }
+
+            lastAutomationResult = new TestLabAutomationResult(
+                automationBatchRunId,
+                automationBatchMode,
+                automationBatchStartedAtUtc,
+                DateTime.UtcNow,
+                automationBatchCancelled,
+                automationBatchScenarios);
+        }
+
         private bool EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence)
         {
             persistence = context?.Persistence;
@@ -3837,13 +4203,36 @@ namespace UnityIsekaiGame.Development
                 history.RemoveAt(history.Count - 1);
             }
 
-            if (!succeeded && !string.Equals(code, "ConfirmationRequired", StringComparison.Ordinal))
+            bool automationRecord = operationName.IndexOf("Automation", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!succeeded && !suppressExpectedAutomationWarnings && !automationBatchRunning && !automationRecord && !string.Equals(code, "ConfirmationRequired", StringComparison.Ordinal))
             {
                 Debug.LogWarning($"{operationName}: {message}");
             }
 
             HistoryChanged?.Invoke();
             return operation;
+        }
+
+        private static void LogAutomationScenarioFailures(TestLabAutomationResult result)
+        {
+            if (result == null || !result.HasFailures)
+            {
+                return;
+            }
+
+            foreach (TestLabScenarioResult scenario in result.Scenarios)
+            {
+                if (scenario.Status != TestLabAutomationStatus.Failed && scenario.Status != TestLabAutomationStatus.Error)
+                {
+                    continue;
+                }
+
+                TestLabAutomationStepResult failedStep = scenario.Steps.FirstOrDefault(step => step.Status == TestLabAutomationStatus.Failed || step.Status == TestLabAutomationStatus.Error);
+                string message = failedStep == null
+                    ? $"Automation failed: {scenario.SuiteId}/{scenario.ScenarioId} - {scenario.DisplayName}. Status={scenario.Status}."
+                    : $"Automation failed: {scenario.SuiteId}/{scenario.ScenarioId} - {scenario.DisplayName}. Step={failedStep.StepId}. Expected='{failedStep.Expected}' Actual='{failedStep.Actual}'. Assertion={failedStep.AssertionType}. Tx='{failedStep.TransactionId}'. Diagnostics: {failedStep.Diagnostics}";
+                Debug.LogWarning(message);
+            }
         }
 
         private DefinitionRegistry CreateRegistry(DefinitionCatalog catalog)
