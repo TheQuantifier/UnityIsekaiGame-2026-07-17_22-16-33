@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
@@ -32,6 +33,7 @@ namespace UnityIsekaiGame.Development
         public CalculatedStatCollection PlayerCalculatedStats;
         public CharacterResourceCollection PlayerResources;
         public ActorLifecycleController PlayerLifecycle;
+        public OngoingEffectService PlayerOngoingEffects;
         public CharacterSkillCollection PlayerSkills;
         public CharacterTraitCollection PlayerTraits;
         public CharacterSystemCoordinator CharacterSystem;
@@ -48,6 +50,7 @@ namespace UnityIsekaiGame.Development
         public PrototypeEnemyController EnemyController;
         public EnemyMeleeAttack EnemyAttack;
         public ActorLifecycleController EnemyLifecycle;
+        public OngoingEffectService EnemyOngoingEffects;
         public StatusEffectController EnemyStatuses;
         public Transform EnemyTransform;
     }

@@ -5,6 +5,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
@@ -41,6 +42,7 @@ namespace UnityIsekaiGame.Development
             "Inventory",
             "Combat",
             "Lifecycle 6.3",
+            "Ongoing 6.4",
             "Statuses",
             "Quests",
             "Persistence",
@@ -60,6 +62,11 @@ namespace UnityIsekaiGame.Development
         private InputField attackCriticalMultiplierInput;
         private InputField attackDistanceInput;
         private InputField attackMaximumRangeInput;
+        private InputField ongoingAmountInput;
+        private InputField ongoingIntervalInput;
+        private InputField ongoingDurationInput;
+        private InputField ongoingTickCountInput;
+        private InputField ongoingStackInput;
         private Text overviewText;
         private Text latestOperationText;
         private Text diagnosticsText;
@@ -73,6 +80,7 @@ namespace UnityIsekaiGame.Development
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
         private Text lifecycleText;
+        private Text ongoingEffectsText;
         private Text traitsText;
         private Text skillsText;
         private Text itemValueText;
@@ -84,6 +92,7 @@ namespace UnityIsekaiGame.Development
         private Text socialStatusValueText;
         private Text currencyValueText;
         private Text damageValueText;
+        private Text ongoingEffectValueText;
         private Text questValueText;
         private Text contractValueText;
         private Text placeValueText;
@@ -98,6 +107,7 @@ namespace UnityIsekaiGame.Development
         private int selectedSocialStatusIndex;
         private int selectedCurrencyIndex;
         private int selectedDamageIndex;
+        private int selectedOngoingEffectIndex;
         private int selectedQuestIndex;
         private int selectedContractIndex;
         private int selectedPlaceIndex;
@@ -113,6 +123,7 @@ namespace UnityIsekaiGame.Development
         private readonly List<SocialStatusDefinition> socialStatuses = new List<SocialStatusDefinition>();
         private readonly List<CurrencyDefinition> currencies = new List<CurrencyDefinition>();
         private readonly List<DamageTypeDefinition> damageTypes = new List<DamageTypeDefinition>();
+        private readonly List<OngoingEffectDefinition> ongoingEffects = new List<OngoingEffectDefinition>();
         private readonly List<QuestDefinition> quests = new List<QuestDefinition>();
         private readonly List<ContractDefinition> contracts = new List<ContractDefinition>();
         private readonly List<PlaceDefinition> places = new List<PlaceDefinition>();
@@ -216,6 +227,11 @@ namespace UnityIsekaiGame.Development
                 lifecycleText.text = service.BuildLifecycleSummary();
             }
 
+            if (ongoingEffectsText != null)
+            {
+                ongoingEffectsText.text = service.BuildOngoingEffectsSummary();
+            }
+
             if (skillsText != null)
             {
                 skillsText.text = service.BuildSkillsSummary(includeHidden: true);
@@ -276,6 +292,7 @@ namespace UnityIsekaiGame.Development
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
             Transform lifecycleSection = AddSection(content, "Lifecycle Section");
+            Transform ongoingEffectsSection = AddSection(content, "Ongoing Effects Section");
             Transform statusSection = AddSection(content, "Statuses Section");
             Transform questSection = AddSection(content, "Quests Section");
             Transform persistenceSection = AddSection(content, "Persistence Section");
@@ -295,6 +312,7 @@ namespace UnityIsekaiGame.Development
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
             BuildLifecycleSection(lifecycleSection, font);
+            BuildOngoingEffectsSection(ongoingEffectsSection, font);
             BuildStatusSection(statusSection, font);
             BuildQuestSection(questSection, font);
             BuildPersistenceSection(persistenceSection, font);
@@ -309,6 +327,7 @@ namespace UnityIsekaiGame.Development
             itemValueText = AddSelectorRow(parent, font, "Item", () => CycleSelection(ref selectedItemIndex, items.Count, -1), () => CycleSelection(ref selectedItemIndex, items.Count, 1));
             statusValueText = AddSelectorRow(parent, font, "Status", () => CycleSelection(ref selectedStatusIndex, statuses.Count, -1), () => CycleSelection(ref selectedStatusIndex, statuses.Count, 1));
             damageValueText = AddSelectorRow(parent, font, "Damage", () => CycleSelection(ref selectedDamageIndex, damageTypes.Count, -1), () => CycleSelection(ref selectedDamageIndex, damageTypes.Count, 1));
+            ongoingEffectValueText = AddSelectorRow(parent, font, "Ongoing", () => CycleSelection(ref selectedOngoingEffectIndex, ongoingEffects.Count, -1), () => CycleSelection(ref selectedOngoingEffectIndex, ongoingEffects.Count, 1));
             questValueText = AddSelectorRow(parent, font, "Quest", () => CycleSelection(ref selectedQuestIndex, quests.Count, -1), () => CycleSelection(ref selectedQuestIndex, quests.Count, 1));
             contractValueText = AddSelectorRow(parent, font, "Contract", () => CycleSelection(ref selectedContractIndex, contracts.Count, -1), () => CycleSelection(ref selectedContractIndex, contracts.Count, 1));
             placeValueText = AddSelectorRow(parent, font, "Place", () => CycleSelection(ref selectedPlaceIndex, places.Count, -1), () => CycleSelection(ref selectedPlaceIndex, places.Count, 1));
@@ -536,6 +555,37 @@ namespace UnityIsekaiGame.Development
             lifecycleText = AddText(parent, font, "Lifecycle not available.", 12, 260);
         }
 
+        private void BuildOngoingEffectsSection(Transform parent, Font font)
+        {
+            AddHeader(parent, font, "Feature 6.4 Ongoing Damage / Healing / Recovery");
+            ongoingAmountInput = AddInputRow(parent, font, "Tick Amount", "0");
+            ongoingIntervalInput = AddInputRow(parent, font, "Interval", "0");
+            ongoingDurationInput = AddInputRow(parent, font, "Duration", "0");
+            ongoingTickCountInput = AddInputRow(parent, font, "Tick Count", "0");
+            ongoingStackInput = AddInputRow(parent, font, "Stacks", "1");
+            AddButtonRow(parent, font,
+                ("Fresh Tx", () => service.GenerateOngoingEffectTransaction()),
+                ("Preview P", () => service.PreviewOngoingEffect(GetSelected(ongoingEffects, selectedOngoingEffectIndex), targetEnemy: false, GetFloat(ongoingAmountInput, 0f), GetFloat(ongoingIntervalInput, 0f), GetFloat(ongoingDurationInput, 0f), GetInt(ongoingTickCountInput, 0), GetInt(ongoingStackInput, 1))),
+                ("Apply P", () => service.ApplyOngoingEffect(GetSelected(ongoingEffects, selectedOngoingEffectIndex), targetEnemy: false, GetFloat(ongoingAmountInput, 0f), GetFloat(ongoingIntervalInput, 0f), GetFloat(ongoingDurationInput, 0f), GetInt(ongoingTickCountInput, 0), GetInt(ongoingStackInput, 1), reuseTransaction: false)),
+                ("Reuse P", () => service.ApplyOngoingEffect(GetSelected(ongoingEffects, selectedOngoingEffectIndex), targetEnemy: false, GetFloat(ongoingAmountInput, 0f), GetFloat(ongoingIntervalInput, 0f), GetFloat(ongoingDurationInput, 0f), GetInt(ongoingTickCountInput, 0), GetInt(ongoingStackInput, 1), reuseTransaction: true)));
+            AddButtonRow(parent, font,
+                ("Preview E", () => service.PreviewOngoingEffect(GetSelected(ongoingEffects, selectedOngoingEffectIndex), targetEnemy: true, GetFloat(ongoingAmountInput, 0f), GetFloat(ongoingIntervalInput, 0f), GetFloat(ongoingDurationInput, 0f), GetInt(ongoingTickCountInput, 0), GetInt(ongoingStackInput, 1))),
+                ("Apply E", () => service.ApplyOngoingEffect(GetSelected(ongoingEffects, selectedOngoingEffectIndex), targetEnemy: true, GetFloat(ongoingAmountInput, 0f), GetFloat(ongoingIntervalInput, 0f), GetFloat(ongoingDurationInput, 0f), GetInt(ongoingTickCountInput, 0), GetInt(ongoingStackInput, 1), reuseTransaction: false)),
+                ("Stack E", () => service.ApplyOngoingEffect(GetSelected(ongoingEffects, selectedOngoingEffectIndex), targetEnemy: true, GetFloat(ongoingAmountInput, 0f), GetFloat(ongoingIntervalInput, 0f), GetFloat(ongoingDurationInput, 0f), GetInt(ongoingTickCountInput, 0), GetInt(ongoingStackInput, 1), reuseTransaction: false)),
+                ("Cancel E", () => service.CancelFirstOngoingEffect(targetEnemy: true, preview: false)));
+            AddButtonRow(parent, font,
+                ("Tick Now", () => service.ProcessOngoingEffectsNow()),
+                ("Advance <1", () => service.AdvanceOngoingEffects(Mathf.Max(0.1f, GetFloat(ongoingIntervalInput, 1f) * 0.5f))),
+                ("Advance 1x", () => service.AdvanceOngoingEffects(Mathf.Max(0.1f, GetFloat(ongoingIntervalInput, 1f)))),
+                ("Advance 5x", () => service.AdvanceOngoingEffects(Mathf.Max(0.1f, GetFloat(ongoingIntervalInput, 1f)) * 5f)));
+            AddButtonRow(parent, font,
+                ("Cancel P", () => service.CancelFirstOngoingEffect(targetEnemy: false, preview: false)),
+                ("Preview Cancel P", () => service.CancelFirstOngoingEffect(targetEnemy: false, preview: true)),
+                ("Save Active", () => service.Save()),
+                ("Load Active", () => service.Load()));
+            ongoingEffectsText = AddText(parent, font, "Ongoing effects not available.", 12, 320);
+        }
+
         private void BuildStatusSection(Transform parent, Font font)
         {
             AddButtonRow(parent, font,
@@ -645,6 +695,7 @@ namespace UnityIsekaiGame.Development
             SetOptions(socialStatuses, service.GetDefinitions<SocialStatusDefinition>(), ref selectedSocialStatusIndex);
             SetOptions(currencies, service.GetDefinitions<CurrencyDefinition>(), ref selectedCurrencyIndex);
             SetOptions(damageTypes, service.GetDefinitions<DamageTypeDefinition>(), ref selectedDamageIndex);
+            SetOptions(ongoingEffects, service.GetDefinitions<OngoingEffectDefinition>(), ref selectedOngoingEffectIndex);
             SetOptions(quests, service.GetDefinitions<QuestDefinition>(), ref selectedQuestIndex);
             SetOptions(contracts, service.GetDefinitions<ContractDefinition>(), ref selectedContractIndex);
             SetOptions(places, service.GetDefinitions<PlaceDefinition>(), ref selectedPlaceIndex);
@@ -663,6 +714,7 @@ namespace UnityIsekaiGame.Development
             SetValue(socialStatusValueText, FormatSelected(socialStatuses, selectedSocialStatusIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(currencyValueText, FormatSelected(currencies, selectedCurrencyIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(damageValueText, FormatSelected(damageTypes, selectedDamageIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(ongoingEffectValueText, FormatSelected(ongoingEffects, selectedOngoingEffectIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(questValueText, FormatSelected(quests, selectedQuestIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(contractValueText, FormatSelected(contracts, selectedContractIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(placeValueText, FormatSelected(places, selectedPlaceIndex, PrototypeTestLabService.FormatDefinition));

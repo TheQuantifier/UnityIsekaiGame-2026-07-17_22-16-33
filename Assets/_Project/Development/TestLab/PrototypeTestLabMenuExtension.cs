@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Magic;
@@ -150,6 +151,17 @@ namespace UnityIsekaiGame.Development
                 ? menuController.Inventory == null ? null : menuController.Inventory.transform
                 : menuController.ItemUser.transform;
             Transform enemyTransform = enemyHealth == null ? null : enemyHealth.transform;
+            OngoingEffectService playerOngoingEffects = playerTransform == null ? null : playerTransform.GetComponentInParent<OngoingEffectService>();
+            if (playerOngoingEffects == null && playerTransform != null)
+            {
+                playerOngoingEffects = playerTransform.gameObject.AddComponent<OngoingEffectService>();
+            }
+
+            OngoingEffectService enemyOngoingEffects = enemyTransform == null ? null : enemyTransform.GetComponent<OngoingEffectService>();
+            if (enemyOngoingEffects == null && enemyTransform != null)
+            {
+                enemyOngoingEffects = enemyTransform.gameObject.AddComponent<OngoingEffectService>();
+            }
 
             service.Configure(new PrototypeTestLabContext
             {
@@ -164,6 +176,7 @@ namespace UnityIsekaiGame.Development
                 PlayerCalculatedStats = menuController.PlayerStats == null ? null : menuController.PlayerStats.CalculatedStats,
                 PlayerResources = playerTransform == null ? null : playerTransform.GetComponentInParent<CharacterResourceCollection>(),
                 PlayerLifecycle = playerTransform == null ? null : playerTransform.GetComponentInParent<ActorLifecycleController>(),
+                PlayerOngoingEffects = playerOngoingEffects,
                 PlayerSkills = menuController.RuntimeSkills,
                 PlayerTraits = menuController.RuntimeTraits,
                 CharacterSystem = menuController.RuntimeCharacterSystem,
@@ -180,6 +193,7 @@ namespace UnityIsekaiGame.Development
                 EnemyController = enemyTransform == null ? null : enemyTransform.GetComponent<PrototypeEnemyController>(),
                 EnemyAttack = enemyTransform == null ? null : enemyTransform.GetComponent<EnemyMeleeAttack>(),
                 EnemyLifecycle = enemyTransform == null ? null : enemyTransform.GetComponent<ActorLifecycleController>(),
+                EnemyOngoingEffects = enemyOngoingEffects,
                 EnemyStatuses = enemyTransform == null ? null : enemyTransform.GetComponent<StatusEffectController>(),
                 EnemyTransform = enemyTransform
             });
