@@ -41,7 +41,7 @@ namespace UnityIsekaiGame.Interaction
         {
             RefreshTarget();
 
-            if (currentInteractable == null || input == null || !input.ConsumeInteract())
+            if (input == null || !input.ConsumeInteract() || currentInteractable == null)
             {
                 return;
             }

@@ -9,6 +9,7 @@ using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.Defense;
+using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
@@ -48,6 +49,7 @@ namespace UnityIsekaiGame.Development
         private readonly Dictionary<Type, List<IGameDefinition>> selectorCache = new Dictionary<Type, List<IGameDefinition>>();
         private readonly DefensiveActionService defensiveActionService = new DefensiveActionService();
         private readonly AttackResolutionService attackResolutionService;
+        private CombatExecutionService combatExecutionService = new CombatExecutionService();
         private PrototypeTestLabContext context;
         private DefinitionRegistry registry;
         private int historyLimit = DefaultHistoryLimit;
@@ -60,9 +62,13 @@ namespace UnityIsekaiGame.Development
         private string lastDefenseActivationTransactionId;
         private string lastCombatStateTransactionId;
         private string lastCombatStateSplitTransactionId;
+        private string lastCombatExecutionBeginTransactionId;
+        private string lastCombatExecutionCommitTransactionId;
+        private string lastCombatExecutionInstanceId;
         private string lastLifecycleTransactionId;
         private string lastOngoingEffectTransactionId;
         private float combatStateClockSeconds;
+        private float combatExecutionClockSeconds;
         private float ongoingEffectClockSeconds;
         private readonly Dictionary<string, GameObject> combatStateTestActors = new Dictionary<string, GameObject>(StringComparer.Ordinal);
 
@@ -80,6 +86,7 @@ namespace UnityIsekaiGame.Development
         public void Configure(PrototypeTestLabContext newContext)
         {
             context = newContext;
+            combatExecutionService = context?.Persistence == null ? combatExecutionService : context.Persistence.CombatExecution;
             registry = CreateRegistry(context?.DefinitionCatalog);
             context?.IdentityProgression?.RegisterDefinitionCache(registry);
             if (EnsureResources(out CharacterResourceCollection resources))
@@ -1287,6 +1294,125 @@ namespace UnityIsekaiGame.Development
             return Record(result.Succeeded, reuseTransaction ? "Execute 6.6 Defensive Attack Reuse" : "Execute 6.6 Defensive Attack", result.Code, FormatAttackResolution(result));
         }
 
+        public string BuildCombatExecutionSummary()
+        {
+            GameObject player = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            EnsureAttackResolutionRuntime(player, needsResource: true);
+            string actorId = ResolveActorId(player);
+            CombatExecutionStateSnapshot state = combatExecutionService.GetExecutionState(actorId);
+            string active = state == null
+                ? "None"
+                : $"{state.DefinitionId} Phase={state.Phase} Ready={state.ReadyAt:0.###} RecoveryEnd={state.RecoveryEndsAt:0.###} Instance={state.ExecutionInstanceId}";
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Feature 6.7 Combat Execution",
+                $"Clock: {combatExecutionClockSeconds:0.###}s",
+                $"Actor: {(string.IsNullOrWhiteSpace(actorId) ? "None" : actorId)}",
+                $"Active: {active}",
+                $"Health: {FormatResource(player, ResourceIds.Health)}",
+                $"Stamina: {FormatResource(player, ResourceIds.Stamina)}",
+                $"Mana: {FormatResource(player, ResourceIds.Mana)}",
+                $"Last Begin Tx: {(string.IsNullOrWhiteSpace(lastCombatExecutionBeginTransactionId) ? "None" : lastCombatExecutionBeginTransactionId)}",
+                $"Last Commit Tx: {(string.IsNullOrWhiteSpace(lastCombatExecutionCommitTransactionId) ? "None" : lastCombatExecutionCommitTransactionId)}",
+                $"Last Instance: {(string.IsNullOrWhiteSpace(lastCombatExecutionInstanceId) ? "None" : lastCombatExecutionInstanceId)}",
+                FormatCombatExecutionCooldowns(actorId)
+            });
+        }
+
+        public PrototypeTestLabOperation PreviewCombatExecution(CombatExecutionDefinition definition)
+        {
+            if (!TryBuildCombatExecutionBeginRequest(definition, reuseTransaction: false, out CombatExecutionBeginRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            CombatExecutionResult result = combatExecutionService.PreviewBeginExecution(request);
+            return Record(result.Succeeded, "Preview 6.7 Execution", result.Code, FormatCombatExecutionResult(result));
+        }
+
+        public PrototypeTestLabOperation BeginCombatExecution(CombatExecutionDefinition definition, bool reuseTransaction)
+        {
+            if (!TryBuildCombatExecutionBeginRequest(definition, reuseTransaction, out CombatExecutionBeginRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            CombatExecutionResult result = combatExecutionService.BeginExecution(request);
+            if (result.Succeeded && result.State != null)
+            {
+                lastCombatExecutionInstanceId = result.State.ExecutionInstanceId;
+            }
+
+            return Record(result.Succeeded, reuseTransaction ? "Begin 6.7 Execution Reuse" : "Begin 6.7 Execution", result.Code, FormatCombatExecutionResult(result));
+        }
+
+        public PrototypeTestLabOperation CommitCombatExecution(bool reuseTransaction)
+        {
+            if (!TryBuildCombatExecutionCommitRequest(reuseTransaction, out CombatExecutionCommitRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            CombatExecutionResult result = combatExecutionService.CommitExecution(request);
+            return Record(result.Succeeded, reuseTransaction ? "Commit 6.7 Execution Reuse" : "Commit 6.7 Execution", result.Code, FormatCombatExecutionResult(result));
+        }
+
+        public PrototypeTestLabOperation CancelCombatExecution()
+        {
+            if (!TryBuildCombatExecutionCancelRequest(CombatExecutionCancellationReason.PlayerOrAIRequest, out CombatExecutionCancelRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            CombatExecutionResult result = combatExecutionService.CancelExecution(request);
+            if (result.Succeeded)
+            {
+                lastCombatExecutionInstanceId = string.Empty;
+            }
+
+            return Record(result.Succeeded, "Cancel 6.7 Execution", result.Code, FormatCombatExecutionResult(result));
+        }
+
+        public PrototypeTestLabOperation InterruptCombatExecution()
+        {
+            if (!TryBuildCombatExecutionCancelRequest(CombatExecutionCancellationReason.InterruptedByDamage, out CombatExecutionCancelRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            CombatExecutionResult result = combatExecutionService.InterruptExecution(request);
+            if (result.Succeeded)
+            {
+                lastCombatExecutionInstanceId = string.Empty;
+            }
+
+            return Record(result.Succeeded, "Interrupt 6.7 Execution", result.Code, FormatCombatExecutionResult(result));
+        }
+
+        public PrototypeTestLabOperation AdvanceCombatExecutionClock(float seconds)
+        {
+            float delta = Mathf.Max(0f, seconds);
+            combatExecutionClockSeconds += delta;
+            IReadOnlyList<CombatExecutionResult> results = combatExecutionService.ProcessExecutionTime(combatExecutionClockSeconds);
+            string message = results.Count == 0
+                ? $"Advanced 6.7 clock by {delta:0.###}s. No completions."
+                : string.Join(Environment.NewLine, results.Select(FormatCombatExecutionResult));
+            return RecordSuccess("Advance 6.7 Execution Clock", message);
+        }
+
+        public PrototypeTestLabOperation ClearCombatExecutionForRestore()
+        {
+            combatExecutionService.ClearTransientStateForRestore();
+            lastCombatExecutionInstanceId = string.Empty;
+            return RecordSuccess("Restore Clear 6.7 Execution", "Cleared transient combat execution commitments without emitting cancellation or interruption state through persistence.");
+        }
+
+        public PrototypeTestLabOperation SnapshotCombatExecution()
+        {
+            CombatExecutionSaveData saveData = combatExecutionService.CreateSaveData(PersistenceService.LocalPlayerId, "person.prototype-player");
+            return RecordSuccess("Snapshot 6.7 Execution", $"Cooldown records: {(saveData.cooldowns == null ? 0 : saveData.cooldowns.Count)}. Transient commitments are not saved.");
+        }
+
         public string BuildCombatStateSummary()
         {
             CombatStateService combatState = EnsureCombatStateRuntime();
@@ -1867,7 +1993,7 @@ namespace UnityIsekaiGame.Development
 
         private void EnsureAttackResolutionRuntime(GameObject actor, bool needsResource)
         {
-            if (actor == null)
+            if (!CanMutateRuntimeActor(actor))
             {
                 return;
             }
@@ -1876,6 +2002,11 @@ namespace UnityIsekaiGame.Development
             if (identity == null)
             {
                 identity = actor.AddComponent<WorldEntityIdentity>();
+                if (identity == null)
+                {
+                    return;
+                }
+
                 identity.TryInitializeRuntime($"entity.local-world.runtime.attack-test-lab.{Guid.NewGuid():N}", "scene.prototype", PersistenceService.LocalWorldId, PersistenceScope.RegionOrScene, "development.attack-resolution", out _);
             }
 
@@ -1883,12 +2014,20 @@ namespace UnityIsekaiGame.Development
             if (attributes == null)
             {
                 attributes = actor.AddComponent<CharacterAttributes>();
+                if (attributes == null)
+                {
+                    return;
+                }
             }
 
             CalculatedStatCollection stats = actor.GetComponentInParent<CalculatedStatCollection>();
             if (stats == null)
             {
                 stats = actor.AddComponent<CalculatedStatCollection>();
+                if (stats == null)
+                {
+                    return;
+                }
             }
 
             attributes.Configure(registry);
@@ -1899,6 +2038,10 @@ namespace UnityIsekaiGame.Development
                 if (resources == null)
                 {
                     resources = actor.AddComponent<CharacterResourceCollection>();
+                    if (resources == null)
+                    {
+                        return;
+                    }
                 }
 
                 resources.Configure(registry, stats, PersistenceService.LocalPlayerId);
@@ -1907,7 +2050,7 @@ namespace UnityIsekaiGame.Development
 
         private void EnsureLifecycleRuntime(GameObject actor, ref ActorLifecycleController lifecycle, bool needsResource)
         {
-            if (actor == null)
+            if (!CanMutateRuntimeActor(actor))
             {
                 return;
             }
@@ -1917,12 +2060,27 @@ namespace UnityIsekaiGame.Development
             if (lifecycle == null)
             {
                 lifecycle = actor.AddComponent<ActorLifecycleController>();
+                if (lifecycle == null)
+                {
+                    return;
+                }
             }
 
             CharacterResourceCollection resources = actor.GetComponentInParent<CharacterResourceCollection>();
             CharacterSystemCoordinator character = actor.GetComponentInParent<CharacterSystemCoordinator>();
             CharacterTraitCollection traits = actor.GetComponentInParent<CharacterTraitCollection>();
             lifecycle.Configure(null, resources, character, traits);
+        }
+
+        private static bool CanMutateRuntimeActor(GameObject actor)
+        {
+            if (actor == null || !actor.activeInHierarchy)
+            {
+                return false;
+            }
+
+            CharacterSystemCoordinator character = actor.GetComponentInParent<CharacterSystemCoordinator>();
+            return character == null || character.isActiveAndEnabled;
         }
 
         private CombatStateService EnsureCombatStateRuntime()
@@ -2019,6 +2177,156 @@ namespace UnityIsekaiGame.Development
             }
 
             return null;
+        }
+
+        private bool TryBuildCombatExecutionBeginRequest(CombatExecutionDefinition definition, bool reuseTransaction, out CombatExecutionBeginRequest request, out PrototypeTestLabOperation failure)
+        {
+            request = default;
+            failure = default;
+            GameObject actor = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            EnsureAttackResolutionRuntime(actor, needsResource: true);
+            if (definition == null)
+            {
+                failure = RecordFailure("6.7 Execution", "Combat execution definition is missing.", CombatExecutionResultCode.MissingDefinition);
+                return false;
+            }
+
+            if (actor == null)
+            {
+                failure = RecordFailure("6.7 Execution", "Prototype player actor is missing.", CombatExecutionResultCode.MissingActor);
+                return false;
+            }
+
+            request = new CombatExecutionBeginRequest(
+                ResolveCombatExecutionBeginTransactionId(reuseTransaction),
+                definition,
+                actor,
+                ResolveActorId(actor),
+                combatExecutionClockSeconds,
+                authorityValidated: true);
+            return true;
+        }
+
+        private bool TryBuildCombatExecutionCommitRequest(bool reuseTransaction, out CombatExecutionCommitRequest request, out PrototypeTestLabOperation failure)
+        {
+            request = default;
+            failure = default;
+            GameObject actor = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            EnsureAttackResolutionRuntime(actor, needsResource: true);
+            if (actor == null)
+            {
+                failure = RecordFailure("6.7 Execution", "Prototype player actor is missing.", CombatExecutionResultCode.MissingActor);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(lastCombatExecutionInstanceId))
+            {
+                failure = RecordFailure("6.7 Execution", "Begin a combat execution before committing.", CombatExecutionResultCode.MissingExecution);
+                return false;
+            }
+
+            request = new CombatExecutionCommitRequest(
+                ResolveCombatExecutionCommitTransactionId(reuseTransaction),
+                lastCombatExecutionInstanceId,
+                actor,
+                ResolveActorId(actor),
+                combatExecutionClockSeconds,
+                authorityValidated: true);
+            return true;
+        }
+
+        private bool TryBuildCombatExecutionCancelRequest(CombatExecutionCancellationReason reason, out CombatExecutionCancelRequest request, out PrototypeTestLabOperation failure)
+        {
+            request = default;
+            failure = default;
+            GameObject actor = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            if (actor == null)
+            {
+                failure = RecordFailure("6.7 Execution", "Prototype player actor is missing.", CombatExecutionResultCode.MissingActor);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(lastCombatExecutionInstanceId))
+            {
+                failure = RecordFailure("6.7 Execution", "Begin a combat execution before cancelling or interrupting.", CombatExecutionResultCode.MissingExecution);
+                return false;
+            }
+
+            request = new CombatExecutionCancelRequest(
+                $"development.combat-execution.cancel.{Guid.NewGuid():N}",
+                lastCombatExecutionInstanceId,
+                actor,
+                ResolveActorId(actor),
+                reason,
+                combatExecutionClockSeconds);
+            return true;
+        }
+
+        private string ResolveCombatExecutionBeginTransactionId(bool reuse)
+        {
+            if (reuse && !string.IsNullOrWhiteSpace(lastCombatExecutionBeginTransactionId))
+            {
+                return lastCombatExecutionBeginTransactionId;
+            }
+
+            lastCombatExecutionBeginTransactionId = $"development.combat-execution.begin.{Guid.NewGuid():N}";
+            return lastCombatExecutionBeginTransactionId;
+        }
+
+        private string ResolveCombatExecutionCommitTransactionId(bool reuse)
+        {
+            if (reuse && !string.IsNullOrWhiteSpace(lastCombatExecutionCommitTransactionId))
+            {
+                return lastCombatExecutionCommitTransactionId;
+            }
+
+            lastCombatExecutionCommitTransactionId = $"development.combat-execution.commit.{Guid.NewGuid():N}";
+            return lastCombatExecutionCommitTransactionId;
+        }
+
+        private string FormatCombatExecutionCooldowns(string actorId)
+        {
+            if (string.IsNullOrWhiteSpace(actorId))
+            {
+                return "Cooldowns: None";
+            }
+
+            List<string> lines = new List<string> { "Cooldowns:" };
+            IReadOnlyList<CombatExecutionDefinition> definitions = GetDefinitions<CombatExecutionDefinition>();
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                CombatExecutionDefinition definition = definitions[i];
+                CombatExecutionCooldownSnapshot snapshot = combatExecutionService.GetCooldownState(actorId, definition.ResolveCooldownKey());
+                if (snapshot == null)
+                {
+                    lines.Add($"- {definition.DisplayName}: Ready");
+                }
+                else
+                {
+                    lines.Add($"- {definition.DisplayName}: Charges {snapshot.CurrentCharges}/{snapshot.MaximumCharges} ReadyAt {snapshot.CooldownReadyAt:0.###}");
+                }
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        private static string FormatCombatExecutionResult(CombatExecutionResult result)
+        {
+            if (result == null)
+            {
+                return "No combat execution result.";
+            }
+
+            string state = result.State == null
+                ? "State=None"
+                : $"State={result.State.Phase} Instance={result.State.ExecutionInstanceId} Ready={result.State.ReadyAt:0.###} RecoveryEnd={result.State.RecoveryEndsAt:0.###}";
+            string costs = result.Costs == null || result.Costs.Count == 0
+                ? "Costs=None"
+                : $"Costs={string.Join(", ", result.Costs.Select(cost => $"{cost.DefinitionId}:{cost.Amount:0.###}:{cost.Code}"))}";
+            string cooldown = result.Cooldown == null
+                ? "Cooldown=None"
+                : $"Cooldown={result.Cooldown.CooldownKey} Charges={result.Cooldown.CurrentCharges}/{result.Cooldown.MaximumCharges} Ready={result.Cooldown.CooldownReadyAt:0.###}";
+            return $"{result.Code} Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Definition={result.DefinitionId}\n{state}\n{costs}\n{cooldown}\n{result.Message}";
         }
 
         private OngoingEffectService EnsureOngoingEffectRuntime(bool targetEnemy)
