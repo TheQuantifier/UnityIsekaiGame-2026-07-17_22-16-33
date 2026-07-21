@@ -5,6 +5,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Factions;
@@ -41,6 +42,7 @@ namespace UnityIsekaiGame.Development
             "Skills 5.3",
             "Inventory",
             "Combat",
+            "Combat State 6.5",
             "Lifecycle 6.3",
             "Ongoing 6.4",
             "Statuses",
@@ -80,6 +82,7 @@ namespace UnityIsekaiGame.Development
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
         private Text lifecycleText;
+        private Text combatStateText;
         private Text ongoingEffectsText;
         private Text traitsText;
         private Text skillsText;
@@ -227,6 +230,11 @@ namespace UnityIsekaiGame.Development
                 lifecycleText.text = service.BuildLifecycleSummary();
             }
 
+            if (combatStateText != null)
+            {
+                combatStateText.text = service.BuildCombatStateSummary();
+            }
+
             if (ongoingEffectsText != null)
             {
                 ongoingEffectsText.text = service.BuildOngoingEffectsSummary();
@@ -291,6 +299,7 @@ namespace UnityIsekaiGame.Development
             Transform feature53Section = AddSection(content, "Skills 5.3 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
+            Transform combatStateSection = AddSection(content, "Combat State Section");
             Transform lifecycleSection = AddSection(content, "Lifecycle Section");
             Transform ongoingEffectsSection = AddSection(content, "Ongoing Effects Section");
             Transform statusSection = AddSection(content, "Statuses Section");
@@ -311,6 +320,7 @@ namespace UnityIsekaiGame.Development
             BuildFeature53Section(feature53Section, font);
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
+            BuildCombatStateSection(combatStateSection, font);
             BuildLifecycleSection(lifecycleSection, font);
             BuildOngoingEffectsSection(ongoingEffectsSection, font);
             BuildStatusSection(statusSection, font);
@@ -522,6 +532,47 @@ namespace UnityIsekaiGame.Development
                 ("Damage Player", () => service.ApplyTypedDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetEnemy: false, sourcePlayer: false)),
                 ("Defeat Enemy", () => service.DefeatEnemy(GetSelected(damageTypes, selectedDamageIndex))),
                 ("Reset Enemy", () => service.ResetEnemy()));
+        }
+
+        private void BuildCombatStateSection(Transform parent, Font font)
+        {
+            AddHeader(parent, font, "Feature 6.5 Combat State / Engagements / Encounters");
+            AddButtonRow(parent, font,
+                ("Fresh Tx", () => service.GenerateCombatStateTransaction()),
+                ("Preview", () => service.PreviewExplicitCombatEngagement()),
+                ("Engage", () => service.ExecuteExplicitCombatEngagement(reuseTransaction: false)),
+                ("Reuse", () => service.ExecuteExplicitCombatEngagement(reuseTransaction: true)));
+            AddButtonRow(parent, font,
+                ("Miss", () => service.ExecuteCombatStateAttack(GetSelected(damageTypes, selectedDamageIndex), miss: true, blocked: false, prevented: false)),
+                ("Hit", () => service.ExecuteCombatStateAttack(GetSelected(damageTypes, selectedDamageIndex), miss: false, blocked: false, prevented: false)),
+                ("Blocked", () => service.ExecuteCombatStateAttack(GetSelected(damageTypes, selectedDamageIndex), miss: false, blocked: true, prevented: false)),
+                ("Prevented", () => service.ExecuteCombatStateAttack(GetSelected(damageTypes, selectedDamageIndex), miss: false, blocked: false, prevented: true)));
+            AddButtonRow(parent, font,
+                ("Advance <T", () => service.AdvanceCombatState(9.5f)),
+                ("Advance T", () => service.AdvanceCombatState(0.5f)),
+                ("Advance 10s", () => service.AdvanceCombatState(10f)),
+                ("End Encounter", () => service.EndCurrentCombatEncounter()));
+            AddButtonRow(parent, font,
+                ("Exit Player", () => service.ForceCombatExit(targetEnemy: false)),
+                ("Exit Enemy", () => service.ForceCombatExit(targetEnemy: true)),
+                ("Kill Enemy", () => service.ExecuteDeathLifecycle(targetEnemy: true, reuseTransaction: false)),
+                ("Revive Enemy", () => service.ExecuteRevivalLifecycle(targetEnemy: true, GetFloat(amountInput, 25f), reuseTransaction: false)));
+            AddButtonRow(parent, font,
+                ("Prep A-D", () => service.PrepareCombatStateSplitParticipants()),
+                ("A-B", () => service.EngageCombatStateParticipants("A", "B")),
+                ("B-C", () => service.EngageCombatStateParticipants("B", "C")),
+                ("C-D", () => service.EngageCombatStateParticipants("C", "D")));
+            AddButtonRow(parent, font,
+                ("End B-C", () => service.EndCombatStateEngagement("B", "C", reuseTransaction: false)),
+                ("Reuse Split", () => service.EndCombatStateEngagement("B", "C", reuseTransaction: true)),
+                ("Process Graph", () => service.ProcessCombatStateConnectivity()),
+                ("Validate", () => service.ValidateCombatStateIntegrity()));
+            AddButtonRow(parent, font,
+                ("Exit B", () => service.ForceCombatStateParticipantExit("B")),
+                ("Exit C", () => service.ForceCombatStateParticipantExit("C")),
+                ("Kill B", () => service.KillCombatStateParticipant("B")),
+                ("Kill C", () => service.KillCombatStateParticipant("C")));
+            combatStateText = AddText(parent, font, "Combat state not available.", 12, 320);
         }
 
         private void BuildLifecycleSection(Transform parent, Font font)
