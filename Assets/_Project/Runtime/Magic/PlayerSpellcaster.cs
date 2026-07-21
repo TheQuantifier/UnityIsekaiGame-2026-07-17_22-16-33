@@ -3,6 +3,7 @@ using System.Linq;
 using System;
 using UnityEngine;
 using UnityIsekaiGame.Abilities;
+using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Input;
 
@@ -130,6 +131,11 @@ namespace UnityIsekaiGame.Magic
             if (health != null && health.IsDefeated)
             {
                 return SpellCastResult.Failure("Cannot cast while defeated.");
+            }
+
+            if (!ActorLifecycleUtility.CanAct(gameObject))
+            {
+                return SpellCastResult.Failure("Cannot cast while defeated, unconscious, or dead.");
             }
 
             if (cooldowns.TryGetValue(spell, out float nextCastTime) && Time.time < nextCastTime)

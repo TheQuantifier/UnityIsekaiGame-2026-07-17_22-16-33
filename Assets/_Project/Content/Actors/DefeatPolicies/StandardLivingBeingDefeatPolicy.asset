@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63f00000000000000000000000000019, type: 3}
+  m_Name: StandardLivingBeingDefeatPolicy
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.ActorLifecycle.DefeatPolicyDefinition
+  policyId: defeat-policy.living-standard
+  displayName: Standard Living Being
+  description: Default prototype living-being defeat policy. Zero Health makes the actor unconscious and does not automatically kill them.
+  zeroHealthOutcome: 0
+  allowUnconsciousness: 1
+  allowDeath: 1
+  allowRecovery: 1
+  allowRevival: 1
+  recoveryMinimumHealth: 1
+  revivalMinimumHealth: 1
+  recoveryRequirements: {fileID: 0}
+  revivalRequirements: {fileID: 0}
+  deathRequirements: {fileID: 0}
+  canBecomeUnconsciousCapabilityId: can.become-unconscious
+  canDieCapabilityId: can.die
+  canRecoverCapabilityId: can.recover
+  canBeRevivedCapabilityId: can.be-revived
+  deathImmunityCapabilityId: immunity.death
+  alphaEnabled: 1
+  futureMetadata: Multiplayer lifecycle authority will be server-owned; local prototype buttons are development-only.

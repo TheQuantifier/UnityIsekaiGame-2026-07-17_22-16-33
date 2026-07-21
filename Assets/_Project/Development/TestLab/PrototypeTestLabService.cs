@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.Abilities;
+using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Contracts;
@@ -52,6 +53,7 @@ namespace UnityIsekaiGame.Development
         private ItemDefinition lastDestroyedWorldEntityItem;
         private string lastWorldEntityOperationMessage;
         private string lastAttackTransactionId;
+        private string lastLifecycleTransactionId;
 
         public event Action HistoryChanged;
 
@@ -76,6 +78,8 @@ namespace UnityIsekaiGame.Development
             }
 
             EnsureCharacterSystem(out _);
+            EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
+            EnsureLifecycleRuntime(context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject, ref context.EnemyLifecycle, needsResource: true);
             selectorCache.Clear();
         }
 
@@ -1152,6 +1156,12 @@ namespace UnityIsekaiGame.Development
             return RecordSuccess("Generate 6.2 Attack Transaction", $"Attack transaction ID: {lastAttackTransactionId}");
         }
 
+        public PrototypeTestLabOperation GenerateLifecycleTransaction()
+        {
+            lastLifecycleTransactionId = $"development.lifecycle.{Guid.NewGuid():N}";
+            return RecordSuccess("Generate 6.3 Lifecycle Transaction", $"Lifecycle transaction ID: {lastLifecycleTransactionId}");
+        }
+
         public PrototypeTestLabOperation PreviewAttackResolution(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float criticalChance, float criticalRoll, float criticalMultiplier, float distance, float maximumRange, bool targetEnemy, bool sourcePlayer)
         {
             AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, amount, baseHitChance, hitRoll, criticalChance, criticalRoll, criticalMultiplier, distance, maximumRange, targetEnemy, sourcePlayer, transactionId: ResolveAttackTransactionId(reuse: false));
@@ -1196,6 +1206,133 @@ namespace UnityIsekaiGame.Development
             context?.EnemyStatuses?.ClearTemporaryStatuses();
             context?.EnemyHealth?.ResetToMaximum();
             return RecordSuccess("Reset Enemy", "Enemy health, cooldown, controller state, and temporary statuses reset.");
+        }
+
+        public string BuildLifecycleSummary()
+        {
+            EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
+            EnsureLifecycleRuntime(context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject, ref context.EnemyLifecycle, needsResource: true);
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Feature 6.3 Actor Lifecycle",
+                FormatLifecycleSummary("Player", context?.PlayerLifecycle, context?.PlayerResources),
+                FormatLifecycleSummary("Enemy", context?.EnemyLifecycle, context?.EnemyTransform == null ? null : context.EnemyTransform.GetComponentInParent<CharacterResourceCollection>()),
+                $"Last Lifecycle Tx: {(string.IsNullOrWhiteSpace(lastLifecycleTransactionId) ? "None" : lastLifecycleTransactionId)}"
+            });
+        }
+
+        public PrototypeTestLabOperation PreviewDefeatLifecycle(bool targetEnemy)
+        {
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ActorLifecycleResult result = lifecycle.PreviewDefeat(new DefeatResolutionRequest(string.Empty, "development.test-lab", null, actorId, target, LifecycleTriggerKind.ExplicitDefeat, reason: "Prototype Test Lab"));
+            return Record(result.Succeeded, targetEnemy ? "Preview Enemy Defeat" : "Preview Player Defeat", result.Code, FormatLifecycleResult(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteDefeatLifecycle(bool targetEnemy, bool reuseTransaction)
+        {
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ActorLifecycleResult result = lifecycle.ExecuteDefeat(new DefeatResolutionRequest(ResolveLifecycleTransactionId(reuseTransaction), "development.test-lab", null, actorId, target, LifecycleTriggerKind.ExplicitDefeat, reason: "Prototype Test Lab"));
+            return Record(result.Succeeded, targetEnemy ? "Defeat Enemy Lifecycle" : "Defeat Player Lifecycle", result.Code, FormatLifecycleResult(result));
+        }
+
+        public PrototypeTestLabOperation ApplyZeroHealthLifecycleDamage(DamageTypeDefinition damageType, bool targetEnemy)
+        {
+            if (damageType == null)
+            {
+                return RecordFailure("Lifecycle Zero Health", "No damage type selected.", "MissingDefinition");
+            }
+
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController _, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            CharacterResourceCollection targetResources = target.GetComponentInParent<CharacterResourceCollection>();
+            if (targetResources == null || !targetResources.TryGetResource(ResourceIds.Health, out ResourceSnapshot health))
+            {
+                return RecordFailure("Lifecycle Zero Health", "Target Health resource is missing.", "MissingHealth");
+            }
+
+            string transactionId = ResolveLifecycleTransactionId(reuse: false);
+            float amount = Mathf.Max(1f, health.Current - health.Minimum + 1000f);
+            GameObject source = targetEnemy ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            DamageApplicationRequest request = new DamageApplicationRequest(transactionId, ResolveActorId(source), source, actorId, target, damageType, amount, "Prototype Test Lab zero-health lifecycle proof");
+            DamageApplicationResult result = new DamageHealingService().ApplyDamage(request);
+            return Record(result.Succeeded, targetEnemy ? "Zero Health Enemy" : "Zero Health Player", result.Code, $"Damage={result.FinalDamageAmount:0.###} Health={result.OldHealth:0.###}->{result.NewHealth:0.###} BecameZero={result.BecameZero} Lifecycle={ActorLifecycleUtility.GetState(target)} Duplicate={result.Duplicate}.");
+        }
+
+        public PrototypeTestLabOperation PreviewRecoveryLifecycle(bool targetEnemy, float amount)
+        {
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ActorLifecycleResult result = lifecycle.PreviewRecovery(new LifecycleRecoveryRequest(string.Empty, "development.test-lab", null, actorId, target, Mathf.Max(0f, amount), "Prototype Test Lab"));
+            return Record(result.Succeeded, targetEnemy ? "Preview Enemy Recovery" : "Preview Player Recovery", result.Code, FormatLifecycleResult(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteRecoveryLifecycle(bool targetEnemy, float amount, bool reuseTransaction)
+        {
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ActorLifecycleResult result = lifecycle.ExecuteRecovery(new LifecycleRecoveryRequest(ResolveLifecycleTransactionId(reuseTransaction), "development.test-lab", null, actorId, target, Mathf.Max(0f, amount), "Prototype Test Lab"));
+            return Record(result.Succeeded, targetEnemy ? "Recover Enemy" : "Recover Player", result.Code, FormatLifecycleResult(result));
+        }
+
+        public PrototypeTestLabOperation PreviewDeathLifecycle(bool targetEnemy)
+        {
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ActorLifecycleResult result = lifecycle.PreviewDeath(new LifecycleDeathRequest(string.Empty, "development.test-lab", null, actorId, target, LifecycleTriggerKind.ExplicitDeath, "Prototype Test Lab"));
+            return Record(result.Succeeded, targetEnemy ? "Preview Enemy Death" : "Preview Player Death", result.Code, FormatLifecycleResult(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteDeathLifecycle(bool targetEnemy, bool reuseTransaction)
+        {
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ActorLifecycleResult result = lifecycle.ExecuteDeath(new LifecycleDeathRequest(ResolveLifecycleTransactionId(reuseTransaction), "development.test-lab", null, actorId, target, LifecycleTriggerKind.ExplicitDeath, "Prototype Test Lab"));
+            return Record(result.Succeeded, targetEnemy ? "Kill Enemy Lifecycle" : "Kill Player Lifecycle", result.Code, FormatLifecycleResult(result));
+        }
+
+        public PrototypeTestLabOperation PreviewRevivalLifecycle(bool targetEnemy, float amount)
+        {
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ActorLifecycleResult result = lifecycle.PreviewRevival(new LifecycleRevivalRequest(string.Empty, "development.test-lab", null, actorId, target, Mathf.Max(0f, amount), "Prototype Test Lab"));
+            return Record(result.Succeeded, targetEnemy ? "Preview Enemy Revival" : "Preview Player Revival", result.Code, FormatLifecycleResult(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteRevivalLifecycle(bool targetEnemy, float amount, bool reuseTransaction)
+        {
+            if (!TryResolveLifecycleTarget(targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ActorLifecycleResult result = lifecycle.ExecuteRevival(new LifecycleRevivalRequest(ResolveLifecycleTransactionId(reuseTransaction), "development.test-lab", null, actorId, target, Mathf.Max(0f, amount), "Prototype Test Lab"));
+            return Record(result.Succeeded, targetEnemy ? "Revive Enemy" : "Revive Player", result.Code, FormatLifecycleResult(result));
         }
 
         private DamageApplicationRequest CreatePipelineDamageRequest(DamageTypeDefinition damageType, float amount, bool targetPlayer, string transactionId)
@@ -1280,6 +1417,65 @@ namespace UnityIsekaiGame.Development
             }
         }
 
+        private void EnsureLifecycleRuntime(GameObject actor, ref ActorLifecycleController lifecycle, bool needsResource)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            EnsureAttackResolutionRuntime(actor, needsResource);
+            lifecycle = lifecycle == null ? actor.GetComponentInParent<ActorLifecycleController>() : lifecycle;
+            if (lifecycle == null)
+            {
+                lifecycle = actor.AddComponent<ActorLifecycleController>();
+            }
+
+            CharacterResourceCollection resources = actor.GetComponentInParent<CharacterResourceCollection>();
+            CharacterSystemCoordinator character = actor.GetComponentInParent<CharacterSystemCoordinator>();
+            CharacterTraitCollection traits = actor.GetComponentInParent<CharacterTraitCollection>();
+            lifecycle.Configure(null, resources, character, traits);
+        }
+
+        private bool TryResolveLifecycleTarget(bool targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure)
+        {
+            target = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
+            lifecycle = targetEnemy ? context?.EnemyLifecycle : context?.PlayerLifecycle;
+            failure = default;
+            actorId = string.Empty;
+
+            if (context == null)
+            {
+                failure = RecordFailure("Lifecycle Target", "Test Lab context is missing.", "MissingContext");
+                return false;
+            }
+
+            if (targetEnemy)
+            {
+                EnsureLifecycleRuntime(target, ref context.EnemyLifecycle, needsResource: true);
+                lifecycle = context?.EnemyLifecycle;
+            }
+            else
+            {
+                EnsureLifecycleRuntime(target, ref context.PlayerLifecycle, needsResource: true);
+                lifecycle = context?.PlayerLifecycle;
+            }
+
+            if (target == null || lifecycle == null)
+            {
+                failure = RecordFailure("Lifecycle Target", "Lifecycle target is missing.", "MissingTarget");
+                return false;
+            }
+
+            actorId = ResolveActorId(target);
+            if (string.IsNullOrWhiteSpace(actorId))
+            {
+                actorId = lifecycle.ActorId;
+            }
+
+            return true;
+        }
+
         private string ResolveAttackTransactionId(bool reuse)
         {
             if (reuse && !string.IsNullOrWhiteSpace(lastAttackTransactionId))
@@ -1289,6 +1485,17 @@ namespace UnityIsekaiGame.Development
 
             lastAttackTransactionId = AttackDeterministicRoll.NewTransactionId("development.attack-resolution");
             return lastAttackTransactionId;
+        }
+
+        private string ResolveLifecycleTransactionId(bool reuse)
+        {
+            if (reuse && !string.IsNullOrWhiteSpace(lastLifecycleTransactionId))
+            {
+                return lastLifecycleTransactionId;
+            }
+
+            lastLifecycleTransactionId = $"development.lifecycle.{Guid.NewGuid():N}";
+            return lastLifecycleTransactionId;
         }
 
         private static string FormatAttackResolution(AttackResolutionResult result)
@@ -1302,6 +1509,28 @@ namespace UnityIsekaiGame.Development
                 ? "Damage=None"
                 : $"Damage={result.DamageResult.Code} final={result.DamageResult.FinalDamageAmount:0.###} Health={result.DamageResult.OldHealth:0.###}->{result.DamageResult.NewHealth:0.###}";
             return $"{result.Outcome} hitChance={result.FinalHitChance:0.###} roll={result.HitRoll:0.###} crit={result.Critical} critRoll={result.CriticalRoll:0.###} dmgAfterCrit={result.DamageAfterCritical:0.###} duplicate={result.Duplicate} {damage}. {result.Message}";
+        }
+
+        private static string FormatLifecycleResult(ActorLifecycleResult result)
+        {
+            if (result == null)
+            {
+                return "Lifecycle result is missing.";
+            }
+
+            string requirement = string.IsNullOrWhiteSpace(result.RequirementSummary) ? string.Empty : $" Requirements={result.RequirementSummary}.";
+            return $"{result.PreviousState}->{result.ResultingState} Transition={result.Transition} Trigger={result.Trigger} Health={result.OldHealth:0.###}->{result.NewHealth:0.###} Restore={result.AppliedHealthRestore:0.###}/{result.RequestedHealthRestore:0.###} Duplicate={result.Duplicate}. {result.Message}{requirement}";
+        }
+
+        private static string FormatLifecycleSummary(string label, ActorLifecycleController lifecycle, CharacterResourceCollection resources)
+        {
+            string state = lifecycle == null ? "Missing" : lifecycle.State.ToString();
+            string actorId = lifecycle == null ? "None" : lifecycle.ActorId;
+            string policy = lifecycle == null || lifecycle.DefeatPolicy == null ? "Default local living-being policy" : $"{lifecycle.DefeatPolicy.DisplayName} ({lifecycle.DefeatPolicy.Id})";
+            string health = resources != null && resources.TryGetResource(ResourceIds.Health, out ResourceSnapshot snapshot)
+                ? $"{snapshot.Current:0.###}/{snapshot.Maximum:0.###}"
+                : "Missing";
+            return $"{label}: State={state} Actor={actorId} Health={health} Policy={policy}";
         }
 
         private HealingApplicationRequest CreatePipelineHealingRequest(float amount, bool targetPlayer, string transactionId)

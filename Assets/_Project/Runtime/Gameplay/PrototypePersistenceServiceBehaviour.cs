@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.ActorLifecycle;
+using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
@@ -34,6 +36,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private CharacterAttributes playerAttributes;
         [SerializeField] private CalculatedStatCollection playerCalculatedStats;
         [SerializeField] private CharacterResourceCollection playerResources;
+        [SerializeField] private ActorLifecycleController playerActorLifecycle;
         [SerializeField] private CharacterSkillCollection playerSkills;
         [SerializeField] private CharacterTraitCollection playerTraits;
         [SerializeField] private PlayerSkillActionEventSource playerSkillActionEventSource;
@@ -55,6 +58,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerTraits = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
+        [SerializeField] private bool registerPlayerActorLifecycle = true;
         [SerializeField] private bool registerPlayerQuestContract = true;
         [SerializeField] private bool registerPlayerLocation = true;
         [SerializeField] private string prototypeSlotId = PersistenceService.PrototypeSlotId;
@@ -75,6 +79,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
+        private PlayerActorLifecyclePersistenceParticipant playerActorLifecycleParticipant;
         private PlayerQuestContractPersistenceParticipant questContractParticipant;
         private PlayerLocationPersistenceParticipant playerLocationParticipant;
         private DefinitionRegistry definitionRegistry;
@@ -143,6 +148,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(playerResourcesParticipant);
                 playerResourcesParticipant = null;
+            }
+
+            if (service != null && playerActorLifecycleParticipant != null)
+            {
+                service.UnregisterParticipant(playerActorLifecycleParticipant);
+                playerActorLifecycleParticipant = null;
             }
 
             if (service != null && questContractParticipant != null)
@@ -225,6 +236,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
+            EnsurePlayerActorLifecycleParticipant();
             EnsurePlayerQuestContractParticipant();
             EnsurePlayerLocationParticipant();
             SubscribeDirtyEvents();
@@ -785,6 +797,16 @@ namespace UnityIsekaiGame.Gameplay
                 playerResources = playerObject.AddComponent<CharacterResourceCollection>();
             }
 
+            if (playerActorLifecycle == null)
+            {
+                playerActorLifecycle = playerObject == null ? Object.FindAnyObjectByType<ActorLifecycleController>() : playerObject.GetComponent<ActorLifecycleController>();
+            }
+
+            if (playerActorLifecycle == null && playerObject != null)
+            {
+                playerActorLifecycle = playerObject.AddComponent<ActorLifecycleController>();
+            }
+
             if (definitionCatalog != null)
             {
                 DefinitionRegistry registry = GetDefinitionRegistry();
@@ -793,6 +815,7 @@ namespace UnityIsekaiGame.Gameplay
                 playerResources?.Configure(registry, playerCalculatedStats, service == null ? PersistenceService.LocalPlayerId : service.PlayerId);
                 playerSkills?.Configure(registry, playerCalculatedStats, playerObject == null ? null : playerObject.GetComponent<PlayerSpellLoadout>());
                 playerTraits?.Configure(registry, playerCalculatedStats, playerSkills, service == null ? PersistenceService.LocalPlayerId : service.PlayerId);
+                playerActorLifecycle?.Configure(null, playerResources, playerObject == null ? null : playerObject.GetComponent<CharacterSystemCoordinator>(), playerTraits);
                 playerStats?.ConfigureDerivedStats(registry);
                 playerStats?.RefreshEquipmentModifiers();
             }
@@ -926,6 +949,34 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerResourcesParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerActorLifecycleParticipant()
+        {
+            if (!registerPlayerActorLifecycle || playerActorLifecycleParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerActorLifecycle == null || playerResources == null)
+            {
+                Debug.LogWarning("Player actor lifecycle persistence participant was not registered because the lifecycle controller or player resources are missing.");
+                return;
+            }
+
+            playerActorLifecycle.Configure(null, playerResources, playerRoot == null ? null : playerRoot.GetComponent<CharacterSystemCoordinator>(), playerTraits);
+            playerActorLifecycleParticipant = new PlayerActorLifecyclePersistenceParticipant(
+                playerActorLifecycle,
+                playerIdentityProgression,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerActorLifecycleParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerActorLifecycleParticipant = null;
             }
         }
 
@@ -1110,6 +1161,14 @@ namespace UnityIsekaiGame.Gameplay
                 playerResources.ResourcesRestored += OnPlayerResourcesRestored;
             }
 
+            if (playerActorLifecycle != null)
+            {
+                playerActorLifecycle.DefeatProcessed += OnActorLifecycleChanged;
+                playerActorLifecycle.ActorRecovered += OnActorLifecycleChanged;
+                playerActorLifecycle.ActorDied += OnActorLifecycleChanged;
+                playerActorLifecycle.ActorRevived += OnActorLifecycleChanged;
+            }
+
             if (statusEffectController != null)
             {
                 statusEffectController.StatusAdded += OnStatusChanged;
@@ -1202,6 +1261,14 @@ namespace UnityIsekaiGame.Gameplay
                 playerResources.ResourcesRestored -= OnPlayerResourcesRestored;
             }
 
+            if (playerActorLifecycle != null)
+            {
+                playerActorLifecycle.DefeatProcessed -= OnActorLifecycleChanged;
+                playerActorLifecycle.ActorRecovered -= OnActorLifecycleChanged;
+                playerActorLifecycle.ActorDied -= OnActorLifecycleChanged;
+                playerActorLifecycle.ActorRevived -= OnActorLifecycleChanged;
+            }
+
             if (statusEffectController != null)
             {
                 statusEffectController.StatusAdded -= OnStatusChanged;
@@ -1278,12 +1345,22 @@ namespace UnityIsekaiGame.Gameplay
 
         private void OnPlayerResourceChanged(CharacterResourceCollection resources, ResourceChangeResult result)
         {
-            if (result.Request.Restoration)
+            if (result == null || result.Request.Restoration || result.Request.Migration)
             {
                 return;
             }
 
             dirtyTracker?.MarkDirty("Player resource changed.");
+        }
+
+        private void OnActorLifecycleChanged(ActorLifecycleResult result)
+        {
+            if (result == null || result.Preview || result.Duplicate)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player actor lifecycle changed.");
         }
 
         private void OnPlayerResourceMaximumChanged(CharacterResourceCollection resources, ResourceSnapshot snapshot, float oldMaximum, bool restoring)

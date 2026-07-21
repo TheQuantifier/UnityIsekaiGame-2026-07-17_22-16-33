@@ -40,6 +40,7 @@ namespace UnityIsekaiGame.Development
             "Skills 5.3",
             "Inventory",
             "Combat",
+            "Lifecycle 6.3",
             "Statuses",
             "Quests",
             "Persistence",
@@ -71,6 +72,7 @@ namespace UnityIsekaiGame.Development
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
+        private Text lifecycleText;
         private Text traitsText;
         private Text skillsText;
         private Text itemValueText;
@@ -209,6 +211,11 @@ namespace UnityIsekaiGame.Development
                 resourcesText.text = service.BuildCurrentResourcesSummary();
             }
 
+            if (lifecycleText != null)
+            {
+                lifecycleText.text = service.BuildLifecycleSummary();
+            }
+
             if (skillsText != null)
             {
                 skillsText.text = service.BuildSkillsSummary(includeHidden: true);
@@ -268,6 +275,7 @@ namespace UnityIsekaiGame.Development
             Transform feature53Section = AddSection(content, "Skills 5.3 Section");
             Transform inventorySection = AddSection(content, "Inventory Section");
             Transform combatSection = AddSection(content, "Combat Section");
+            Transform lifecycleSection = AddSection(content, "Lifecycle Section");
             Transform statusSection = AddSection(content, "Statuses Section");
             Transform questSection = AddSection(content, "Quests Section");
             Transform persistenceSection = AddSection(content, "Persistence Section");
@@ -286,6 +294,7 @@ namespace UnityIsekaiGame.Development
             BuildFeature53Section(feature53Section, font);
             BuildInventorySection(inventorySection, font);
             BuildCombatSection(combatSection, font);
+            BuildLifecycleSection(lifecycleSection, font);
             BuildStatusSection(statusSection, font);
             BuildQuestSection(questSection, font);
             BuildPersistenceSection(persistenceSection, font);
@@ -494,6 +503,37 @@ namespace UnityIsekaiGame.Development
                 ("Damage Player", () => service.ApplyTypedDamage(GetSelected(damageTypes, selectedDamageIndex), GetFloat(amountInput, 25f), targetEnemy: false, sourcePlayer: false)),
                 ("Defeat Enemy", () => service.DefeatEnemy(GetSelected(damageTypes, selectedDamageIndex))),
                 ("Reset Enemy", () => service.ResetEnemy()));
+        }
+
+        private void BuildLifecycleSection(Transform parent, Font font)
+        {
+            AddHeader(parent, font, "Feature 6.3 Defeat / Recovery / Death / Revival");
+            AddButtonRow(parent, font,
+                ("Fresh Tx", () => service.GenerateLifecycleTransaction()),
+                ("Zero P", () => service.ApplyZeroHealthLifecycleDamage(GetSelected(damageTypes, selectedDamageIndex), targetEnemy: false)),
+                ("Zero E", () => service.ApplyZeroHealthLifecycleDamage(GetSelected(damageTypes, selectedDamageIndex), targetEnemy: true)),
+                ("Reuse Defeat P", () => service.ExecuteDefeatLifecycle(targetEnemy: false, reuseTransaction: true)));
+            AddButtonRow(parent, font,
+                ("Preview Defeat P", () => service.PreviewDefeatLifecycle(targetEnemy: false)),
+                ("Defeat P", () => service.ExecuteDefeatLifecycle(targetEnemy: false, reuseTransaction: false)),
+                ("Preview Defeat E", () => service.PreviewDefeatLifecycle(targetEnemy: true)),
+                ("Defeat E", () => service.ExecuteDefeatLifecycle(targetEnemy: true, reuseTransaction: false)));
+            AddButtonRow(parent, font,
+                ("Preview Recover P", () => service.PreviewRecoveryLifecycle(false, GetFloat(amountInput, 25f))),
+                ("Recover P", () => service.ExecuteRecoveryLifecycle(false, GetFloat(amountInput, 25f), reuseTransaction: false)),
+                ("Preview Recover E", () => service.PreviewRecoveryLifecycle(true, GetFloat(amountInput, 25f))),
+                ("Recover E", () => service.ExecuteRecoveryLifecycle(true, GetFloat(amountInput, 25f), reuseTransaction: false)));
+            AddButtonRow(parent, font,
+                ("Preview Death P", () => service.PreviewDeathLifecycle(targetEnemy: false)),
+                ("Kill P", () => service.ExecuteDeathLifecycle(targetEnemy: false, reuseTransaction: false)),
+                ("Preview Death E", () => service.PreviewDeathLifecycle(targetEnemy: true)),
+                ("Kill E", () => service.ExecuteDeathLifecycle(targetEnemy: true, reuseTransaction: false)));
+            AddButtonRow(parent, font,
+                ("Preview Revive P", () => service.PreviewRevivalLifecycle(false, GetFloat(amountInput, 25f))),
+                ("Revive P", () => service.ExecuteRevivalLifecycle(false, GetFloat(amountInput, 25f), reuseTransaction: false)),
+                ("Preview Revive E", () => service.PreviewRevivalLifecycle(true, GetFloat(amountInput, 25f))),
+                ("Revive E", () => service.ExecuteRevivalLifecycle(true, GetFloat(amountInput, 25f), reuseTransaction: false)));
+            lifecycleText = AddText(parent, font, "Lifecycle not available.", 12, 260);
         }
 
         private void BuildStatusSection(Transform parent, Font font)

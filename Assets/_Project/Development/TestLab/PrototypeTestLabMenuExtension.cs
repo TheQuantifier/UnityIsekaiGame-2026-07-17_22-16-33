@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
@@ -162,6 +163,7 @@ namespace UnityIsekaiGame.Development
                 PlayerAttributes = menuController.PlayerStats == null ? null : menuController.PlayerStats.CharacterAttributes,
                 PlayerCalculatedStats = menuController.PlayerStats == null ? null : menuController.PlayerStats.CalculatedStats,
                 PlayerResources = playerTransform == null ? null : playerTransform.GetComponentInParent<CharacterResourceCollection>(),
+                PlayerLifecycle = playerTransform == null ? null : playerTransform.GetComponentInParent<ActorLifecycleController>(),
                 PlayerSkills = menuController.RuntimeSkills,
                 PlayerTraits = menuController.RuntimeTraits,
                 CharacterSystem = menuController.RuntimeCharacterSystem,
@@ -177,6 +179,7 @@ namespace UnityIsekaiGame.Development
                 EnemyHealth = enemyHealth,
                 EnemyController = enemyTransform == null ? null : enemyTransform.GetComponent<PrototypeEnemyController>(),
                 EnemyAttack = enemyTransform == null ? null : enemyTransform.GetComponent<EnemyMeleeAttack>(),
+                EnemyLifecycle = enemyTransform == null ? null : enemyTransform.GetComponent<ActorLifecycleController>(),
                 EnemyStatuses = enemyTransform == null ? null : enemyTransform.GetComponent<StatusEffectController>(),
                 EnemyTransform = enemyTransform
             });
