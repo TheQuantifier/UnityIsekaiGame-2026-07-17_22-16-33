@@ -6,6 +6,7 @@ using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
+using UnityIsekaiGame.Combat.Reactions;
 using UnityIsekaiGame.Development;
 using UnityIsekaiGame.GameData;
 
@@ -27,6 +28,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildFeature65Suite());
             TryRegister(registry, BuildFeature66Suite());
             TryRegister(registry, BuildFeature67Suite());
+            TryRegister(registry, BuildFeature68Suite());
         }
 
         private static ITestLabAutomationSuite BuildFeature61Suite()
@@ -181,6 +183,27 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("snapshot", "Snapshot cooldowns", context => Operation(context.Service.SnapshotCombatExecution(), context, "execution-restore-snapshot"))));
         }
 
+        private static ITestLabAutomationSuite BuildFeature68Suite()
+        {
+            return Suite("feature.6.8.combat-reactions", "Feature 6.8 Combat Reactions", "6.8", 680,
+                Required("PrototypeTestLabService", "CombatReactionService", "DamageHealingService", "OngoingEffectService"),
+                Scenario("reaction-preview-does-not-mutate", "Reaction preview does not mutate", 10,
+                    Step("register", "Register selected reaction", context => Operation(context.Service.RegisterCombatReaction(FirstReaction(context, CombatReactionTriggerType.DamageApplied), ownerPlayer: false), context, "reaction-preview-register")),
+                    Step("preview", "Preview reaction trigger", context => Operation(context.Service.PreviewCombatReactionDamage(FirstReaction(context, CombatReactionTriggerType.DamageApplied)), context, "reaction-preview"))),
+                Scenario("reaction-executes-through-service", "Reaction executes through combat service", 20,
+                    Step("register", "Register selected reaction", context => Operation(context.Service.RegisterCombatReaction(FirstReaction(context, CombatReactionTriggerType.DamageApplied), ownerPlayer: false), context, "reaction-execute-register")),
+                    Step("execute", "Execute reaction trigger", context => Operation(context.Service.ExecuteCombatReactionDamage(FirstReaction(context, CombatReactionTriggerType.DamageApplied)), context, "reaction-execute"))),
+                Scenario("duplicate-root-does-not-repeat", "Duplicate root reaction does not repeat", 30,
+                    Step("register", "Register selected reaction", context => Operation(context.Service.RegisterCombatReaction(FirstReaction(context, CombatReactionTriggerType.DamageApplied), ownerPlayer: false), context, "reaction-duplicate-register")),
+                    Step("duplicate", "Run duplicate proof", context => Operation(context.Service.ExecuteCombatReactionDuplicateProof(FirstReaction(context, CombatReactionTriggerType.DamageApplied)), context, "reaction-duplicate"))),
+                Scenario("critical-trigger-path", "Critical trigger path is available", 40,
+                    Step("register", "Register selected reaction", context => Operation(context.Service.RegisterCombatReaction(FirstReaction(context, CombatReactionTriggerType.CriticalHit), ownerPlayer: true), context, "reaction-critical-register")),
+                    Step("critical", "Execute critical trigger", context => Operation(context.Service.ExecuteCombatReactionCritical(FirstReaction(context, CombatReactionTriggerType.CriticalHit)), context, "reaction-critical"))),
+                Scenario("clear-removes-sources", "Clear removes registered reaction sources", 50,
+                    Step("register", "Register selected reaction", context => Operation(context.Service.RegisterCombatReaction(FirstReaction(context, CombatReactionTriggerType.DamageApplied), ownerPlayer: false), context, "reaction-clear-register")),
+                    Step("clear", "Clear reaction sources", context => Operation(context.Service.ClearCombatReactions(), context, "reaction-clear"))));
+        }
+
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)
         {
             return new TestLabAutomationSuite(
@@ -221,6 +244,11 @@ namespace UnityIsekaiGame.Development.Automation
             where T : class, IGameDefinition
         {
             return context.Service.GetDefinitions<T>().FirstOrDefault();
+        }
+
+        private static CombatReactionDefinition FirstReaction(TestLabAutomationContext context, CombatReactionTriggerType triggerType)
+        {
+            return context.Service.GetDefinitions<CombatReactionDefinition>().FirstOrDefault(definition => definition.SupportsTrigger(triggerType));
         }
 
         private static PrototypeTestPoint FirstTestPoint(TestLabAutomationContext context)

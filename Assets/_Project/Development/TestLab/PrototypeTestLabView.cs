@@ -10,6 +10,7 @@ using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
+using UnityIsekaiGame.Combat.Reactions;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Factions;
@@ -48,6 +49,7 @@ namespace UnityIsekaiGame.Development
             "Combat",
             "Defense 6.6",
             "Execution 6.7",
+            "Reactions 6.8",
             "Combat State 6.5",
             "Lifecycle 6.3",
             "Ongoing 6.4",
@@ -91,6 +93,7 @@ namespace UnityIsekaiGame.Development
         private Text lifecycleText;
         private Text defensiveActionsText;
         private Text combatExecutionText;
+        private Text combatReactionText;
         private Text combatStateText;
         private Text ongoingEffectsText;
         private Text automationText;
@@ -107,6 +110,7 @@ namespace UnityIsekaiGame.Development
         private Text damageValueText;
         private Text defenseValueText;
         private Text combatExecutionValueText;
+        private Text combatReactionValueText;
         private Text automationSuiteValueText;
         private Text automationScenarioValueText;
         private Text ongoingEffectValueText;
@@ -126,6 +130,7 @@ namespace UnityIsekaiGame.Development
         private int selectedDamageIndex;
         private int selectedDefenseIndex;
         private int selectedCombatExecutionIndex;
+        private int selectedCombatReactionIndex;
         private int selectedAutomationSuiteIndex;
         private int selectedAutomationScenarioIndex;
         private int selectedOngoingEffectIndex;
@@ -146,6 +151,7 @@ namespace UnityIsekaiGame.Development
         private readonly List<DamageTypeDefinition> damageTypes = new List<DamageTypeDefinition>();
         private readonly List<DefensiveActionDefinition> defensiveActions = new List<DefensiveActionDefinition>();
         private readonly List<CombatExecutionDefinition> combatExecutions = new List<CombatExecutionDefinition>();
+        private readonly List<CombatReactionDefinition> combatReactions = new List<CombatReactionDefinition>();
         private readonly List<ITestLabAutomationSuite> automationSuites = new List<ITestLabAutomationSuite>();
         private readonly List<ITestLabAutomationScenario> automationScenarios = new List<ITestLabAutomationScenario>();
         private readonly List<OngoingEffectDefinition> ongoingEffects = new List<OngoingEffectDefinition>();
@@ -271,6 +277,11 @@ namespace UnityIsekaiGame.Development
                 combatExecutionText.text = service.BuildCombatExecutionSummary();
             }
 
+            if (combatReactionText != null)
+            {
+                combatReactionText.text = service.BuildCombatReactionSummary();
+            }
+
             if (automationText != null)
             {
                 automationText.text = service.BuildAutomationSummary();
@@ -342,6 +353,7 @@ namespace UnityIsekaiGame.Development
             Transform combatSection = AddSection(content, "Combat Section");
             Transform defensiveActionsSection = AddSection(content, "Defensive Actions Section");
             Transform combatExecutionSection = AddSection(content, "Combat Execution Section");
+            Transform combatReactionSection = AddSection(content, "Combat Reactions Section");
             Transform combatStateSection = AddSection(content, "Combat State Section");
             Transform lifecycleSection = AddSection(content, "Lifecycle Section");
             Transform ongoingEffectsSection = AddSection(content, "Ongoing Effects Section");
@@ -366,6 +378,7 @@ namespace UnityIsekaiGame.Development
             BuildCombatSection(combatSection, font);
             BuildDefensiveActionsSection(defensiveActionsSection, font);
             BuildCombatExecutionSection(combatExecutionSection, font);
+            BuildCombatReactionSection(combatReactionSection, font);
             BuildCombatStateSection(combatStateSection, font);
             BuildLifecycleSection(lifecycleSection, font);
             BuildOngoingEffectsSection(ongoingEffectsSection, font);
@@ -626,6 +639,22 @@ namespace UnityIsekaiGame.Development
             combatExecutionText = AddText(parent, font, "Combat execution not available.", 12, 360);
         }
 
+        private void BuildCombatReactionSection(Transform parent, Font font)
+        {
+            AddHeader(parent, font, "Feature 6.8 Combat Effects / Triggers / Reactions");
+            combatReactionValueText = AddSelectorRow(parent, font, "Reaction", () => CycleSelection(ref selectedCombatReactionIndex, combatReactions.Count, -1), () => CycleSelection(ref selectedCombatReactionIndex, combatReactions.Count, 1));
+            AddButtonRow(parent, font,
+                ("Register Player", () => service.RegisterCombatReaction(GetSelected(combatReactions, selectedCombatReactionIndex), ownerPlayer: true)),
+                ("Register Enemy", () => service.RegisterCombatReaction(GetSelected(combatReactions, selectedCombatReactionIndex), ownerPlayer: false)),
+                ("Clear", () => service.ClearCombatReactions()));
+            AddButtonRow(parent, font,
+                ("Preview Damage", () => service.PreviewCombatReactionDamage(GetSelected(combatReactions, selectedCombatReactionIndex))),
+                ("Execute Damage", () => service.ExecuteCombatReactionDamage(GetSelected(combatReactions, selectedCombatReactionIndex))),
+                ("Execute Critical", () => service.ExecuteCombatReactionCritical(GetSelected(combatReactions, selectedCombatReactionIndex))),
+                ("Duplicate Proof", () => service.ExecuteCombatReactionDuplicateProof(GetSelected(combatReactions, selectedCombatReactionIndex))));
+            combatReactionText = AddText(parent, font, "Combat reactions not available.", 12, 360);
+        }
+
         private void BuildCombatStateSection(Transform parent, Font font)
         {
             AddHeader(parent, font, "Feature 6.5 Combat State / Engagements / Encounters");
@@ -863,6 +892,7 @@ namespace UnityIsekaiGame.Development
             SetOptions(damageTypes, service.GetDefinitions<DamageTypeDefinition>(), ref selectedDamageIndex);
             SetOptions(defensiveActions, service.GetDefinitions<DefensiveActionDefinition>(), ref selectedDefenseIndex);
             SetOptions(combatExecutions, service.GetDefinitions<CombatExecutionDefinition>(), ref selectedCombatExecutionIndex);
+            SetOptions(combatReactions, service.GetDefinitions<CombatReactionDefinition>(), ref selectedCombatReactionIndex);
             SetOptions(automationSuites, service.GetAutomationSuites(), ref selectedAutomationSuiteIndex);
             RefreshAutomationScenarioOptions();
             SetOptions(ongoingEffects, service.GetDefinitions<OngoingEffectDefinition>(), ref selectedOngoingEffectIndex);
@@ -886,6 +916,7 @@ namespace UnityIsekaiGame.Development
             SetValue(damageValueText, FormatSelected(damageTypes, selectedDamageIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(defenseValueText, FormatSelected(defensiveActions, selectedDefenseIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(combatExecutionValueText, FormatSelected(combatExecutions, selectedCombatExecutionIndex, PrototypeTestLabService.FormatDefinition));
+            SetValue(combatReactionValueText, FormatSelected(combatReactions, selectedCombatReactionIndex, PrototypeTestLabService.FormatDefinition));
             SetValue(automationSuiteValueText, FormatSelected(automationSuites, selectedAutomationSuiteIndex, suite => $"{suite.DisplayName} ({suite.SuiteId})"));
             SetValue(automationScenarioValueText, FormatSelected(automationScenarios, selectedAutomationScenarioIndex, scenario => $"{scenario.DisplayName} ({scenario.ScenarioId})"));
             SetValue(ongoingEffectValueText, FormatSelected(ongoingEffects, selectedOngoingEffectIndex, PrototypeTestLabService.FormatDefinition));

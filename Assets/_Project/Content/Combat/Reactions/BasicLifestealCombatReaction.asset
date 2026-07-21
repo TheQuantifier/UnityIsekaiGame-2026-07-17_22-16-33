@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68000000000000000000000000000002, type: 3}
+  m_Name: BasicLifestealCombatReaction
+  m_EditorClassIdentifier: UnityIsekaiGame.Gameplay::UnityIsekaiGame.Combat.Reactions.CombatReactionDefinition
+  reactionId: combat-reaction.basic-lifesteal
+  displayName: Basic Lifesteal
+  description: Heals the owner for a fraction of committed health damage dealt.
+  icon: {fileID: 0}
+  primaryCategory: {fileID: 0}
+  tags: []
+  triggerTypes:
+  - 5
+  ownershipSide: 1
+  targetPolicy: 3
+  procChance: 1
+  priority: 15
+  operationType: 2
+  amount: 0
+  multiplier: 0.25
+  damageType: {fileID: 0}
+  ongoingEffect: {fileID: 0}
+  resource: {fileID: 0}
+  requirements: {fileID: 0}
+  requiredCapabilityIds: []
+  excludedCapabilityIds: []
+  requiredContextTags: []
+  excludedContextTags: []
+  maximumExecutionsPerChain: 1
+  recursionPolicy: 0
