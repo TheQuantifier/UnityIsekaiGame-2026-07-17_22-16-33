@@ -7,6 +7,7 @@ using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Factions;
@@ -54,6 +55,8 @@ namespace UnityIsekaiGame.Development
         private string lastWorldEntityOperationMessage;
         private string lastAttackTransactionId;
         private string lastLifecycleTransactionId;
+        private string lastOngoingEffectTransactionId;
+        private float ongoingEffectClockSeconds;
 
         public event Action HistoryChanged;
 
@@ -80,6 +83,8 @@ namespace UnityIsekaiGame.Development
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
             EnsureLifecycleRuntime(context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject, ref context.EnemyLifecycle, needsResource: true);
+            EnsureOngoingEffectRuntime(targetEnemy: false);
+            EnsureOngoingEffectRuntime(targetEnemy: true);
             selectorCache.Clear();
         }
 
@@ -1335,6 +1340,78 @@ namespace UnityIsekaiGame.Development
             return Record(result.Succeeded, targetEnemy ? "Revive Enemy" : "Revive Player", result.Code, FormatLifecycleResult(result));
         }
 
+        public string BuildOngoingEffectsSummary()
+        {
+            OngoingEffectService playerService = EnsureOngoingEffectRuntime(targetEnemy: false);
+            OngoingEffectService enemyService = EnsureOngoingEffectRuntime(targetEnemy: true);
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Feature 6.4 Ongoing Effects",
+                $"Clock: {ongoingEffectClockSeconds:0.###}s",
+                FormatOngoingEffectTarget("Player", playerService, context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, context?.PlayerResources, context?.PlayerLifecycle),
+                FormatOngoingEffectTarget("Enemy", enemyService, context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject, context?.EnemyTransform == null ? null : context.EnemyTransform.GetComponentInParent<CharacterResourceCollection>(), context?.EnemyLifecycle),
+                $"Last Ongoing Tx: {(string.IsNullOrWhiteSpace(lastOngoingEffectTransactionId) ? "None" : lastOngoingEffectTransactionId)}"
+            });
+        }
+
+        public PrototypeTestLabOperation GenerateOngoingEffectTransaction()
+        {
+            lastOngoingEffectTransactionId = $"development.ongoing-effect.{Guid.NewGuid():N}";
+            return RecordSuccess("Fresh Ongoing Effect Tx", lastOngoingEffectTransactionId);
+        }
+
+        public PrototypeTestLabOperation PreviewOngoingEffect(OngoingEffectDefinition definition, bool targetEnemy, float amount, float interval, float duration, int tickCount, int stacks)
+        {
+            if (!TryBuildOngoingEffectRequest(definition, targetEnemy, amount, interval, duration, tickCount, stacks, reuseTransaction: false, out OngoingEffectService service, out OngoingEffectApplicationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            OngoingEffectApplicationResult result = service.PreviewApplyOngoingEffect(request);
+            return Record(result.Succeeded, targetEnemy ? "Preview Enemy Ongoing Effect" : "Preview Player Ongoing Effect", result.Code, FormatOngoingApplicationResult(result));
+        }
+
+        public PrototypeTestLabOperation ApplyOngoingEffect(OngoingEffectDefinition definition, bool targetEnemy, float amount, float interval, float duration, int tickCount, int stacks, bool reuseTransaction)
+        {
+            if (!TryBuildOngoingEffectRequest(definition, targetEnemy, amount, interval, duration, tickCount, stacks, reuseTransaction, out OngoingEffectService service, out OngoingEffectApplicationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            OngoingEffectApplicationResult result = service.ApplyOngoingEffect(request);
+            return Record(result.Succeeded, targetEnemy ? "Apply Enemy Ongoing Effect" : "Apply Player Ongoing Effect", result.Code, FormatOngoingApplicationResult(result));
+        }
+
+        public PrototypeTestLabOperation AdvanceOngoingEffects(float deltaSeconds)
+        {
+            float delta = Mathf.Max(0f, deltaSeconds);
+            ongoingEffectClockSeconds += delta;
+            OngoingEffectProcessResult player = EnsureOngoingEffectRuntime(targetEnemy: false)?.AdvanceTime(delta);
+            OngoingEffectProcessResult enemy = EnsureOngoingEffectRuntime(targetEnemy: true)?.AdvanceTime(delta);
+            return RecordSuccess("Advance Ongoing Effects", $"Advanced {delta:0.###}s. Player={FormatOngoingProcessResult(player)} Enemy={FormatOngoingProcessResult(enemy)}");
+        }
+
+        public PrototypeTestLabOperation ProcessOngoingEffectsNow()
+        {
+            OngoingEffectProcessResult player = EnsureOngoingEffectRuntime(targetEnemy: false)?.ProcessDueTicks(0f);
+            OngoingEffectProcessResult enemy = EnsureOngoingEffectRuntime(targetEnemy: true)?.ProcessDueTicks(0f);
+            return RecordSuccess("Process Ongoing Effects", $"Processed due ticks without advancing time. Player={FormatOngoingProcessResult(player)} Enemy={FormatOngoingProcessResult(enemy)}");
+        }
+
+        public PrototypeTestLabOperation CancelFirstOngoingEffect(bool targetEnemy, bool preview)
+        {
+            OngoingEffectService service = EnsureOngoingEffectRuntime(targetEnemy);
+            RuntimeOngoingEffectInstance instance = service == null ? null : service.ActiveInstances.FirstOrDefault();
+            if (instance == null)
+            {
+                return RecordFailure("Cancel Ongoing Effect", "No active ongoing effect instance is available.", "MissingInstance");
+            }
+
+            OngoingEffectCancellationRequest request = new OngoingEffectCancellationRequest($"development.ongoing-cancel.{Guid.NewGuid():N}", instance.InstanceId, instance.TargetActorId, instance.TargetObject, "Prototype Test Lab");
+            OngoingEffectCancellationResult result = preview ? service.PreviewCancelOngoingEffect(request) : service.CancelOngoingEffect(request);
+            return Record(result.Succeeded, preview ? "Preview Cancel Ongoing Effect" : "Cancel Ongoing Effect", result.Code, FormatOngoingCancellationResult(result));
+        }
+
         private DamageApplicationRequest CreatePipelineDamageRequest(DamageTypeDefinition damageType, float amount, bool targetPlayer, string transactionId)
         {
             GameObject source = targetPlayer ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
@@ -1437,6 +1514,94 @@ namespace UnityIsekaiGame.Development
             lifecycle.Configure(null, resources, character, traits);
         }
 
+        private OngoingEffectService EnsureOngoingEffectRuntime(bool targetEnemy)
+        {
+            GameObject actor = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
+            if (actor == null)
+            {
+                return null;
+            }
+
+            if (targetEnemy)
+            {
+                EnsureLifecycleRuntime(actor, ref context.EnemyLifecycle, needsResource: true);
+            }
+            else
+            {
+                EnsureLifecycleRuntime(actor, ref context.PlayerLifecycle, needsResource: true);
+            }
+            OngoingEffectService service = targetEnemy ? context?.EnemyOngoingEffects : context?.PlayerOngoingEffects;
+            if (service == null)
+            {
+                service = actor.GetComponentInParent<OngoingEffectService>();
+            }
+
+            if (service == null)
+            {
+                service = actor.AddComponent<OngoingEffectService>();
+            }
+
+            service.Configure(actor.GetComponentInParent<CharacterSystemCoordinator>());
+            service.SetClock(ongoingEffectClockSeconds);
+            if (targetEnemy)
+            {
+                context.EnemyOngoingEffects = service;
+            }
+            else
+            {
+                context.PlayerOngoingEffects = service;
+            }
+
+            return service;
+        }
+
+        private bool TryBuildOngoingEffectRequest(
+            OngoingEffectDefinition definition,
+            bool targetEnemy,
+            float amount,
+            float interval,
+            float duration,
+            int tickCount,
+            int stacks,
+            bool reuseTransaction,
+            out OngoingEffectService service,
+            out OngoingEffectApplicationRequest request,
+            out PrototypeTestLabOperation failure)
+        {
+            service = EnsureOngoingEffectRuntime(targetEnemy);
+            request = default;
+            failure = default;
+            if (definition == null)
+            {
+                failure = RecordFailure("Ongoing Effect", "Ongoing effect definition is missing.", "MissingDefinition");
+                return false;
+            }
+
+            GameObject target = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
+            GameObject source = targetEnemy ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            if (service == null || target == null)
+            {
+                failure = RecordFailure("Ongoing Effect", "Ongoing effect target service or target object is missing.", "MissingTarget");
+                return false;
+            }
+
+            request = new OngoingEffectApplicationRequest(
+                ResolveOngoingEffectTransactionId(reuseTransaction),
+                definition,
+                ResolveActorId(source),
+                source,
+                ResolveActorId(target),
+                target,
+                "development.test-lab",
+                Mathf.Max(0f, amount),
+                Mathf.Max(0f, interval),
+                Mathf.Max(0f, duration),
+                Mathf.Max(0, tickCount),
+                Mathf.Max(1, stacks),
+                authorityValidated: true);
+            return true;
+        }
+
         private bool TryResolveLifecycleTarget(bool targetEnemy, out ActorLifecycleController lifecycle, out GameObject target, out string actorId, out PrototypeTestLabOperation failure)
         {
             target = targetEnemy ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
@@ -1498,6 +1663,17 @@ namespace UnityIsekaiGame.Development
             return lastLifecycleTransactionId;
         }
 
+        private string ResolveOngoingEffectTransactionId(bool reuse)
+        {
+            if (reuse && !string.IsNullOrWhiteSpace(lastOngoingEffectTransactionId))
+            {
+                return lastOngoingEffectTransactionId;
+            }
+
+            lastOngoingEffectTransactionId = $"development.ongoing-effect.{Guid.NewGuid():N}";
+            return lastOngoingEffectTransactionId;
+        }
+
         private static string FormatAttackResolution(AttackResolutionResult result)
         {
             if (result == null)
@@ -1531,6 +1707,77 @@ namespace UnityIsekaiGame.Development
                 ? $"{snapshot.Current:0.###}/{snapshot.Maximum:0.###}"
                 : "Missing";
             return $"{label}: State={state} Actor={actorId} Health={health} Policy={policy}";
+        }
+
+        private static string FormatOngoingEffectTarget(string label, OngoingEffectService service, GameObject target, CharacterResourceCollection resources, ActorLifecycleController lifecycle)
+        {
+            string health = FormatResourceSnapshot(resources, ResourceIds.Health);
+            string mana = FormatResourceSnapshot(resources, ResourceIds.Mana);
+            string stamina = FormatResourceSnapshot(resources, ResourceIds.Stamina);
+            string state = lifecycle == null ? "Active" : lifecycle.State.ToString();
+            IReadOnlyList<RuntimeOngoingEffectInstance> instances = service == null ? Array.Empty<RuntimeOngoingEffectInstance>() : service.QueryActiveEffects(target);
+            string active = instances.Count == 0
+                ? "None"
+                : string.Join(" | ", instances.Select(instance => $"{instance.Definition.DisplayName} x{instance.StackCount} next={instance.NextTickElapsedSeconds:0.###}s rem={instance.RemainingDuration:0.###}s ticks={instance.CompletedTicks}/{(instance.FiniteTickCount > 0 ? instance.FiniteTickCount.ToString() : "duration")} [{instance.InstanceId}]"));
+            return $"{label}: Lifecycle={state} H={health} M={mana} S={stamina} Active={active}";
+        }
+
+        private static string FormatResourceSnapshot(CharacterResourceCollection resources, string resourceId)
+        {
+            return resources != null && resources.TryGetResource(resourceId, out ResourceSnapshot snapshot)
+                ? $"{snapshot.Current:0.###}/{snapshot.Maximum:0.###}"
+                : "Missing";
+        }
+
+        private static string FormatOngoingApplicationResult(OngoingEffectApplicationResult result)
+        {
+            if (result == null)
+            {
+                return "Ongoing effect application result is missing.";
+            }
+
+            string ticks = result.ImmediateTicks == null || result.ImmediateTicks.Count == 0
+                ? "ImmediateTicks=0"
+                : $"ImmediateTicks={result.ImmediateTicks.Count} Last={FormatOngoingTickResult(result.ImmediateTicks[result.ImmediateTicks.Count - 1])}";
+            return $"{result.Outcome} {result.DefinitionId} Instance={result.InstanceId} Stacks={result.PreviousStackCount}->{result.ResultingStackCount} Duration={result.PreviousRemainingDuration:0.###}->{result.ResultingRemainingDuration:0.###} Preview={result.Preview} Duplicate={result.Duplicate}. {ticks}. {result.Message}";
+        }
+
+        private static string FormatOngoingProcessResult(OngoingEffectProcessResult result)
+        {
+            if (result == null)
+            {
+                return "Missing";
+            }
+
+            string last = result.TickResults.Count == 0 ? "NoTicks" : FormatOngoingTickResult(result.TickResults[result.TickResults.Count - 1]);
+            return $"Ticks={result.ProcessedTicks} Capped={result.Capped} {last}";
+        }
+
+        private static string FormatOngoingTickResult(OngoingEffectTickResult result)
+        {
+            if (result == null)
+            {
+                return "Tick=None";
+            }
+
+            string nested = result.DamageResult != null
+                ? $"Damage={result.DamageResult.FinalDamageAmount:0.###} Health={result.DamageResult.OldHealth:0.###}->{result.DamageResult.NewHealth:0.###} Immune={result.DamageResult.Immune}"
+                : result.HealingResult != null
+                    ? $"Healing={result.HealingResult.FinalHealingAmount:0.###} Overheal={result.HealingResult.OverhealAmount:0.###} Health={result.HealingResult.OldHealth:0.###}->{result.HealingResult.NewHealth:0.###}"
+                    : result.ResourceResult != null
+                        ? $"Resource={result.ResourceResult.Request.ResourceId} {result.ResourceResult.OldCurrent:0.###}->{result.ResourceResult.NewCurrent:0.###} Applied={result.ResourceResult.AppliedAmount:0.###}"
+                        : "Nested=None";
+            return $"Tick#{result.TickIndex} {result.Outcome} Tx={result.TickTransactionId} Amt={result.RequestedAmount:0.###} {nested}";
+        }
+
+        private static string FormatOngoingCancellationResult(OngoingEffectCancellationResult result)
+        {
+            if (result == null)
+            {
+                return "Ongoing effect cancellation result is missing.";
+            }
+
+            return $"Instance={result.InstanceId} Definition={result.DefinitionId} Preview={result.Preview} Duplicate={result.Duplicate}. {result.Message}";
         }
 
         private HealingApplicationRequest CreatePipelineHealingRequest(float amount, bool targetPlayer, string transactionId)

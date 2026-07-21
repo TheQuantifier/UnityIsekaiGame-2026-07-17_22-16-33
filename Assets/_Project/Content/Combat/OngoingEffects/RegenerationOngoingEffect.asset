@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64000000000000000000000000000003, type: 3}
+  m_Name: RegenerationOngoingEffect
+  m_EditorClassIdentifier: UnityIsekaiGame.Gameplay::UnityIsekaiGame.Combat.OngoingEffects.OngoingEffectDefinition
+  ongoingEffectId: ongoing-effect.health-regeneration
+  displayName: Health Regeneration
+  description: Applies Health healing over time through the DamageHealingService.
+  icon: {fileID: 0}
+  primaryCategory: {fileID: 11400000, guid: 945962798de54554bd97b6f8741234d2, type: 2}
+  tags: []
+  operationType: 1
+  targetResource: {fileID: 11400000, guid: 975ed8877a404f4ea3367e3c311e377b, type: 2}
+  damageType: {fileID: 0}
+  amountPerTick: 10
+  tickInterval: 1
+  initialDelay: 1
+  totalDuration: 5
+  useFiniteTickCount: 0
+  finiteTickCount: 1
+  tickImmediately: 0
+  stackingPolicy: 1
+  refreshDurationOnReapply: 1
+  maximumStacks: 1
+  sourceOwnership: 0
+  unconsciousPolicy: 0
+  deathPolicy: 0
+  requirements: {fileID: 0}
+  requiredCapabilityIds: []

@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -37,6 +38,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private CalculatedStatCollection playerCalculatedStats;
         [SerializeField] private CharacterResourceCollection playerResources;
         [SerializeField] private ActorLifecycleController playerActorLifecycle;
+        [SerializeField] private OngoingEffectService playerOngoingEffects;
         [SerializeField] private CharacterSkillCollection playerSkills;
         [SerializeField] private CharacterTraitCollection playerTraits;
         [SerializeField] private PlayerSkillActionEventSource playerSkillActionEventSource;
@@ -59,6 +61,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerActorLifecycle = true;
+        [SerializeField] private bool registerPlayerOngoingEffects = true;
         [SerializeField] private bool registerPlayerQuestContract = true;
         [SerializeField] private bool registerPlayerLocation = true;
         [SerializeField] private string prototypeSlotId = PersistenceService.PrototypeSlotId;
@@ -80,6 +83,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
         private PlayerActorLifecyclePersistenceParticipant playerActorLifecycleParticipant;
+        private PlayerOngoingEffectsPersistenceParticipant playerOngoingEffectsParticipant;
         private PlayerQuestContractPersistenceParticipant questContractParticipant;
         private PlayerLocationPersistenceParticipant playerLocationParticipant;
         private DefinitionRegistry definitionRegistry;
@@ -154,6 +158,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(playerActorLifecycleParticipant);
                 playerActorLifecycleParticipant = null;
+            }
+
+            if (service != null && playerOngoingEffectsParticipant != null)
+            {
+                service.UnregisterParticipant(playerOngoingEffectsParticipant);
+                playerOngoingEffectsParticipant = null;
             }
 
             if (service != null && questContractParticipant != null)
@@ -237,6 +247,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
             EnsurePlayerActorLifecycleParticipant();
+            EnsurePlayerOngoingEffectsParticipant();
             EnsurePlayerQuestContractParticipant();
             EnsurePlayerLocationParticipant();
             SubscribeDirtyEvents();
@@ -807,6 +818,16 @@ namespace UnityIsekaiGame.Gameplay
                 playerActorLifecycle = playerObject.AddComponent<ActorLifecycleController>();
             }
 
+            if (playerOngoingEffects == null)
+            {
+                playerOngoingEffects = playerObject == null ? Object.FindAnyObjectByType<OngoingEffectService>() : playerObject.GetComponent<OngoingEffectService>();
+            }
+
+            if (playerOngoingEffects == null && playerObject != null)
+            {
+                playerOngoingEffects = playerObject.AddComponent<OngoingEffectService>();
+            }
+
             if (definitionCatalog != null)
             {
                 DefinitionRegistry registry = GetDefinitionRegistry();
@@ -816,6 +837,7 @@ namespace UnityIsekaiGame.Gameplay
                 playerSkills?.Configure(registry, playerCalculatedStats, playerObject == null ? null : playerObject.GetComponent<PlayerSpellLoadout>());
                 playerTraits?.Configure(registry, playerCalculatedStats, playerSkills, service == null ? PersistenceService.LocalPlayerId : service.PlayerId);
                 playerActorLifecycle?.Configure(null, playerResources, playerObject == null ? null : playerObject.GetComponent<CharacterSystemCoordinator>(), playerTraits);
+                playerOngoingEffects?.Configure(playerObject == null ? null : playerObject.GetComponent<CharacterSystemCoordinator>());
                 playerStats?.ConfigureDerivedStats(registry);
                 playerStats?.RefreshEquipmentModifiers();
             }
@@ -978,6 +1000,60 @@ namespace UnityIsekaiGame.Gameplay
                 Debug.LogWarning(failureReason);
                 playerActorLifecycleParticipant = null;
             }
+        }
+
+        private void EnsurePlayerOngoingEffectsParticipant()
+        {
+            if (!registerPlayerOngoingEffects || playerOngoingEffectsParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerOngoingEffects == null || playerRoot == null)
+            {
+                Debug.LogWarning("Player ongoing effects persistence participant was not registered because the ongoing effects service or player root is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player ongoing effects persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            CharacterSystemCoordinator character = playerRoot.GetComponent<CharacterSystemCoordinator>();
+            playerOngoingEffects.Configure(character);
+            playerOngoingEffectsParticipant = new PlayerOngoingEffectsPersistenceParticipant(
+                playerOngoingEffects,
+                playerRoot.gameObject,
+                GetDefinitionRegistry,
+                ResolvePlayerActorId,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerOngoingEffectsParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerOngoingEffectsParticipant = null;
+            }
+        }
+
+        private string ResolvePlayerActorId()
+        {
+            if (playerRoot == null)
+            {
+                return string.Empty;
+            }
+
+            CharacterSystemCoordinator character = playerRoot.GetComponent<CharacterSystemCoordinator>();
+            if (character != null && !string.IsNullOrWhiteSpace(character.ActorId))
+            {
+                return character.ActorId;
+            }
+
+            WorldEntityIdentity identity = playerRoot.GetComponent<WorldEntityIdentity>();
+            return identity == null ? string.Empty : identity.EntityId;
         }
 
         private void EnsurePlayerStatsVitalsStatusParticipant()
@@ -1169,6 +1245,17 @@ namespace UnityIsekaiGame.Gameplay
                 playerActorLifecycle.ActorRevived += OnActorLifecycleChanged;
             }
 
+            if (playerOngoingEffects != null)
+            {
+                playerOngoingEffects.OngoingEffectApplied += OnOngoingEffectApplicationChanged;
+                playerOngoingEffects.OngoingEffectRefreshed += OnOngoingEffectApplicationChanged;
+                playerOngoingEffects.OngoingEffectStackChanged += OnOngoingEffectApplicationChanged;
+                playerOngoingEffects.OngoingEffectTickProcessed += OnOngoingEffectTickChanged;
+                playerOngoingEffects.OngoingEffectTickSkipped += OnOngoingEffectTickChanged;
+                playerOngoingEffects.OngoingEffectCancelled += OnOngoingEffectCancellationChanged;
+                playerOngoingEffects.OngoingEffectCompleted += OnOngoingEffectCompleted;
+            }
+
             if (statusEffectController != null)
             {
                 statusEffectController.StatusAdded += OnStatusChanged;
@@ -1269,6 +1356,17 @@ namespace UnityIsekaiGame.Gameplay
                 playerActorLifecycle.ActorRevived -= OnActorLifecycleChanged;
             }
 
+            if (playerOngoingEffects != null)
+            {
+                playerOngoingEffects.OngoingEffectApplied -= OnOngoingEffectApplicationChanged;
+                playerOngoingEffects.OngoingEffectRefreshed -= OnOngoingEffectApplicationChanged;
+                playerOngoingEffects.OngoingEffectStackChanged -= OnOngoingEffectApplicationChanged;
+                playerOngoingEffects.OngoingEffectTickProcessed -= OnOngoingEffectTickChanged;
+                playerOngoingEffects.OngoingEffectTickSkipped -= OnOngoingEffectTickChanged;
+                playerOngoingEffects.OngoingEffectCancelled -= OnOngoingEffectCancellationChanged;
+                playerOngoingEffects.OngoingEffectCompleted -= OnOngoingEffectCompleted;
+            }
+
             if (statusEffectController != null)
             {
                 statusEffectController.StatusAdded -= OnStatusChanged;
@@ -1361,6 +1459,41 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             dirtyTracker?.MarkDirty("Player actor lifecycle changed.");
+        }
+
+        private void OnOngoingEffectApplicationChanged(OngoingEffectApplicationResult result)
+        {
+            if (result == null || result.Preview || result.Duplicate)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player ongoing effect changed.");
+        }
+
+        private void OnOngoingEffectTickChanged(OngoingEffectTickResult result)
+        {
+            if (result == null || string.Equals(result.Code, OngoingEffectResultCode.DuplicateTick, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player ongoing effect tick processed.");
+        }
+
+        private void OnOngoingEffectCancellationChanged(OngoingEffectCancellationResult result)
+        {
+            if (result == null || result.Preview || result.Duplicate)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player ongoing effect cancelled.");
+        }
+
+        private void OnOngoingEffectCompleted(RuntimeOngoingEffectInstance instance)
+        {
+            dirtyTracker?.MarkDirty("Player ongoing effect completed.");
         }
 
         private void OnPlayerResourceMaximumChanged(CharacterResourceCollection resources, ResourceSnapshot snapshot, float oldMaximum, bool restoring)
