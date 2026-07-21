@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Gameplay;
 
 namespace UnityIsekaiGame.Combat
@@ -38,6 +39,7 @@ namespace UnityIsekaiGame.Combat
             return target != null
                 && !PrototypeGameplayModalState.IsModalActive
                 && (health == null || !health.IsDefeated)
+                && ActorLifecycleUtility.CanAct(gameObject)
                 && Time.time >= nextAttackTime
                 && GetPlanarDistanceTo(target) <= attackRange;
         }
@@ -57,6 +59,11 @@ namespace UnityIsekaiGame.Combat
             if (health != null && health.IsDefeated)
             {
                 return Resolve(DamageResult.Failure(damage, $"{name} is defeated and cannot attack."));
+            }
+
+            if (!ActorLifecycleUtility.CanAct(gameObject))
+            {
+                return Resolve(DamageResult.Failure(damage, $"{name} cannot attack while defeated, unconscious, or dead."));
             }
 
             if (Time.time < nextAttackTime)

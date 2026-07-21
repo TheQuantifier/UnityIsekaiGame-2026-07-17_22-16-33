@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Input;
@@ -67,6 +68,11 @@ namespace UnityIsekaiGame.Combat
 
         public MeleeAttackResult TryAttack()
         {
+            if (!ActorLifecycleUtility.CanAct(gameObject))
+            {
+                return Resolve(MeleeAttackResult.Failure("Cannot attack while defeated, unconscious, or dead."));
+            }
+
             if (Time.time < nextAttackTime)
             {
                 return Resolve(MeleeAttackResult.Failure("Attack is on cooldown."));

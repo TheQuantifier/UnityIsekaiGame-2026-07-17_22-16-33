@@ -1,3 +1,4 @@
+using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Capabilities;
 using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.ResourceSystem;
@@ -36,6 +37,18 @@ namespace UnityIsekaiGame.CharacterSystem
             }
 
             return default;
+        }
+
+        public ActorLifecycleState GetLifecycleState()
+        {
+            ActorLifecycleController lifecycle = character == null ? null : character.GetComponent<ActorLifecycleController>();
+            return lifecycle == null ? ActorLifecycleState.Active : lifecycle.State;
+        }
+
+        public bool CanAct()
+        {
+            ActorLifecycleController lifecycle = character == null ? null : character.GetComponent<ActorLifecycleController>();
+            return lifecycle == null || lifecycle.CanAct;
         }
 
         public SkillGrade GetSkillGrade(string skillId)

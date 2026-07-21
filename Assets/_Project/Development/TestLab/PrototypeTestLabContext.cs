@@ -1,5 +1,6 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using UnityEngine;
+using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Contracts;
@@ -30,6 +31,7 @@ namespace UnityIsekaiGame.Development
         public CharacterAttributes PlayerAttributes;
         public CalculatedStatCollection PlayerCalculatedStats;
         public CharacterResourceCollection PlayerResources;
+        public ActorLifecycleController PlayerLifecycle;
         public CharacterSkillCollection PlayerSkills;
         public CharacterTraitCollection PlayerTraits;
         public CharacterSystemCoordinator CharacterSystem;
@@ -45,6 +47,7 @@ namespace UnityIsekaiGame.Development
         public EnemyHealth EnemyHealth;
         public PrototypeEnemyController EnemyController;
         public EnemyMeleeAttack EnemyAttack;
+        public ActorLifecycleController EnemyLifecycle;
         public StatusEffectController EnemyStatuses;
         public Transform EnemyTransform;
     }
