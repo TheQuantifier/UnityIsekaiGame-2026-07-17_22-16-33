@@ -9,6 +9,7 @@ using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.CombatState;
+using UnityIsekaiGame.Combat.Contributions;
 using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
@@ -52,6 +53,7 @@ namespace UnityIsekaiGame.Development
         private readonly DefensiveActionService defensiveActionService = new DefensiveActionService();
         private readonly AttackResolutionService attackResolutionService;
         private CombatReactionService combatReactionService;
+        private CombatContributionService combatContributionService;
         private CombatExecutionService combatExecutionService = new CombatExecutionService();
         private readonly TestLabAutomationRegistry automationRegistry = new TestLabAutomationRegistry();
         private readonly TestLabAutomationReportExporter automationReportExporter = new TestLabAutomationReportExporter();
@@ -82,6 +84,9 @@ namespace UnityIsekaiGame.Development
         private string lastCombatExecutionInstanceId;
         private string lastLifecycleTransactionId;
         private string lastOngoingEffectTransactionId;
+        private DamageApplicationResult lastContributionDamageSource;
+        private HealingApplicationResult lastContributionHealingSource;
+        private string lastContributionCreditTargetActorId;
         private float combatStateClockSeconds;
         private float combatExecutionClockSeconds;
         private float ongoingEffectClockSeconds;
@@ -122,6 +127,7 @@ namespace UnityIsekaiGame.Development
             EnsureOngoingEffectRuntime(targetEnemy: false);
             EnsureOngoingEffectRuntime(targetEnemy: true);
             EnsureCombatReactionRuntime();
+            EnsureCombatContributionRuntime();
             EnsureAutomation();
             selectorCache.Clear();
         }
@@ -306,6 +312,7 @@ namespace UnityIsekaiGame.Development
             EnsureOngoingEffectRuntime(targetEnemy: true)?.ClearTransientStateForRestore();
             EnsureCombatReactionRuntime()?.ClearTransientStateForRestore();
             EnsureCombatReactionRuntime()?.ClearAllSources();
+            EnsureCombatContributionRuntime()?.ClearTransientStateForRestore();
             ongoingEffectClockSeconds = 0f;
             combatStateClockSeconds = 0f;
             combatExecutionClockSeconds = 0f;
@@ -318,6 +325,9 @@ namespace UnityIsekaiGame.Development
             lastCombatExecutionInstanceId = string.Empty;
             lastLifecycleTransactionId = string.Empty;
             lastOngoingEffectTransactionId = string.Empty;
+            lastContributionDamageSource = null;
+            lastContributionHealingSource = null;
+            lastContributionCreditTargetActorId = string.Empty;
             ResetEnemy();
             return RecordSuccess("Reset Automation Runtime", "Runtime automation baseline restored without expected optional-action warnings.");
         }
@@ -2229,10 +2239,560 @@ namespace UnityIsekaiGame.Development
             return Record(result.Succeeded, execute ? critical ? "Execute 6.8 Critical Reaction" : "Execute 6.8 Reaction" : "Preview 6.8 Reaction", result.Code, FormatCombatReactionChain(result));
         }
 
+        public string BuildCombatContributionSummary()
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            IReadOnlyList<CombatContributionLedgerSnapshot> ledgers = service == null ? Array.Empty<CombatContributionLedgerSnapshot>() : service.GetLedgerSnapshots();
+            string ledgerText = ledgers.Count == 0
+                ? "Ledgers: None"
+                : string.Join(Environment.NewLine, ledgers.Select(FormatContributionLedger));
+            CombatContributionPolicyDefinition policy = GetDefinitions<CombatContributionPolicyDefinition>().FirstOrDefault();
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Feature 6.9 Combat Contribution",
+                $"Policy: {(policy == null ? "None" : $"{policy.DisplayName} ({policy.Id}) Window={policy.ContributionWindowSeconds:0.###}s")}",
+                $"Clock: {(service == null ? 0f : service.SimulationTime):0.###}s",
+                ledgerText
+            });
+        }
+
+        public PrototypeTestLabOperation PreviewContribution(DamageTypeDefinition damageType)
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            DamageApplicationRequest request = CreatePipelineDamageRequest(damageType ?? GetDefinitions<DamageTypeDefinition>().FirstOrDefault(), 25f, targetPlayer: false, transactionId: $"development.contribution.preview.{Guid.NewGuid():N}");
+            CombatContributionRecordRequest contribution = new CombatContributionRecordRequest(
+                request.TransactionId,
+                CombatContributionType.DamageApplied,
+                request.SourceActorId,
+                string.Empty,
+                string.Empty,
+                request.TargetActorId,
+                string.Empty,
+                request.RequestedAmount,
+                Mathf.Max(0f, request.RequestedAmount),
+                0f,
+                service == null ? 0f : service.SimulationTime,
+                CombatContributionSourceKind.Development,
+                preview: true);
+            CombatContributionRecordResult result = service == null
+                ? CombatContributionRecordResult.Failure(true, CombatContributionResultCode.MissingPolicy, "Contribution service is missing.", 0, 0)
+                : service.PreviewContribution(contribution);
+            return Record(result.Succeeded, "Preview 6.9 Contribution", result.Code, FormatContributionRecordResult(result));
+        }
+
+        public PrototypeTestLabOperation RecordDamageContribution(DamageTypeDefinition damageType, bool reuseTransaction)
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            DamageTypeDefinition selected = damageType ?? GetDefinitions<DamageTypeDefinition>().FirstOrDefault();
+            if (service == null || selected == null)
+            {
+                return RecordFailure("Record 6.9 Damage", "Contribution service or damage type is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string transactionId = reuseTransaction && !string.IsNullOrWhiteSpace(lastAttackTransactionId)
+                ? lastAttackTransactionId
+                : $"development.contribution.damage.{Guid.NewGuid():N}";
+            lastAttackTransactionId = transactionId;
+            DamageApplicationResult damage;
+            if (reuseTransaction && lastContributionDamageSource != null)
+            {
+                damage = lastContributionDamageSource;
+            }
+            else
+            {
+                if (!TryPrepareContributionHealth(targetPlayer: false, desiredCurrent: 50f, out string healthMessage))
+                {
+                    return RecordFailure("Record 6.9 Damage", healthMessage, "MissingHealth");
+                }
+
+                damage = new DamageHealingService().ApplyDamage(CreatePipelineDamageRequest(selected, 25f, targetPlayer: false, transactionId));
+                if (damage.Succeeded && !damage.Duplicate)
+                {
+                    lastContributionDamageSource = damage;
+                }
+            }
+
+            CombatContributionRecordResult result = service.RecordDamage(damage, sourceKind: CombatContributionSourceKind.Development);
+            if (result.Record != null && !string.IsNullOrWhiteSpace(result.Record.TargetActorId))
+            {
+                lastContributionCreditTargetActorId = result.Record.TargetActorId;
+            }
+
+            return Record(result.Succeeded || result.Duplicate, reuseTransaction ? "Record 6.9 Damage Reuse" : "Record 6.9 Damage", result.Code, $"{FormatDamageApplication(damage)} {FormatContributionRecordResult(result)}");
+        }
+
+        public PrototypeTestLabOperation RecordHealingContribution(bool reuseTransaction)
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            if (service == null)
+            {
+                return RecordFailure("Record 6.9 Healing", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string transactionId = reuseTransaction && !string.IsNullOrWhiteSpace(lastOngoingEffectTransactionId)
+                ? lastOngoingEffectTransactionId
+                : $"development.contribution.healing.{Guid.NewGuid():N}";
+            lastOngoingEffectTransactionId = transactionId;
+            HealingApplicationResult healing;
+            if (reuseTransaction && lastContributionHealingSource != null)
+            {
+                healing = lastContributionHealingSource;
+            }
+            else
+            {
+                if (!TryPrepareContributionHealth(targetPlayer: false, desiredCurrent: 50f, out string healthMessage))
+                {
+                    return RecordFailure("Record 6.9 Healing", healthMessage, "MissingHealth");
+                }
+
+                healing = new DamageHealingService().ApplyHealing(CreatePipelineHealingRequest(25f, targetPlayer: false, transactionId));
+                if (healing.Succeeded && !healing.Duplicate)
+                {
+                    lastContributionHealingSource = healing;
+                }
+            }
+
+            CombatContributionRecordResult result = service.RecordHealing(healing, sourceKind: CombatContributionSourceKind.Development);
+            if (result.Record != null && !string.IsNullOrWhiteSpace(result.Record.BeneficiaryActorId))
+            {
+                lastContributionCreditTargetActorId = result.Record.BeneficiaryActorId;
+            }
+
+            return Record(result.Succeeded || result.Duplicate, reuseTransaction ? "Record 6.9 Healing Reuse" : "Record 6.9 Healing", result.Code, $"{FormatHealingApplication(healing)} {FormatContributionRecordResult(result)}");
+        }
+
+        public PrototypeTestLabOperation RecordFullyPreventedDamageContribution(DamageTypeDefinition damageType)
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            DamageTypeDefinition selected = damageType ?? GetDefinitions<DamageTypeDefinition>().FirstOrDefault();
+            if (service == null || selected == null)
+            {
+                return RecordFailure("Record 6.9 Prevented Damage", "Contribution service or damage type is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            DamageApplicationRequest request = CreatePipelineDamageRequest(selected, 25f, targetPlayer: false, $"development.contribution.prevented.{Guid.NewGuid():N}");
+            DamageApplicationResult damage = DamageApplicationResult.Create(false, "Prevented", "Damage was fully prevented.", request, request.TargetActorId, 25f, 25f, 25f, 0f, 0f, 0f, 100f, 100f, 0f, 100f, false, false, false, false, false, 0f, null);
+            CombatContributionRecordResult result = service.RecordDamage(damage, sourceKind: CombatContributionSourceKind.Development);
+            bool expectedZero = result.Code == CombatContributionResultCode.ZeroEffectiveContribution;
+            return Record(expectedZero, "Record 6.9 Prevented Damage", result.Code, $"{FormatDamageApplication(damage)} {FormatContributionRecordResult(result)}");
+        }
+
+        public PrototypeTestLabOperation RecordOverkillContribution(DamageTypeDefinition damageType)
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            DamageTypeDefinition selected = damageType ?? GetDefinitions<DamageTypeDefinition>().FirstOrDefault();
+            if (service == null || selected == null)
+            {
+                return RecordFailure("Record 6.9 Overkill", "Contribution service or damage type is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string transactionId = $"development.contribution.overkill.{Guid.NewGuid():N}";
+            if (!TryPrepareContributionHealth(targetPlayer: false, desiredCurrent: 50f, out string healthMessage))
+            {
+                return RecordFailure("Record 6.9 Overkill", healthMessage, "MissingHealth");
+            }
+
+            DamageApplicationResult damage = new DamageHealingService().ApplyDamage(CreatePipelineDamageRequest(selected, 999f, targetPlayer: false, transactionId));
+            CombatContributionRecordResult result = service.RecordDamage(damage, sourceKind: CombatContributionSourceKind.Development);
+            return Record(result.Succeeded || result.Code == CombatContributionResultCode.ZeroEffectiveContribution, "Record 6.9 Overkill", result.Code, $"{FormatDamageApplication(damage)} {FormatContributionRecordResult(result)}");
+        }
+
+        public PrototypeTestLabOperation RecordOngoingDamageContribution()
+        {
+            return RecordSyntheticContribution(
+                "Record 6.9 Ongoing Damage",
+                CombatContributionType.OngoingDamageApplied,
+                CombatContributionSourceKind.OngoingEffect,
+                "ongoing-effect.synthetic",
+                requestedAmount: 5f,
+                actualAmount: 5f,
+                preventedAmount: 0f);
+        }
+
+        public PrototypeTestLabOperation RecordReactionDamageContribution()
+        {
+            return RecordSyntheticContribution(
+                "Record 6.9 Reaction Damage",
+                CombatContributionType.ReactionDamageApplied,
+                CombatContributionSourceKind.Reaction,
+                "combat-reaction.synthetic-damage",
+                requestedAmount: 5f,
+                actualAmount: 5f,
+                preventedAmount: 0f);
+        }
+
+        public PrototypeTestLabOperation RecordReactionHealingContribution()
+        {
+            return RecordSyntheticContribution(
+                "Record 6.9 Reaction Healing",
+                CombatContributionType.ReactionHealingApplied,
+                CombatContributionSourceKind.Reaction,
+                "combat-reaction.synthetic-healing",
+                requestedAmount: 5f,
+                actualAmount: 5f,
+                preventedAmount: 0f);
+        }
+
+        public PrototypeTestLabOperation RecordDefenseContribution(CombatContributionType contributionType)
+        {
+            string label = contributionType == CombatContributionType.SuccessfulBlock
+                ? "Record 6.9 Block"
+                : contributionType == CombatContributionType.SuccessfulParry
+                    ? "Record 6.9 Parry"
+                    : "Record 6.9 Dodge";
+            return RecordSyntheticContribution(
+                label,
+                contributionType,
+                CombatContributionSourceKind.Defense,
+                $"defense.synthetic.{contributionType}",
+                requestedAmount: 25f,
+                actualAmount: contributionType == CombatContributionType.SuccessfulBlock ? 5f : 1f,
+                preventedAmount: contributionType == CombatContributionType.SuccessfulBlock ? 20f : 25f,
+                support: true);
+        }
+
+        public PrototypeTestLabOperation AdvanceContributionClock(float seconds)
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            service?.AdvanceClock(Mathf.Max(0f, seconds));
+            return RecordSuccess("Advance 6.9 Clock", $"Contribution clock advanced by {Mathf.Max(0f, seconds):0.###}s to {(service == null ? 0f : service.SimulationTime):0.###}s.");
+        }
+
+        public PrototypeTestLabOperation ResolveDefeatContributionCredit()
+        {
+            return ResolveContributionCredit(kill: false);
+        }
+
+        public PrototypeTestLabOperation ResolveKillContributionCredit()
+        {
+            return ResolveContributionCredit(kill: true);
+        }
+
+        public PrototypeTestLabOperation FinalizeContributionLedger()
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            CombatContributionLedgerSnapshot snapshot = service?.GetLedgerSnapshots().FirstOrDefault();
+            CombatContributionLedgerSnapshot finalized = snapshot == null ? null : service.FinalizeLedger(snapshot.LedgerId);
+            return Record(finalized != null, "Finalize 6.9 Ledger", finalized == null ? CombatContributionResultCode.MissingTarget : CombatContributionResultCode.Success, finalized == null ? "No contribution ledger exists." : FormatContributionLedger(finalized));
+        }
+
+        public PrototypeTestLabOperation ClearCombatContributions()
+        {
+            EnsureCombatContributionRuntime()?.ClearTransientStateForRestore();
+            lastContributionDamageSource = null;
+            lastContributionHealingSource = null;
+            lastContributionCreditTargetActorId = string.Empty;
+            return RecordSuccess("Clear 6.9 Contributions", "Contribution ledgers, credit results, and duplicate keys cleared.");
+        }
+
+        public PrototypeTestLabOperation ProveContributionKillCreditLatest()
+        {
+            CombatContributionService service = ResetContributionProofState();
+            if (service == null)
+            {
+                return RecordFailure("Prove 6.9 Latest Kill Credit", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string target = ResolveContributionTargetActorId();
+            service.RecordContribution(SyntheticContribution("proof.kill.old", CombatContributionType.DamageApplied, "actor.proof.old", target, string.Empty, 50f));
+            service.AdvanceClock(1f);
+            service.RecordContribution(SyntheticContribution("proof.kill.latest", CombatContributionType.DamageApplied, "actor.proof.latest", target, string.Empty, 5f));
+            CombatCreditResolutionResult credit = service.ResolveKillCredit(BuildContributionLifecycle(target, kill: true, "proof.kill.lifecycle"));
+            bool passed = credit.Succeeded && credit.PrimaryContributorActorId == "actor.proof.latest";
+            return Record(passed, "Prove 6.9 Latest Kill Credit", credit.Code, FormatCreditResult(credit));
+        }
+
+        public PrototypeTestLabOperation ProveContributionAssistCredit()
+        {
+            CombatContributionService service = ResetContributionProofState();
+            if (service == null)
+            {
+                return RecordFailure("Prove 6.9 Assist Credit", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string target = ResolveContributionTargetActorId();
+            service.RecordContribution(SyntheticContribution("proof.assist.damage", CombatContributionType.DamageApplied, "actor.proof.assist", target, string.Empty, 10f));
+            service.RecordContribution(SyntheticContribution("proof.assist.heal", CombatContributionType.HealingApplied, "actor.proof.healer", string.Empty, target, 6f));
+            service.AdvanceClock(1f);
+            service.RecordContribution(SyntheticContribution("proof.assist.kill", CombatContributionType.DamageApplied, "actor.proof.primary", target, string.Empty, 5f));
+            CombatCreditResolutionResult credit = service.ResolveKillCredit(BuildContributionLifecycle(target, kill: true, "proof.assist.lifecycle"));
+            bool passed = credit.Succeeded
+                && credit.PrimaryContributorActorId == "actor.proof.primary"
+                && credit.Assists.Any(summary => summary.ContributorActorId == "actor.proof.assist")
+                && credit.Assists.Any(summary => summary.ContributorActorId == "actor.proof.healer");
+            return Record(passed, "Prove 6.9 Assist Credit", credit.Code, FormatCreditResult(credit));
+        }
+
+        public PrototypeTestLabOperation ProveContributionHealingOnlyNotPrimary()
+        {
+            CombatContributionService service = ResetContributionProofState();
+            if (service == null)
+            {
+                return RecordFailure("Prove 6.9 Healing Not Primary", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string target = ResolveContributionTargetActorId();
+            service.RecordContribution(SyntheticContribution("proof.heal.only", CombatContributionType.HealingApplied, "actor.proof.healer", string.Empty, target, 10f));
+            CombatCreditResolutionResult credit = service.ResolveKillCredit(BuildContributionLifecycle(target, kill: true, "proof.heal.lifecycle"));
+            bool passed = credit.Succeeded && string.IsNullOrWhiteSpace(credit.PrimaryContributorActorId) && credit.Code == CombatContributionResultCode.NoEligibleContributor;
+            return Record(passed, "Prove 6.9 Healing Not Primary", credit.Code, FormatCreditResult(credit));
+        }
+
+        public PrototypeTestLabOperation ProveContributionEncounterMerge()
+        {
+            CombatContributionService service = ResetContributionProofState();
+            if (service == null)
+            {
+                return RecordFailure("Prove 6.9 Encounter Merge", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            service.RecordContribution(SyntheticContribution("proof.merge.a", CombatContributionType.DamageApplied, "actor.proof.a", "actor.proof.target", string.Empty, 5f, "encounter.proof.a"));
+            service.RecordContribution(SyntheticContribution("proof.merge.b", CombatContributionType.DamageApplied, "actor.proof.b", "actor.proof.target", string.Empty, 5f, "encounter.proof.b"));
+            CombatContributionLedgerMergeResult merge = service.MergeEncounterLedgers(new CombatEncounterSnapshot("encounter.proof.a", true, 0f, 0f, new[] { "actor.proof.a", "actor.proof.b", "actor.proof.target" }, Array.Empty<CombatEngagementSnapshot>(), 1L, CombatEncounterCompletionReason.Forced));
+            bool passed = merge.Succeeded && merge.Snapshot != null && merge.Snapshot.Records.Count == 2;
+            return Record(passed, "Prove 6.9 Encounter Merge", merge.Code, $"Merged={string.Join(",", merge.MergedLedgerIds)} Records={(merge.Snapshot == null ? 0 : merge.Snapshot.Records.Count)}. {merge.Message}");
+        }
+
+        public PrototypeTestLabOperation ProveContributionEncounterSplit()
+        {
+            CombatContributionService service = ResetContributionProofState();
+            if (service == null)
+            {
+                return RecordFailure("Prove 6.9 Encounter Split", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            service.RecordContribution(SyntheticContribution("proof.split.a", CombatContributionType.DamageApplied, "actor.proof.a", "actor.proof.target-a", string.Empty, 5f, "encounter.proof.original"));
+            service.RecordContribution(SyntheticContribution("proof.split.b", CombatContributionType.DamageApplied, "actor.proof.b", "actor.proof.target-b", string.Empty, 5f, "encounter.proof.original"));
+            service.RecordContribution(SyntheticContribution("proof.split.cross", CombatContributionType.DamageApplied, "actor.proof.a", "actor.proof.target-b", string.Empty, 5f, "encounter.proof.original"));
+            CombatEncounterSplitResult split = new CombatEncounterSplitResult(true, false, false, "Success", "Proof split.", "proof.split.tx", "encounter.proof.original", "encounter.proof.original", new[] { "encounter.proof.new" }, new[] { "actor.proof.a", "actor.proof.target-a", "actor.proof.b", "actor.proof.target-b" }, new[]
+            {
+                new CombatEncounterSplitComponentSnapshot("encounter.proof.original", new[] { "actor.proof.a", "actor.proof.target-a" }, Array.Empty<string>(), true, 0f, true),
+                new CombatEncounterSplitComponentSnapshot("encounter.proof.new", new[] { "actor.proof.b", "actor.proof.target-b" }, Array.Empty<string>(), false, 0f, true)
+            }, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<CombatExitResult>(), Array.Empty<CombatEncounterSnapshot>(), Array.Empty<CombatParticipantReassignmentResult>(), CombatExitReason.Explicit, 0L, 1L, 0f);
+            CombatContributionLedgerPartitionResult partition = service.PartitionEncounterLedgers(split);
+            bool passed = partition.Succeeded
+                && partition.ComponentSnapshots.Count == 2
+                && partition.ComponentSnapshots.All(snapshot => snapshot.Summaries.Count == 1);
+            return Record(passed, "Prove 6.9 Encounter Split", partition.Code, $"Components={partition.ComponentSnapshots.Count} Historical={partition.HistoricalSnapshots.SelectMany(snapshot => snapshot.Records).Count()}. {partition.Message}");
+        }
+
+        public PrototypeTestLabOperation ProveContributionDuplicateLifecycleCredit()
+        {
+            CombatContributionService service = ResetContributionProofState();
+            if (service == null)
+            {
+                return RecordFailure("Prove 6.9 Duplicate Credit", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string target = ResolveContributionTargetActorId();
+            service.RecordContribution(SyntheticContribution("proof.duplicate.damage", CombatContributionType.DamageApplied, "actor.proof.primary", target, string.Empty, 5f));
+            ActorLifecycleResult lifecycle = BuildContributionLifecycle(target, kill: true, "proof.duplicate.lifecycle");
+            CombatCreditResolutionResult first = service.ResolveKillCredit(lifecycle);
+            CombatCreditResolutionResult duplicate = service.ResolveKillCredit(lifecycle);
+            bool passed = first.Succeeded && duplicate.Succeeded && duplicate.Duplicate;
+            return Record(passed, "Prove 6.9 Duplicate Credit", duplicate.Code, FormatCreditResult(duplicate));
+        }
+
+        public PrototypeTestLabOperation ProveContributionRevivalPreservesCredit()
+        {
+            CombatContributionService service = ResetContributionProofState();
+            if (service == null)
+            {
+                return RecordFailure("Prove 6.9 Revival Preserves Credit", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string target = ResolveContributionTargetActorId();
+            service.RecordContribution(SyntheticContribution("proof.revival.damage", CombatContributionType.DamageApplied, "actor.proof.primary", target, string.Empty, 5f));
+            ActorLifecycleResult lifecycle = BuildContributionLifecycle(target, kill: true, "proof.revival.lifecycle");
+            CombatCreditResolutionResult first = service.ResolveKillCredit(lifecycle);
+            service.RecordContribution(SyntheticContribution("proof.revival.support", CombatContributionType.RevivalProvided, "actor.proof.healer", string.Empty, target, 10f));
+            CombatCreditResolutionResult after = service.ResolveKillCredit(lifecycle, transactionId: "proof.revival.lifecycle.after");
+            bool passed = first.Succeeded && after.Duplicate && after.PrimaryContributorActorId == "actor.proof.primary";
+            return Record(passed, "Prove 6.9 Revival Preserves Credit", after.Code, FormatCreditResult(after));
+        }
+
+        public PrototypeTestLabOperation ProveContributionRewardSafety()
+        {
+            CombatContributionService service = ResetContributionProofState();
+            if (service == null)
+            {
+                return RecordFailure("Prove 6.9 Reward Safety", "Contribution service is missing.", CombatContributionResultCode.MissingPolicy);
+            }
+
+            string target = ResolveContributionTargetActorId();
+            service.RecordContribution(SyntheticContribution("proof.reward.damage", CombatContributionType.DamageApplied, "actor.proof.primary", target, string.Empty, 5f));
+            CombatCreditResolutionResult credit = service.ResolveKillCredit(BuildContributionLifecycle(target, kill: true, "proof.reward.lifecycle"));
+            bool passed = credit.Succeeded && !credit.GrantsConcreteRewards && credit.Contributors.Any(summary => summary.Eligibility.Contains(CombatRewardEligibilityCategory.DiagnosticOnly));
+            return Record(passed, "Prove 6.9 Reward Safety", credit.Code, $"{FormatCreditResult(credit)} EligibilityOnly=True ConcreteRewards=False");
+        }
+
+        private PrototypeTestLabOperation ResolveContributionCredit(bool kill)
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            GameObject target = context?.EnemyTransform?.gameObject;
+            string targetActorId = !string.IsNullOrWhiteSpace(lastContributionCreditTargetActorId)
+                ? lastContributionCreditTargetActorId
+                : ResolveActorId(target);
+            if (service == null || target == null)
+            {
+                return RecordFailure(kill ? "Resolve 6.9 Kill Credit" : "Resolve 6.9 Defeat Credit", "Contribution service or target is missing.", CombatContributionResultCode.MissingTarget);
+            }
+
+            ActorLifecycleResult lifecycle = ActorLifecycleResult.Create(
+                true,
+                false,
+                false,
+                ActorLifecycleResultCode.Success,
+                kill ? "Development kill credit proof." : "Development defeat credit proof.",
+                $"development.contribution.lifecycle.{Guid.NewGuid():N}",
+                ResolveActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject),
+                targetActorId,
+                string.Empty,
+                kill ? LifecycleTransitionKind.Death : LifecycleTransitionKind.Defeat,
+                kill ? LifecycleTriggerKind.ExplicitDeath : LifecycleTriggerKind.HealthDepleted,
+                ActorLifecycleState.Active,
+                kill ? ActorLifecycleState.Dead : ActorLifecycleState.Defeated,
+                DefeatPolicyOutcome.RemainDefeated,
+                0f,
+                0f,
+                0f,
+                100f,
+                0f,
+                0f,
+                0f,
+                string.Empty,
+                0L);
+            CombatCreditResolutionResult result = kill ? service.ResolveKillCredit(lifecycle) : service.ResolveDefeatCredit(lifecycle);
+            return Record(result.Succeeded, kill ? "Resolve 6.9 Kill Credit" : "Resolve 6.9 Defeat Credit", result.Code, FormatCreditResult(result));
+        }
+
+        private CombatContributionService ResetContributionProofState()
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            service?.ClearTransientStateForRestore();
+            lastContributionDamageSource = null;
+            lastContributionHealingSource = null;
+            lastContributionCreditTargetActorId = string.Empty;
+            return service;
+        }
+
+        private string ResolveContributionTargetActorId()
+        {
+            GameObject target = context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject;
+            string resolved = ResolveActorId(target);
+            return string.IsNullOrWhiteSpace(resolved) ? "actor.proof.target" : resolved;
+        }
+
+        private CombatContributionRecordRequest SyntheticContribution(string transactionId, CombatContributionType type, string contributorActorId, string targetActorId, string beneficiaryActorId, float actualAmount, string encounterId = "")
+        {
+            return new CombatContributionRecordRequest(
+                transactionId,
+                type,
+                contributorActorId,
+                string.Empty,
+                beneficiaryActorId,
+                targetActorId,
+                encounterId,
+                actualAmount,
+                actualAmount,
+                type == CombatContributionType.SuccessfulBlock || type == CombatContributionType.SuccessfulParry || type == CombatContributionType.SuccessfulDodge ? actualAmount : 0f,
+                combatContributionService == null ? 0f : combatContributionService.SimulationTime,
+                CombatContributionSourceKind.Development,
+                transactionId,
+                string.Empty,
+                "development.test-lab",
+                string.Empty,
+                preview: false,
+                authorityValidated: true);
+        }
+
+        private ActorLifecycleResult BuildContributionLifecycle(string targetActorId, bool kill, string transactionId)
+        {
+            return ActorLifecycleResult.Create(
+                true,
+                false,
+                false,
+                ActorLifecycleResultCode.Success,
+                kill ? "Development kill credit proof." : "Development defeat credit proof.",
+                transactionId,
+                ResolveActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject),
+                targetActorId,
+                string.Empty,
+                kill ? LifecycleTransitionKind.Death : LifecycleTransitionKind.Defeat,
+                kill ? LifecycleTriggerKind.ExplicitDeath : LifecycleTriggerKind.HealthDepleted,
+                ActorLifecycleState.Active,
+                kill ? ActorLifecycleState.Dead : ActorLifecycleState.Defeated,
+                DefeatPolicyOutcome.RemainDefeated,
+                0f,
+                0f,
+                0f,
+                100f,
+                0f,
+                0f,
+                0f,
+                string.Empty,
+                0L);
+        }
+
+        private PrototypeTestLabOperation RecordSyntheticContribution(string operationName, CombatContributionType type, CombatContributionSourceKind sourceKind, string originDefinitionId, float requestedAmount, float actualAmount, float preventedAmount, bool support = false)
+        {
+            CombatContributionService service = EnsureCombatContributionRuntime();
+            GameObject contributor = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            GameObject enemy = context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject;
+            if (service == null || contributor == null || enemy == null)
+            {
+                return RecordFailure(operationName, "Contribution service, contributor, or target is missing.", CombatContributionResultCode.MissingTarget);
+            }
+
+            string contributorId = ResolveActorId(contributor);
+            string enemyId = ResolveActorId(enemy);
+            string transactionId = $"development.contribution.synthetic.{Guid.NewGuid():N}";
+            bool beneficiaryContribution = type == CombatContributionType.HealingApplied
+                || type == CombatContributionType.OngoingHealingApplied
+                || type == CombatContributionType.ReactionHealingApplied
+                || type == CombatContributionType.RecoveryProvided
+                || type == CombatContributionType.RevivalProvided;
+            CombatContributionRecordRequest request = new CombatContributionRecordRequest(
+                transactionId,
+                type,
+                contributorId,
+                string.Empty,
+                beneficiaryContribution ? enemyId : string.Empty,
+                beneficiaryContribution ? string.Empty : enemyId,
+                string.Empty,
+                requestedAmount,
+                actualAmount,
+                preventedAmount,
+                service.SimulationTime,
+                sourceKind,
+                transactionId,
+                string.Empty,
+                originDefinitionId,
+                string.Empty,
+                preview: false,
+                authorityValidated: true);
+            CombatContributionRecordResult result = service.RecordContribution(request);
+            if (result.Record != null)
+            {
+                if (!string.IsNullOrWhiteSpace(result.Record.TargetActorId))
+                {
+                    lastContributionCreditTargetActorId = result.Record.TargetActorId;
+                }
+                else if (!string.IsNullOrWhiteSpace(result.Record.BeneficiaryActorId))
+                {
+                    lastContributionCreditTargetActorId = result.Record.BeneficiaryActorId;
+                }
+            }
+
+            return Record(result.Succeeded || result.Duplicate, operationName, result.Code, FormatContributionRecordResult(result));
+        }
+
         private DamageApplicationRequest CreatePipelineDamageRequest(DamageTypeDefinition damageType, float amount, bool targetPlayer, string transactionId)
         {
             GameObject source = targetPlayer ? context?.EnemyTransform?.gameObject : context?.PlayerTransform?.gameObject;
             GameObject target = targetPlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            EnsureAttackResolutionRuntime(source, needsResource: false);
+            EnsureAttackResolutionRuntime(target, needsResource: true);
             return new DamageApplicationRequest(
                 transactionId,
                 ResolveActorId(source),
@@ -2242,6 +2802,23 @@ namespace UnityIsekaiGame.Development
                 damageType,
                 Mathf.Max(0f, amount),
                 "Prototype Test Lab");
+        }
+
+        private bool TryPrepareContributionHealth(bool targetPlayer, float desiredCurrent, out string message)
+        {
+            GameObject target = targetPlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            EnsureAttackResolutionRuntime(target, needsResource: true);
+            CharacterResourceCollection resources = target == null ? null : target.GetComponentInParent<CharacterResourceCollection>();
+            if (resources == null || !resources.TryGetResource(ResourceIds.Health, out ResourceSnapshot health))
+            {
+                message = "Contribution target Health resource is missing.";
+                return false;
+            }
+
+            float prepared = Mathf.Clamp(desiredCurrent, health.Minimum, health.Maximum);
+            ResourceChangeResult result = resources.SetCurrent(ResourceIds.Health, prepared, "development.test-lab", "Prepare contribution automation.", restoration: true);
+            message = result == null ? "Contribution Health preparation did not return a result." : result.Message;
+            return result != null && result.Succeeded;
         }
 
         private AttackResolutionRequest CreateDefensiveAttackRequest(DamageTypeDefinition damageType, float amount, float baseHitChance, float hitRoll, float defenseRoll, bool targetPlayer, string transactionId)
@@ -2820,6 +3397,33 @@ namespace UnityIsekaiGame.Development
             return combatReactionService;
         }
 
+        private CombatContributionService EnsureCombatContributionRuntime()
+        {
+            GameObject host = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            if (host == null)
+            {
+                return combatContributionService;
+            }
+
+            if (combatContributionService == null)
+            {
+                combatContributionService = host.GetComponentInParent<CombatContributionService>();
+            }
+
+            if (combatContributionService == null)
+            {
+                combatContributionService = host.AddComponent<CombatContributionService>();
+            }
+
+            CombatContributionPolicyDefinition policy = GetDefinitions<CombatContributionPolicyDefinition>().FirstOrDefault();
+            if (policy != null)
+            {
+                combatContributionService.Configure(policy);
+            }
+
+            return combatContributionService;
+        }
+
         private bool TryBuildOngoingEffectRequest(
             OngoingEffectDefinition definition,
             bool targetEnemy,
@@ -3194,10 +3798,70 @@ namespace UnityIsekaiGame.Development
             return $"Trigger={result.RootContext?.TriggerType} Preview={result.Preview} Depth={result.Depth} Reactions={result.Reactions.Count}. {result.Message} {reactions}";
         }
 
+        private static string FormatContributionRecordResult(CombatContributionRecordResult result)
+        {
+            if (result == null)
+            {
+                return "Contribution result is missing.";
+            }
+
+            CombatContributionRecord record = result.Record;
+            string recordText = record == null
+                ? "Record=None"
+                : $"Record={record.RecordId} Type={record.ContributionType} Contributor={record.ContributorActorId} Target={record.TargetActorId} Beneficiary={record.BeneficiaryActorId} Actual={record.ActualAmount:0.###} Prevented={record.PreventedAmount:0.###} Weight={record.ContributionWeight:0.###}";
+            return $"Contribution Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code} Rev={result.RevisionBefore}->{result.RevisionAfter}. {recordText}. {result.Message}";
+        }
+
+        private static string FormatContributionLedger(CombatContributionLedgerSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return "Contribution ledger is missing.";
+            }
+
+            string summaries = snapshot.Summaries.Count == 0
+                ? "No summaries"
+                : string.Join(" | ", snapshot.Summaries.Select(summary => $"{summary.ContributorActorId}:Dmg={summary.TotalActualDamage:0.###} Heal={summary.TotalEffectiveHealing:0.###} Def={summary.TotalDamagePrevented:0.###} Elig={string.Join(",", summary.Eligibility)}"));
+            return $"{snapshot.LedgerId} Encounter={(string.IsNullOrWhiteSpace(snapshot.EncounterId) ? "None" : snapshot.EncounterId)} Target={(string.IsNullOrWhiteSpace(snapshot.TargetActorId) ? "Mixed" : snapshot.TargetActorId)} Records={snapshot.Records.Count} Finalized={snapshot.Finalized} Rev={snapshot.Revision}. {summaries}";
+        }
+
+        private static string FormatCreditResult(CombatCreditResolutionResult result)
+        {
+            if (result == null)
+            {
+                return "Credit result is missing.";
+            }
+
+            string assists = result.Assists.Count == 0 ? "None" : string.Join(",", result.Assists.Select(summary => summary.ContributorActorId));
+            return $"Credit={result.CreditType} Success={result.Succeeded} Duplicate={result.Duplicate} Primary={(string.IsNullOrWhiteSpace(result.PrimaryContributorActorId) ? "Unassigned" : result.PrimaryContributorActorId)} Assists={assists} Contributors={result.Contributors.Count} GrantsRewards={result.GrantsConcreteRewards}. {result.Message}";
+        }
+
+        private static string FormatDamageApplication(DamageApplicationResult result)
+        {
+            if (result == null)
+            {
+                return "Damage result missing.";
+            }
+
+            return $"Damage Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Actual={result.FinalDamageAmount:0.###} Health={result.OldHealth:0.###}->{result.NewHealth:0.###}.";
+        }
+
+        private static string FormatHealingApplication(HealingApplicationResult result)
+        {
+            if (result == null)
+            {
+                return "Healing result missing.";
+            }
+
+            return $"Healing Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Effective={result.FinalHealingAmount:0.###} Overheal={result.OverhealAmount:0.###} Health={result.OldHealth:0.###}->{result.NewHealth:0.###}.";
+        }
+
         private HealingApplicationRequest CreatePipelineHealingRequest(float amount, bool targetPlayer, string transactionId)
         {
             GameObject source = context?.PlayerTransform?.gameObject;
             GameObject target = targetPlayer ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
+            EnsureAttackResolutionRuntime(source, needsResource: false);
+            EnsureAttackResolutionRuntime(target, needsResource: true);
             return new HealingApplicationRequest(
                 transactionId,
                 ResolveActorId(source),
