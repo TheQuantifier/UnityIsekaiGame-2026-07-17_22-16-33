@@ -264,12 +264,24 @@ namespace UnityIsekaiGame.Traits
 
         public PlayerTraitsSaveData CreateSaveData(string playerId, string personId)
         {
+            List<RuntimeTraitRecord> saveRecords = new List<RuntimeTraitRecord>();
+            foreach (RuntimeTraitRecord runtimeRecord in recordsByTraitId.Values)
+            {
+                RuntimeTraitRecord record = TraitRuntimeCloner.Clone(runtimeRecord);
+                record.sourceRecords.RemoveAll(IsDeterministicBodySource);
+                record.suppressionSourceRecords.RemoveAll(IsDeterministicBodySource);
+                if (record.sourceRecords.Count > 0)
+                {
+                    saveRecords.Add(record);
+                }
+            }
+
             return new PlayerTraitsSaveData
             {
                 schemaVersion = PlayerTraitsSaveData.CurrentSchemaVersion,
                 playerId = playerId ?? string.Empty,
                 personId = personId ?? string.Empty,
-                traits = recordsByTraitId.Values.Select(TraitRuntimeCloner.Clone).ToList()
+                traits = saveRecords
             };
         }
 
@@ -813,6 +825,13 @@ namespace UnityIsekaiGame.Traits
         private static string TraitSourceId(string traitId)
         {
             return $"trait-source.{traitId}";
+        }
+
+        private static bool IsDeterministicBodySource(RuntimeTraitSourceRecord source)
+        {
+            return source != null
+                && (source.sourceCategory == (int)TraitSourceCategory.Species
+                    || source.sourceCategory == (int)TraitSourceCategory.BiologicalClassification);
         }
 
         private readonly struct Scope : IDisposable

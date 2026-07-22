@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
@@ -27,6 +28,7 @@ namespace UnityIsekaiGame.CharacterSystem
         [SerializeField] private CharacterResourceCollection resources;
         [SerializeField] private CharacterSkillCollection skills;
         [SerializeField] private CharacterTraitCollection traits;
+        [SerializeField] private ActorBodyRuntime body;
         [SerializeField] private StatusEffectController statuses;
         [SerializeField] private PlayerInventory inventory;
         [SerializeField] private PlayerEquipment equipment;
@@ -60,6 +62,7 @@ namespace UnityIsekaiGame.CharacterSystem
         public CharacterResourceCollection Resources => resources;
         public CharacterSkillCollection Skills => skills;
         public CharacterTraitCollection Traits => traits;
+        public ActorBodyRuntime Body => body;
         public StatusEffectController Statuses => statuses;
         public PlayerInventory Inventory => inventory;
         public PlayerEquipment Equipment => equipment;
@@ -112,6 +115,7 @@ namespace UnityIsekaiGame.CharacterSystem
                 calculatedStats?.Configure(registry, attributes);
                 skills?.Configure(registry, calculatedStats, null);
                 traits?.Configure(registry, calculatedStats, skills, PlayerId);
+                body?.Configure(registry, ActorId, PersonId, traits, calculatedStats, restoring);
                 resources?.Configure(registry, calculatedStats, PlayerId);
                 identity?.ConfigureRuntimeReferences(actorStats, worldEntityIdentity, null, null);
                 SetReadiness(CharacterReadinessState.IdentityReady, restoring);
@@ -140,6 +144,11 @@ namespace UnityIsekaiGame.CharacterSystem
                 SetReadiness(CharacterReadinessState.Rebuilding, restoring);
                 skills?.RebuildSkillEffects(restoring);
                 traits?.RebuildTraitEffects(restoring);
+                if (body != null && !body.ValidateBody(out string bodyFailure))
+                {
+                    throw new InvalidOperationException(bodyFailure);
+                }
+
                 calculatedStats?.ForceRecalculateAll(restoring);
                 if (resources != null)
                 {
@@ -246,12 +255,19 @@ namespace UnityIsekaiGame.CharacterSystem
             ValidateConfigured(report, resources, resources == null || resources.IsConfigured, "Current Resources");
             ValidateConfigured(report, skills, skills == null || skills.IsConfigured, "Skills");
             ValidateConfigured(report, traits, traits == null || traits.IsConfigured, "Traits");
+            ValidateConfigured(report, body, body == null || body.IsReady, "Body");
 
             ValidateDuplicateIds(report, skills == null ? Array.Empty<string>() : skills.LearnedSkills.Select(skill => skill.skillDefinitionId), "Skill record");
             ValidateDuplicateIds(report, traits == null ? Array.Empty<string>() : traits.TraitRecords.Select(trait => trait.traitDefinitionId), "Trait record");
             ValidateDuplicateIds(report, resources == null ? Array.Empty<string>() : resources.ResourceRecords.Select(resource => resource.resourceDefinitionId), "Resource record");
 
             report.AddInfo($"Readiness={Readiness}, Revision={Revision}, Person={PersonId}, Actor={ActorId}.");
+            if (body != null)
+            {
+                BodySnapshot bodySnapshot = body.CreateSnapshot();
+                report.AddInfo($"Body={bodySnapshot.SpeciesId}, Classification={bodySnapshot.BiologicalClassificationId}, Form={bodySnapshot.BodyFormId}, BodyRevision={bodySnapshot.BodyRevision}.");
+            }
+
             return report;
         }
 
@@ -275,6 +291,7 @@ namespace UnityIsekaiGame.CharacterSystem
                 $"Resources: {snapshot.Numerical.Resources.Count}",
                 $"Skills: {snapshot.Progression.LearnedSkills.Count}",
                 $"Traits: {snapshot.Progression.Traits.Count}",
+                body == null ? "Body: None" : $"Body: {body.CreateSnapshot().SpeciesDisplayName} ({body.CreateSnapshot().SpeciesId})",
                 $"Capabilities: {snapshot.Capabilities.Capabilities.Count}",
                 integrity.GetSummary()
             };
@@ -290,6 +307,7 @@ namespace UnityIsekaiGame.CharacterSystem
             resources = resources == null ? GetComponent<CharacterResourceCollection>() : resources;
             skills = skills == null ? GetComponent<CharacterSkillCollection>() : skills;
             traits = traits == null ? GetComponent<CharacterTraitCollection>() : traits;
+            body = body == null ? GetComponent<ActorBodyRuntime>() : body;
             statuses = statuses == null ? GetComponent<StatusEffectController>() : statuses;
             inventory = inventory == null ? GetComponent<PlayerInventory>() : inventory;
             equipment = equipment == null ? GetComponent<PlayerEquipment>() : equipment;
@@ -450,6 +468,11 @@ namespace UnityIsekaiGame.CharacterSystem
                 traits.TraitRecordChanged += OnTraitRecordChanged;
             }
 
+            if (body != null)
+            {
+                body.BodyChanged += OnBodyChanged;
+            }
+
             if (statuses != null)
             {
                 statuses.StatusAdded += OnStatusChanged;
@@ -512,6 +535,11 @@ namespace UnityIsekaiGame.CharacterSystem
             {
                 traits.TraitsChanged -= OnTraitsChanged;
                 traits.TraitRecordChanged -= OnTraitRecordChanged;
+            }
+
+            if (body != null)
+            {
+                body.BodyChanged -= OnBodyChanged;
             }
 
             if (statuses != null)
@@ -615,6 +643,7 @@ namespace UnityIsekaiGame.CharacterSystem
         private void OnSkillPromoted(CharacterSkillCollection source, SkillChangedEventArgs args) => IncrementRevision($"SkillPromotion:{args?.Skill?.skillDefinitionId}", args?.Restoring ?? false);
         private void OnTraitsChanged(CharacterTraitCollection source, TraitOperationResult result, bool restoring) => IncrementRevision($"Trait:{result?.TraitId}", restoring);
         private void OnTraitRecordChanged(CharacterTraitCollection source, RuntimeTraitRecord record, bool restoring) => IncrementRevision($"TraitRecord:{record?.traitDefinitionId}", restoring);
+        private void OnBodyChanged(ActorBodyRuntime source, BodyOperationResult result, bool restoring) => IncrementRevision($"Body:{result?.Snapshot?.SpeciesId}", restoring);
         private void OnStatusChanged(RuntimeStatusEffect status) => IncrementRevision($"Status:{status?.Definition?.Id}", false);
         private void OnEquipmentChanged() => IncrementRevision("Equipment", false);
     }

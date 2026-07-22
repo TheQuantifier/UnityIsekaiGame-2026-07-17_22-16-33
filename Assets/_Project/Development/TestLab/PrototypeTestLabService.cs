@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using UnityEngine;
+using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.ActorLifecycle;
@@ -673,6 +674,113 @@ namespace UnityIsekaiGame.Development
             }
 
             return character.BuildDiagnosticSummary(developmentView);
+        }
+
+        public string BuildBodySpeciesSummary()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return "Body runtime is missing.";
+            }
+
+            BodySnapshot snapshot = body.CreateSnapshot();
+            List<string> lines = new List<string>
+            {
+                "Feature 7.1 Body and Species",
+                $"Readiness: {snapshot.Readiness}",
+                $"Revision: {snapshot.BodyRevision}",
+                $"Actor/body: {snapshot.ActorBodyId}",
+                $"Person: {snapshot.PersonId}",
+                $"Species: {snapshot.SpeciesDisplayName} ({snapshot.SpeciesId})",
+                $"Classification: {snapshot.BiologicalClassificationId}",
+                $"Body Form: {snapshot.BodyFormId}",
+                $"Defeat Policy: {snapshot.DefeatPolicyId}",
+                $"Breathing Required: {snapshot.RequiresBreathing}",
+                $"Has Blood: {snapshot.HasBlood}",
+                $"Can Become Unconscious: {snapshot.CanBecomeUnconscious}",
+                $"Can Die: {snapshot.CanDie}",
+                $"Can Be Revived: {snapshot.CanBeRevived}",
+                $"Accepts Biological Healing: {snapshot.AcceptsBiologicalHealing}",
+                $"Accepts Repair: {snapshot.AcceptsRepair}",
+                $"Has Physical Body: {snapshot.HasPhysicalBody}",
+                $"Traits: {string.Join(", ", snapshot.SpeciesOwnedTraits.Select(trait => trait.TraitId))}",
+                $"Capabilities: {string.Join(", ", snapshot.BiologicalCapabilities.Where(capability => capability.BooleanValue).Select(capability => capability.CapabilityId))}",
+                $"Stat Contributions: {string.Join(", ", snapshot.BiologicalStatContributions.Select(stat => $"{stat.StatId} {stat.Direction} {stat.Magnitude:0.###}"))}",
+                $"Coherent: {snapshot.Coherent}"
+            };
+
+            if (snapshot.Diagnostics.Count > 0)
+            {
+                lines.AddRange(snapshot.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation PreviewBodySpecies(string speciesId)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Preview Body Species", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            return RecordBodyResult("Preview Body Species", body.PreviewAssignSpecies(speciesId));
+        }
+
+        public PrototypeTestLabOperation AssignBodySpecies(string speciesId)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Assign Body Species", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            return RecordBodyResult("Assign Body Species", body.AssignSpecies(speciesId, restoring: false, "Test Lab Species assignment"));
+        }
+
+        public PrototypeTestLabOperation ReapplyBodySpecies()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Reapply Body Species", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            return RecordBodyResult("Reapply Body Species", body.AssignSpecies(body.SpeciesDefinitionId, restoring: false, "Test Lab duplicate Species proof"));
+        }
+
+        public PrototypeTestLabOperation ValidateBodyIntegrity()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Body Integrity", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            return body.ValidateBody(out string failureReason)
+                ? RecordSuccess("Validate Body Integrity", body.CreateSnapshot().Coherent ? "Body integrity is coherent." : "Body snapshot reports diagnostics.")
+                : RecordFailure("Validate Body Integrity", failureReason, BodyOperationResultCode.InvalidConfiguration.ToString());
+        }
+
+        public PrototypeTestLabOperation TestMissingBodySpecies()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Missing Body Species", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            return RecordBodyResult("Missing Body Species", body.PreviewAssignSpecies("species.missing-test-lab"));
+        }
+
+        public PrototypeTestLabOperation TestStaleBodyActor()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Stale Body Actor", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            BodySnapshot snapshot = body.CreateSnapshot();
+            bool stale = string.IsNullOrWhiteSpace(snapshot.ActorBodyId) || snapshot.ActorBodyId.Contains("stale", StringComparison.Ordinal);
+            return stale
+                ? RecordFailure("Stale Body Actor", $"Actor/body '{snapshot.ActorBodyId}' is stale or missing.", BodyOperationResultCode.StaleActorBody.ToString())
+                : RecordSuccess("Stale Body Actor", $"Current Actor/body '{snapshot.ActorBodyId}' resolves; replacement-body redirection was not attempted.");
         }
 
         public PrototypeTestLabOperation InitializeCharacterSystem()
@@ -5114,6 +5222,7 @@ namespace UnityIsekaiGame.Development
                 PrototypeStep4AutomationSuites.RegisterDefaults(automationRegistry);
                 PrototypeStep5AutomationSuites.RegisterDefaults(automationRegistry);
                 PrototypeStep6AutomationSuites.RegisterDefaults(automationRegistry);
+                PrototypeStep7AutomationSuites.RegisterDefaults(automationRegistry);
             }
 
             if (automationRunner == null)
@@ -5265,6 +5374,61 @@ namespace UnityIsekaiGame.Development
             }
 
             return true;
+        }
+
+        private bool EnsureBodyRuntime(out ActorBodyRuntime body)
+        {
+            body = null;
+            if (context?.PlayerTransform == null)
+            {
+                return false;
+            }
+
+            EnsureResources(out _);
+            EnsureTraits(out _);
+            EnsureCharacterSystem(out CharacterSystemCoordinator character, initialize: false);
+
+            body = character == null ? null : character.Body;
+            if (body == null)
+            {
+                body = context.PlayerTransform.GetComponentInParent<ActorBodyRuntime>();
+            }
+
+            if (body == null)
+            {
+                body = context.PlayerTransform.gameObject.AddComponent<ActorBodyRuntime>();
+            }
+
+            string actorId = character == null ? ResolveActorId(context.PlayerTransform.gameObject) : character.ActorId;
+            string personId = character == null || string.IsNullOrWhiteSpace(character.PersonId)
+                ? context.IdentityProgression == null ? string.Empty : context.IdentityProgression.PersonId
+                : character.PersonId;
+            body.Configure(registry, actorId, personId, context.PlayerTraits, context.PlayerCalculatedStats);
+            if (!body.IsReady)
+            {
+                body.AssignSpecies("species.human", restoring: false, "Test Lab body bootstrap");
+            }
+
+            return true;
+        }
+
+        private PrototypeTestLabOperation RecordBodyResult(string operationName, BodyOperationResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Body operation returned no result.", BodyOperationResultCode.InvalidRequest.ToString());
+            }
+
+            BodySnapshot snapshot = result.Snapshot;
+            string message = $"{result.Message} Actor={snapshot?.ActorBodyId ?? string.Empty} Person={snapshot?.PersonId ?? string.Empty} Species={snapshot?.SpeciesId ?? string.Empty} Classification={snapshot?.BiologicalClassificationId ?? string.Empty} Form={snapshot?.BodyFormId ?? string.Empty} Revision={snapshot?.BodyRevision ?? 0}.";
+            if (result.Diagnostics.Count > 0)
+            {
+                message += " " + string.Join(" ", result.Diagnostics);
+            }
+
+            return result.Succeeded
+                ? RecordSuccess(operationName, message)
+                : RecordFailure(operationName, message, result.Code.ToString());
         }
 
         private PrototypeTestLabOperation ChangeTrait(TraitDefinition trait, string operationName, Func<CharacterTraitCollection, TraitOperationResult> action)

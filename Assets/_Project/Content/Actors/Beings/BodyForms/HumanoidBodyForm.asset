@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a110000000000000000000000000009, type: 3}
+  m_Name: HumanoidBodyForm
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BodyFormDefinition
+  bodyFormId: body-form.humanoid
+  displayName: Humanoid
+  description: Upright body with head, torso, arms, and legs.
+  primaryCategory: {fileID: 11400000, guid: 49a86b78c8924b70a4a40e4ec77ded72, type: 2}
+  tags:
+  - {fileID: 11400000, guid: ae91f7acd1794650bcc7d65b47d79796, type: 2}
+  locomotionCategory: 1
+  manipulationCategory: 1
+  generalEquipmentCompatibilityTags:
+  - {fileID: 11400000, guid: ae91f7acd1794650bcc7d65b47d79796, type: 2}
+  conventionalHeadTorsoLimbAnatomyExpected: 1
+  physicalEquipmentCompatible: 1
+  physicalBody: 1
+  corporeal: 1
