@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.Beings.Biology.Condition;
+using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 
 namespace UnityIsekaiGame.Beings.Biology
 {
@@ -75,6 +76,7 @@ namespace UnityIsekaiGame.Beings.Biology
             bool hasPhysicalBody,
             AnatomySnapshot anatomy,
             BodyConditionSnapshot condition,
+            VitalProcessSnapshot vitalProcesses,
             bool coherent,
             IReadOnlyList<string> diagnostics)
         {
@@ -101,6 +103,7 @@ namespace UnityIsekaiGame.Beings.Biology
             HasPhysicalBody = hasPhysicalBody;
             Anatomy = anatomy;
             Condition = condition;
+            VitalProcesses = vitalProcesses;
             Coherent = coherent;
             Diagnostics = diagnostics ?? Array.Empty<string>();
         }
@@ -128,6 +131,7 @@ namespace UnityIsekaiGame.Beings.Biology
         public bool HasPhysicalBody { get; }
         public AnatomySnapshot Anatomy { get; }
         public BodyConditionSnapshot Condition { get; }
+        public VitalProcessSnapshot VitalProcesses { get; }
         public bool Coherent { get; }
         public IReadOnlyList<string> Diagnostics { get; }
     }

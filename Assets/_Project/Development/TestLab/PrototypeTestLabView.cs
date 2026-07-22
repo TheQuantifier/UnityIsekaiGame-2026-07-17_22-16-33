@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.Defense;
@@ -44,6 +45,7 @@ namespace UnityIsekaiGame.Development
             "Body Species 7.1",
             "Body Anatomy 7.2",
             "Body Condition 7.3",
+            "Vital Processes 7.4",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -96,6 +98,7 @@ namespace UnityIsekaiGame.Development
         private Text bodySpeciesText;
         private Text bodyAnatomyText;
         private Text bodyConditionText;
+        private Text vitalProcessesText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -274,6 +277,7 @@ namespace UnityIsekaiGame.Development
             Transform bodySpeciesSection = AddSection(content, "Body Species 7.1 Section");
             Transform bodyAnatomySection = AddSection(content, "Body Anatomy 7.2 Section");
             Transform bodyConditionSection = AddSection(content, "Body Condition 7.3 Section");
+            Transform vitalProcessesSection = AddSection(content, "Vital Processes 7.4 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -304,6 +308,7 @@ namespace UnityIsekaiGame.Development
             BuildBodySpeciesSection(bodySpeciesSection, font);
             BuildBodyAnatomySection(bodyAnatomySection, font);
             BuildBodyConditionSection(bodyConditionSection, font);
+            BuildVitalProcessesSection(vitalProcessesSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -441,6 +446,36 @@ namespace UnityIsekaiGame.Development
                 ("Missing Node", () => service.TestMissingConditionNode()),
                 ("Incompatible", () => service.TestIncompatibleConditionInjury()));
             bodyConditionText = AddText(parent, font, "Body condition runtime not available.", 12, 620);
+        }
+
+        private void BuildVitalProcessesSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Human", () => service.ResetVitalProcessesHuman()),
+                ("Construct", () => service.AssignBodySpecies("species.basic-construct")),
+                ("Spirit", () => service.AssignBodySpecies("species.basic-spirit")),
+                ("Validate", () => service.ValidateVitalProcessIntegrity()));
+            AddButtonRow(parent, font,
+                ("Preview Blood", () => service.PreviewVitalResourceMutation(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Consume, GetFloat(amountInput, 10f))),
+                ("Consume Blood", () => service.ApplyVitalResourceMutation(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Consume, GetFloat(amountInput, 10f))),
+                ("Restore Blood", () => service.ApplyVitalResourceMutation(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Restore, GetFloat(amountInput, 10f))),
+                ("Duplicate", () => service.ProveVitalProcessDuplicateProtection()));
+            AddButtonRow(parent, font,
+                ("Consume Breath", () => service.ApplyVitalResourceMutation(BiologicalResourceIds.Breath, VitalResourceMutationOperation.Consume, GetFloat(amountInput, 10f))),
+                ("Set Temp", () => service.ApplyVitalResourceMutation(BiologicalResourceIds.Temperature, VitalResourceMutationOperation.Set, GetFloat(amountInput, 37f))),
+                ("Hunger", () => service.ApplyVitalResourceMutation(BiologicalResourceIds.Nutrition, VitalResourceMutationOperation.Consume, GetFloat(amountInput, 5f))),
+                ("Thirst", () => service.ApplyVitalResourceMutation(BiologicalResourceIds.Hydration, VitalResourceMutationOperation.Consume, GetFloat(amountInput, 5f))));
+            AddButtonRow(parent, font,
+                ("Sleep Need", () => service.ApplyVitalResourceMutation(BiologicalResourceIds.SleepNeed, VitalResourceMutationOperation.Consume, GetFloat(amountInput, 5f))),
+                ("Fatigue", () => service.ApplyVitalResourceMutation(BiologicalResourceIds.Fatigue, VitalResourceMutationOperation.Consume, GetFloat(amountInput, 5f))),
+                ("Advance 1h", () => service.ApplyVitalProcessUpdate(3600f)),
+                ("Deterministic", () => service.ValidateVitalProcessDeterministicUpdate()));
+            AddButtonRow(parent, font,
+                ("Lung Capacity", () => service.DamageLungAndRecalculateBreath()),
+                ("Construct Blood", () => service.TestInactiveVitalResource("species.basic-construct", BiologicalResourceIds.Blood)),
+                ("Spirit Breath", () => service.TestInactiveVitalResource("species.basic-spirit", BiologicalResourceIds.Breath)),
+                ("Save/Load", () => service.ValidateVitalProcessSaveRestore()));
+            vitalProcessesText = AddText(parent, font, "Vital process runtime not available.", 12, 680);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1013,6 +1048,9 @@ namespace UnityIsekaiGame.Development
                 case "Body Condition 7.3":
                     SetValue(bodyConditionText, service.BuildBodyConditionSummary());
                     break;
+                case "Vital Processes 7.4":
+                    SetValue(vitalProcessesText, service.BuildVitalProcessSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1500,7 +1538,7 @@ namespace UnityIsekaiGame.Development
                 Group("Persistence Step 4", "Persistence", "Location", "World Entities"),
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
-                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3")
+                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4")
             };
         }
 
