@@ -426,7 +426,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.6.9.combat-contribution",
                 "feature.6.10.combat-integration",
                 "feature.7.1.body-species",
-                "feature.7.2.body-anatomy"
+                "feature.7.2.body-anatomy",
+                "feature.7.3.body-condition"
             }));
         }
 

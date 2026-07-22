@@ -6,6 +6,7 @@ using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
+using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.ActorLifecycle;
@@ -968,6 +969,193 @@ namespace UnityIsekaiGame.Development
             bool stable = before != null && after != null && before.Nodes.Select(node => node.RuntimeNodeId).SequenceEqual(after.Nodes.Select(node => node.RuntimeNodeId));
             bool succeeded = save.Succeeded && load.Succeeded && stable && after.Coherent;
             return Record(succeeded, "Validate Anatomy Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Save={save.Code} Load={load.Code} StableNodes={stable} Anatomy={after?.AnatomyDefinitionId ?? string.Empty}.");
+        }
+
+        public string BuildBodyConditionSummary()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return "Body condition runtime is missing.";
+            }
+
+            BodySnapshot bodySnapshot = body.CreateSnapshot();
+            BodyConditionSnapshot condition = bodySnapshot.Condition;
+            if (condition == null)
+            {
+                return "Body condition snapshot is missing.";
+            }
+
+            List<string> lines = new List<string>
+            {
+                "Feature 7.3 Body Condition, Injury, and Structural Damage",
+                $"Body: {bodySnapshot.ActorBodyId}",
+                $"Species: {bodySnapshot.SpeciesId}",
+                $"Anatomy: {condition.AnatomyDefinitionId}",
+                $"Readiness: {condition.Readiness}",
+                $"Body/Anatomy/Condition Revisions: {condition.BodyRevision}/{condition.AnatomyRevision}/{condition.ConditionRevision}",
+                $"Structures: {condition.Structures.Count}",
+                $"Impaired Structures: {condition.ImpairedStructures.Count}",
+                $"Active Injuries: {condition.ActiveInjuries.Count}",
+                $"Coherent: {condition.Coherent}"
+            };
+
+            lines.Add("Impaired:");
+            if (condition.ImpairedStructures.Count == 0)
+            {
+                lines.Add("- None");
+            }
+            else
+            {
+                foreach (StructureConditionSnapshot structure in condition.ImpairedStructures.Take(12))
+                {
+                    lines.Add($"- {structure.DisplayName} [{structure.NodeId}] Integrity={structure.CurrentIntegrity}/{structure.MaximumIntegrity} Functional={structure.FunctionalState} Structural={structure.StructuralState} Presence={structure.RuntimePresence}");
+                }
+            }
+
+            lines.Add("Active Injuries:");
+            if (condition.ActiveInjuries.Count == 0)
+            {
+                lines.Add("- None");
+            }
+            else
+            {
+                foreach (InjuryRecordSnapshot injury in condition.ActiveInjuries.Take(12))
+                {
+                    lines.Add($"- {injury.InjuryDefinitionId} on {injury.TargetNodeId} Severity={injury.Severity} Damage={injury.AppliedStructuralDamage} Tx={injury.SourceTransactionId}");
+                }
+            }
+
+            if (condition.Diagnostics.Count > 0)
+            {
+                lines.AddRange(condition.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateBodyConditionIntegrity()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Body Condition", "Body runtime is missing.", LocalizedDamageResultCode.MissingActorBody.ToString());
+            }
+
+            BodyConditionSnapshot snapshot = body.Condition.CreateSnapshot();
+            bool succeeded = snapshot.Coherent && snapshot.Readiness == BodyConditionReadinessState.Ready;
+            return Record(succeeded, "Validate Body Condition", succeeded ? "Success" : "InvalidCondition", $"Readiness={snapshot.Readiness} Structures={snapshot.Structures.Count} ActiveInjuries={snapshot.ActiveInjuries.Count} Coherent={snapshot.Coherent}.");
+        }
+
+        public PrototypeTestLabOperation ResetBodyConditionHealthy()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Reset Body Condition", "Body runtime is missing.", LocalizedDamageResultCode.MissingActorBody.ToString());
+            }
+
+            BodyOperationResult assignment = body.AssignSpecies("species.human", restoring: false, "Test Lab body condition reset");
+            if (!assignment.Succeeded)
+            {
+                return RecordBodyResult("Reset Body Condition", assignment);
+            }
+
+            LocalizedStructuralDamageResult result = body.Condition.BuildHealthy(body.ActorBodyId, body.CreateAnatomySnapshot(), registry, restoring: false);
+            return RecordConditionResult("Reset Body Condition", result);
+        }
+
+        public PrototypeTestLabOperation PreviewLocalizedStructuralDamage(string injuryDefinitionId, string targetNodeId, int structuralDamage)
+        {
+            if (!TryBuildConditionDamageRequest(injuryDefinitionId, targetNodeId, structuralDamage, "preview", out ActorBodyRuntime body, out LocalizedStructuralDamageRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            return RecordConditionResult("Preview Localized Structural Damage", body.Condition.PreviewLocalizedDamage(request, body.CreateAnatomySnapshot()));
+        }
+
+        public PrototypeTestLabOperation ApplyLocalizedStructuralDamage(string injuryDefinitionId, string targetNodeId, int structuralDamage)
+        {
+            return ApplyLocalizedStructuralDamageWithTransaction(injuryDefinitionId, targetNodeId, structuralDamage, $"test-lab.body-condition.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation ApplyLocalizedStructuralDamageWithTransaction(string injuryDefinitionId, string targetNodeId, int structuralDamage, string transactionId)
+        {
+            if (!TryBuildConditionDamageRequest(injuryDefinitionId, targetNodeId, structuralDamage, transactionId, out ActorBodyRuntime body, out LocalizedStructuralDamageRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            return RecordConditionResult("Apply Localized Structural Damage", body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot()));
+        }
+
+        public PrototypeTestLabOperation ProveLocalizedDamageDuplicateProtection()
+        {
+            const string transactionId = "test-lab.body-condition.duplicate-proof";
+            PrototypeTestLabOperation first = ApplyLocalizedStructuralDamageWithTransaction("injury.blunt-trauma", "part.arm.left", 12, transactionId);
+            PrototypeTestLabOperation second = ApplyLocalizedStructuralDamageWithTransaction("injury.blunt-trauma", "part.arm.left", 12, transactionId);
+            bool succeeded = first.Succeeded && second.Succeeded && string.Equals(second.Code, LocalizedDamageResultCode.Duplicate.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Body Condition Duplicate Proof", succeeded ? "Success" : "DuplicateProofFailed", $"First={first.Code} Second={second.Code}. Duplicate localized damage did not apply a second mutation.");
+        }
+
+        public PrototypeTestLabOperation RemoveFirstBodyConditionInjury()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Remove Body Condition Injury", "Body runtime is missing.", LocalizedDamageResultCode.MissingActorBody.ToString());
+            }
+
+            InjuryRecordSnapshot first = body.Condition.CreateSnapshot().ActiveInjuries.FirstOrDefault();
+            if (first == null)
+            {
+                return RecordFailure("Remove Body Condition Injury", "No active injury exists.", LocalizedDamageResultCode.InvalidRequest.ToString());
+            }
+
+            return RecordConditionResult("Remove Body Condition Injury", body.Condition.RemoveInjury(first.InjuryId));
+        }
+
+        public PrototypeTestLabOperation TestMissingConditionNode()
+        {
+            return PreviewLocalizedStructuralDamage("injury.blunt-trauma", "part.missing-test-lab", 10);
+        }
+
+        public PrototypeTestLabOperation TestIncompatibleConditionInjury()
+        {
+            PrototypeTestLabOperation spirit = AssignBodySpecies("species.basic-spirit");
+            if (!spirit.Succeeded)
+            {
+                return spirit;
+            }
+
+            return PreviewLocalizedStructuralDamage("injury.fracture", "core.spiritual", 25);
+        }
+
+        public PrototypeTestLabOperation ValidateBodyConditionSaveRestore()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Body Condition Save Restore", "Body runtime is missing.", LocalizedDamageResultCode.MissingActorBody.ToString());
+            }
+
+            PrototypeTestLabOperation apply = ApplyLocalizedStructuralDamageWithTransaction("injury.laceration", "part.hand.left", 15, $"test-lab.body-condition.restore.{Guid.NewGuid():N}");
+            if (!apply.Succeeded)
+            {
+                return apply;
+            }
+
+            BodyConditionSnapshot before = body.Condition.CreateSnapshot();
+            BodySaveData saveData = body.CreateSaveData();
+            int eventCount = 0;
+            body.Condition.ConditionChanged += CountConditionEvent;
+            BodyOperationResult restore = body.RestoreFromSaveData(saveData, registry, body.ActorBodyId, body.PersonId, restoring: true);
+            body.Condition.ConditionChanged -= CountConditionEvent;
+            BodyConditionSnapshot after = body.Condition.CreateSnapshot();
+            bool stable = before.ActiveInjuries.Select(injury => injury.InjuryId).SequenceEqual(after.ActiveInjuries.Select(injury => injury.InjuryId));
+            bool succeeded = restore.Succeeded && stable && eventCount == 0 && after.Coherent;
+            return Record(succeeded, "Validate Body Condition Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} StableInjuries={stable} Events={eventCount} Active={after.ActiveInjuries.Count}.");
+
+            void CountConditionEvent(BodyConditionRuntime _, LocalizedStructuralDamageResult __, bool ___)
+            {
+                eventCount++;
+            }
         }
 
         public PrototypeTestLabOperation InitializeCharacterSystem()
@@ -5590,10 +5778,21 @@ namespace UnityIsekaiGame.Development
             string personId = character == null || string.IsNullOrWhiteSpace(character.PersonId)
                 ? context.IdentityProgression == null ? string.Empty : context.IdentityProgression.PersonId
                 : character.PersonId;
-            body.Configure(registry, actorId, personId, context.PlayerTraits, context.PlayerCalculatedStats);
+            bool requiresConfigure = !body.IsReady
+                || !string.Equals(body.ActorBodyId, actorId, StringComparison.Ordinal)
+                || (!string.IsNullOrWhiteSpace(personId) && !string.Equals(body.PersonId, personId, StringComparison.Ordinal));
+            if (requiresConfigure)
+            {
+                body.Configure(registry, actorId, personId, context.PlayerTraits, context.PlayerCalculatedStats);
+            }
+
             if (!body.IsReady)
             {
                 body.AssignSpecies("species.human", restoring: false, "Test Lab body bootstrap");
+            }
+            else if (!body.Condition.IsReady)
+            {
+                body.Condition.BuildHealthy(body.ActorBodyId, body.CreateAnatomySnapshot(), registry, restoring: false, preserveRevision: true);
             }
 
             return true;
@@ -5615,6 +5814,63 @@ namespace UnityIsekaiGame.Development
 
             return result.Succeeded
                 ? RecordSuccess(operationName, message)
+                : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private bool TryBuildConditionDamageRequest(
+            string injuryDefinitionId,
+            string targetNodeId,
+            int structuralDamage,
+            string transactionSeed,
+            out ActorBodyRuntime body,
+            out LocalizedStructuralDamageRequest request,
+            out PrototypeTestLabOperation failure)
+        {
+            body = null;
+            request = null;
+            failure = default;
+            if (!EnsureBodyRuntime(out body))
+            {
+                failure = RecordFailure("Localized Structural Damage", "Body runtime is missing.", LocalizedDamageResultCode.MissingActorBody.ToString());
+                return false;
+            }
+
+            AnatomySnapshot anatomy = body.CreateAnatomySnapshot();
+            if (anatomy == null || !anatomy.Coherent)
+            {
+                failure = RecordFailure("Localized Structural Damage", "Current Anatomy snapshot is missing or incoherent.", LocalizedDamageResultCode.MissingAnatomy.ToString());
+                return false;
+            }
+
+            string transactionId = string.IsNullOrWhiteSpace(transactionSeed) || string.Equals(transactionSeed, "preview", StringComparison.Ordinal)
+                ? $"test-lab.body-condition.{(string.IsNullOrWhiteSpace(transactionSeed) ? "operation" : transactionSeed)}.{Guid.NewGuid():N}"
+                : transactionSeed;
+            request = new LocalizedStructuralDamageRequest
+            {
+                TransactionId = transactionId,
+                SourceActorBodyId = body.ActorBodyId,
+                TargetActorBodyId = body.ActorBodyId,
+                TargetNodeId = targetNodeId,
+                InjuryDefinitionId = injuryDefinitionId,
+                StructuralDamage = structuralDamage,
+                ExpectedBodyRevision = anatomy.BodyRevision,
+                ExpectedAnatomyRevision = anatomy.AnatomyRevision,
+                Context = "Prototype Test Lab localized structural damage"
+            };
+            return true;
+        }
+
+        private PrototypeTestLabOperation RecordConditionResult(string operationName, LocalizedStructuralDamageResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Body condition operation returned no result.", LocalizedDamageResultCode.InvalidRequest.ToString());
+            }
+
+            BodyConditionSnapshot snapshot = result.Snapshot;
+            string message = $"{result.Message} Tx={result.TransactionId} Preview={result.Preview} Duplicate={result.Duplicate} Body={result.ActorBodyId} Node={result.TargetNodeId} Injury={result.InjuryDefinitionId} Applied={result.DamageApplied} Integrity={result.PreviousIntegrity}->{result.NewIntegrity} Severity={result.Severity} Functional={result.FunctionalState} Structural={result.StructuralState} Presence={result.RuntimePresence} Revision={snapshot?.ConditionRevision ?? 0}.";
+            return result.Succeeded
+                ? Record(true, operationName, result.Duplicate ? LocalizedDamageResultCode.Duplicate.ToString() : result.Preview ? LocalizedDamageResultCode.Preview.ToString() : result.Code.ToString(), message)
                 : RecordFailure(operationName, message, result.Code.ToString());
         }
 

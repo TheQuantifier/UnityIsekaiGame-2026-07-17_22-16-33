@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Combat;
 
 namespace UnityIsekaiGame.Development.Automation
@@ -17,6 +18,7 @@ namespace UnityIsekaiGame.Development.Automation
 
             TryRegister(registry, BuildBodySpeciesSuite());
             TryRegister(registry, BuildBodyAnatomySuite());
+            TryRegister(registry, BuildBodyConditionSuite());
         }
 
         private static ITestLabAutomationSuite BuildBodySpeciesSuite()
@@ -128,6 +130,52 @@ namespace UnityIsekaiGame.Development.Automation
                 Scenario("automation-reset-human", "Automation reset restores canonical Human anatomy", 300,
                     Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-anatomy-reset-human")),
                     Step("validate", "Validate Human", context => Operation(context.Service.ValidateAnatomyContains("species.human", "structure.human-root"), context, "step7-anatomy-reset-validate"))));
+        }
+
+        private static ITestLabAutomationSuite BuildBodyConditionSuite()
+        {
+            return Suite("feature.7.3.body-condition", "Feature 7.3 Body Condition", "7.3", 730,
+                Required("ActorBodyRuntime", "BodyConditionRuntime", "InjuryTypeDefinition"),
+                Scenario("healthy-condition-ready", "Healthy condition runtime is ready", 10,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-reset")),
+                    Step("validate", "Validate condition", context => Operation(context.Service.ValidateBodyConditionIntegrity(), context, "step7-condition-validate"))),
+                Scenario("preview-mutates-nothing", "Preview localized damage mutates nothing", 20,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-preview-reset")),
+                    Step("preview", "Preview arm blunt trauma", context => Operation(context.Service.PreviewLocalizedStructuralDamage("injury.blunt-trauma", "part.arm.left", 12), context, "step7-condition-preview"))),
+                Scenario("execute-blunt-damages-once", "Execute localized blunt trauma once", 30,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-execute-reset")),
+                    Step("apply", "Apply arm blunt trauma", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.blunt-trauma", "part.arm.left", 12), context, "step7-condition-execute"))),
+                Scenario("duplicate-transaction-idempotent", "Duplicate localized damage is idempotent", 40,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-duplicate-reset")),
+                    Step("duplicate", "Duplicate proof", context => Operation(context.Service.ProveLocalizedDamageDuplicateProtection(), context, "step7-condition-duplicate"))),
+                Scenario("laceration-records-node", "Laceration records the target node", 50,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-laceration-reset")),
+                    Step("apply", "Lacerate hand", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.laceration", "part.hand.left", 14), context, "step7-condition-laceration"))),
+                Scenario("fracture-compatible", "Fracture is compatible with limbs", 60,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-fracture-reset")),
+                    Step("apply", "Fracture leg", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.fracture", "part.leg.left", 30), context, "step7-condition-fracture"))),
+                Scenario("severing-changes-presence", "Severing can make a structure unavailable", 70,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-sever-reset")),
+                    Step("apply", "Sever arm", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.severing", "part.arm.left", 100), context, "step7-condition-sever"))),
+                Scenario("missing-node-fails", "Missing anatomy node fails clearly", 80,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-missing-reset")),
+                    Step("missing", "Missing node", context => Operation(context.Service.TestMissingConditionNode(), context, "step7-condition-missing", acceptFailure: true))),
+                Scenario("incompatible-injury-fails", "Incompatible injury fails clearly", 90,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-incompatible-reset")),
+                    Step("incompatible", "Incompatible fracture against spirit core", context => Operation(context.Service.TestIncompatibleConditionInjury(), context, "step7-condition-incompatible", acceptFailure: true))),
+                Scenario("save-restore-preserves-injury", "Save and restore preserve body condition injuries", 100,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-save-reset")),
+                    Step("save-restore", "Save restore body condition", context => Operation(context.Service.ValidateBodyConditionSaveRestore(), context, "step7-condition-save-restore"))),
+                Scenario("remove-injury-updates-state", "Removing an injury updates condition state", 110,
+                    Step("reset", "Reset healthy Human condition", context => Operation(context.Service.ResetBodyConditionHealthy(), context, "step7-condition-remove-reset")),
+                    Step("apply", "Apply hand laceration", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.laceration", "part.hand.left", 14), context, "step7-condition-remove-apply")),
+                    Step("remove", "Remove first injury", context => Operation(context.Service.RemoveFirstBodyConditionInjury(), context, "step7-condition-remove"))),
+                Scenario("construct-core-damage", "Construct core damage uses the same condition runtime", 120,
+                    Step("construct", "Assign Construct", context => Operation(context.Service.AssignBodySpecies("species.basic-construct"), context, "step7-condition-construct")),
+                    Step("apply", "Apply core damage", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.core-damage", "core.power", 35), context, "step7-condition-core"))),
+                Scenario("spirit-disruption", "Spirit disruption uses incorporeal body condition", 130,
+                    Step("spirit", "Assign Spirit", context => Operation(context.Service.AssignBodySpecies("species.basic-spirit"), context, "step7-condition-spirit")),
+                    Step("apply", "Apply incorporeal disruption", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.incorporeal-disruption", "essence.aura", 25), context, "step7-condition-spirit-disruption"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
+using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Capabilities;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Stats;
@@ -28,6 +29,7 @@ namespace UnityIsekaiGame.Beings.Biology
         private string appliedClassificationSourceId;
         private bool suppressEvents;
         private readonly AnatomyRuntime anatomyRuntime = new AnatomyRuntime();
+        private readonly BodyConditionRuntime conditionRuntime = new BodyConditionRuntime();
 
         public event Action<ActorBodyRuntime, BodyOperationResult, bool> BodyChanged;
 
@@ -40,12 +42,14 @@ namespace UnityIsekaiGame.Beings.Biology
         public BiologicalClassificationDefinition BiologicalClassification => Species == null ? null : Species.BiologicalClassification;
         public BodyFormDefinition BodyForm => Species == null ? null : Species.BodyForm;
         public AnatomyRuntime Anatomy => anatomyRuntime;
+        public BodyConditionRuntime Condition => conditionRuntime;
         public bool IsReady => Readiness == BodyReadinessState.Ready;
 
         private void OnDisable()
         {
             Readiness = BodyReadinessState.Disposed;
             anatomyRuntime.Dispose();
+            conditionRuntime.Dispose();
         }
 
         public void Configure(
@@ -72,6 +76,7 @@ namespace UnityIsekaiGame.Beings.Biology
             {
                 ReapplyCurrentBiologicalSources(restoring);
                 BuildAnatomyForCurrentSpecies(restoring, null, preserveRevision: true);
+                conditionRuntime.BuildHealthy(ActorBodyId, anatomyRuntime.CreateSnapshot(BodyRevision), registry, restoring, preserveRevision: true);
             }
 
             ValidateBody(out _);
@@ -103,6 +108,7 @@ namespace UnityIsekaiGame.Beings.Biology
             long previousRevision = BodyRevision;
             BodyReadinessState previousReadiness = Readiness;
             AnatomySaveData previousAnatomy = anatomyRuntime.CreateSaveData();
+            BodyConditionSaveData previousCondition = conditionRuntime.CreateSaveData();
 
             try
             {
@@ -147,6 +153,12 @@ namespace UnityIsekaiGame.Beings.Biology
                 if (!anatomyResult.Succeeded)
                 {
                     throw new InvalidOperationException(anatomyResult.Message);
+                }
+
+                LocalizedStructuralDamageResult conditionResult = conditionRuntime.BuildHealthy(ActorBodyId, anatomyRuntime.CreateSnapshot(BodyRevision), registry, restoring);
+                if (!conditionResult.Succeeded)
+                {
+                    throw new InvalidOperationException(conditionResult.Message);
                 }
 
                 Readiness = BodyReadinessState.Ready;
@@ -198,6 +210,11 @@ namespace UnityIsekaiGame.Beings.Biology
                         {
                             anatomyRuntime.SetRevision(previousAnatomy == null ? 0L : previousAnatomy.anatomyRevision);
                         }
+
+                        if (previousCondition != null)
+                        {
+                            conditionRuntime.RestoreFromSaveData(previousCondition, anatomyRuntime.CreateSnapshot(BodyRevision), registry);
+                        }
                     }
                 }
 
@@ -214,7 +231,8 @@ namespace UnityIsekaiGame.Beings.Biology
                 personId = PersonId,
                 speciesDefinitionId = SpeciesDefinitionId,
                 bodyRevision = BodyRevision,
-                anatomy = anatomyRuntime.CreateSaveData()
+                anatomy = anatomyRuntime.CreateSaveData(),
+                condition = conditionRuntime.CreateSaveData()
             };
         }
 
@@ -255,6 +273,19 @@ namespace UnityIsekaiGame.Beings.Biology
             }
 
             anatomyRuntime.SetRevision(anatomySave == null ? 1L : Math.Max(1L, anatomySave.anatomyRevision));
+            if (saveData.schemaVersion >= 3 && saveData.condition != null)
+            {
+                LocalizedStructuralDamageResult conditionResult = conditionRuntime.RestoreFromSaveData(saveData.condition, anatomyRuntime.CreateSnapshot(BodyRevision), registry);
+                if (!conditionResult.Succeeded)
+                {
+                    return BodyOperationResult.Failure(BodyOperationResultCode.RestoreResolutionFailure, conditionResult.Message, snapshot: CreateSnapshot());
+                }
+            }
+            else
+            {
+                conditionRuntime.BuildHealthy(ActorBodyId, anatomyRuntime.CreateSnapshot(BodyRevision), registry, restoring: true, preserveRevision: true);
+            }
+
             Readiness = BodyReadinessState.Ready;
             return BodyOperationResult.Success("Body restored.", CreateSnapshot());
         }
@@ -325,6 +356,49 @@ namespace UnityIsekaiGame.Beings.Biology
                 }
             }
 
+            if (saveData.schemaVersion >= 3 && saveData.condition != null)
+            {
+                if (!string.IsNullOrWhiteSpace(saveData.condition.actorBodyId) && !string.Equals(saveData.condition.actorBodyId, saveData.actorBodyId, StringComparison.Ordinal))
+                {
+                    failureReason = $"Saved condition body '{saveData.condition.actorBodyId}' does not match saved body '{saveData.actorBodyId}'.";
+                    return false;
+                }
+
+                AnatomySnapshot validationAnatomy = new AnatomySnapshot(
+                    saveData.actorBodyId,
+                    species.AnatomyDefinition.Id,
+                    AnatomyReadinessState.Ready,
+                    Math.Max(1L, saveData.bodyRevision),
+                    saveData.anatomy == null ? 1L : Math.Max(1L, saveData.anatomy.anatomyRevision),
+                    species.AnatomyDefinition.Nodes.FirstOrDefault(node => node != null && string.IsNullOrWhiteSpace(node.ParentNodeId))?.NodeId ?? string.Empty,
+                    species.AnatomyDefinition.Nodes.Where(node => node != null).Select(node => new AnatomyNodeSnapshot(
+                        node.NodeId,
+                        $"validation.{saveData.actorBodyId}.{species.AnatomyDefinition.Id}.{node.NodeId}",
+                        node.DisplayName,
+                        node.Category,
+                        node.ParentNodeId,
+                        node.RegionNodeId,
+                        node.BodySide,
+                        node.DefaultPresence,
+                        node.InternalStructure,
+                        node.Corporeal,
+                        node.Targetable,
+                        node.Vital,
+                        node.Optional,
+                        node.RelativeTargetingWeight,
+                        node.RepeatGroup,
+                        node.MirrorGroup,
+                        Array.Empty<string>(),
+                        node.EquipmentTagIds,
+                        node.FutureDamageTagIds)).ToArray(),
+                    true,
+                    Array.Empty<string>());
+                if (!BodyConditionRuntime.ValidateSaveData(saveData.condition, validationAnatomy, registry, out failureReason))
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -353,6 +427,12 @@ namespace UnityIsekaiGame.Beings.Biology
                 diagnostics.AddRange(anatomySnapshot.Diagnostics);
             }
 
+            BodyConditionSnapshot conditionSnapshot = conditionRuntime.CreateSnapshot();
+            if (conditionSnapshot != null && !conditionSnapshot.Coherent)
+            {
+                diagnostics.AddRange(conditionSnapshot.Diagnostics);
+            }
+
             return new BodySnapshot(
                 ActorBodyId,
                 PersonId,
@@ -376,7 +456,8 @@ namespace UnityIsekaiGame.Beings.Biology
                 EvaluateBoolean(BiologyCapabilityIds.AcceptsRepair),
                 EvaluateBoolean(BiologyCapabilityIds.HasPhysicalBody),
                 anatomySnapshot,
-                coherent && anatomySnapshot != null && anatomySnapshot.Coherent,
+                conditionSnapshot,
+                coherent && anatomySnapshot != null && anatomySnapshot.Coherent && conditionSnapshot != null && conditionSnapshot.Coherent,
                 diagnostics);
         }
 
