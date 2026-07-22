@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
+using UnityIsekaiGame.Beings.Biology.Condition;
 
 namespace UnityIsekaiGame.Beings.Biology
 {
@@ -73,6 +74,7 @@ namespace UnityIsekaiGame.Beings.Biology
             bool acceptsRepair,
             bool hasPhysicalBody,
             AnatomySnapshot anatomy,
+            BodyConditionSnapshot condition,
             bool coherent,
             IReadOnlyList<string> diagnostics)
         {
@@ -98,6 +100,7 @@ namespace UnityIsekaiGame.Beings.Biology
             AcceptsRepair = acceptsRepair;
             HasPhysicalBody = hasPhysicalBody;
             Anatomy = anatomy;
+            Condition = condition;
             Coherent = coherent;
             Diagnostics = diagnostics ?? Array.Empty<string>();
         }
@@ -124,6 +127,7 @@ namespace UnityIsekaiGame.Beings.Biology
         public bool AcceptsRepair { get; }
         public bool HasPhysicalBody { get; }
         public AnatomySnapshot Anatomy { get; }
+        public BodyConditionSnapshot Condition { get; }
         public bool Coherent { get; }
         public IReadOnlyList<string> Diagnostics { get; }
     }

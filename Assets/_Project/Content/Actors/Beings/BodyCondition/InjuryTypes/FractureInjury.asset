@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a180000000000000000000000000106, type: 3}
+  m_Name: FractureInjury
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Condition.InjuryTypeDefinition
+  injuryTypeId: injury.fracture
+  displayName: Fracture
+  description: Structural fracture for corporeal limbs, appendages, and parts.
+  compatibleDamageTypes: []
+  compatibleAnatomyTags: []
+  compatibleNodeCategories: [2, 3, 4]
+  structuralImpact: 3
+  functionalImpact: 3
+  baseIntegrityDamage: 30
+  canCauseStructuralFailure: 1
+  canCauseRuntimeAbsence: 0
+  canAffectVitalStructures: 0
+  futureBleedingMetadata: 0
+  futurePainMetadata: 0
+  futureHealingMetadata: 0
+  futureInfectionMetadata: 0
+  tags: []

@@ -43,6 +43,7 @@ namespace UnityIsekaiGame.Development
             "Character 5.6",
             "Body Species 7.1",
             "Body Anatomy 7.2",
+            "Body Condition 7.3",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -94,6 +95,7 @@ namespace UnityIsekaiGame.Development
         private Text characterSystemText;
         private Text bodySpeciesText;
         private Text bodyAnatomyText;
+        private Text bodyConditionText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -271,6 +273,7 @@ namespace UnityIsekaiGame.Development
             Transform feature56Section = AddSection(content, "Character 5.6 Section");
             Transform bodySpeciesSection = AddSection(content, "Body Species 7.1 Section");
             Transform bodyAnatomySection = AddSection(content, "Body Anatomy 7.2 Section");
+            Transform bodyConditionSection = AddSection(content, "Body Condition 7.3 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -300,6 +303,7 @@ namespace UnityIsekaiGame.Development
             BuildFeature56Section(feature56Section, font);
             BuildBodySpeciesSection(bodySpeciesSection, font);
             BuildBodyAnatomySection(bodyAnatomySection, font);
+            BuildBodyConditionSection(bodyConditionSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -412,6 +416,31 @@ namespace UnityIsekaiGame.Development
                 ("Duplicate Fixture", () => service.TestDuplicateAnatomyNodeFixture()),
                 ("Stale Actor", () => service.TestStaleBodyActor()));
             bodyAnatomyText = AddText(parent, font, "Anatomy runtime not available.", 12, 620);
+        }
+
+        private void BuildBodyConditionSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Human", () => service.AssignBodySpecies("species.human")),
+                ("Construct", () => service.AssignBodySpecies("species.basic-construct")),
+                ("Spirit", () => service.AssignBodySpecies("species.basic-spirit")),
+                ("Reset Healthy", () => service.ResetBodyConditionHealthy()));
+            AddButtonRow(parent, font,
+                ("Validate", () => service.ValidateBodyConditionIntegrity()),
+                ("Preview Arm", () => service.PreviewLocalizedStructuralDamage("injury.blunt-trauma", "part.arm.left", GetInt(amountInput, 12))),
+                ("Apply Arm", () => service.ApplyLocalizedStructuralDamage("injury.blunt-trauma", "part.arm.left", GetInt(amountInput, 12))),
+                ("Duplicate", () => service.ProveLocalizedDamageDuplicateProtection()));
+            AddButtonRow(parent, font,
+                ("Lacerate Hand", () => service.ApplyLocalizedStructuralDamage("injury.laceration", "part.hand.left", GetInt(amountInput, 14))),
+                ("Fracture Leg", () => service.ApplyLocalizedStructuralDamage("injury.fracture", "part.leg.left", GetInt(amountInput, 30))),
+                ("Burn Arm", () => service.ApplyLocalizedStructuralDamage("injury.burn", "part.arm.right", GetInt(amountInput, 20))),
+                ("Sever Arm", () => service.ApplyLocalizedStructuralDamage("injury.severing", "part.arm.left", GetInt(amountInput, 100))));
+            AddButtonRow(parent, font,
+                ("Remove Injury", () => service.RemoveFirstBodyConditionInjury()),
+                ("Save/Load", () => service.ValidateBodyConditionSaveRestore()),
+                ("Missing Node", () => service.TestMissingConditionNode()),
+                ("Incompatible", () => service.TestIncompatibleConditionInjury()));
+            bodyConditionText = AddText(parent, font, "Body condition runtime not available.", 12, 620);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -981,6 +1010,9 @@ namespace UnityIsekaiGame.Development
                 case "Body Anatomy 7.2":
                     SetValue(bodyAnatomyText, service.BuildBodyAnatomySummary());
                     break;
+                case "Body Condition 7.3":
+                    SetValue(bodyConditionText, service.BuildBodyConditionSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1468,7 +1500,7 @@ namespace UnityIsekaiGame.Development
                 Group("Persistence Step 4", "Persistence", "Location", "World Entities"),
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
-                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2")
+                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3")
             };
         }
 
