@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.7.3-body-condition
+  contentVersion: 0.7.4-biological-resources
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -364,3 +364,14 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 7a1a0000000000000000000000000030, type: 2}
   - {fileID: 11400000, guid: 7a1a0000000000000000000000000031, type: 2}
   - {fileID: 11400000, guid: 7a1a0000000000000000000000000032, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000010, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000011, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000012, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000013, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000014, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000015, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000016, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000020, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000021, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000022, type: 2}
+  - {fileID: 11400000, guid: 7a250000000000000000000000000023, type: 2}

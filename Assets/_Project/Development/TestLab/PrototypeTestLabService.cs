@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.Beings.Biology.Condition;
+using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.ActorLifecycle;
@@ -1153,6 +1154,233 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "Validate Body Condition Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} StableInjuries={stable} Events={eventCount} Active={after.ActiveInjuries.Count}.");
 
             void CountConditionEvent(BodyConditionRuntime _, LocalizedStructuralDamageResult __, bool ___)
+            {
+                eventCount++;
+            }
+        }
+
+        public string BuildVitalProcessSummary()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return "Vital process runtime is missing.";
+            }
+
+            EnsureVitalProcessesReady(body);
+            BodySnapshot bodySnapshot = body.CreateSnapshot();
+            VitalProcessSnapshot vitals = bodySnapshot.VitalProcesses;
+            if (vitals == null)
+            {
+                return "Vital process snapshot is missing.";
+            }
+
+            List<string> lines = new List<string>
+            {
+                "Feature 7.4 Biological Resources and Vital Processes",
+                $"Body: {bodySnapshot.ActorBodyId}",
+                $"Species: {bodySnapshot.SpeciesId}",
+                $"Profile: {vitals.ProfileId}",
+                $"Readiness: {vitals.Readiness}",
+                $"Body/Anatomy/Condition/Vital Revisions: {vitals.BodyRevision}/{vitals.AnatomyRevision}/{vitals.ConditionRevision}/{vitals.VitalRevision}",
+                $"Active Resources: {string.Join(", ", vitals.ActiveResources.Select(resource => resource.ResourceId))}",
+                $"Critical Resources: {string.Join(", ", vitals.CriticalResources.Select(resource => resource.ResourceId))}",
+                $"Lifecycle Pressure: {vitals.LifecyclePressure}",
+                $"Coherent: {vitals.Coherent}"
+            };
+
+            foreach (VitalResourceSnapshot resource in vitals.Resources)
+            {
+                lines.Add($"- {resource.DisplayName} [{resource.ResourceId}] Active={resource.Active} Type={resource.ModelType} Value={resource.CurrentValue:0.##}/{resource.EffectiveMaximumValue:0.##} State={resource.State} Safe={resource.SafeMinimum:0.##}-{resource.SafeMaximum:0.##}");
+                foreach (VitalCapacityContributionSnapshot contribution in resource.CapacityContributions.Where(contribution => !Mathf.Approximately(contribution.Magnitude, resource.MaximumValue)).Take(4))
+                {
+                    lines.Add($"  Capacity: {contribution.SourceId} {contribution.Magnitude:+0.##;-0.##;0} {contribution.Description}");
+                }
+            }
+
+            if (vitals.Diagnostics.Count > 0)
+            {
+                lines.AddRange(vitals.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateVitalProcessIntegrity()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Vital Processes", "Body runtime is missing.", VitalProcessResultCode.MissingActorBody.ToString());
+            }
+
+            EnsureVitalProcessesReady(body);
+            VitalProcessSnapshot snapshot = body.VitalProcesses.CreateSnapshot();
+            bool succeeded = snapshot.Coherent && snapshot.Readiness == VitalProcessReadinessState.Ready && snapshot.Resources.Count >= 7;
+            return Record(succeeded, "Validate Vital Processes", succeeded ? "Success" : "InvalidVitalProcesses", $"Readiness={snapshot.Readiness} Profile={snapshot.ProfileId} Resources={snapshot.Resources.Count} Active={snapshot.ActiveResources.Count} Coherent={snapshot.Coherent}.");
+        }
+
+        public PrototypeTestLabOperation ResetVitalProcessesHuman()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Reset Vital Processes", "Body runtime is missing.", VitalProcessResultCode.MissingActorBody.ToString());
+            }
+
+            BodyOperationResult assignment = body.AssignSpecies("species.human", restoring: false, "Test Lab vital process reset");
+            if (!assignment.Succeeded)
+            {
+                return RecordBodyResult("Reset Vital Processes", assignment);
+            }
+
+            return RecordVitalResult("Reset Vital Processes", body.VitalProcesses.BuildForBody(body.ActorBodyId, body.Species, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), registry));
+        }
+
+        public PrototypeTestLabOperation PreviewVitalResourceMutation(string resourceId, VitalResourceMutationOperation operation, float amount)
+        {
+            if (!TryBuildVitalRequest(resourceId, operation, amount, "preview", out ActorBodyRuntime body, out VitalResourceMutationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            long revisionBefore = body.VitalProcesses.VitalRevision;
+            VitalResourceMutationResult result = body.VitalProcesses.PreviewMutation(request, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
+            long revisionAfter = body.VitalProcesses.VitalRevision;
+            bool succeeded = result.Succeeded && result.Preview && revisionBefore == revisionAfter;
+            return succeeded
+                ? RecordVitalResult("Preview Vital Resource Mutation", result)
+                : Record(false, "Preview Vital Resource Mutation", result.Code.ToString(), $"{result.Message} Revision={revisionBefore}->{revisionAfter} Preview={result.Preview}.");
+        }
+
+        public PrototypeTestLabOperation ApplyVitalResourceMutation(string resourceId, VitalResourceMutationOperation operation, float amount)
+        {
+            return ApplyVitalResourceMutationWithTransaction(resourceId, operation, amount, $"test-lab.vital.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation ApplyVitalResourceMutationWithTransaction(string resourceId, VitalResourceMutationOperation operation, float amount, string transactionId)
+        {
+            if (!TryBuildVitalRequest(resourceId, operation, amount, transactionId, out ActorBodyRuntime body, out VitalResourceMutationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            return RecordVitalResult("Apply Vital Resource Mutation", body.VitalProcesses.ApplyMutation(request, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()));
+        }
+
+        public PrototypeTestLabOperation ProveVitalProcessDuplicateProtection()
+        {
+            const string transactionId = "test-lab.vital.duplicate-proof";
+            PrototypeTestLabOperation first = ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Consume, 5f, transactionId);
+            PrototypeTestLabOperation second = ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Consume, 5f, transactionId);
+            bool succeeded = first.Succeeded && second.Succeeded && string.Equals(second.Code, VitalProcessResultCode.Duplicate.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Vital Process Duplicate Proof", succeeded ? "Success" : "DuplicateProofFailed", $"First={first.Code} Second={second.Code}. Duplicate vital mutation did not apply a second mutation.");
+        }
+
+        public PrototypeTestLabOperation ApplyVitalProcessUpdate(float elapsedGameSeconds)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Apply Vital Process Update", "Body runtime is missing.", VitalProcessResultCode.MissingActorBody.ToString());
+            }
+
+            EnsureVitalProcessesReady(body);
+            return RecordVitalResult("Apply Vital Process Update", body.VitalProcesses.ApplyProcessUpdate(elapsedGameSeconds, $"test-lab.vital.update.{Guid.NewGuid():N}", body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()));
+        }
+
+        public PrototypeTestLabOperation ValidateVitalProcessDeterministicUpdate()
+        {
+            PrototypeTestLabOperation reset = ResetVitalProcessesHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Vital Process Update", "Body runtime is missing.", VitalProcessResultCode.MissingActorBody.ToString());
+            }
+
+            body.VitalProcesses.ApplyProcessUpdate(3600f, "test-lab.vital.deterministic.a", body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
+            float firstNutrition = body.VitalProcesses.TryGetResource(BiologicalResourceIds.Nutrition, out VitalResourceSnapshot first) ? first.CurrentValue : -1f;
+            reset = ResetVitalProcessesHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            body.VitalProcesses.ApplyProcessUpdate(3600f, "test-lab.vital.deterministic.b", body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
+            float secondNutrition = body.VitalProcesses.TryGetResource(BiologicalResourceIds.Nutrition, out VitalResourceSnapshot second) ? second.CurrentValue : -2f;
+            bool succeeded = Mathf.Approximately(firstNutrition, secondNutrition) && firstNutrition < 100f;
+            return Record(succeeded, "Validate Vital Process Update", succeeded ? "Success" : "NondeterministicUpdate", $"Nutrition={firstNutrition:0.###}/{secondNutrition:0.###}.");
+        }
+
+        public PrototypeTestLabOperation DamageLungAndRecalculateBreath()
+        {
+            PrototypeTestLabOperation reset = ResetVitalProcessesHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Damage Lung Breath Capacity", "Body runtime is missing.", VitalProcessResultCode.MissingActorBody.ToString());
+            }
+
+            body.VitalProcesses.TryGetResource(BiologicalResourceIds.Breath, out VitalResourceSnapshot before);
+            PrototypeTestLabOperation damage = ApplyLocalizedStructuralDamageWithTransaction("injury.blunt-trauma", "organ.lung.left", 50, $"test-lab.vital.lung.{Guid.NewGuid():N}");
+            if (!damage.Succeeded)
+            {
+                return damage;
+            }
+
+            body.VitalProcesses.RecalculateCapacities(body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), preservingCurrent: true);
+            body.VitalProcesses.TryGetResource(BiologicalResourceIds.Breath, out VitalResourceSnapshot after);
+            bool succeeded = before != null && after != null && after.EffectiveMaximumValue < before.EffectiveMaximumValue;
+            return Record(succeeded, "Damage Lung Breath Capacity", succeeded ? "Success" : "CapacityUnchanged", $"Breath Max={before?.EffectiveMaximumValue ?? 0:0.##}->{after?.EffectiveMaximumValue ?? 0:0.##}.");
+        }
+
+        public PrototypeTestLabOperation TestInactiveVitalResource(string speciesId, string resourceId)
+        {
+            PrototypeTestLabOperation assign = AssignBodySpecies(speciesId);
+            if (!assign.Succeeded)
+            {
+                return assign;
+            }
+
+            return ApplyVitalResourceMutationWithTransaction(resourceId, VitalResourceMutationOperation.Consume, 5f, $"test-lab.vital.inactive.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation ValidateVitalProcessSaveRestore()
+        {
+            PrototypeTestLabOperation reset = ResetVitalProcessesHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Vital Process Save Restore", "Body runtime is missing.", VitalProcessResultCode.MissingActorBody.ToString());
+            }
+
+            PrototypeTestLabOperation mutate = ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Consume, 20f, $"test-lab.vital.restore.{Guid.NewGuid():N}");
+            if (!mutate.Succeeded)
+            {
+                return mutate;
+            }
+
+            VitalProcessSnapshot before = body.VitalProcesses.CreateSnapshot();
+            BodySaveData saveData = body.CreateSaveData();
+            int eventCount = 0;
+            body.VitalProcesses.VitalResourceChanged += CountVitalEvent;
+            BodyOperationResult restore = body.RestoreFromSaveData(saveData, registry, body.ActorBodyId, body.PersonId, restoring: true);
+            body.VitalProcesses.VitalResourceChanged -= CountVitalEvent;
+            VitalProcessSnapshot after = body.VitalProcesses.CreateSnapshot();
+            float beforeBlood = before.Resources.FirstOrDefault(resource => resource.ResourceId == BiologicalResourceIds.Blood)?.CurrentValue ?? -1f;
+            float afterBlood = after.Resources.FirstOrDefault(resource => resource.ResourceId == BiologicalResourceIds.Blood)?.CurrentValue ?? -2f;
+            bool succeeded = restore.Succeeded && Mathf.Approximately(beforeBlood, afterBlood) && eventCount == 0 && after.Coherent;
+            return Record(succeeded, "Validate Vital Process Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} Blood={beforeBlood:0.##}->{afterBlood:0.##} Events={eventCount}.");
+
+            void CountVitalEvent(VitalProcessRuntime _, VitalResourceMutationResult __, bool ___)
             {
                 eventCount++;
             }
@@ -5814,6 +6042,83 @@ namespace UnityIsekaiGame.Development
 
             return result.Succeeded
                 ? RecordSuccess(operationName, message)
+                : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private bool EnsureVitalProcessesReady(ActorBodyRuntime body)
+        {
+            if (body == null)
+            {
+                return false;
+            }
+
+            if (!body.Condition.IsReady)
+            {
+                body.Condition.BuildHealthy(body.ActorBodyId, body.CreateAnatomySnapshot(), registry, restoring: false, preserveRevision: true);
+            }
+
+            if (!body.VitalProcesses.IsReady)
+            {
+                body.VitalProcesses.BuildForBody(body.ActorBodyId, body.Species, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), registry);
+            }
+
+            return body.VitalProcesses.IsReady;
+        }
+
+        private bool TryBuildVitalRequest(
+            string resourceId,
+            VitalResourceMutationOperation operation,
+            float amount,
+            string transactionSeed,
+            out ActorBodyRuntime body,
+            out VitalResourceMutationRequest request,
+            out PrototypeTestLabOperation failure)
+        {
+            body = null;
+            request = default;
+            failure = default;
+            if (!EnsureBodyRuntime(out body))
+            {
+                failure = RecordFailure("Vital Resource Mutation", "Body runtime is missing.", VitalProcessResultCode.MissingActorBody.ToString());
+                return false;
+            }
+
+            if (!EnsureVitalProcessesReady(body))
+            {
+                failure = RecordFailure("Vital Resource Mutation", "Vital process runtime is not ready.", VitalProcessResultCode.RuntimeNotReady.ToString());
+                return false;
+            }
+
+            AnatomySnapshot anatomy = body.CreateAnatomySnapshot();
+            BodyConditionSnapshot condition = body.Condition.CreateSnapshot();
+            string transactionId = string.IsNullOrWhiteSpace(transactionSeed) || string.Equals(transactionSeed, "preview", StringComparison.Ordinal)
+                ? $"test-lab.vital.{(string.IsNullOrWhiteSpace(transactionSeed) ? "operation" : transactionSeed)}.{Guid.NewGuid():N}"
+                : transactionSeed;
+            request = new VitalResourceMutationRequest(
+                body.ActorBodyId,
+                resourceId,
+                operation,
+                amount,
+                transactionId,
+                "test-lab",
+                "Prototype Test Lab vital mutation",
+                body.BodyRevision,
+                anatomy?.AnatomyRevision ?? 0L,
+                condition?.ConditionRevision ?? 0L);
+            return true;
+        }
+
+        private PrototypeTestLabOperation RecordVitalResult(string operationName, VitalResourceMutationResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Vital process operation returned no result.", VitalProcessResultCode.InvalidRequest.ToString());
+            }
+
+            VitalProcessSnapshot snapshot = result.Snapshot;
+            string message = $"{result.Message} Resource={result.Request.ResourceId} Operation={result.Request.Operation} Amount={result.Request.Amount:0.###} Preview={result.Preview} Duplicate={result.Duplicate} Value={result.PreviousValue:0.##}->{result.NewValue:0.##} Applied={result.AppliedAmount:0.##} State={result.PreviousState}->{result.NewState} Profile={snapshot?.ProfileId ?? string.Empty} Revision={snapshot?.VitalRevision ?? 0}.";
+            return result.Succeeded
+                ? Record(true, operationName, result.Duplicate ? VitalProcessResultCode.Duplicate.ToString() : result.Preview ? VitalProcessResultCode.Preview.ToString() : result.Code.ToString(), message)
                 : RecordFailure(operationName, message, result.Code.ToString());
         }
 

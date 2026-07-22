@@ -1,0 +1,141 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a240000000000000000000000000003, type: 3}
+  m_Name: BasicConstructVitalProcessProfile
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.VitalProcesses.VitalProcessProfileDefinition
+  profileId: vital-profile.basic-construct
+  displayName: Basic Construct Vital Processes
+  description: Construct profile with biological blood and breath disabled and an authored operating temperature.
+  compatibleSpeciesIds:
+  - species.basic-construct
+  compatibleClassificationIds: []
+  resources:
+  - resourceDefinitionId: resource.biology.blood
+    active: 0
+    minimumValue: 0
+    maximumValue: 100
+    initialValue: 0
+    idealValue: 0
+    safeMinimum: 0
+    safeMaximum: 100
+    strainedLow: 0
+    strainedHigh: 100
+    criticalLow: 0
+    criticalHigh: 100
+    absoluteMinimum: 0
+    absoluteMaximum: 100
+    consumptionPerHour: 0
+    restorationPerHour: 0
+    futureHazardEvaluation: 0
+  - resourceDefinitionId: resource.biology.breath
+    active: 0
+    minimumValue: 0
+    maximumValue: 100
+    initialValue: 0
+    idealValue: 0
+    safeMinimum: 0
+    safeMaximum: 100
+    strainedLow: 0
+    strainedHigh: 100
+    criticalLow: 0
+    criticalHigh: 100
+    absoluteMinimum: 0
+    absoluteMaximum: 100
+    consumptionPerHour: 0
+    restorationPerHour: 0
+    futureHazardEvaluation: 0
+  - resourceDefinitionId: resource.biology.temperature
+    active: 1
+    minimumValue: -50
+    maximumValue: 150
+    initialValue: 60
+    idealValue: 60
+    safeMinimum: 20
+    safeMaximum: 90
+    strainedLow: 10
+    strainedHigh: 100
+    criticalLow: 0
+    criticalHigh: 120
+    absoluteMinimum: -50
+    absoluteMaximum: 150
+    consumptionPerHour: 0
+    restorationPerHour: 0
+    futureHazardEvaluation: 1
+  - resourceDefinitionId: resource.biology.nutrition
+    active: 0
+    minimumValue: 0
+    maximumValue: 100
+    initialValue: 0
+    idealValue: 0
+    safeMinimum: 0
+    safeMaximum: 100
+    strainedLow: 0
+    strainedHigh: 100
+    criticalLow: 0
+    criticalHigh: 100
+    absoluteMinimum: 0
+    absoluteMaximum: 100
+    consumptionPerHour: 0
+    restorationPerHour: 0
+    futureHazardEvaluation: 0
+  - resourceDefinitionId: resource.biology.hydration
+    active: 0
+    minimumValue: 0
+    maximumValue: 100
+    initialValue: 0
+    idealValue: 0
+    safeMinimum: 0
+    safeMaximum: 100
+    strainedLow: 0
+    strainedHigh: 100
+    criticalLow: 0
+    criticalHigh: 100
+    absoluteMinimum: 0
+    absoluteMaximum: 100
+    consumptionPerHour: 0
+    restorationPerHour: 0
+    futureHazardEvaluation: 0
+  - resourceDefinitionId: resource.biology.sleep-need
+    active: 0
+    minimumValue: 0
+    maximumValue: 100
+    initialValue: 0
+    idealValue: 0
+    safeMinimum: 0
+    safeMaximum: 100
+    strainedLow: 0
+    strainedHigh: 100
+    criticalLow: 0
+    criticalHigh: 100
+    absoluteMinimum: 0
+    absoluteMaximum: 100
+    consumptionPerHour: 0
+    restorationPerHour: 0
+    futureHazardEvaluation: 0
+  - resourceDefinitionId: resource.biology.fatigue
+    active: 0
+    minimumValue: 0
+    maximumValue: 100
+    initialValue: 0
+    idealValue: 0
+    safeMinimum: 0
+    safeMaximum: 100
+    strainedLow: 0
+    strainedHigh: 100
+    criticalLow: 0
+    criticalHigh: 100
+    absoluteMinimum: 0
+    absoluteMaximum: 100
+    consumptionPerHour: 0
+    restorationPerHour: 0
+    futureHazardEvaluation: 0
+  tags: []

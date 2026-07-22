@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Combat;
 
@@ -19,6 +20,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildBodySpeciesSuite());
             TryRegister(registry, BuildBodyAnatomySuite());
             TryRegister(registry, BuildBodyConditionSuite());
+            TryRegister(registry, BuildVitalProcessesSuite());
         }
 
         private static ITestLabAutomationSuite BuildBodySpeciesSuite()
@@ -176,6 +178,51 @@ namespace UnityIsekaiGame.Development.Automation
                 Scenario("spirit-disruption", "Spirit disruption uses incorporeal body condition", 130,
                     Step("spirit", "Assign Spirit", context => Operation(context.Service.AssignBodySpecies("species.basic-spirit"), context, "step7-condition-spirit")),
                     Step("apply", "Apply incorporeal disruption", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.incorporeal-disruption", "essence.aura", 25), context, "step7-condition-spirit-disruption"))));
+        }
+
+        private static ITestLabAutomationSuite BuildVitalProcessesSuite()
+        {
+            return Suite("feature.7.4.vital-processes", "Feature 7.4 Vital Processes", "7.4", 740,
+                Required("ActorBodyRuntime", "VitalProcessRuntime", "BiologicalResourceDefinition", "VitalProcessProfileDefinition"),
+                Scenario("healthy-human-ready", "Human vital process runtime is ready", 10,
+                    Step("reset", "Reset Human vitals", context => Operation(context.Service.ResetVitalProcessesHuman(), context, "step7-vitals-reset")),
+                    Step("validate", "Validate vitals", context => Operation(context.Service.ValidateVitalProcessIntegrity(), context, "step7-vitals-validate"))),
+                Scenario("preview-mutates-nothing", "Preview vital mutation mutates nothing", 20,
+                    Step("reset", "Reset Human vitals", context => Operation(context.Service.ResetVitalProcessesHuman(), context, "step7-vitals-preview-reset")),
+                    Step("preview", "Preview blood consume", context => Operation(context.Service.PreviewVitalResourceMutation(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Consume, 10f), context, "step7-vitals-preview"))),
+                Scenario("execute-changes-once", "Committed vital mutation changes once", 30,
+                    Step("reset", "Reset Human vitals", context => Operation(context.Service.ResetVitalProcessesHuman(), context, "step7-vitals-execute-reset")),
+                    Step("consume", "Consume blood", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Consume, 10f), context, "step7-vitals-execute"))),
+                Scenario("duplicate-transaction-idempotent", "Duplicate vital transaction is idempotent", 40,
+                    Step("reset", "Reset Human vitals", context => Operation(context.Service.ResetVitalProcessesHuman(), context, "step7-vitals-duplicate-reset")),
+                    Step("duplicate", "Duplicate proof", context => Operation(context.Service.ProveVitalProcessDuplicateProtection(), context, "step7-vitals-duplicate"))),
+                Scenario("breath-consume-restore", "Breath can be consumed and restored", 50,
+                    Step("reset", "Reset Human vitals", context => Operation(context.Service.ResetVitalProcessesHuman(), context, "step7-vitals-breath-reset")),
+                    Step("consume", "Consume breath", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Breath, VitalResourceMutationOperation.Consume, 20f), context, "step7-vitals-breath-consume")),
+                    Step("restore", "Restore breath", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Breath, VitalResourceMutationOperation.Restore, 20f), context, "step7-vitals-breath-restore"))),
+                Scenario("temperature-target-centered", "Temperature uses target-centered thresholds", 60,
+                    Step("reset", "Reset Human vitals", context => Operation(context.Service.ResetVitalProcessesHuman(), context, "step7-vitals-temp-reset")),
+                    Step("low", "Set low temperature", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Temperature, VitalResourceMutationOperation.Set, 34f), context, "step7-vitals-temp-low")),
+                    Step("high", "Set high temperature", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Temperature, VitalResourceMutationOperation.Set, 40f), context, "step7-vitals-temp-high")),
+                    Step("ideal", "Set ideal temperature", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Temperature, VitalResourceMutationOperation.Set, 37f), context, "step7-vitals-temp-ideal"))),
+                Scenario("nutrition-hydration", "Nutrition and hydration deplete", 70,
+                    Step("reset", "Reset Human vitals", context => Operation(context.Service.ResetVitalProcessesHuman(), context, "step7-vitals-food-reset")),
+                    Step("nutrition", "Consume nutrition", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Nutrition, VitalResourceMutationOperation.Consume, 5f), context, "step7-vitals-nutrition")),
+                    Step("hydration", "Consume hydration", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Hydration, VitalResourceMutationOperation.Consume, 5f), context, "step7-vitals-hydration"))),
+                Scenario("sleep-fatigue-accumulate", "Sleep need and fatigue accumulate", 80,
+                    Step("reset", "Reset Human vitals", context => Operation(context.Service.ResetVitalProcessesHuman(), context, "step7-vitals-needs-reset")),
+                    Step("sleep", "Increase sleep need", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.SleepNeed, VitalResourceMutationOperation.Consume, 5f), context, "step7-vitals-sleep")),
+                    Step("fatigue", "Increase fatigue", context => Operation(context.Service.ApplyVitalResourceMutation(BiologicalResourceIds.Fatigue, VitalResourceMutationOperation.Consume, 5f), context, "step7-vitals-fatigue"))),
+                Scenario("deterministic-process-update", "Vital process update is deterministic", 90,
+                    Step("update", "Validate deterministic update", context => Operation(context.Service.ValidateVitalProcessDeterministicUpdate(), context, "step7-vitals-deterministic"))),
+                Scenario("construct-inactive-blood", "Construct blood is inactive", 100,
+                    Step("inactive", "Construct blood rejects mutation", context => Operation(context.Service.TestInactiveVitalResource("species.basic-construct", BiologicalResourceIds.Blood), context, "step7-vitals-construct-blood", acceptFailure: true))),
+                Scenario("spirit-inactive-breath", "Spirit breath is inactive", 110,
+                    Step("inactive", "Spirit breath rejects mutation", context => Operation(context.Service.TestInactiveVitalResource("species.basic-spirit", BiologicalResourceIds.Breath), context, "step7-vitals-spirit-breath", acceptFailure: true))),
+                Scenario("lung-condition-reduces-breath", "Lung condition reduces Breath capacity", 120,
+                    Step("lung", "Damage lung and recalculate", context => Operation(context.Service.DamageLungAndRecalculateBreath(), context, "step7-vitals-lung-capacity"))),
+                Scenario("save-restore-preserves-vitals", "Save and restore preserve vital process state silently", 130,
+                    Step("restore", "Save restore vitals", context => Operation(context.Service.ValidateVitalProcessSaveRestore(), context, "step7-vitals-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)
