@@ -25,7 +25,7 @@ namespace UnityIsekaiGame.Combat.OngoingEffects
         private readonly HashSet<string> processedApplicationTransactions = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> processedCancellationTransactions = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> processedTickTransactions = new HashSet<string>(StringComparer.Ordinal);
-        private readonly IDamageHealingService damageHealingService = new DamageHealingService();
+        private IDamageHealingService damageHealingService = new DamageHealingService();
         private float currentTimeSeconds;
 
         public event Action<OngoingEffectApplicationResult> OngoingEffectApplied;
@@ -61,6 +61,11 @@ namespace UnityIsekaiGame.Combat.OngoingEffects
         public void Configure(CharacterSystemCoordinator target)
         {
             defaultTarget = target == null ? defaultTarget : target;
+        }
+
+        public void ConfigureDamageHealing(IDamageHealingService service)
+        {
+            damageHealingService = service ?? damageHealingService;
         }
 
         public void SetClock(float nowSeconds)

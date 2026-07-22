@@ -52,6 +52,7 @@ namespace UnityIsekaiGame.Development
             "Execution 6.7",
             "Reactions 6.8",
             "Contribution 6.9",
+            "Combat Overview 6.10",
             "Combat State 6.5",
             "Lifecycle 6.3",
             "Ongoing 6.4",
@@ -97,6 +98,7 @@ namespace UnityIsekaiGame.Development
         private Text combatExecutionText;
         private Text combatReactionText;
         private Text combatContributionText;
+        private Text combatRuntimeText;
         private Text combatStateText;
         private Text ongoingEffectsText;
         private Text automationText;
@@ -290,6 +292,11 @@ namespace UnityIsekaiGame.Development
                 combatContributionText.text = service.BuildCombatContributionSummary();
             }
 
+            if (combatRuntimeText != null)
+            {
+                combatRuntimeText.text = service.BuildCombatRuntimeSummary();
+            }
+
             if (automationText != null)
             {
                 automationText.text = service.BuildAutomationSummary();
@@ -363,6 +370,7 @@ namespace UnityIsekaiGame.Development
             Transform combatExecutionSection = AddSection(content, "Combat Execution Section");
             Transform combatReactionSection = AddSection(content, "Combat Reactions Section");
             Transform combatContributionSection = AddSection(content, "Combat Contribution Section");
+            Transform combatRuntimeSection = AddSection(content, "Combat Runtime Section");
             Transform combatStateSection = AddSection(content, "Combat State Section");
             Transform lifecycleSection = AddSection(content, "Lifecycle Section");
             Transform ongoingEffectsSection = AddSection(content, "Ongoing Effects Section");
@@ -389,6 +397,7 @@ namespace UnityIsekaiGame.Development
             BuildCombatExecutionSection(combatExecutionSection, font);
             BuildCombatReactionSection(combatReactionSection, font);
             BuildCombatContributionSection(combatContributionSection, font);
+            BuildCombatRuntimeSection(combatRuntimeSection, font);
             BuildCombatStateSection(combatStateSection, font);
             BuildLifecycleSection(lifecycleSection, font);
             BuildOngoingEffectsSection(ongoingEffectsSection, font);
@@ -692,6 +701,31 @@ namespace UnityIsekaiGame.Development
                 ("Finalize", () => service.FinalizeContributionLedger()),
                 ("Clear", () => service.ClearCombatContributions()));
             combatContributionText = AddText(parent, font, "Combat contribution not available.", 12, 360);
+        }
+
+        private void BuildCombatRuntimeSection(Transform parent, Font font)
+        {
+            AddHeader(parent, font, "Feature 6.10 Combat System Integration");
+            AddButtonRow(parent, font,
+                ("Refresh", Refresh),
+                ("Validate", () => service.ValidateCombatRuntimeIntegrity()),
+                ("Reset", () => service.ResetCombatRuntimeIntegration()),
+                ("Restore Clear", () => service.SimulateCombatRuntimeRestoreClear()));
+            AddButtonRow(parent, font,
+                ("Preview Hit", () => service.PreviewCombatRuntimeAttack(GetSelected(damageTypes, selectedDamageIndex))),
+                ("Hit", () => service.ExecuteCombatRuntimeAttack(GetSelected(damageTypes, selectedDamageIndex))),
+                ("Miss", () => service.ExecuteCombatRuntimeMiss(GetSelected(damageTypes, selectedDamageIndex))),
+                ("Critical", () => service.ExecuteCombatRuntimeCritical(GetSelected(damageTypes, selectedDamageIndex))));
+            AddButtonRow(parent, font,
+                ("Dodge Flow", () => service.ExecuteCombatRuntimeDefense(GetSelected(damageTypes, selectedDamageIndex), block: false)),
+                ("Block Flow", () => service.ExecuteCombatRuntimeDefense(GetSelected(damageTypes, selectedDamageIndex), block: true)),
+                ("Ongoing Tick", () => service.ExecuteCombatRuntimeOngoingDamage(GetSelected(ongoingEffects, selectedOngoingEffectIndex), GetSelected(damageTypes, selectedDamageIndex))),
+                ("Reaction", () => service.ExecuteCombatRuntimeReaction(GetSelected(combatReactions, selectedCombatReactionIndex))));
+            AddButtonRow(parent, font,
+                ("Contribution", () => service.ExecuteCombatRuntimeContribution(GetSelected(damageTypes, selectedDamageIndex))),
+                ("Engage", () => service.ExecuteExplicitCombatEngagement(reuseTransaction: false)),
+                ("Merge/Split", () => service.ProveContributionEncounterSplit()));
+            combatRuntimeText = AddText(parent, font, "Combat runtime integration not available.", 12, 480);
         }
 
         private void BuildCombatStateSection(Transform parent, Font font)

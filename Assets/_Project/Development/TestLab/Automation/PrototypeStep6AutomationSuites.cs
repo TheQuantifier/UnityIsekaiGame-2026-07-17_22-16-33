@@ -31,6 +31,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildFeature67Suite());
             TryRegister(registry, BuildFeature68Suite());
             TryRegister(registry, BuildFeature69Suite());
+            TryRegister(registry, BuildFeature610Suite());
         }
 
         private static ITestLabAutomationSuite BuildFeature61Suite()
@@ -258,6 +259,42 @@ namespace UnityIsekaiGame.Development.Automation
                 Scenario("restore-clear-removes-transient-ledgers", "Restore clear removes transient contribution state", 120,
                     Step("record", "Record damage contribution", context => Operation(context.Service.RecordDamageContribution(First<DamageTypeDefinition>(context), reuseTransaction: false), context, "contribution-clear-record")),
                     Step("clear", "Clear contribution state", context => Operation(context.Service.ClearCombatContributions(), context, "contribution-clear"))));
+        }
+
+        private static ITestLabAutomationSuite BuildFeature610Suite()
+        {
+            return Suite("feature.6.10.combat-integration", "Feature 6.10 Combat Integration", "6.10", 700,
+                Required("CombatRuntimeFacade", "DamageHealingService", "AttackResolutionService", "DefensiveActionService", "CombatExecutionService", "CombatStateService", "OngoingEffectService", "CombatReactionService", "CombatContributionService"),
+                Scenario("runtime-readiness-and-snapshot", "Runtime readiness and combined snapshot are coherent", 10,
+                    Step("reset", "Reset integrated runtime", context => Operation(context.Service.ResetCombatRuntimeIntegration(), context, "combat-integration-reset")),
+                    Step("validate", "Validate combat integrity", context => Operation(context.Service.ValidateCombatRuntimeIntegrity(), context, "combat-integration-validate"))),
+                Scenario("facade-preview-does-not-mutate", "Facade preview uses shared logic without mutation", 20,
+                    Step("preview", "Preview attack through facade", context => Operation(context.Service.PreviewCombatRuntimeAttack(First<DamageTypeDefinition>(context)), context, "combat-integration-preview")),
+                    Step("validate", "Validate after preview", context => Operation(context.Service.ValidateCombatRuntimeIntegrity(), context, "combat-integration-preview-validate"))),
+                Scenario("ordinary-hit-transaction-trace", "Ordinary hit records a transaction trace", 30,
+                    Step("hit", "Execute hit through facade", context => Operation(context.Service.ExecuteCombatRuntimeAttack(First<DamageTypeDefinition>(context)), context, "combat-integration-hit")),
+                    Step("validate", "Validate after hit", context => Operation(context.Service.ValidateCombatRuntimeIntegrity(), context, "combat-integration-hit-validate"))),
+                Scenario("miss-critical-and-defense-paths", "Miss, critical, dodge, and block paths remain integrated", 40,
+                    Step("miss", "Execute miss", context => Operation(context.Service.ExecuteCombatRuntimeMiss(First<DamageTypeDefinition>(context)), context, "combat-integration-miss")),
+                    Step("critical", "Execute critical", context => Operation(context.Service.ExecuteCombatRuntimeCritical(First<DamageTypeDefinition>(context)), context, "combat-integration-critical")),
+                    Step("dodge", "Execute dodge flow", context => Operation(context.Service.ExecuteCombatRuntimeDefense(First<DamageTypeDefinition>(context), block: false), context, "combat-integration-dodge")),
+                    Step("block", "Execute block flow", context => Operation(context.Service.ExecuteCombatRuntimeDefense(First<DamageTypeDefinition>(context), block: true), context, "combat-integration-block"))),
+                Scenario("ongoing-reaction-and-contribution-flow", "Ongoing effects, reactions, and contribution credit remain connected", 50,
+                    Step("ongoing", "Apply ongoing tick", context => Operation(context.Service.ExecuteCombatRuntimeOngoingDamage(First<OngoingEffectDefinition>(context), First<DamageTypeDefinition>(context)), context, "combat-integration-ongoing")),
+                    Step("reaction", "Execute reaction", context => Operation(context.Service.ExecuteCombatRuntimeReaction(FirstReaction(context, CombatReactionTriggerType.DamageApplied)), context, "combat-integration-reaction")),
+                    Step("contribution", "Resolve contribution credit", context => Operation(context.Service.ExecuteCombatRuntimeContribution(First<DamageTypeDefinition>(context)), context, "combat-integration-contribution"))),
+                Scenario("encounter-split-and-integrity", "Encounter split keeps contribution integrity", 60,
+                    Step("split", "Run split proof", context => Operation(context.Service.ProveContributionEncounterSplit(), context, "combat-integration-split")),
+                    Step("validate", "Validate after split", context => Operation(context.Service.ValidateCombatRuntimeIntegrity(), context, "combat-integration-split-validate"))),
+                Scenario("restore-clears-transient-runtime", "Restore clearing removes transient combat state silently", 70,
+                    Step("prime", "Execute integrated hit", context => Operation(context.Service.ExecuteCombatRuntimeAttack(First<DamageTypeDefinition>(context)), context, "combat-integration-restore-prime")),
+                    Step("restore-clear", "Clear transient state for restore", context => Operation(context.Service.SimulateCombatRuntimeRestoreClear(), context, "combat-integration-restore-clear")),
+                    Step("validate", "Validate after restore clear", context => Operation(context.Service.ValidateCombatRuntimeIntegrity(), context, "combat-integration-restore-validate"))),
+                Scenario("repeat-run-does-not-leak-state", "Repeated integration run starts from a clean baseline", 80,
+                    Step("first-reset", "Reset first baseline", context => Operation(context.Service.ResetCombatRuntimeIntegration(), context, "combat-integration-repeat-reset-a")),
+                    Step("hit", "Execute hit", context => Operation(context.Service.ExecuteCombatRuntimeAttack(First<DamageTypeDefinition>(context)), context, "combat-integration-repeat-hit")),
+                    Step("second-reset", "Reset second baseline", context => Operation(context.Service.ResetCombatRuntimeIntegration(), context, "combat-integration-repeat-reset-b")),
+                    Step("validate", "Validate second baseline", context => Operation(context.Service.ValidateCombatRuntimeIntegrity(), context, "combat-integration-repeat-validate"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

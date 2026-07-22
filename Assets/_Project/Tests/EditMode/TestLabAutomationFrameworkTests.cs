@@ -422,7 +422,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.6.6.defensive-actions",
                 "feature.6.7.combat-execution",
                 "feature.6.8.combat-reactions",
-                "feature.6.9.combat-contribution"
+                "feature.6.9.combat-contribution",
+                "feature.6.10.combat-integration"
             }));
         }
 

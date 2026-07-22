@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
@@ -12,6 +13,7 @@ using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.Contributions;
 using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.Execution;
+using UnityIsekaiGame.Combat.Integration;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Combat.Reactions;
 using UnityIsekaiGame.Contracts;
@@ -50,11 +52,13 @@ namespace UnityIsekaiGame.Development
         private readonly List<PrototypeTestLabOperation> history = new List<PrototypeTestLabOperation>();
         private readonly HashSet<string> pendingConfirmations = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<Type, List<IGameDefinition>> selectorCache = new Dictionary<Type, List<IGameDefinition>>();
+        private readonly DamageHealingService damageHealingService = new DamageHealingService();
         private readonly DefensiveActionService defensiveActionService = new DefensiveActionService();
         private readonly AttackResolutionService attackResolutionService;
         private CombatReactionService combatReactionService;
         private CombatContributionService combatContributionService;
         private CombatExecutionService combatExecutionService = new CombatExecutionService();
+        private CombatRuntimeFacade combatRuntimeFacade;
         private readonly TestLabAutomationRegistry automationRegistry = new TestLabAutomationRegistry();
         private readonly TestLabAutomationReportExporter automationReportExporter = new TestLabAutomationReportExporter();
         private TestLabAutomationRunner automationRunner;
@@ -100,7 +104,7 @@ namespace UnityIsekaiGame.Development
 
         public PrototypeTestLabService()
         {
-            attackResolutionService = new AttackResolutionService(new DamageHealingService(), defensiveActionService);
+            attackResolutionService = new AttackResolutionService(damageHealingService, defensiveActionService);
         }
 
         public void Configure(PrototypeTestLabContext newContext)
@@ -128,6 +132,8 @@ namespace UnityIsekaiGame.Development
             EnsureOngoingEffectRuntime(targetEnemy: true);
             EnsureCombatReactionRuntime();
             EnsureCombatContributionRuntime();
+            combatRuntimeFacade = null;
+            EnsureCombatRuntimeFacade();
             EnsureAutomation();
             selectorCache.Clear();
         }
@@ -450,6 +456,166 @@ namespace UnityIsekaiGame.Development
                 $"Persistence Slot: {CurrentSlotId}",
                 $"Modal Active: {PrototypeGameplayModalState.IsModalActive}"
             });
+        }
+
+        public string BuildCombatRuntimeSummary()
+        {
+            CombatRuntimeFacade facade = EnsureCombatRuntimeFacade();
+            if (facade == null)
+            {
+                return "Combat runtime facade is unavailable.";
+            }
+
+            CombatRuntimeSnapshot snapshot = facade.CreateSnapshot(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject);
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 6.10 Combat System Integration");
+            builder.AppendLine($"Readiness: {snapshot.Readiness.State} Errors={CountDiagnostics(snapshot.Diagnostics, CombatIntegritySeverity.Error)} Warnings={CountDiagnostics(snapshot.Diagnostics, CombatIntegritySeverity.Warning)}");
+            builder.AppendLine($"Actor: {EmptyAs(snapshot.ActorId, "Missing")} Body: {EmptyAs(snapshot.BodyId, "Missing")} Person: {EmptyAs(snapshot.PersonId, "None")} Lifecycle: {snapshot.LifecycleState}");
+            builder.AppendLine($"Resources: {string.Join(", ", snapshot.Resources.Select(resource => $"{resource.ResourceId} {resource.Current:0.###}/{resource.Maximum:0.###}"))}");
+            builder.AppendLine($"Combat Stats: {string.Join(", ", snapshot.CombatStats.Select(stat => $"{stat.StatId}={stat.Value:0.###}"))}");
+            builder.AppendLine($"Transient: Defense={(snapshot.ActiveDefense == null ? "None" : snapshot.ActiveDefense.DefinitionId)} Execution={(snapshot.ActiveExecution == null ? "None" : snapshot.ActiveExecution.DefinitionId)} Ongoing={snapshot.ActiveOngoingEffects.Count} Reactions={snapshot.ReactionSources.Count}");
+            builder.AppendLine($"Combat State: InCombat={(snapshot.CombatState != null && snapshot.CombatState.IsInCombat)} Engagements={snapshot.ActiveEngagements.Count} RecentOpponents={snapshot.RecentOpponents.Count}");
+            builder.AppendLine($"Contributions: Ledgers={snapshot.ContributionLedgers.Count} ContributionRevision={snapshot.Revisions.ContributionRevision} AggregateRevision={snapshot.Revisions.AggregateRevision}");
+            builder.AppendLine($"Last Tx: Root={EmptyAs(snapshot.LastTransactionTrace?.RootTransactionId, "None")} Attack={EmptyAs(snapshot.LastTransactionTrace?.AttackTransactionId, "None")} Damage={EmptyAs(snapshot.LastTransactionTrace?.DamageTransactionId, "None")} Coherent={(snapshot.LastTransactionTrace == null || snapshot.LastTransactionTrace.IsCoherent)}");
+            builder.AppendLine("Persistence: combat state, defense windows, reaction sources, contribution ledgers, ongoing timers, and execution commitments are transient unless owned by their dedicated persistence participant. Restore clears transient combat runtime state silently before normal runtime resumes.");
+            builder.AppendLine("Compatibility: existing 6.1-6.9 feature services remain callable; 6.10 composes them through one facade and shared DamageHealingService authority.");
+
+            foreach (CombatRuntimeDiagnostic diagnostic in snapshot.Diagnostics.Take(8))
+            {
+                builder.AppendLine($"{diagnostic.Severity}: {diagnostic.Subsystem}/{diagnostic.Code} {diagnostic.Message}");
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateCombatRuntimeIntegrity()
+        {
+            CombatIntegrityReport report = EnsureCombatRuntimeFacade()?.ValidateIntegrity(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject);
+            if (report == null)
+            {
+                return RecordFailure("Validate 6.10 Combat Runtime", "Combat runtime facade is missing.", "MissingFacade");
+            }
+
+            string message = report.Diagnostics.Count == 0
+                ? "Combat runtime integrity passed with no diagnostics."
+                : string.Join(Environment.NewLine, report.Diagnostics.Select(diagnostic => $"{diagnostic.Severity}: {diagnostic.Subsystem}/{diagnostic.Code} {diagnostic.Message}"));
+            return Record(report.Passed, "Validate 6.10 Combat Runtime", report.Passed ? "Passed" : "Failed", message);
+        }
+
+        public PrototypeTestLabOperation ResetCombatRuntimeIntegration()
+        {
+            PrototypeTestLabOperation reset = ResetAutomationRuntimeState();
+            combatRuntimeFacade = null;
+            CombatRuntimeFacade facade = EnsureCombatRuntimeFacade();
+            CombatReadinessResult readiness = facade?.EvaluateReadiness(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject);
+            bool succeeded = reset.Succeeded && readiness != null && readiness.Diagnostics.All(diagnostic => diagnostic.Severity != CombatIntegritySeverity.Error);
+            string message = $"Reset={reset.Code}; Readiness={readiness?.State}; Errors={CountDiagnostics(readiness?.Diagnostics, CombatIntegritySeverity.Error)} Warnings={CountDiagnostics(readiness?.Diagnostics, CombatIntegritySeverity.Warning)}.";
+            return Record(succeeded, "Reset 6.10 Combat Runtime", succeeded ? "Ready" : "Invalid", message);
+        }
+
+        public PrototypeTestLabOperation PreviewCombatRuntimeAttack(DamageTypeDefinition damageType)
+        {
+            CombatRuntimeFacade facade = EnsureCombatRuntimeFacade();
+            AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, 25f, 0.95f, 0.1f, 0f, 0.99f, 1.5f, 1f, 2f, targetEnemy: true, sourcePlayer: true, transactionId: ResolveAttackTransactionId(reuse: false));
+            AttackResolutionResult result = facade.PreviewAttack(request);
+            return Record(result.Succeeded, "Preview 6.10 Facade Attack", result.Code, FormatAttackResolution(result));
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatRuntimeAttack(DamageTypeDefinition damageType)
+        {
+            CombatRuntimeFacade facade = EnsureCombatRuntimeFacade();
+            AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, 25f, 0.95f, 0.1f, 0f, 0.99f, 1.5f, 1f, 2f, targetEnemy: true, sourcePlayer: true, transactionId: ResolveAttackTransactionId(reuse: false));
+            AttackResolutionResult result = facade.ExecuteAttack(request);
+            return Record(result.Succeeded, "Execute 6.10 Facade Attack", result.Code, $"{FormatAttackResolution(result)}\n{FormatCombatTransactionTrace(facade.LastTransactionTrace)}");
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatRuntimeMiss(DamageTypeDefinition damageType)
+        {
+            CombatRuntimeFacade facade = EnsureCombatRuntimeFacade();
+            AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, 25f, 0.25f, 0.99f, 0f, 0.99f, 1.5f, 1f, 2f, targetEnemy: true, sourcePlayer: true, transactionId: ResolveAttackTransactionId(reuse: false));
+            AttackResolutionResult result = facade.ExecuteAttack(request);
+            return Record(result.Succeeded, "Execute 6.10 Facade Miss", result.Code, $"{FormatAttackResolution(result)}\n{FormatCombatTransactionTrace(facade.LastTransactionTrace)}");
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatRuntimeCritical(DamageTypeDefinition damageType)
+        {
+            CombatRuntimeFacade facade = EnsureCombatRuntimeFacade();
+            AttackResolutionRequest request = CreateAttackResolutionRequest(damageType, 10f, 0.95f, 0.1f, 0.95f, 0.1f, 2f, 1f, 2f, targetEnemy: true, sourcePlayer: true, transactionId: ResolveAttackTransactionId(reuse: false));
+            AttackResolutionResult result = facade.ExecuteAttack(request);
+            return Record(result.Succeeded, "Execute 6.10 Facade Critical", result.Code, $"{FormatAttackResolution(result)}\n{FormatCombatTransactionTrace(facade.LastTransactionTrace)}");
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatRuntimeDefense(DamageTypeDefinition damageType, bool block)
+        {
+            CombatRuntimeFacade facade = EnsureCombatRuntimeFacade();
+            DefensiveActionDefinition defense = FindDefensiveAction(block ? "block" : "dodge") ?? GetDefinitions<DefensiveActionDefinition>().FirstOrDefault();
+            if (!EnsureCompatibleDefenseEquipment(defense, out string equipmentFailure))
+            {
+                return RecordFailure(block ? "Execute 6.10 Block Flow" : "Execute 6.10 Dodge Flow", equipmentFailure, DefensiveActionResultCode.IncompatibleEquipment);
+            }
+
+            if (!TryBuildDefenseActivationRequest(defense, targetPlayer: true, reuseTransaction: false, out DefenseActivationRequest activation, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            DefenseActivationResult activationResult = facade.ActivateDefense(activation);
+            if (!activationResult.Succeeded)
+            {
+                return Record(false, block ? "Execute 6.10 Block Flow" : "Execute 6.10 Dodge Flow", activationResult.Code, FormatDefenseActivation(activationResult));
+            }
+
+            AttackResolutionRequest attack = CreateDefensiveAttackRequest(damageType, 25f, 0.95f, 0.1f, 0.01f, targetPlayer: true, transactionId: ResolveAttackTransactionId(reuse: false));
+            AttackResolutionResult result = facade.ExecuteAttack(attack);
+            return Record(result.Succeeded, block ? "Execute 6.10 Block Flow" : "Execute 6.10 Dodge Flow", result.Code, $"{FormatDefenseActivation(activationResult)}\n{FormatAttackResolution(result)}");
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatRuntimeOngoingDamage(OngoingEffectDefinition definition, DamageTypeDefinition damageType)
+        {
+            PrototypeTestLabOperation apply = ApplyOngoingEffect(definition, targetEnemy: true, amount: 5f, interval: 1f, duration: 3f, tickCount: 1, stacks: 1, reuseTransaction: false);
+            if (!apply.Succeeded)
+            {
+                return apply;
+            }
+
+            return ProcessOngoingEffectsNow();
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatRuntimeReaction(CombatReactionDefinition definition)
+        {
+            CombatReactionDefinition selected = definition ?? GetDefinitions<CombatReactionDefinition>().FirstOrDefault(candidate => candidate.SupportsTrigger(CombatReactionTriggerType.DamageApplied));
+            PrototypeTestLabOperation register = RegisterCombatReaction(selected, ownerPlayer: false);
+            if (!register.Succeeded)
+            {
+                return register;
+            }
+
+            return ExecuteCombatReactionDamage(selected);
+        }
+
+        public PrototypeTestLabOperation ExecuteCombatRuntimeContribution(DamageTypeDefinition damageType)
+        {
+            PrototypeTestLabOperation record = RecordDamageContribution(damageType, reuseTransaction: false);
+            if (!record.Succeeded)
+            {
+                return record;
+            }
+
+            return ResolveDefeatContributionCredit();
+        }
+
+        public PrototypeTestLabOperation SimulateCombatRuntimeRestoreClear()
+        {
+            CombatRuntimeFacade facade = EnsureCombatRuntimeFacade();
+            facade.ClearTransientStateForRestore(ResolveActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject));
+            facade.MarkReadyAfterRestore();
+            CombatRuntimeSnapshot snapshot = facade.CreateSnapshot(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject);
+            bool cleared = snapshot.ActiveDefense == null
+                && snapshot.ActiveExecution == null
+                && snapshot.ActiveOngoingEffects.Count == 0
+                && snapshot.ReactionSources.Count == 0
+                && snapshot.ContributionLedgers.Count == 0;
+            return Record(cleared, "Restore Clear 6.10 Combat Runtime", cleared ? "Cleared" : "StillActive", $"Readiness={snapshot.Readiness.State}; Defense={snapshot.ActiveDefense != null}; Execution={snapshot.ActiveExecution != null}; Ongoing={snapshot.ActiveOngoingEffects.Count}; Reactions={snapshot.ReactionSources.Count}; Ledgers={snapshot.ContributionLedgers.Count}.");
         }
 
         public string BuildIdentityProgressionSummary()
@@ -1409,7 +1575,7 @@ namespace UnityIsekaiGame.Development
             }
 
             DamageApplicationRequest request = CreatePipelineDamageRequest(damageType, amount, targetPlayer, string.Empty);
-            DamageApplicationResult result = new DamageHealingService().PreviewDamage(request);
+            DamageApplicationResult result = damageHealingService.PreviewDamage(request);
             string message = result.Succeeded
                 ? $"{damageType.DisplayName}: requested {result.RequestedAmount:0.###}, defense {result.DefenseApplied:0.###}, resistance {result.ResistanceFraction:0.###}, final {result.FinalDamageAmount:0.###}, Health {result.OldHealth:0.###}->{result.NewHealth:0.###}."
                 : result.Message;
@@ -1424,7 +1590,7 @@ namespace UnityIsekaiGame.Development
             }
 
             DamageApplicationRequest request = CreatePipelineDamageRequest(damageType, amount, targetPlayer, $"development.damage-healing.{Guid.NewGuid():N}");
-            DamageApplicationResult result = new DamageHealingService().ApplyDamage(request);
+            DamageApplicationResult result = damageHealingService.ApplyDamage(request);
             string message = result.Succeeded
                 ? $"{damageType.DisplayName}: final {result.FinalDamageAmount:0.###}, Health {result.OldHealth:0.###}->{result.NewHealth:0.###}, Changed={result.HealthChanged}, Immune={result.Immune}, Duplicate={result.Duplicate}."
                 : result.Message;
@@ -1434,7 +1600,7 @@ namespace UnityIsekaiGame.Development
         public PrototypeTestLabOperation PreviewPipelineHealing(float amount, bool targetPlayer)
         {
             HealingApplicationRequest request = CreatePipelineHealingRequest(amount, targetPlayer, string.Empty);
-            HealingApplicationResult result = new DamageHealingService().PreviewHealing(request);
+            HealingApplicationResult result = damageHealingService.PreviewHealing(request);
             string message = result.Succeeded
                 ? $"Healing final {result.FinalHealingAmount:0.###}, overheal {result.OverhealAmount:0.###}, Health {result.OldHealth:0.###}->{result.NewHealth:0.###}, Changed={result.HealthChanged}, Duplicate={result.Duplicate}."
                 : result.Message;
@@ -1444,7 +1610,7 @@ namespace UnityIsekaiGame.Development
         public PrototypeTestLabOperation ApplyPipelineHealing(float amount, bool targetPlayer)
         {
             HealingApplicationRequest request = CreatePipelineHealingRequest(amount, targetPlayer, $"development.damage-healing.{Guid.NewGuid():N}");
-            HealingApplicationResult result = new DamageHealingService().ApplyHealing(request);
+            HealingApplicationResult result = damageHealingService.ApplyHealing(request);
             string message = result.Succeeded
                 ? $"Healing final {result.FinalHealingAmount:0.###}, overheal {result.OverhealAmount:0.###}, Health {result.OldHealth:0.###}->{result.NewHealth:0.###}, Changed={result.HealthChanged}, Duplicate={result.Duplicate}."
                 : result.Message;
@@ -1459,9 +1625,8 @@ namespace UnityIsekaiGame.Development
             }
 
             string transactionId = $"development.damage-healing.duplicate.{Guid.NewGuid():N}";
-            DamageHealingService service = new DamageHealingService();
-            DamageApplicationResult first = service.ApplyDamage(CreatePipelineDamageRequest(damageType, amount, targetPlayer: true, transactionId: transactionId));
-            DamageApplicationResult second = service.ApplyDamage(CreatePipelineDamageRequest(damageType, amount, targetPlayer: true, transactionId: transactionId));
+            DamageApplicationResult first = damageHealingService.ApplyDamage(CreatePipelineDamageRequest(damageType, amount, targetPlayer: true, transactionId: transactionId));
+            DamageApplicationResult second = damageHealingService.ApplyDamage(CreatePipelineDamageRequest(damageType, amount, targetPlayer: true, transactionId: transactionId));
             bool succeeded = first.Succeeded && second.Succeeded && second.Duplicate && !second.HealthChanged;
             string message = $"First={first.Code} changed={first.HealthChanged}; second={second.Code} duplicate={second.Duplicate} changed={second.HealthChanged}.";
             return Record(succeeded, "6.1 Duplicate Proof", succeeded ? "DuplicateProtected" : "UnexpectedResult", message);
@@ -1996,7 +2161,7 @@ namespace UnityIsekaiGame.Development
             float amount = Mathf.Max(1f, health.Current - health.Minimum + 1000f);
             GameObject source = targetEnemy ? context?.PlayerTransform?.gameObject : context?.EnemyTransform?.gameObject;
             DamageApplicationRequest request = new DamageApplicationRequest(transactionId, ResolveActorId(source), source, actorId, target, damageType, amount, "Prototype Test Lab zero-health lifecycle proof");
-            DamageApplicationResult result = new DamageHealingService().ApplyDamage(request);
+            DamageApplicationResult result = damageHealingService.ApplyDamage(request);
             return Record(result.Succeeded, targetEnemy ? "Zero Health Enemy" : "Zero Health Player", result.Code, $"Damage={result.FinalDamageAmount:0.###} Health={result.OldHealth:0.###}->{result.NewHealth:0.###} BecameZero={result.BecameZero} Lifecycle={ActorLifecycleUtility.GetState(target)} Duplicate={result.Duplicate}.");
         }
 
@@ -2305,7 +2470,7 @@ namespace UnityIsekaiGame.Development
                     return RecordFailure("Record 6.9 Damage", healthMessage, "MissingHealth");
                 }
 
-                damage = new DamageHealingService().ApplyDamage(CreatePipelineDamageRequest(selected, 25f, targetPlayer: false, transactionId));
+                damage = damageHealingService.ApplyDamage(CreatePipelineDamageRequest(selected, 25f, targetPlayer: false, transactionId));
                 if (damage.Succeeded && !damage.Duplicate)
                 {
                     lastContributionDamageSource = damage;
@@ -2345,7 +2510,7 @@ namespace UnityIsekaiGame.Development
                     return RecordFailure("Record 6.9 Healing", healthMessage, "MissingHealth");
                 }
 
-                healing = new DamageHealingService().ApplyHealing(CreatePipelineHealingRequest(25f, targetPlayer: false, transactionId));
+                healing = damageHealingService.ApplyHealing(CreatePipelineHealingRequest(25f, targetPlayer: false, transactionId));
                 if (healing.Succeeded && !healing.Duplicate)
                 {
                     lastContributionHealingSource = healing;
@@ -2392,7 +2557,7 @@ namespace UnityIsekaiGame.Development
                 return RecordFailure("Record 6.9 Overkill", healthMessage, "MissingHealth");
             }
 
-            DamageApplicationResult damage = new DamageHealingService().ApplyDamage(CreatePipelineDamageRequest(selected, 999f, targetPlayer: false, transactionId));
+            DamageApplicationResult damage = damageHealingService.ApplyDamage(CreatePipelineDamageRequest(selected, 999f, targetPlayer: false, transactionId));
             CombatContributionRecordResult result = service.RecordDamage(damage, sourceKind: CombatContributionSourceKind.Development);
             return Record(result.Succeeded || result.Code == CombatContributionResultCode.ZeroEffectiveContribution, "Record 6.9 Overkill", result.Code, $"{FormatDamageApplication(damage)} {FormatContributionRecordResult(result)}");
         }
@@ -3097,6 +3262,32 @@ namespace UnityIsekaiGame.Development
             return service;
         }
 
+        private CombatRuntimeFacade EnsureCombatRuntimeFacade()
+        {
+            if (combatRuntimeFacade != null)
+            {
+                return combatRuntimeFacade;
+            }
+
+            GameObject player = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            CombatStateService combatState = EnsureCombatStateRuntime();
+            OngoingEffectService ongoing = EnsureOngoingEffectRuntime(targetEnemy: false) ?? EnsureOngoingEffectRuntime(targetEnemy: true);
+            CombatReactionService reactions = EnsureCombatReactionRuntime();
+            CombatContributionService contributions = EnsureCombatContributionRuntime();
+            combatRuntimeFacade = new CombatRuntimeFacade(
+                registry,
+                player,
+                damageHealingService,
+                defensiveActionService,
+                combatState,
+                combatExecutionService,
+                ongoing,
+                reactions,
+                contributions,
+                attackResolutionService);
+            return combatRuntimeFacade;
+        }
+
         private void EnsureCombatStateTestParticipants()
         {
             EnsureCombatStateRuntime();
@@ -3357,6 +3548,7 @@ namespace UnityIsekaiGame.Development
             }
 
             service.Configure(coordinator);
+            service.ConfigureDamageHealing(damageHealingService);
             service.SetClock(ongoingEffectClockSeconds);
             if (targetEnemy)
             {
@@ -3391,7 +3583,7 @@ namespace UnityIsekaiGame.Development
             OngoingEffectService ongoing = EnsureOngoingEffectRuntime(targetEnemy: true) ?? EnsureOngoingEffectRuntime(targetEnemy: false);
             if (ongoing != null)
             {
-                combatReactionService.Configure(ongoing);
+                combatReactionService.Configure(ongoing, damageHealingService);
             }
 
             return combatReactionService;
@@ -3854,6 +4046,181 @@ namespace UnityIsekaiGame.Development
             }
 
             return $"Healing Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Effective={result.FinalHealingAmount:0.###} Overheal={result.OverhealAmount:0.###} Health={result.OldHealth:0.###}->{result.NewHealth:0.###}.";
+        }
+
+        private static string FormatCombatTransactionTrace(CombatTransactionTraceSnapshot trace)
+        {
+            if (trace == null)
+            {
+                return "Transaction Trace: None";
+            }
+
+            return $"Transaction Trace: Root={EmptyAs(trace.RootTransactionId, "None")} Execution={EmptyAs(trace.ExecutionTransactionId, "None")} Attack={EmptyAs(trace.AttackTransactionId, "None")} Defense={EmptyAs(trace.DefenseTransactionId, "None")} Damage={EmptyAs(trace.DamageTransactionId, "None")} Reaction={EmptyAs(trace.ReactionTransactionId, "None")} Contribution={EmptyAs(trace.ContributionTransactionId, "None")} Coherent={trace.IsCoherent}.";
+        }
+
+        private DefensiveActionDefinition FindDefensiveAction(string idOrNameFragment)
+        {
+            if (string.IsNullOrWhiteSpace(idOrNameFragment))
+            {
+                return null;
+            }
+
+            return GetDefinitions<DefensiveActionDefinition>()
+                .FirstOrDefault(definition =>
+                    definition != null
+                    && ((definition.Id != null && definition.Id.IndexOf(idOrNameFragment, StringComparison.OrdinalIgnoreCase) >= 0)
+                        || (definition.DisplayName != null && definition.DisplayName.IndexOf(idOrNameFragment, StringComparison.OrdinalIgnoreCase) >= 0)));
+        }
+
+        private bool EnsureCompatibleDefenseEquipment(DefensiveActionDefinition definition, out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (definition == null)
+            {
+                failureReason = "Defensive action definition is missing.";
+                return false;
+            }
+
+            bool requiresEquipment = definition.RequiresEquipmentSource
+                || !string.IsNullOrWhiteSpace(definition.RequiredEquipmentCategoryId)
+                || !string.IsNullOrWhiteSpace(definition.RequiredEquipmentTagId);
+            if (!requiresEquipment)
+            {
+                return true;
+            }
+
+            if (IsCompatibleDefenseItemEquipped(definition))
+            {
+                return true;
+            }
+
+            if (context?.Inventory == null || context.Equipment == null)
+            {
+                failureReason = "Inventory or equipment is missing.";
+                return false;
+            }
+
+            ItemDefinition item = GetDefinitions<ItemDefinition>().FirstOrDefault(candidate => IsCompatibleDefenseItem(candidate, definition));
+            if (item == null)
+            {
+                failureReason = $"No item definition satisfies defensive action '{definition.Id}'.";
+                return false;
+            }
+
+            int slotIndex = FindInventorySlot(item);
+            if (slotIndex < 0)
+            {
+                InventoryAddResult add = context.Inventory.AddItem(item, 1);
+                if (add.AddedQuantity <= 0)
+                {
+                    failureReason = $"Could not grant required item '{item.DisplayName}' for defensive action '{definition.Id}'.";
+                    return false;
+                }
+
+                slotIndex = FindInventorySlot(item);
+            }
+
+            if (slotIndex < 0)
+            {
+                failureReason = $"Required item '{item.DisplayName}' was not found in inventory after grant.";
+                return false;
+            }
+
+            EquipmentOperationResult equip = context.Equipment.EquipFromInventorySlot(slotIndex);
+            if (!equip.Succeeded)
+            {
+                failureReason = equip.Message;
+                return false;
+            }
+
+            return IsCompatibleDefenseItemEquipped(definition);
+        }
+
+        private bool IsCompatibleDefenseItemEquipped(DefensiveActionDefinition definition)
+        {
+            if (context?.Equipment == null)
+            {
+                return false;
+            }
+
+            foreach (EquipmentSlotState slot in context.Equipment.Slots)
+            {
+                if (slot != null && !slot.IsEmpty && IsCompatibleDefenseItem(slot.Item, definition))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private int FindInventorySlot(ItemDefinition item)
+        {
+            if (context?.Inventory == null || item == null)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < context.Inventory.Slots.Count; i++)
+            {
+                InventorySlot slot = context.Inventory.GetSlot(i);
+                if (slot != null && !slot.IsEmpty && slot.Item == item)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static bool IsCompatibleDefenseItem(ItemDefinition item, DefensiveActionDefinition definition)
+        {
+            if (item == null || definition == null || !item.IsEquippable)
+            {
+                return false;
+            }
+
+            if (definition.ActionType == DefensiveActionType.Parry && item.Equipment?.MeleeWeapon?.IsWeapon != true)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(definition.RequiredEquipmentCategoryId)
+                && !string.Equals(item.PrimaryCategory?.Id, definition.RequiredEquipmentCategoryId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(definition.RequiredEquipmentTagId) && !ItemHasTag(item, definition.RequiredEquipmentTagId))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool ItemHasTag(ItemDefinition item, string tagId)
+        {
+            IReadOnlyList<TagDefinition> tags = item == null ? Array.Empty<TagDefinition>() : item.Tags;
+            for (int i = 0; i < tags.Count; i++)
+            {
+                if (tags[i] != null && string.Equals(tags[i].Id, tagId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int CountDiagnostics(IReadOnlyList<CombatRuntimeDiagnostic> diagnostics, CombatIntegritySeverity severity)
+        {
+            return diagnostics == null ? 0 : diagnostics.Count(diagnostic => diagnostic != null && diagnostic.Severity == severity);
+        }
+
+        private static string EmptyAs(string value, string fallback)
+        {
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
         }
 
         private HealingApplicationRequest CreatePipelineHealingRequest(float amount, bool targetPlayer, string transactionId)

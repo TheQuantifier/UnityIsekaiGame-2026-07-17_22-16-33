@@ -21,7 +21,7 @@ namespace UnityIsekaiGame.Combat.Reactions
 
         private readonly List<CombatReactionSourceRegistration> registrations = new List<CombatReactionSourceRegistration>();
         private readonly HashSet<string> processedRootTransactions = new HashSet<string>(StringComparer.Ordinal);
-        private readonly IDamageHealingService damageHealingService = new DamageHealingService();
+        private IDamageHealingService damageHealingService = new DamageHealingService();
 
         public event Action<CombatReactionTriggerContext> TriggerAccepted;
         public event Action<CombatReactionExecutionResult> ReactionProcessed;
@@ -58,6 +58,17 @@ namespace UnityIsekaiGame.Combat.Reactions
         public void Configure(OngoingEffectService configuredOngoingEffectService)
         {
             ongoingEffectService = configuredOngoingEffectService == null ? ongoingEffectService : configuredOngoingEffectService;
+        }
+
+        public void ConfigureDamageHealing(IDamageHealingService service)
+        {
+            damageHealingService = service ?? damageHealingService;
+        }
+
+        public void Configure(OngoingEffectService configuredOngoingEffectService, IDamageHealingService service)
+        {
+            Configure(configuredOngoingEffectService);
+            ConfigureDamageHealing(service);
         }
 
         public bool UnregisterSource(string registrationId)
