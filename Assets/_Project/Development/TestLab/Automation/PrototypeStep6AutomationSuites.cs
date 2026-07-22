@@ -7,6 +7,7 @@ using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Combat.Reactions;
+using UnityIsekaiGame.Combat.Contributions;
 using UnityIsekaiGame.Development;
 using UnityIsekaiGame.GameData;
 
@@ -29,6 +30,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildFeature66Suite());
             TryRegister(registry, BuildFeature67Suite());
             TryRegister(registry, BuildFeature68Suite());
+            TryRegister(registry, BuildFeature69Suite());
         }
 
         private static ITestLabAutomationSuite BuildFeature61Suite()
@@ -202,6 +204,60 @@ namespace UnityIsekaiGame.Development.Automation
                 Scenario("clear-removes-sources", "Clear removes registered reaction sources", 50,
                     Step("register", "Register selected reaction", context => Operation(context.Service.RegisterCombatReaction(FirstReaction(context, CombatReactionTriggerType.DamageApplied), ownerPlayer: false), context, "reaction-clear-register")),
                     Step("clear", "Clear reaction sources", context => Operation(context.Service.ClearCombatReactions(), context, "reaction-clear"))));
+        }
+
+        private static ITestLabAutomationSuite BuildFeature69Suite()
+        {
+            return Suite("feature.6.9.combat-contribution", "Feature 6.9 Combat Contribution", "6.9", 690,
+                Required("PrototypeTestLabService", "CombatContributionService", "DamageHealingService"),
+                Scenario("contribution-preview-does-not-mutate", "Contribution preview does not mutate", 10, Step("preview", "Preview contribution", context =>
+                    Operation(context.Service.PreviewContribution(First<DamageTypeDefinition>(context)), context, "contribution-preview"))),
+                Scenario("damage-records-once", "Committed damage records contribution once", 20, Step("record", "Record damage contribution", context =>
+                    Operation(context.Service.RecordDamageContribution(First<DamageTypeDefinition>(context), reuseTransaction: false), context, "contribution-damage"))),
+                Scenario("duplicate-damage-is-idempotent", "Duplicate contribution transaction is idempotent", 30,
+                    Step("record", "Record damage contribution", context => Operation(context.Service.RecordDamageContribution(First<DamageTypeDefinition>(context), reuseTransaction: false), context, "contribution-duplicate-record")),
+                    Step("reuse", "Reuse contribution transaction", context => Operation(context.Service.RecordDamageContribution(First<DamageTypeDefinition>(context), reuseTransaction: true), context, "contribution-duplicate-reuse"))),
+                Scenario("fully-prevented-damage-gives-zero-attacker-credit", "Fully prevented damage gives zero attacker credit", 40, Step("prevented", "Record fully prevented damage", context =>
+                    Operation(context.Service.RecordFullyPreventedDamageContribution(First<DamageTypeDefinition>(context)), context, "contribution-prevented"))),
+                Scenario("overkill-records-actual-health-removed", "Overkill records actual Health removed", 50, Step("overkill", "Record overkill contribution", context =>
+                    Operation(context.Service.RecordOverkillContribution(First<DamageTypeDefinition>(context)), context, "contribution-overkill"))),
+                Scenario("healing-support-records-effective-value", "Healing support records effective value", 60, Step("heal", "Record healing contribution", context =>
+                    Operation(context.Service.RecordHealingContribution(reuseTransaction: false), context, "contribution-healing"))),
+                Scenario("defensive-contribution-records-support", "Defensive contribution records support", 70, Step("block", "Record Block contribution", context =>
+                    Operation(context.Service.RecordDefenseContribution(CombatContributionType.SuccessfulBlock), context, "contribution-block"))),
+                Scenario("ongoing-and-reaction-contributions-are-distinct", "Ongoing and reaction contributions are distinct", 80,
+                    Step("ongoing", "Record ongoing damage", context => Operation(context.Service.RecordOngoingDamageContribution(), context, "contribution-ongoing")),
+                    Step("reaction-damage", "Record reaction damage", context => Operation(context.Service.RecordReactionDamageContribution(), context, "contribution-reaction-damage")),
+                    Step("reaction-heal", "Record reaction healing", context => Operation(context.Service.RecordReactionHealingContribution(), context, "contribution-reaction-heal"))),
+                Scenario("defeat-credit-resolves-primary", "Defeat credit resolves primary contributor", 90,
+                    Step("record", "Record damage contribution", context => Operation(context.Service.RecordDamageContribution(First<DamageTypeDefinition>(context), reuseTransaction: false), context, "contribution-credit-record")),
+                    Step("resolve", "Resolve defeat credit", context => Operation(context.Service.ResolveDefeatContributionCredit(), context, "contribution-credit"))),
+                Scenario("kill-credit-uses-latest-qualifying-contributor", "Kill credit uses latest qualifying contributor", 95, Step("prove", "Prove latest kill credit", context =>
+                    Operation(context.Service.ProveContributionKillCreditLatest(), context, "contribution-kill-latest"))),
+                Scenario("assist-includes-other-qualifying-contributors", "Assist includes other qualifying contributors", 96, Step("prove", "Prove assist credit", context =>
+                    Operation(context.Service.ProveContributionAssistCredit(), context, "contribution-assist"))),
+                Scenario("healing-only-support-is-not-primary", "Healing-only support is not primary kill credit", 97, Step("prove", "Prove healing support is not primary", context =>
+                    Operation(context.Service.ProveContributionHealingOnlyNotPrimary(), context, "contribution-healing-not-primary"))),
+                Scenario("expired-damage-does-not-assign-primary", "Expired damage does not assign primary credit", 100,
+                    Step("record", "Record damage contribution", context => Operation(context.Service.RecordDamageContribution(First<DamageTypeDefinition>(context), reuseTransaction: false), context, "contribution-expire-record")),
+                    Step("advance", "Advance beyond window", context => Operation(context.Service.AdvanceContributionClock(31f), context, "contribution-expire-advance")),
+                    Step("resolve", "Resolve expired credit", context => Operation(context.Service.ResolveDefeatContributionCredit(), context, "contribution-expire-credit"))),
+                Scenario("encounter-merge-combines-ledgers", "Encounter merge combines contribution ledgers", 105, Step("prove", "Prove encounter merge", context =>
+                    Operation(context.Service.ProveContributionEncounterMerge(), context, "contribution-merge"))),
+                Scenario("encounter-split-partitions-eligibility", "Encounter split partitions active eligibility", 106, Step("prove", "Prove encounter split", context =>
+                    Operation(context.Service.ProveContributionEncounterSplit(), context, "contribution-split"))),
+                Scenario("finalize-locks-ledger", "Finalize produces diagnostic reward eligibility", 110,
+                    Step("record", "Record damage contribution", context => Operation(context.Service.RecordDamageContribution(First<DamageTypeDefinition>(context), reuseTransaction: false), context, "contribution-finalize-record")),
+                    Step("finalize", "Finalize ledger", context => Operation(context.Service.FinalizeContributionLedger(), context, "contribution-finalize"))),
+                Scenario("duplicate-lifecycle-resolution-is-idempotent", "Duplicate lifecycle resolution is idempotent", 115, Step("prove", "Prove duplicate lifecycle credit", context =>
+                    Operation(context.Service.ProveContributionDuplicateLifecycleCredit(), context, "contribution-duplicate-credit"))),
+                Scenario("revival-preserves-prior-credit", "Revival preserves prior death credit", 116, Step("prove", "Prove revival preserves credit", context =>
+                    Operation(context.Service.ProveContributionRevivalPreservesCredit(), context, "contribution-revival-credit"))),
+                Scenario("reward-eligibility-grants-no-concrete-rewards", "Reward eligibility grants no concrete rewards", 117, Step("prove", "Prove reward safety", context =>
+                    Operation(context.Service.ProveContributionRewardSafety(), context, "contribution-reward-safety"))),
+                Scenario("restore-clear-removes-transient-ledgers", "Restore clear removes transient contribution state", 120,
+                    Step("record", "Record damage contribution", context => Operation(context.Service.RecordDamageContribution(First<DamageTypeDefinition>(context), reuseTransaction: false), context, "contribution-clear-record")),
+                    Step("clear", "Clear contribution state", context => Operation(context.Service.ClearCombatContributions(), context, "contribution-clear"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

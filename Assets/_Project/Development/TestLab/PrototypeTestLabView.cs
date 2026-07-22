@@ -11,6 +11,7 @@ using UnityIsekaiGame.Combat.Defense;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Combat.Reactions;
+using UnityIsekaiGame.Combat.Contributions;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Factions;
@@ -50,6 +51,7 @@ namespace UnityIsekaiGame.Development
             "Defense 6.6",
             "Execution 6.7",
             "Reactions 6.8",
+            "Contribution 6.9",
             "Combat State 6.5",
             "Lifecycle 6.3",
             "Ongoing 6.4",
@@ -94,6 +96,7 @@ namespace UnityIsekaiGame.Development
         private Text defensiveActionsText;
         private Text combatExecutionText;
         private Text combatReactionText;
+        private Text combatContributionText;
         private Text combatStateText;
         private Text ongoingEffectsText;
         private Text automationText;
@@ -282,6 +285,11 @@ namespace UnityIsekaiGame.Development
                 combatReactionText.text = service.BuildCombatReactionSummary();
             }
 
+            if (combatContributionText != null)
+            {
+                combatContributionText.text = service.BuildCombatContributionSummary();
+            }
+
             if (automationText != null)
             {
                 automationText.text = service.BuildAutomationSummary();
@@ -354,6 +362,7 @@ namespace UnityIsekaiGame.Development
             Transform defensiveActionsSection = AddSection(content, "Defensive Actions Section");
             Transform combatExecutionSection = AddSection(content, "Combat Execution Section");
             Transform combatReactionSection = AddSection(content, "Combat Reactions Section");
+            Transform combatContributionSection = AddSection(content, "Combat Contribution Section");
             Transform combatStateSection = AddSection(content, "Combat State Section");
             Transform lifecycleSection = AddSection(content, "Lifecycle Section");
             Transform ongoingEffectsSection = AddSection(content, "Ongoing Effects Section");
@@ -379,6 +388,7 @@ namespace UnityIsekaiGame.Development
             BuildDefensiveActionsSection(defensiveActionsSection, font);
             BuildCombatExecutionSection(combatExecutionSection, font);
             BuildCombatReactionSection(combatReactionSection, font);
+            BuildCombatContributionSection(combatContributionSection, font);
             BuildCombatStateSection(combatStateSection, font);
             BuildLifecycleSection(lifecycleSection, font);
             BuildOngoingEffectsSection(ongoingEffectsSection, font);
@@ -653,6 +663,35 @@ namespace UnityIsekaiGame.Development
                 ("Execute Critical", () => service.ExecuteCombatReactionCritical(GetSelected(combatReactions, selectedCombatReactionIndex))),
                 ("Duplicate Proof", () => service.ExecuteCombatReactionDuplicateProof(GetSelected(combatReactions, selectedCombatReactionIndex))));
             combatReactionText = AddText(parent, font, "Combat reactions not available.", 12, 360);
+        }
+
+        private void BuildCombatContributionSection(Transform parent, Font font)
+        {
+            AddHeader(parent, font, "Feature 6.9 Combat Contribution / Credit / Reward Hooks");
+            AddButtonRow(parent, font,
+                ("Preview", () => service.PreviewContribution(GetSelected(damageTypes, selectedDamageIndex))),
+                ("Record Damage", () => service.RecordDamageContribution(GetSelected(damageTypes, selectedDamageIndex), reuseTransaction: false)),
+                ("Reuse Damage", () => service.RecordDamageContribution(GetSelected(damageTypes, selectedDamageIndex), reuseTransaction: true)),
+                ("Record Healing", () => service.RecordHealingContribution(reuseTransaction: false)));
+            AddButtonRow(parent, font,
+                ("Reuse Healing", () => service.RecordHealingContribution(reuseTransaction: true)),
+                ("Prevented", () => service.RecordFullyPreventedDamageContribution(GetSelected(damageTypes, selectedDamageIndex))),
+                ("Overkill", () => service.RecordOverkillContribution(GetSelected(damageTypes, selectedDamageIndex))),
+                ("Ongoing", () => service.RecordOngoingDamageContribution()));
+            AddButtonRow(parent, font,
+                ("React Dmg", () => service.RecordReactionDamageContribution()),
+                ("React Heal", () => service.RecordReactionHealingContribution()),
+                ("Block", () => service.RecordDefenseContribution(CombatContributionType.SuccessfulBlock)),
+                ("Parry", () => service.RecordDefenseContribution(CombatContributionType.SuccessfulParry)));
+            AddButtonRow(parent, font,
+                ("Dodge", () => service.RecordDefenseContribution(CombatContributionType.SuccessfulDodge)),
+                ("Advance", () => service.AdvanceContributionClock(GetFloat(amountInput, 30f))),
+                ("Defeat Credit", () => service.ResolveDefeatContributionCredit()),
+                ("Kill Credit", () => service.ResolveKillContributionCredit()));
+            AddButtonRow(parent, font,
+                ("Finalize", () => service.FinalizeContributionLedger()),
+                ("Clear", () => service.ClearCombatContributions()));
+            combatContributionText = AddText(parent, font, "Combat contribution not available.", 12, 360);
         }
 
         private void BuildCombatStateSection(Transform parent, Font font)
