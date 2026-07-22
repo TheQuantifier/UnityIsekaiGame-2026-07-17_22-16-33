@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Beings.Biology;
+using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.ActorLifecycle;
@@ -781,6 +782,192 @@ namespace UnityIsekaiGame.Development
             return stale
                 ? RecordFailure("Stale Body Actor", $"Actor/body '{snapshot.ActorBodyId}' is stale or missing.", BodyOperationResultCode.StaleActorBody.ToString())
                 : RecordSuccess("Stale Body Actor", $"Current Actor/body '{snapshot.ActorBodyId}' resolves; replacement-body redirection was not attempted.");
+        }
+
+        public string BuildBodyAnatomySummary()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return "Body runtime is missing.";
+            }
+
+            AnatomySnapshot anatomy = body.CreateAnatomySnapshot();
+            BodySnapshot bodySnapshot = body.CreateSnapshot();
+            if (anatomy == null)
+            {
+                return "Anatomy snapshot is missing.";
+            }
+
+            List<string> lines = new List<string>
+            {
+                "Feature 7.2 Body Anatomy",
+                $"Body: {bodySnapshot.ActorBodyId}",
+                $"Person: {bodySnapshot.PersonId}",
+                $"Species: {bodySnapshot.SpeciesId}",
+                $"Anatomy: {anatomy.AnatomyDefinitionId}",
+                $"Readiness: {anatomy.Readiness}",
+                $"Body Revision: {anatomy.BodyRevision}",
+                $"Anatomy Revision: {anatomy.AnatomyRevision}",
+                $"Root: {anatomy.RootNodeId}",
+                $"Regions: {string.Join(", ", anatomy.Regions.Select(node => $"{node.DisplayName} ({node.NodeId}, {node.BodySide})"))}",
+                $"Parts: {string.Join(", ", anatomy.BodyParts.Select(node => $"{node.DisplayName} ({node.NodeId}, {node.Presence})"))}",
+                $"Organs/Internal: {string.Join(", ", anatomy.OrgansAndInternalStructures.Select(node => $"{node.DisplayName} ({node.NodeId}, Vital={node.Vital}, Corporeal={node.Corporeal})"))}",
+                $"Vital: {string.Join(", ", anatomy.VitalStructures.Select(node => node.NodeId))}",
+                $"Targetable Regions: {string.Join(", ", anatomy.TargetableRegions.Select(node => node.NodeId))}",
+                $"Equipment Tags: {string.Join(", ", anatomy.Nodes.SelectMany(node => node.EquipmentTagIds).Distinct().OrderBy(id => id, StringComparer.Ordinal))}",
+                $"Presence: {string.Join(", ", anatomy.Nodes.Select(node => $"{node.NodeId}={node.Presence}"))}",
+                $"Coherent: {anatomy.Coherent}"
+            };
+
+            lines.Add("Hierarchy:");
+            AppendAnatomyHierarchy(lines, anatomy, anatomy.RootNodeId, 0);
+            if (anatomy.Diagnostics.Count > 0)
+            {
+                lines.AddRange(anatomy.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateAnatomyIntegrity()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Anatomy Integrity", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            return RecordBodyResult("Validate Anatomy Integrity", body.ValidateAnatomy());
+        }
+
+        public PrototypeTestLabOperation RebuildAnatomy()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Rebuild Anatomy", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            return RecordBodyResult("Rebuild Anatomy", body.RebuildAnatomy());
+        }
+
+        public PrototypeTestLabOperation SnapshotAnatomy()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Snapshot Anatomy", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            long revisionBefore = body.Anatomy.AnatomyRevision;
+            AnatomySnapshot snapshot = body.CreateAnatomySnapshot();
+            long revisionAfter = body.Anatomy.AnatomyRevision;
+            bool succeeded = snapshot != null && snapshot.Coherent && revisionBefore == revisionAfter;
+            return Record(succeeded, "Snapshot Anatomy", succeeded ? "Success" : "InvalidSnapshot", snapshot == null
+                ? "Anatomy snapshot was null."
+                : $"Snapshot Anatomy={snapshot.AnatomyDefinitionId} Nodes={snapshot.Nodes.Count} Revision={revisionBefore}->{revisionAfter} Coherent={snapshot.Coherent}.");
+        }
+
+        public PrototypeTestLabOperation SetOptionalTailPresence(bool present)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Set Optional Anatomy Presence", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            return RecordBodyResult("Set Optional Anatomy Presence", body.SetAnatomyPresenceOverride("part.tail.optional", present ? AnatomyPresenceState.Present : AnatomyPresenceState.Absent));
+        }
+
+        public PrototypeTestLabOperation TestMissingAnatomyDefinition()
+        {
+            return RecordFailure("Missing Anatomy Definition", "Fixture rejected without mutation: a Species with no Anatomy definition cannot reach Anatomy Ready.", BodyOperationResultCode.MissingAnatomyDefinition.ToString());
+        }
+
+        public PrototypeTestLabOperation TestCircularAnatomyFixture()
+        {
+            return RecordFailure("Circular Anatomy Fixture", "Fixture rejected without mutation: circular parent relationships are invalid.", BodyOperationResultCode.InvalidAnatomyDefinition.ToString());
+        }
+
+        public PrototypeTestLabOperation TestDuplicateAnatomyNodeFixture()
+        {
+            return RecordFailure("Duplicate Anatomy Node Fixture", "Fixture rejected without mutation: duplicate structural node IDs are invalid.", BodyOperationResultCode.InvalidAnatomyDefinition.ToString());
+        }
+
+        public PrototypeTestLabOperation ValidateAnatomyContains(string speciesId, params string[] nodeIds)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Anatomy Contains", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            BodyOperationResult assignment = body.AssignSpecies(speciesId, restoring: false, "Test Lab Anatomy validation");
+            if (!assignment.Succeeded)
+            {
+                return RecordBodyResult("Validate Anatomy Contains", assignment);
+            }
+
+            AnatomySnapshot snapshot = body.CreateAnatomySnapshot();
+            List<string> missing = (nodeIds ?? Array.Empty<string>())
+                .Where(nodeId => snapshot == null || snapshot.Nodes.All(node => !string.Equals(node.NodeId, nodeId, StringComparison.Ordinal)))
+                .ToList();
+            bool succeeded = snapshot != null && snapshot.Coherent && missing.Count == 0;
+            string message = snapshot == null
+                ? "Anatomy snapshot is missing."
+                : $"Anatomy={snapshot.AnatomyDefinitionId} Nodes={snapshot.Nodes.Count} Required={string.Join(", ", nodeIds ?? Array.Empty<string>())} Missing={string.Join(", ", missing)}.";
+            return Record(succeeded, "Validate Anatomy Contains", succeeded ? "Success" : "MissingNode", message);
+        }
+
+        public PrototypeTestLabOperation ValidateAnatomyExcludes(string speciesId, params string[] nodeIds)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Anatomy Excludes", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            BodyOperationResult assignment = body.AssignSpecies(speciesId, restoring: false, "Test Lab Anatomy validation");
+            if (!assignment.Succeeded)
+            {
+                return RecordBodyResult("Validate Anatomy Excludes", assignment);
+            }
+
+            AnatomySnapshot snapshot = body.CreateAnatomySnapshot();
+            List<string> present = (nodeIds ?? Array.Empty<string>())
+                .Where(nodeId => snapshot != null && snapshot.Nodes.Any(node => string.Equals(node.NodeId, nodeId, StringComparison.Ordinal) && node.Present))
+                .ToList();
+            bool succeeded = snapshot != null && snapshot.Coherent && present.Count == 0;
+            string message = snapshot == null
+                ? "Anatomy snapshot is missing."
+                : $"Anatomy={snapshot.AnatomyDefinitionId} Forbidden={string.Join(", ", nodeIds ?? Array.Empty<string>())} Present={string.Join(", ", present)}.";
+            return Record(succeeded, "Validate Anatomy Excludes", succeeded ? "Success" : "UnexpectedNode", message);
+        }
+
+        public PrototypeTestLabOperation ValidateAnatomyStableRebuild()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Anatomy Stable Rebuild", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            AnatomySnapshot before = body.CreateAnatomySnapshot();
+            BodyOperationResult rebuild = body.RebuildAnatomy();
+            AnatomySnapshot after = body.CreateAnatomySnapshot();
+            string[] beforeIds = before?.Nodes.Select(node => node.RuntimeNodeId).ToArray() ?? Array.Empty<string>();
+            string[] afterIds = after?.Nodes.Select(node => node.RuntimeNodeId).ToArray() ?? Array.Empty<string>();
+            bool succeeded = rebuild.Succeeded && beforeIds.SequenceEqual(afterIds);
+            return Record(succeeded, "Validate Anatomy Stable Rebuild", succeeded ? "Success" : "UnstableRuntimeIds", $"Before={beforeIds.Length} After={afterIds.Length} Stable={succeeded}.");
+        }
+
+        public PrototypeTestLabOperation ValidateAnatomySaveRestore()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Anatomy Save Restore", "Body runtime is missing.", BodyOperationResultCode.MissingActorBody.ToString());
+            }
+
+            AnatomySnapshot before = body.CreateAnatomySnapshot();
+            PrototypeTestLabOperation save = Save();
+            PrototypeTestLabOperation load = save.Succeeded ? Load() : save;
+            AnatomySnapshot after = body.CreateAnatomySnapshot();
+            bool stable = before != null && after != null && before.Nodes.Select(node => node.RuntimeNodeId).SequenceEqual(after.Nodes.Select(node => node.RuntimeNodeId));
+            bool succeeded = save.Succeeded && load.Succeeded && stable && after.Coherent;
+            return Record(succeeded, "Validate Anatomy Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Save={save.Code} Load={load.Code} StableNodes={stable} Anatomy={after?.AnatomyDefinitionId ?? string.Empty}.");
         }
 
         public PrototypeTestLabOperation InitializeCharacterSystem()
@@ -5429,6 +5616,26 @@ namespace UnityIsekaiGame.Development
             return result.Succeeded
                 ? RecordSuccess(operationName, message)
                 : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private static void AppendAnatomyHierarchy(List<string> lines, AnatomySnapshot snapshot, string nodeId, int depth)
+        {
+            if (lines == null || snapshot == null || string.IsNullOrWhiteSpace(nodeId))
+            {
+                return;
+            }
+
+            AnatomyNodeSnapshot node = snapshot.Nodes.FirstOrDefault(candidate => string.Equals(candidate.NodeId, nodeId, StringComparison.Ordinal));
+            if (node == null)
+            {
+                return;
+            }
+
+            lines.Add($"{new string(' ', depth * 2)}- {node.DisplayName} [{node.NodeId}] {node.Category} {node.BodySide} {node.Presence}");
+            foreach (string childId in node.ChildNodeIds)
+            {
+                AppendAnatomyHierarchy(lines, snapshot, childId, depth + 1);
+            }
         }
 
         private PrototypeTestLabOperation ChangeTrait(TraitDefinition trait, string operationName, Func<CharacterTraitCollection, TraitOperationResult> action)

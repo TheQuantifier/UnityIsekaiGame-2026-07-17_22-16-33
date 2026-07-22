@@ -1,0 +1,116 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a180000000000000000000000000004, type: 3}
+  m_Name: BasicSpiritAnatomy
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Anatomy.AnatomyDefinition
+  anatomyId: anatomy.basic-spirit
+  displayName: Basic Spirit Anatomy
+  description: Incorporeal anatomy with essence and a spiritual core but no conventional physical limbs.
+  schemaVersion: 1
+  compatibleBodyForms:
+  - {fileID: 11400000, guid: 7a160000000000000000000000000003, type: 2}
+  compatibleSpecies:
+  - {fileID: 11400000, guid: 7a170000000000000000000000000004, type: 2}
+  nodes:
+  - nodeId: structure.spirit-root
+    displayName: Spirit Body
+    description: Structural root for a spirit.
+    category: 9
+    parentNodeId: 
+    regionNodeId: 
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 0
+    targetable: 0
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds: []
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - spirit
+    tags: []
+    order: 0
+  - nodeId: region.essence
+    displayName: Essence
+    description: Targetable spiritual essence region.
+    category: 1
+    parentNodeId: structure.spirit-root
+    regionNodeId: 
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 0
+    targetable: 1
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.incorporeal-incompatible
+    futureDamageTagIds:
+    - damage.region.essence
+    futureBiologicalFunctionTags:
+    - spirit
+    tags: []
+    order: 10
+  - nodeId: essence.aura
+    displayName: Aura
+    description: Distributed spiritual essence.
+    category: 10
+    parentNodeId: region.essence
+    regionNodeId: region.essence
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 0
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.incorporeal-incompatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - spirit
+    tags: []
+    order: 20
+  - nodeId: core.spiritual
+    displayName: Spiritual Core
+    description: Vital spiritual core.
+    category: 6
+    parentNodeId: essence.aura
+    regionNodeId: region.essence
+    bodySide: 1
+    internalStructure: 1
+    corporeal: 0
+    targetable: 0
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds: []
+    futureDamageTagIds:
+    - damage.core.spiritual
+    futureBiologicalFunctionTags:
+    - spirit
+    tags: []
+    order: 30
+  tags: []

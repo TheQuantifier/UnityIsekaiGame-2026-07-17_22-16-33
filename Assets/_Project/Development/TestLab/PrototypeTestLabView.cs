@@ -42,6 +42,7 @@ namespace UnityIsekaiGame.Development
             "Player",
             "Character 5.6",
             "Body Species 7.1",
+            "Body Anatomy 7.2",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -92,6 +93,7 @@ namespace UnityIsekaiGame.Development
         private Text persistenceIntegrationText;
         private Text characterSystemText;
         private Text bodySpeciesText;
+        private Text bodyAnatomyText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -171,7 +173,12 @@ namespace UnityIsekaiGame.Development
         private readonly List<TraitDefinition> traits = new List<TraitDefinition>();
         private readonly List<RequirementSetDefinition> requirements = new List<RequirementSetDefinition>();
         private readonly List<GameObject> sectionRoots = new List<GameObject>();
-        private readonly List<Button> sectionButtons = new List<Button>();
+        private readonly List<Button> sectionGroupButtons = new List<Button>();
+        private readonly List<Button> sectionFeatureButtons = new List<Button>();
+        private readonly List<SectionNavigationGroup> sectionGroups = new List<SectionNavigationGroup>();
+        private readonly List<Text> dynamicTextBlocks = new List<Text>();
+        private Transform sectionFeatureMenuRoot;
+        private int activeSectionGroupIndex;
         private bool automationStopOnFirstFailure;
         private bool automationAutoScroll = true;
         private bool automationCancelRequested;
@@ -219,111 +226,7 @@ namespace UnityIsekaiGame.Development
                 return;
             }
 
-            if (overviewText != null)
-            {
-                overviewText.text = service.BuildOverview();
-            }
-
-            if (locationText != null)
-            {
-                locationText.text = service.BuildLocationSummary();
-            }
-
-            if (worldEntityText != null)
-            {
-                worldEntityText.text = service.BuildWorldEntitySummary();
-            }
-
-            if (persistenceText != null)
-            {
-                persistenceText.text = service.BuildSaveSlotSummary();
-            }
-
-            if (persistenceIntegrationText != null)
-            {
-                persistenceIntegrationText.text = service.BuildPersistenceIntegrationSummary();
-            }
-
-            if (identityProgressionText != null)
-            {
-                identityProgressionText.text = service.BuildIdentityProgressionSummary();
-            }
-
-            if (characterSystemText != null)
-            {
-                characterSystemText.text = service.BuildCharacterSystemSummary(developmentView: true);
-            }
-
-            if (bodySpeciesText != null)
-            {
-                bodySpeciesText.text = service.BuildBodySpeciesSummary();
-            }
-
-            if (attributesCalculatedStatsText != null)
-            {
-                attributesCalculatedStatsText.text = service.BuildAttributeCalculatedStatsSummary();
-            }
-
-            if (resourcesText != null)
-            {
-                resourcesText.text = service.BuildCurrentResourcesSummary();
-            }
-
-            if (lifecycleText != null)
-            {
-                lifecycleText.text = service.BuildLifecycleSummary();
-            }
-
-            if (combatStateText != null)
-            {
-                combatStateText.text = service.BuildCombatStateSummary();
-            }
-
-            if (defensiveActionsText != null)
-            {
-                defensiveActionsText.text = service.BuildDefensiveActionSummary();
-            }
-
-            if (combatExecutionText != null)
-            {
-                combatExecutionText.text = service.BuildCombatExecutionSummary();
-            }
-
-            if (combatReactionText != null)
-            {
-                combatReactionText.text = service.BuildCombatReactionSummary();
-            }
-
-            if (combatContributionText != null)
-            {
-                combatContributionText.text = service.BuildCombatContributionSummary();
-            }
-
-            if (combatRuntimeText != null)
-            {
-                combatRuntimeText.text = service.BuildCombatRuntimeSummary();
-            }
-
-            if (automationText != null)
-            {
-                automationText.text = service.BuildAutomationSummary();
-            }
-
-            if (ongoingEffectsText != null)
-            {
-                ongoingEffectsText.text = service.BuildOngoingEffectsSummary();
-            }
-
-            if (skillsText != null)
-            {
-                skillsText.text = service.BuildSkillsSummary(includeHidden: true);
-            }
-
-            if (traitsText != null)
-            {
-                traitsText.text = service.BuildTraitsSummary(includeHidden: true);
-            }
-
+            RefreshActiveSectionSummary();
             UpdateSelectorLabels();
             UpdateLatestOperation();
             UpdateHistory();
@@ -367,6 +270,7 @@ namespace UnityIsekaiGame.Development
             Transform playerSection = AddSection(content, "Player Section");
             Transform feature56Section = AddSection(content, "Character 5.6 Section");
             Transform bodySpeciesSection = AddSection(content, "Body Species 7.1 Section");
+            Transform bodyAnatomySection = AddSection(content, "Body Anatomy 7.2 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -395,6 +299,7 @@ namespace UnityIsekaiGame.Development
             BuildPlayerSection(playerSection, font);
             BuildFeature56Section(feature56Section, font);
             BuildBodySpeciesSection(bodySpeciesSection, font);
+            BuildBodyAnatomySection(bodyAnatomySection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -484,6 +389,29 @@ namespace UnityIsekaiGame.Development
                 ("Save", () => service.Save()),
                 ("Load", () => service.Load()));
             bodySpeciesText = AddText(parent, font, "Body runtime not available.", 12, 500);
+        }
+
+        private void BuildBodyAnatomySection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Human", () => service.AssignBodySpecies("species.human")),
+                ("Construct", () => service.AssignBodySpecies("species.basic-construct")),
+                ("Spirit", () => service.AssignBodySpecies("species.basic-spirit")));
+            AddButtonRow(parent, font,
+                ("Validate", () => service.ValidateAnatomyIntegrity()),
+                ("Snapshot", () => service.SnapshotAnatomy()),
+                ("Rebuild", () => service.RebuildAnatomy()),
+                ("Stable IDs", () => service.ValidateAnatomyStableRebuild()));
+            AddButtonRow(parent, font,
+                ("Tail Present", () => service.SetOptionalTailPresence(true)),
+                ("Tail Absent", () => service.SetOptionalTailPresence(false)),
+                ("Save/Load", () => service.ValidateAnatomySaveRestore()));
+            AddButtonRow(parent, font,
+                ("Missing Anatomy", () => service.TestMissingAnatomyDefinition()),
+                ("Circular Fixture", () => service.TestCircularAnatomyFixture()),
+                ("Duplicate Fixture", () => service.TestDuplicateAnatomyNodeFixture()),
+                ("Stale Actor", () => service.TestStaleBodyActor()));
+            bodyAnatomyText = AddText(parent, font, "Anatomy runtime not available.", 12, 620);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -955,7 +883,7 @@ namespace UnityIsekaiGame.Development
                 ("Export MD", () => service.ExportAutomationMarkdownReport()),
                 ("Stop On Fail", ToggleAutomationStopOnFirstFailure),
                 ("Auto Scroll", ToggleAutomationAutoScroll));
-            automationText = AddText(parent, font, "Automation not run.", 12, 520);
+            automationText = AddReportText(parent, font, "Automation not run.", 12, 150);
         }
 
         private void BuildScenarioSection(Transform parent, Font font)
@@ -1032,9 +960,89 @@ namespace UnityIsekaiGame.Development
             SetValue(requirementValueText, FormatSelected(requirements, selectedRequirementIndex, PrototypeTestLabService.FormatDefinition));
         }
 
+        private void RefreshActiveSectionSummary()
+        {
+            if (service == null || activeSectionIndex < 0 || activeSectionIndex >= SectionNames.Length)
+            {
+                return;
+            }
+
+            switch (SectionNames[activeSectionIndex])
+            {
+                case "Overview":
+                    SetValue(overviewText, service.BuildOverview());
+                    break;
+                case "Character 5.6":
+                    SetValue(characterSystemText, service.BuildCharacterSystemSummary(developmentView: true));
+                    break;
+                case "Body Species 7.1":
+                    SetValue(bodySpeciesText, service.BuildBodySpeciesSummary());
+                    break;
+                case "Body Anatomy 7.2":
+                    SetValue(bodyAnatomyText, service.BuildBodyAnatomySummary());
+                    break;
+                case "Identity 5.1":
+                    SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
+                    break;
+                case "Numbers 5.4a":
+                    SetValue(attributesCalculatedStatsText, service.BuildAttributeCalculatedStatsSummary());
+                    break;
+                case "Resources 5.4b":
+                    SetValue(resourcesText, service.BuildCurrentResourcesSummary());
+                    break;
+                case "Traits 5.5":
+                    SetValue(traitsText, service.BuildTraitsSummary(includeHidden: true));
+                    break;
+                case "Skills 5.3":
+                    SetValue(skillsText, service.BuildSkillsSummary(includeHidden: true));
+                    break;
+                case "Defense 6.6":
+                    SetValue(defensiveActionsText, service.BuildDefensiveActionSummary());
+                    break;
+                case "Execution 6.7":
+                    SetValue(combatExecutionText, service.BuildCombatExecutionSummary());
+                    break;
+                case "Reactions 6.8":
+                    SetValue(combatReactionText, service.BuildCombatReactionSummary());
+                    break;
+                case "Contribution 6.9":
+                    SetValue(combatContributionText, service.BuildCombatContributionSummary());
+                    break;
+                case "Combat Overview 6.10":
+                case "Combat":
+                    SetValue(combatRuntimeText, service.BuildCombatRuntimeSummary());
+                    break;
+                case "Combat State 6.5":
+                    SetValue(combatStateText, service.BuildCombatStateSummary());
+                    break;
+                case "Lifecycle 6.3":
+                    SetValue(lifecycleText, service.BuildLifecycleSummary());
+                    break;
+                case "Ongoing 6.4":
+                    SetValue(ongoingEffectsText, service.BuildOngoingEffectsSummary());
+                    break;
+                case "Persistence":
+                    SetValue(persistenceText, service.BuildSaveSlotSummary());
+                    SetValue(persistenceIntegrationText, service.BuildPersistenceIntegrationSummary());
+                    break;
+                case "Location":
+                    SetValue(locationText, service.BuildLocationSummary());
+                    break;
+                case "World Entities":
+                    SetValue(worldEntityText, service.BuildWorldEntitySummary());
+                    break;
+                case "Automation":
+                    SetValue(automationText, service.BuildAutomationSummary());
+                    break;
+                case "Diagnostics":
+                    UpdateHistory();
+                    break;
+            }
+        }
+
         private void UpdateHistory()
         {
-            if (historyText == null)
+            if (historyText == null || !historyText.gameObject.activeInHierarchy)
             {
                 return;
             }
@@ -1128,14 +1136,24 @@ namespace UnityIsekaiGame.Development
                 selectedIndex += count;
             }
 
-            Refresh();
+            UpdateSelectorLabels();
         }
 
         private void CycleAutomationSuite(int direction)
         {
-            CycleSelection(ref selectedAutomationSuiteIndex, automationSuites.Count, direction);
+            if (automationSuites.Count <= 0)
+            {
+                return;
+            }
+
+            selectedAutomationSuiteIndex = (selectedAutomationSuiteIndex + direction) % automationSuites.Count;
+            if (selectedAutomationSuiteIndex < 0)
+            {
+                selectedAutomationSuiteIndex += automationSuites.Count;
+            }
+
             RefreshAutomationScenarioOptions();
-            Refresh();
+            UpdateSelectorLabels();
         }
 
         private void RefreshAutomationScenarioOptions()
@@ -1158,7 +1176,7 @@ namespace UnityIsekaiGame.Development
             automationAutoScroll = !automationAutoScroll;
             if (automationAutoScroll && bodyScrollRect != null)
             {
-                bodyScrollRect.verticalNormalizedPosition = 0f;
+                ScrollBodyToBottom();
             }
         }
 
@@ -1234,7 +1252,7 @@ namespace UnityIsekaiGame.Development
                 Refresh();
                 if (automationAutoScroll && bodyScrollRect != null)
                 {
-                    bodyScrollRect.verticalNormalizedPosition = 0f;
+                    ScrollBodyToBottom();
                 }
 
                 if (automationStopOnFirstFailure && !operation.Succeeded)
@@ -1265,46 +1283,220 @@ namespace UnityIsekaiGame.Development
             }
 
             activeSectionIndex = sectionIndex;
+            int previousGroupIndex = activeSectionGroupIndex;
+            activeSectionGroupIndex = FindSectionGroupIndex(activeSectionIndex);
+            if (activeSectionGroupIndex != previousGroupIndex)
+            {
+                RebuildSectionFeatureMenu(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            }
+
             for (int i = 0; i < sectionRoots.Count; i++)
             {
                 sectionRoots[i].SetActive(i == activeSectionIndex);
             }
 
             UpdateSectionButtonStates();
+            RefreshActiveSectionSummary();
             Canvas.ForceUpdateCanvases();
             if (bodyScrollRect != null)
             {
-                bodyScrollRect.verticalNormalizedPosition = 1f;
+                ScrollBodyToTop();
             }
+        }
+
+        private void ScrollBodyToTop()
+        {
+            if (bodyScrollRect == null)
+            {
+                return;
+            }
+
+            Canvas.ForceUpdateCanvases();
+            bodyScrollRect.StopMovement();
+            bodyScrollRect.verticalNormalizedPosition = 1f;
+        }
+
+        private void ScrollBodyToBottom()
+        {
+            if (bodyScrollRect == null)
+            {
+                return;
+            }
+
+            Canvas.ForceUpdateCanvases();
+            bodyScrollRect.StopMovement();
+            bodyScrollRect.verticalNormalizedPosition = 0f;
         }
 
         private void AddSectionTabs(Transform parent, Font font)
         {
-            sectionButtons.Clear();
-            for (int start = 0; start < SectionNames.Length; start += 5)
+            sectionGroupButtons.Clear();
+            sectionFeatureButtons.Clear();
+            sectionGroups.Clear();
+            sectionGroups.AddRange(BuildSectionNavigationGroups());
+
+            GameObject groupRow = CreateRow("Test Lab Step Menus", parent, 36f);
+            for (int i = 0; i < sectionGroups.Count; i++)
             {
-                GameObject row = CreateRow("Test Lab Tabs", parent, 36f);
-                int end = Mathf.Min(start + 5, SectionNames.Length);
-                for (int i = start; i < end; i++)
-                {
-                    int sectionIndex = i;
-                    Button button = AddButton(row.transform, font, SectionNames[i], 10);
-                    button.onClick.AddListener(() => SetActiveSection(sectionIndex));
-                    sectionButtons.Add(button);
-                }
+                int groupIndex = i;
+                Button button = AddButton(groupRow.transform, font, sectionGroups[i].DisplayName + " v", 10);
+                button.onClick.AddListener(() => SetActiveSectionGroup(groupIndex));
+                sectionGroupButtons.Add(button);
             }
+
+            GameObject featureRow = CreateRow("Test Lab Feature Menu", parent, 36f);
+            sectionFeatureMenuRoot = featureRow.transform;
+            RebuildSectionFeatureMenu(font);
         }
 
         private void UpdateSectionButtonStates()
         {
-            for (int i = 0; i < sectionButtons.Count; i++)
+            if (activeSectionGroupIndex < 0 || activeSectionGroupIndex >= sectionGroups.Count)
             {
-                Image image = sectionButtons[i] == null ? null : sectionButtons[i].GetComponent<Image>();
+                activeSectionGroupIndex = FindSectionGroupIndex(activeSectionIndex);
+            }
+
+            for (int i = 0; i < sectionGroupButtons.Count; i++)
+            {
+                Image image = sectionGroupButtons[i] == null ? null : sectionGroupButtons[i].GetComponent<Image>();
                 if (image != null)
                 {
-                    image.color = i == activeSectionIndex ? ActiveButtonColor : ButtonColor;
+                    image.color = i == activeSectionGroupIndex ? ActiveButtonColor : ButtonColor;
                 }
             }
+
+            for (int i = 0; i < sectionFeatureButtons.Count; i++)
+            {
+                Image image = sectionFeatureButtons[i] == null ? null : sectionFeatureButtons[i].GetComponent<Image>();
+                if (image != null)
+                {
+                    int sectionIndex = i >= 0 && activeSectionGroupIndex >= 0 && activeSectionGroupIndex < sectionGroups.Count && i < sectionGroups[activeSectionGroupIndex].SectionIndices.Count
+                        ? sectionGroups[activeSectionGroupIndex].SectionIndices[i]
+                        : -1;
+                    image.color = sectionIndex == activeSectionIndex ? ActiveButtonColor : ButtonColor;
+                }
+            }
+        }
+
+        private void SetActiveSectionGroup(int groupIndex)
+        {
+            if (groupIndex < 0 || groupIndex >= sectionGroups.Count)
+            {
+                return;
+            }
+
+            activeSectionGroupIndex = groupIndex;
+            RebuildSectionFeatureMenu(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            UpdateSectionButtonStates();
+        }
+
+        private void RebuildSectionFeatureMenu(Font font)
+        {
+            if (sectionFeatureMenuRoot == null || font == null)
+            {
+                return;
+            }
+
+            for (int i = sectionFeatureMenuRoot.childCount - 1; i >= 0; i--)
+            {
+                Destroy(sectionFeatureMenuRoot.GetChild(i).gameObject);
+            }
+
+            sectionFeatureButtons.Clear();
+            if (activeSectionGroupIndex < 0 || activeSectionGroupIndex >= sectionGroups.Count)
+            {
+                activeSectionGroupIndex = FindSectionGroupIndex(activeSectionIndex);
+            }
+
+            if (activeSectionGroupIndex < 0 || activeSectionGroupIndex >= sectionGroups.Count)
+            {
+                activeSectionGroupIndex = 0;
+            }
+
+            SectionNavigationGroup group = sectionGroups[activeSectionGroupIndex];
+            foreach (int sectionIndex in group.SectionIndices)
+            {
+                if (sectionIndex < 0 || sectionIndex >= SectionNames.Length)
+                {
+                    continue;
+                }
+
+                int capturedIndex = sectionIndex;
+                Button button = AddButton(sectionFeatureMenuRoot, font, SectionNames[sectionIndex], 10);
+                button.onClick.AddListener(() => SetActiveSection(capturedIndex));
+                sectionFeatureButtons.Add(button);
+            }
+        }
+
+        private int FindSectionGroupIndex(int sectionIndex)
+        {
+            for (int i = 0; i < sectionGroups.Count; i++)
+            {
+                if (ContainsSection(sectionGroups[i], sectionIndex))
+                {
+                    return i;
+                }
+            }
+
+            return 0;
+        }
+
+        private static bool ContainsSection(SectionNavigationGroup group, int sectionIndex)
+        {
+            if (group == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < group.SectionIndices.Count; i++)
+            {
+                if (group.SectionIndices[i] == sectionIndex)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IReadOnlyList<SectionNavigationGroup> BuildSectionNavigationGroups()
+        {
+            return new[]
+            {
+                Group("General Tools", "Overview", "Player", "Automation", "Scenarios", "Diagnostics"),
+                Group("World Data Step 3", "Inventory", "Statuses", "Quests"),
+                Group("Persistence Step 4", "Persistence", "Location", "World Entities"),
+                Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
+                Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
+                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2")
+            };
+        }
+
+        private static SectionNavigationGroup Group(string displayName, params string[] sectionNames)
+        {
+            List<int> indices = new List<int>();
+            foreach (string sectionName in sectionNames)
+            {
+                int index = Array.IndexOf(SectionNames, sectionName);
+                if (index >= 0)
+                {
+                    indices.Add(index);
+                }
+            }
+
+            return new SectionNavigationGroup(displayName, indices);
+        }
+
+        private sealed class SectionNavigationGroup
+        {
+            public SectionNavigationGroup(string displayName, IReadOnlyList<int> sectionIndices)
+            {
+                DisplayName = displayName ?? string.Empty;
+                SectionIndices = sectionIndices ?? Array.Empty<int>();
+            }
+
+            public string DisplayName { get; }
+            public IReadOnlyList<int> SectionIndices { get; }
         }
 
         private Transform AddSection(Transform parent, string name)
@@ -1323,20 +1515,29 @@ namespace UnityIsekaiGame.Development
 
         private ScrollRect AddBodyScroll(Transform parent)
         {
-            GameObject scrollObject = CreateChild("Test Lab Body", parent, typeof(Image), typeof(Mask), typeof(ScrollRect), typeof(LayoutElement));
+            GameObject scrollObject = CreateChild("Test Lab Body", parent, typeof(Image), typeof(ScrollRect), typeof(LayoutElement));
             scrollObject.GetComponent<Image>().color = new Color(0.025f, 0.028f, 0.035f, 0.92f);
-            scrollObject.GetComponent<Mask>().showMaskGraphic = true;
             LayoutElement scrollLayout = scrollObject.GetComponent<LayoutElement>();
             scrollLayout.minHeight = 220f;
             scrollLayout.flexibleHeight = 1f;
 
-            GameObject content = CreateChild("Test Lab Body Content", scrollObject.transform, typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+            GameObject viewport = CreateChild("Viewport", scrollObject.transform, typeof(Image), typeof(Mask));
+            Image viewportImage = viewport.GetComponent<Image>();
+            viewportImage.color = new Color(0.025f, 0.028f, 0.035f, 0.92f);
+            viewport.GetComponent<Mask>().showMaskGraphic = false;
+            RectTransform viewportRect = viewport.GetComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.offsetMin = new Vector2(0f, 0f);
+            viewportRect.offsetMax = new Vector2(-16f, 0f);
+
+            GameObject content = CreateChild("Test Lab Body Content", viewport.transform, typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
             RectTransform contentRect = content.GetComponent<RectTransform>();
             contentRect.anchorMin = new Vector2(0f, 1f);
             contentRect.anchorMax = new Vector2(1f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.offsetMin = new Vector2(10f, 0f);
-            contentRect.offsetMax = new Vector2(-24f, -10f);
+            contentRect.offsetMax = new Vector2(-10f, -10f);
             VerticalLayoutGroup layout = content.GetComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(0, 0, 10, 10);
             layout.spacing = 8f;
@@ -1348,13 +1549,16 @@ namespace UnityIsekaiGame.Development
 
             ScrollRect scrollRect = scrollObject.GetComponent<ScrollRect>();
             scrollRect.content = contentRect;
-            scrollRect.viewport = scrollObject.GetComponent<RectTransform>();
+            scrollRect.viewport = viewportRect;
             scrollRect.horizontal = false;
             scrollRect.vertical = true;
-            scrollRect.scrollSensitivity = 48f;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.inertia = true;
+            scrollRect.decelerationRate = 0.18f;
+            scrollRect.scrollSensitivity = 72f;
             scrollRect.verticalScrollbar = AddVerticalScrollbar(scrollObject.transform);
-            scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport;
-            scrollRect.verticalScrollbarSpacing = -2f;
+            scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+            scrollRect.verticalScrollbarSpacing = 2f;
             return scrollRect;
         }
 
@@ -1367,16 +1571,21 @@ namespace UnityIsekaiGame.Development
             scrollbarRect.anchorMin = new Vector2(1f, 0f);
             scrollbarRect.anchorMax = Vector2.one;
             scrollbarRect.pivot = new Vector2(1f, 0.5f);
-            scrollbarRect.offsetMin = new Vector2(-12f, 4f);
+            scrollbarRect.offsetMin = new Vector2(-14f, 4f);
             scrollbarRect.offsetMax = new Vector2(-4f, -4f);
 
             GameObject handleObject = CreateChild("Handle", scrollbarObject.transform, typeof(Image));
             Image handle = handleObject.GetComponent<Image>();
             handle.color = new Color(0.24f, 0.42f, 0.50f, 1f);
+            RectTransform handleRect = handleObject.GetComponent<RectTransform>();
+            handleRect.anchorMin = Vector2.zero;
+            handleRect.anchorMax = Vector2.one;
+            handleRect.offsetMin = Vector2.zero;
+            handleRect.offsetMax = Vector2.zero;
             Scrollbar scrollbar = scrollbarObject.GetComponent<Scrollbar>();
             scrollbar.direction = Scrollbar.Direction.BottomToTop;
             scrollbar.targetGraphic = handle;
-            scrollbar.handleRect = handleObject.GetComponent<RectTransform>();
+            scrollbar.handleRect = handleRect;
             return scrollbar;
         }
 
@@ -1463,6 +1672,25 @@ namespace UnityIsekaiGame.Development
             return label;
         }
 
+        private Text AddReportText(Transform parent, Font font, string text, int size, float minimumHeight)
+        {
+            GameObject obj = CreateChild("Report Text", parent, typeof(Text), typeof(LayoutElement));
+            Text label = obj.GetComponent<Text>();
+            label.font = font;
+            label.fontSize = size;
+            label.fontStyle = FontStyle.Normal;
+            label.alignment = TextAnchor.UpperLeft;
+            label.color = Color.white;
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            label.verticalOverflow = VerticalWrapMode.Overflow;
+            label.text = text;
+            SetElement(obj, 0f, minimumHeight, 1f);
+            obj.GetComponent<LayoutElement>().minHeight = minimumHeight;
+            dynamicTextBlocks.Add(label);
+            UpdateDynamicTextHeight(label);
+            return label;
+        }
+
         private static GameObject CreateRow(string name, Transform parent, float height)
         {
             GameObject row = CreateChild(name, parent, typeof(HorizontalLayoutGroup), typeof(LayoutElement));
@@ -1490,12 +1718,35 @@ namespace UnityIsekaiGame.Development
             layoutElement.flexibleHeight = 0f;
         }
 
-        private static void SetValue(Text text, string value)
+        private void SetValue(Text text, string value)
         {
             if (text != null)
             {
                 text.text = value;
+                if (dynamicTextBlocks.Contains(text))
+                {
+                    UpdateDynamicTextHeight(text);
+                }
             }
+        }
+
+        private static void UpdateDynamicTextHeight(Text text)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            LayoutElement layout = text.GetComponent<LayoutElement>();
+            if (layout == null)
+            {
+                return;
+            }
+
+            float minimumHeight = Mathf.Max(80f, layout.minHeight);
+            Canvas.ForceUpdateCanvases();
+            float preferredHeight = Mathf.Ceil(text.preferredHeight) + 12f;
+            layout.preferredHeight = Mathf.Max(minimumHeight, preferredHeight);
         }
 
         private static GameObject CreateChild(string name, Transform parent, params Type[] components)

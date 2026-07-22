@@ -1,0 +1,273 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a180000000000000000000000000004, type: 3}
+  m_Name: BasicConstructAnatomy
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Anatomy.AnatomyDefinition
+  anatomyId: anatomy.basic-construct
+  displayName: Basic Construct Anatomy
+  description: Compact construct anatomy with chassis, manipulators, locomotion, and a vital power core.
+  schemaVersion: 1
+  compatibleBodyForms:
+  - {fileID: 11400000, guid: 7a160000000000000000000000000002, type: 2}
+  compatibleSpecies:
+  - {fileID: 11400000, guid: 7a170000000000000000000000000003, type: 2}
+  nodes:
+  - nodeId: structure.construct-root
+    displayName: Construct Body
+    description: Structural root for a built construct.
+    category: 2
+    parentNodeId: 
+    regionNodeId: 
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 0
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds: []
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 0
+  - nodeId: region.chassis
+    displayName: Chassis
+    description: Main construct chassis.
+    category: 1
+    parentNodeId: structure.construct-root
+    regionNodeId: 
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 2
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.torso-compatible
+    futureDamageTagIds:
+    - damage.region.chassis
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 10
+  - nodeId: region.sensor-housing
+    displayName: Sensor Housing
+    description: Construct sensory housing.
+    category: 1
+    parentNodeId: structure.construct-root
+    regionNodeId: 
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.head-compatible
+    futureDamageTagIds:
+    - damage.region.sensor-housing
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 20
+  - nodeId: region.manipulator.left
+    displayName: Left Manipulator
+    description: Left construct manipulator.
+    category: 1
+    parentNodeId: structure.construct-root
+    regionNodeId: 
+    bodySide: 2
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: manipulator
+    mirrorGroup: region.manipulator
+    equipmentTagIds:
+    - equipment.manipulator-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 30
+  - nodeId: region.manipulator.right
+    displayName: Right Manipulator
+    description: Right construct manipulator.
+    category: 1
+    parentNodeId: structure.construct-root
+    regionNodeId: 
+    bodySide: 3
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: manipulator
+    mirrorGroup: region.manipulator
+    equipmentTagIds:
+    - equipment.manipulator-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 40
+  - nodeId: part.chassis
+    displayName: Chassis
+    description: Durable outer chassis.
+    category: 2
+    parentNodeId: region.chassis
+    regionNodeId: region.chassis
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 2
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.torso-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - structure
+    tags: []
+    order: 50
+  - nodeId: part.sensor-housing
+    displayName: Sensor Housing
+    description: Construct head-like sensor housing.
+    category: 2
+    parentNodeId: region.sensor-housing
+    regionNodeId: region.sensor-housing
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.head-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - sensing
+    tags: []
+    order: 60
+  - nodeId: part.manipulator.left
+    displayName: Left Manipulator
+    description: Left construct manipulator.
+    category: 4
+    parentNodeId: region.manipulator.left
+    regionNodeId: region.manipulator.left
+    bodySide: 2
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: manipulator
+    mirrorGroup: part.manipulator
+    equipmentTagIds:
+    - equipment.manipulator-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - manipulation
+    tags: []
+    order: 70
+  - nodeId: part.manipulator.right
+    displayName: Right Manipulator
+    description: Right construct manipulator.
+    category: 4
+    parentNodeId: region.manipulator.right
+    regionNodeId: region.manipulator.right
+    bodySide: 3
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: manipulator
+    mirrorGroup: part.manipulator
+    equipmentTagIds:
+    - equipment.manipulator-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - manipulation
+    tags: []
+    order: 80
+  - nodeId: structure.locomotion.base
+    displayName: Locomotion Base
+    description: Lower locomotion structure.
+    category: 8
+    parentNodeId: part.chassis
+    regionNodeId: region.chassis
+    bodySide: 7
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.foot-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - locomotion
+    tags: []
+    order: 90
+  - nodeId: core.power
+    displayName: Power Core
+    description: Vital construct power core.
+    category: 6
+    parentNodeId: part.chassis
+    regionNodeId: region.chassis
+    bodySide: 1
+    internalStructure: 1
+    corporeal: 1
+    targetable: 0
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds: []
+    futureDamageTagIds:
+    - damage.core.power
+    futureBiologicalFunctionTags:
+    - power
+    tags: []
+    order: 100
+  tags: []
