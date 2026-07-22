@@ -41,6 +41,7 @@ namespace UnityIsekaiGame.Development
             "Overview",
             "Player",
             "Character 5.6",
+            "Body Species 7.1",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -90,6 +91,7 @@ namespace UnityIsekaiGame.Development
         private Text persistenceText;
         private Text persistenceIntegrationText;
         private Text characterSystemText;
+        private Text bodySpeciesText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -252,6 +254,11 @@ namespace UnityIsekaiGame.Development
                 characterSystemText.text = service.BuildCharacterSystemSummary(developmentView: true);
             }
 
+            if (bodySpeciesText != null)
+            {
+                bodySpeciesText.text = service.BuildBodySpeciesSummary();
+            }
+
             if (attributesCalculatedStatsText != null)
             {
                 attributesCalculatedStatsText.text = service.BuildAttributeCalculatedStatsSummary();
@@ -359,6 +366,7 @@ namespace UnityIsekaiGame.Development
             Transform overviewSection = AddSection(content, "Overview Section");
             Transform playerSection = AddSection(content, "Player Section");
             Transform feature56Section = AddSection(content, "Character 5.6 Section");
+            Transform bodySpeciesSection = AddSection(content, "Body Species 7.1 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -386,6 +394,7 @@ namespace UnityIsekaiGame.Development
             BuildOverviewSection(overviewSection, font);
             BuildPlayerSection(playerSection, font);
             BuildFeature56Section(feature56Section, font);
+            BuildBodySpeciesSection(bodySpeciesSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -455,6 +464,26 @@ namespace UnityIsekaiGame.Development
                 ("Refresh", Refresh),
                 ("Diagnostics", () => RunDiagnostics()));
             characterSystemText = AddText(parent, font, "Character System not available.", 12, 420);
+        }
+
+        private void BuildBodySpeciesSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Preview Human", () => service.PreviewBodySpecies("species.human")),
+                ("Assign Human", () => service.AssignBodySpecies("species.human")),
+                ("Reapply", () => service.ReapplyBodySpecies()));
+            AddButtonRow(parent, font,
+                ("Undead Human", () => service.AssignBodySpecies("species.undead-human")),
+                ("Construct", () => service.AssignBodySpecies("species.basic-construct")),
+                ("Spirit", () => service.AssignBodySpecies("species.basic-spirit")));
+            AddButtonRow(parent, font,
+                ("Missing Species", () => service.TestMissingBodySpecies()),
+                ("Stale Actor", () => service.TestStaleBodyActor()),
+                ("Validate", () => service.ValidateBodyIntegrity()));
+            AddButtonRow(parent, font,
+                ("Save", () => service.Save()),
+                ("Load", () => service.Load()));
+            bodySpeciesText = AddText(parent, font, "Body runtime not available.", 12, 500);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)

@@ -18,6 +18,8 @@ namespace UnityIsekaiGame.Capabilities
     public enum CapabilitySourceCategory
     {
         Trait,
+        Species,
+        BiologicalClassification,
         Skill,
         Role,
         SocialStatus,

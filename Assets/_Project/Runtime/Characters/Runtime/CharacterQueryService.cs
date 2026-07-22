@@ -1,4 +1,5 @@
 using UnityIsekaiGame.ActorLifecycle;
+using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Capabilities;
 using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.ResourceSystem;
@@ -64,6 +65,49 @@ namespace UnityIsekaiGame.CharacterSystem
         public CapabilitySnapshot GetCapability(string capabilityId)
         {
             return character?.Traits == null ? null : character.Traits.Capabilities.Evaluate(capabilityId);
+        }
+
+        public BodySnapshot GetBodySnapshot()
+        {
+            return character?.Body == null ? null : character.Body.CreateSnapshot();
+        }
+
+        public SpeciesDefinition GetSpecies()
+        {
+            return character?.Body == null ? null : character.Body.Species;
+        }
+
+        public BiologicalClassificationDefinition GetBiologicalClassification()
+        {
+            return character?.Body == null ? null : character.Body.BiologicalClassification;
+        }
+
+        public BodyFormDefinition GetBodyForm()
+        {
+            return character?.Body == null ? null : character.Body.BodyForm;
+        }
+
+        public bool HasBiologicalCapability(string capabilityKey)
+        {
+            CapabilitySnapshot snapshot = GetCapability(capabilityKey);
+            return snapshot != null && snapshot.BooleanValue;
+        }
+
+        public bool IsBodyReady()
+        {
+            return character?.Body != null && character.Body.IsReady;
+        }
+
+        public BodyOperationResult ValidateBody()
+        {
+            if (character?.Body == null)
+            {
+                return BodyOperationResult.Failure(BodyOperationResultCode.MissingActorBody, "Body runtime is missing.");
+            }
+
+            return character.Body.ValidateBody(out string failureReason)
+                ? BodyOperationResult.Success("Body is ready.", character.Body.CreateSnapshot())
+                : BodyOperationResult.Failure(BodyOperationResultCode.InvalidConfiguration, failureReason, snapshot: character.Body.CreateSnapshot());
         }
 
         public RequirementEvaluationResult EvaluateRequirement(RequirementSetDefinition requirementSet)

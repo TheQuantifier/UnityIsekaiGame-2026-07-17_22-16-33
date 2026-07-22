@@ -1339,7 +1339,8 @@ namespace UnityIsekaiGame.GameData.Persistence
             {
                 "player.skills" => new[] { "player.identity-progression", "player.attributes" },
                 "player.traits" => new[] { "player.identity-progression", "player.attributes", "player.skills" },
-                "player.inventory-equipment" => new[] { "player.skills", "player.traits" },
+                "player.body" => new[] { "player.identity-progression", "player.attributes", "player.skills", "player.traits" },
+                "player.inventory-equipment" => new[] { "player.skills", "player.traits", "player.body" },
                 "player.stats-vitals-status" => new[] { "player.inventory-equipment" },
                 "player.resources" => new[] { "player.stats-vitals-status" },
                 "player.combat-execution" => new[] { "player.resources" },
@@ -1353,6 +1354,7 @@ namespace UnityIsekaiGame.GameData.Persistence
         {
             return participantKey == "player.skills"
                 || participantKey == "player.traits"
+                || participantKey == "player.body"
                 || participantKey == "player.inventory-equipment"
                 || participantKey == "player.stats-vitals-status"
                 || participantKey == "player.resources"

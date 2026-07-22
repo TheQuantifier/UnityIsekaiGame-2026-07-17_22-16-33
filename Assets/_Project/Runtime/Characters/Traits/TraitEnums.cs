@@ -46,6 +46,7 @@ namespace UnityIsekaiGame.Traits
         Origin,
         BirthGift,
         Species,
+        BiologicalClassification,
         Lineage,
         Quest,
         Achievement,

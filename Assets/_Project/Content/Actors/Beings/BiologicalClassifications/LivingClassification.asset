@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a110000000000000000000000000008, type: 3}
+  m_Name: LivingClassification
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalClassificationDefinition
+  classificationId: biology.classification.living
+  displayName: Living
+  description: Ordinarily living biological bodies.
+  primaryCategory: {fileID: 11400000, guid: 49a86b78c8924b70a4a40e4ec77ded72, type: 2}
+  tags: []
+  ordinarilyLiving: 1
+  ordinarilyBiological: 1
+  ordinarilyRequiresBreathing: 1
+  ordinarilyHasBlood: 1
+  ordinarilyCanBecomeUnconscious: 1
+  ordinarilyCanDie: 1
+  ordinaryBiologicalHealingCompatible: 1
+  poisonCompatible: 1
+  diseaseCompatible: 1
+  defaultDefeatPolicy: {fileID: 11400000, guid: 63f00000000000000000000000000032, type: 2}
+  defaultTraitGrants: []
+  defaultCapabilityGrants: []
+  defaultStatContributions: []

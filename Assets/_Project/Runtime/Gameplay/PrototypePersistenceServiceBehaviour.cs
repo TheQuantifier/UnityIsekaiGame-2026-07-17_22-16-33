@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
+using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.Execution;
@@ -42,6 +43,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private OngoingEffectService playerOngoingEffects;
         [SerializeField] private CharacterSkillCollection playerSkills;
         [SerializeField] private CharacterTraitCollection playerTraits;
+        [SerializeField] private ActorBodyRuntime playerBody;
         [SerializeField] private PlayerSkillActionEventSource playerSkillActionEventSource;
         [SerializeField] private StatusEffectController statusEffectController;
         [SerializeField] private PlayerIdentityProgression playerIdentityProgression;
@@ -54,11 +56,13 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private CurrentPlaceTracker currentPlaceTracker;
         [SerializeField] private string sceneKey = "scene.prototype";
         [SerializeField] private string defaultSpawnPointId = "spawn.prototype.default";
+        [SerializeField] private string defaultPlayerSpeciesId = "species.human";
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
         [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
         [SerializeField] private bool registerPlayerTraits = true;
+        [SerializeField] private bool registerPlayerBody = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerCombatExecution = true;
@@ -81,6 +85,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerAttributesPersistenceParticipant playerAttributesParticipant;
         private PlayerSkillsPersistenceParticipant playerSkillsParticipant;
         private PlayerTraitsPersistenceParticipant playerTraitsParticipant;
+        private PlayerBodyPersistenceParticipant playerBodyParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
@@ -145,6 +150,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(playerTraitsParticipant);
                 playerTraitsParticipant = null;
+            }
+
+            if (service != null && playerBodyParticipant != null)
+            {
+                service.UnregisterParticipant(playerBodyParticipant);
+                playerBodyParticipant = null;
             }
 
             if (service != null && statsVitalsStatusParticipant != null)
@@ -254,6 +265,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerAttributesParticipant();
             EnsurePlayerSkillsParticipant();
             EnsurePlayerTraitsParticipant();
+            EnsurePlayerBodyParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -732,6 +744,50 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsurePlayerBodyParticipant()
+        {
+            if (!registerPlayerBody || playerBodyParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerBody == null || playerTraits == null || playerCalculatedStats == null)
+            {
+                Debug.LogWarning("Player body persistence participant was not registered because the body runtime, Trait collection, or calculated stats are missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player body persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            playerBody.Configure(GetDefinitionRegistry(), ResolvePlayerActorId(), playerIdentityProgression == null ? string.Empty : playerIdentityProgression.PersonId, playerTraits, playerCalculatedStats);
+            if (!playerBody.IsReady && !string.IsNullOrWhiteSpace(defaultPlayerSpeciesId))
+            {
+                BodyOperationResult defaultAssignment = playerBody.AssignSpecies(defaultPlayerSpeciesId, restoring: false, "Prototype player default Species");
+                if (!defaultAssignment.Succeeded)
+                {
+                    Debug.LogWarning(defaultAssignment.Message);
+                    return;
+                }
+            }
+
+            playerBodyParticipant = new PlayerBodyPersistenceParticipant(
+                playerBody,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerBodyParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerBodyParticipant = null;
+            }
+        }
+
         private void ResolvePlayerPersistenceReferences()
         {
             if (playerInventory == null)
@@ -808,6 +864,16 @@ namespace UnityIsekaiGame.Gameplay
             if (playerTraits == null && playerObject != null)
             {
                 playerTraits = playerObject.AddComponent<CharacterTraitCollection>();
+            }
+
+            if (playerBody == null)
+            {
+                playerBody = playerObject == null ? Object.FindAnyObjectByType<ActorBodyRuntime>() : playerObject.GetComponent<ActorBodyRuntime>();
+            }
+
+            if (playerBody == null && playerObject != null)
+            {
+                playerBody = playerObject.AddComponent<ActorBodyRuntime>();
             }
 
             if (playerResources == null)
@@ -1345,6 +1411,11 @@ namespace UnityIsekaiGame.Gameplay
                 playerTraits.TraitRecordChanged += OnTraitRecordChanged;
             }
 
+            if (playerBody != null)
+            {
+                playerBody.BodyChanged += OnBodyChanged;
+            }
+
             dirtyEventsSubscribed = true;
         }
 
@@ -1446,6 +1517,11 @@ namespace UnityIsekaiGame.Gameplay
             {
                 playerTraits.TraitsChanged -= OnTraitsChanged;
                 playerTraits.TraitRecordChanged -= OnTraitRecordChanged;
+            }
+
+            if (playerBody != null)
+            {
+                playerBody.BodyChanged -= OnBodyChanged;
             }
 
             if (playerQuestLog != null)
@@ -1660,6 +1736,16 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             dirtyTracker?.MarkDirty("Player Trait record changed.");
+        }
+
+        private void OnBodyChanged(ActorBodyRuntime bodyRuntime, BodyOperationResult result, bool restoring)
+        {
+            if (restoring || result == null || result.Preview || result.Duplicate)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player body Species changed.");
         }
 
         private string ResolveSceneKey()

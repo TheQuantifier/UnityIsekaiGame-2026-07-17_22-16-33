@@ -1,0 +1,73 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a110000000000000000000000000010, type: 3}
+  m_Name: UndeadHumanSpecies
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.SpeciesDefinition
+  speciesId: species.undead-human
+  displayName: Undead Human
+  description: Humanoid undead body derived from a human form.
+  primaryCategory: {fileID: 11400000, guid: 49a86b78c8924b70a4a40e4ec77ded72, type: 2}
+  tags:
+  - {fileID: 11400000, guid: ae91f7acd1794650bcc7d65b47d79796, type: 2}
+  biologicalClassification: {fileID: 11400000, guid: 7a150000000000000000000000000002, type: 2}
+  bodyForm: {fileID: 11400000, guid: 7a160000000000000000000000000001, type: 2}
+  defaultBodyTraits:
+  - trait: {fileID: 11400000, guid: 55f90000000000000000000000000055, type: 2}
+    lifecycle: 1
+    discovery: 2
+    alphaEnabled: 1
+  defaultBooleanCapabilities:
+  - entryId: capability.biology.is-undead
+    runtimeCapabilityKey: capability.biology.is-undead
+    capability: {fileID: 11400000, guid: 7a120000000000000000000000000002, type: 2}
+    booleanValue: 1
+    numericValue: 0
+    blocker: 0
+    priority: 0
+    alphaEnabled: 1
+  - entryId: capability.biology.is-corporeal
+    runtimeCapabilityKey: capability.biology.is-corporeal
+    capability: {fileID: 11400000, guid: 7a120000000000000000000000000011, type: 2}
+    booleanValue: 1
+    numericValue: 0
+    blocker: 0
+    priority: 0
+    alphaEnabled: 1
+  - entryId: capability.biology.has-physical-body
+    runtimeCapabilityKey: capability.biology.has-physical-body
+    capability: {fileID: 11400000, guid: 7a120000000000000000000000000012, type: 2}
+    booleanValue: 1
+    numericValue: 0
+    blocker: 0
+    priority: 0
+    alphaEnabled: 1
+  - entryId: species.undead-human.can-die
+    runtimeCapabilityKey: can.die
+    capability: {fileID: 11400000, guid: 7a120000000000000000000000000014, type: 2}
+    booleanValue: 1
+    numericValue: 0
+    blocker: 0
+    priority: 0
+    alphaEnabled: 1
+  defaultNumericCapabilities: []
+  calculatedStatContributions:
+  - contributionId: species.undead-human.magical-defense
+    calculatedStat: {fileID: 11400000, guid: c6000000000000000000000000000052, type: 2}
+    kind: 0
+    direction: 0
+    magnitude: 2
+    priority: 0
+    alphaEnabled: 1
+  defaultDefeatPolicy: {fileID: 11400000, guid: 63f00000000000000000000000000033, type: 2}
+  compatibleOriginIds: []
+  futureAnatomyDefinitionId: 
+  futureBiologicalMetadata: Anatomy is deferred to Feature 7.2.

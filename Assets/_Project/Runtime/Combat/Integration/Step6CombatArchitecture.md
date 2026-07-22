@@ -67,6 +67,10 @@ The intended order for a committed attack is:
 
 Restore paths clear transient combat state silently and must not emit defense activation, cancellation, resolution, execution, reaction, contribution, or gameplay damage events.
 
+## Body And Species Boundary
+
+Step 6 combat code must treat body/species data as a query input, not as combat-owned state. Combat systems should depend on `BodySnapshot`, biological capabilities, lifecycle state, damage types, and authored combat definitions. They should not hardcode individual Species IDs except in explicit content/test fixtures. Future Species-specific resistances, healing rules, defeat policies, or reaction eligibility should enter combat through definitions and capability/query surfaces owned outside the combat runtime.
+
 ## Persistence And Restore
 
 Persistent data remains owned by the dedicated participants:

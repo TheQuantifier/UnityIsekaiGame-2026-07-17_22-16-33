@@ -11,6 +11,8 @@ namespace UnityIsekaiGame.Stats
         CombatStatus = 600,
         BirthGift = 700,
         Origin = 800,
+        Species = 825,
+        BiologicalClassification = 830,
         Trait = 850,
         Development = 900,
         Other = 1000

@@ -385,7 +385,7 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
-        public void DefaultPrototypeSuites_RegisterStep3ThroughStep6()
+        public void DefaultPrototypeSuites_RegisterStep3ThroughStep7()
         {
             TestLabAutomationRegistry registry = new TestLabAutomationRegistry();
 
@@ -393,6 +393,7 @@ namespace UnityIsekaiGame.Tests
             PrototypeStep4AutomationSuites.RegisterDefaults(registry);
             PrototypeStep5AutomationSuites.RegisterDefaults(registry);
             PrototypeStep6AutomationSuites.RegisterDefaults(registry);
+            PrototypeStep7AutomationSuites.RegisterDefaults(registry);
 
             TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(registry);
 
@@ -423,7 +424,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.6.7.combat-execution",
                 "feature.6.8.combat-reactions",
                 "feature.6.9.combat-contribution",
-                "feature.6.10.combat-integration"
+                "feature.6.10.combat-integration",
+                "feature.7.1.body-species"
             }));
         }
 
