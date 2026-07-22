@@ -1,5 +1,6 @@
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Beings.Biology;
+using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.Capabilities;
 using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.ResourceSystem;
@@ -85,6 +86,46 @@ namespace UnityIsekaiGame.CharacterSystem
         public BodyFormDefinition GetBodyForm()
         {
             return character?.Body == null ? null : character.Body.BodyForm;
+        }
+
+        public AnatomySnapshot GetAnatomySnapshot()
+        {
+            return character?.Body == null ? null : character.Body.CreateAnatomySnapshot();
+        }
+
+        public AnatomyDefinition GetAnatomyDefinition()
+        {
+            return character?.Body == null ? null : character.Body.Species?.AnatomyDefinition;
+        }
+
+        public AnatomyNodeSnapshot GetAnatomyNode(string nodeId)
+        {
+            AnatomySnapshot snapshot = GetAnatomySnapshot();
+            if (snapshot == null || string.IsNullOrWhiteSpace(nodeId))
+            {
+                return null;
+            }
+
+            foreach (AnatomyNodeSnapshot node in snapshot.Nodes)
+            {
+                if (node.NodeId == nodeId)
+                {
+                    return node;
+                }
+            }
+
+            return null;
+        }
+
+        public bool IsAnatomyReady()
+        {
+            return character?.Body != null && character.Body.Anatomy.IsReady;
+        }
+
+        public bool IsStructurePresent(string nodeId)
+        {
+            AnatomyNodeSnapshot node = GetAnatomyNode(nodeId);
+            return node != null && node.Present;
         }
 
         public bool HasBiologicalCapability(string capabilityKey)

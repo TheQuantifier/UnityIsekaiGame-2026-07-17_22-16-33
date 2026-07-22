@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
+using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.GameData;
 
 namespace UnityIsekaiGame.Beings.Biology
@@ -22,6 +23,7 @@ namespace UnityIsekaiGame.Beings.Biology
         [SerializeField] private BiologicalCapabilityGrantDefinition[] defaultNumericCapabilities;
         [SerializeField] private BiologicalStatContributionDefinition[] calculatedStatContributions;
         [SerializeField] private DefeatPolicyDefinition defaultDefeatPolicy;
+        [SerializeField] private AnatomyDefinition anatomyDefinition;
         [SerializeField] private string[] compatibleOriginIds;
         [SerializeField] private string futureAnatomyDefinitionId;
         [SerializeField, TextArea(1, 3)] private string futureBiologicalMetadata;
@@ -39,6 +41,7 @@ namespace UnityIsekaiGame.Beings.Biology
         public IReadOnlyList<BiologicalCapabilityGrantDefinition> DefaultNumericCapabilities => defaultNumericCapabilities ?? Array.Empty<BiologicalCapabilityGrantDefinition>();
         public IReadOnlyList<BiologicalStatContributionDefinition> CalculatedStatContributions => calculatedStatContributions ?? Array.Empty<BiologicalStatContributionDefinition>();
         public DefeatPolicyDefinition DefaultDefeatPolicy => defaultDefeatPolicy == null ? biologicalClassification == null ? null : biologicalClassification.DefaultDefeatPolicy : defaultDefeatPolicy;
+        public AnatomyDefinition AnatomyDefinition => anatomyDefinition;
         public IReadOnlyList<string> CompatibleOriginIds => compatibleOriginIds ?? Array.Empty<string>();
         public string FutureAnatomyDefinitionId => futureAnatomyDefinitionId ?? string.Empty;
         public string FutureBiologicalMetadata => futureBiologicalMetadata ?? string.Empty;
@@ -72,7 +75,13 @@ namespace UnityIsekaiGame.Beings.Biology
 
             ValidateDefinitionReference(definitionsById, biologicalClassification, "biological classification", typeof(BiologicalClassificationDefinition), report);
             ValidateDefinitionReference(definitionsById, bodyForm, "body form", typeof(BodyFormDefinition), report);
+            ValidateDefinitionReference(definitionsById, anatomyDefinition, "anatomy definition", typeof(AnatomyDefinition), report);
             ValidateGrants(definitionsById, report);
+
+            if (anatomyDefinition != null && !anatomyDefinition.IsCompatibleWith(bodyForm, this))
+            {
+                report.AddError($"Species '{DisplayName}' references Anatomy '{anatomyDefinition.Id}' that is incompatible with body form '{bodyForm?.Id ?? string.Empty}'.");
+            }
 
             HashSet<string> contributionKeys = new HashSet<string>(StringComparer.Ordinal);
             foreach (BiologicalStatContributionDefinition contribution in CalculatedStatContributions.Where(contribution => contribution != null && contribution.AlphaEnabled))
@@ -108,6 +117,9 @@ namespace UnityIsekaiGame.Beings.Biology
                 "body-form.humanoid",
                 "body-form.construct",
                 "body-form.incorporeal",
+                "anatomy.human",
+                "anatomy.basic-construct",
+                "anatomy.basic-spirit",
                 "species.human",
                 "species.undead-human",
                 "species.basic-construct",
@@ -131,6 +143,9 @@ namespace UnityIsekaiGame.Beings.Biology
             RequireCanonical<BodyFormDefinition>(definitionsById, "body-form.humanoid", "Humanoid body form", report);
             RequireCanonical<BodyFormDefinition>(definitionsById, "body-form.construct", "Construct body form", report);
             RequireCanonical<BodyFormDefinition>(definitionsById, "body-form.incorporeal", "Incorporeal body form", report);
+            RequireCanonical<AnatomyDefinition>(definitionsById, "anatomy.human", "Human Anatomy", report);
+            RequireCanonical<AnatomyDefinition>(definitionsById, "anatomy.basic-construct", "Basic Construct Anatomy", report);
+            RequireCanonical<AnatomyDefinition>(definitionsById, "anatomy.basic-spirit", "Basic Spirit Anatomy", report);
             RequireCanonical<SpeciesDefinition>(definitionsById, "species.human", "Human Species", report);
             RequireCanonical<SpeciesDefinition>(definitionsById, "species.undead-human", "Undead Human Species", report);
             RequireCanonical<SpeciesDefinition>(definitionsById, "species.basic-construct", "Basic Construct Species", report);

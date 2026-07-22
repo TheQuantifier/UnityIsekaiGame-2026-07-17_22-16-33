@@ -1,6 +1,6 @@
 # Body Species Biology System
 
-Feature 7.1 introduces the production foundation for embodied biological identity. It intentionally stops at identity, classification, body form, Species assignment, snapshots, and persistence. Anatomy, injuries, hunger, thirst, transformation, replacement bodies, equipment-slot derivation, and playable content rules remain deferred.
+Feature 7.1 introduced the production foundation for embodied biological identity. It intentionally stopped at identity, classification, body form, Species assignment, snapshots, and persistence. Feature 7.2 now layers body-owned Anatomy definitions and runtime structure on top of Species. Injuries, hunger, thirst, transformation, replacement bodies, equipment-slot derivation, and playable content rules remain deferred.
 
 ## Identity Boundaries
 
@@ -9,6 +9,7 @@ Feature 7.1 introduces the production foundation for embodied biological identit
 - `SpeciesDefinition` is the authored biological kind, such as `species.human`.
 - `BiologicalClassificationDefinition` is the broad biological family, such as living, undead, construct, or spirit.
 - `BodyFormDefinition` is the structural form, such as humanoid, construct, or incorporeal.
+- `AnatomyDefinition` is the exact structural blueprint for regions, parts, organs, and internal structures.
 
 Body state belongs to the exact Actor/body runtime. It is not owned by Person identity alone and must not be silently copied to a replacement body.
 
@@ -28,6 +29,8 @@ Do not collapse those fields unless the lifecycle runtime contract is migrated a
 
 `ActorBodyRuntime` is the body-state component. It resolves Species through `DefinitionRegistry`, applies deterministic Species and classification sources to `CharacterTraitCollection` and `CalculatedStatCollection`, and exposes immutable `BodySnapshot` objects for UI, combat, persistence, and development tooling.
 
+Species assignment also resolves the Species AnatomyDefinition and rebuilds the body-owned AnatomyRuntime. Anatomy node identity is exact-body-owned and deterministic from the Actor/body ID, Anatomy definition ID, and authored structural node ID.
+
 Preview assignment resolves the requested Species without mutating traits, stats, capabilities, body revision, persistence state, or events. Execution revalidates and commits the Species assignment once.
 
 Subsystem rebuilds may recreate trait/stat collections. When a body already has a Species, `ActorBodyRuntime.Configure` silently reapplies deterministic biological sources without changing body identity or incrementing body revision.
@@ -40,7 +43,8 @@ Subsystem rebuilds may recreate trait/stat collections. When a body already has 
 - exact Actor/body ID;
 - optional Person ID;
 - Species definition ID;
-- body revision.
+- body revision;
+- anatomy definition ID, anatomy revision, and explicit anatomy presence overrides.
 
 Restore validates the saved Actor/body ID, optional Person ID, and Species definition ID before committing. Trait, capability, and stat grants from Species/classification are deterministic and are not saved as separate permanent trait state.
 

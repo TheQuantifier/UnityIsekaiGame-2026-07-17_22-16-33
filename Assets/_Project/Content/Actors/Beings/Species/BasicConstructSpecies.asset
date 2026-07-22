@@ -76,6 +76,7 @@ MonoBehaviour:
     priority: 0
     alphaEnabled: 1
   defaultDefeatPolicy: {fileID: 11400000, guid: 63f00000000000000000000000000034, type: 2}
+  anatomyDefinition: {fileID: 11400000, guid: 7a190000000000000000000000000002, type: 2}
   compatibleOriginIds: []
   futureAnatomyDefinitionId: 
-  futureBiologicalMetadata: Anatomy is deferred to Feature 7.2.
+  futureBiologicalMetadata: Anatomy resolves through anatomy.basic-construct.

@@ -1,0 +1,525 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a180000000000000000000000000004, type: 3}
+  m_Name: HumanAnatomy
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Anatomy.AnatomyDefinition
+  anatomyId: anatomy.human
+  displayName: Human Anatomy
+  description: Compact humanoid anatomy with central regions, bilateral limbs, brain, heart, and paired lungs.
+  schemaVersion: 1
+  compatibleBodyForms:
+  - {fileID: 11400000, guid: 7a160000000000000000000000000001, type: 2}
+  compatibleSpecies:
+  - {fileID: 11400000, guid: 7a170000000000000000000000000001, type: 2}
+  - {fileID: 11400000, guid: 7a170000000000000000000000000002, type: 2}
+  nodes:
+  - nodeId: structure.human-root
+    displayName: Human Body
+    description: Structural root for a humanoid body.
+    category: 2
+    parentNodeId: 
+    regionNodeId: 
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 0
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds: []
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 0
+  - nodeId: region.head
+    displayName: Head
+    description: Head target region.
+    category: 1
+    parentNodeId: structure.human-root
+    regionNodeId: 
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.head-compatible
+    futureDamageTagIds:
+    - damage.region.head
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 10
+  - nodeId: region.torso
+    displayName: Torso
+    description: Torso target region.
+    category: 1
+    parentNodeId: structure.human-root
+    regionNodeId: 
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 2
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.torso-compatible
+    futureDamageTagIds:
+    - damage.region.torso
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 20
+  - nodeId: region.arm.left
+    displayName: Left Arm
+    description: Left arm target region.
+    category: 1
+    parentNodeId: structure.human-root
+    regionNodeId: 
+    bodySide: 2
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: arm
+    mirrorGroup: region.arm
+    equipmentTagIds:
+    - equipment.hand-compatible
+    futureDamageTagIds:
+    - damage.region.arm
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 30
+  - nodeId: region.arm.right
+    displayName: Right Arm
+    description: Right arm target region.
+    category: 1
+    parentNodeId: structure.human-root
+    regionNodeId: 
+    bodySide: 3
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: arm
+    mirrorGroup: region.arm
+    equipmentTagIds:
+    - equipment.hand-compatible
+    futureDamageTagIds:
+    - damage.region.arm
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 40
+  - nodeId: region.leg.left
+    displayName: Left Leg
+    description: Left leg target region.
+    category: 1
+    parentNodeId: structure.human-root
+    regionNodeId: 
+    bodySide: 2
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: leg
+    mirrorGroup: region.leg
+    equipmentTagIds:
+    - equipment.foot-compatible
+    futureDamageTagIds:
+    - damage.region.leg
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 50
+  - nodeId: region.leg.right
+    displayName: Right Leg
+    description: Right leg target region.
+    category: 1
+    parentNodeId: structure.human-root
+    regionNodeId: 
+    bodySide: 3
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: leg
+    mirrorGroup: region.leg
+    equipmentTagIds:
+    - equipment.foot-compatible
+    futureDamageTagIds:
+    - damage.region.leg
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 60
+  - nodeId: part.head
+    displayName: Head
+    description: External head structure.
+    category: 2
+    parentNodeId: region.head
+    regionNodeId: region.head
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.head-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 70
+  - nodeId: part.torso
+    displayName: Torso
+    description: External torso structure.
+    category: 2
+    parentNodeId: region.torso
+    regionNodeId: region.torso
+    bodySide: 1
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 2
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds:
+    - equipment.torso-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 80
+  - nodeId: part.arm.left
+    displayName: Left Arm
+    description: Left upper limb.
+    category: 3
+    parentNodeId: region.arm.left
+    regionNodeId: region.arm.left
+    bodySide: 2
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: arm
+    mirrorGroup: limb.arm
+    equipmentTagIds:
+    - equipment.hand-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - manipulation
+    tags: []
+    order: 90
+  - nodeId: part.hand.left
+    displayName: Left Hand
+    description: Left hand.
+    category: 2
+    parentNodeId: part.arm.left
+    regionNodeId: region.arm.left
+    bodySide: 2
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0.5
+    repeatGroup: hand
+    mirrorGroup: hand
+    equipmentTagIds:
+    - equipment.hand-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - manipulation
+    tags: []
+    order: 100
+  - nodeId: part.arm.right
+    displayName: Right Arm
+    description: Right upper limb.
+    category: 3
+    parentNodeId: region.arm.right
+    regionNodeId: region.arm.right
+    bodySide: 3
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: arm
+    mirrorGroup: limb.arm
+    equipmentTagIds:
+    - equipment.hand-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - manipulation
+    tags: []
+    order: 110
+  - nodeId: part.hand.right
+    displayName: Right Hand
+    description: Right hand.
+    category: 2
+    parentNodeId: part.arm.right
+    regionNodeId: region.arm.right
+    bodySide: 3
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0.5
+    repeatGroup: hand
+    mirrorGroup: hand
+    equipmentTagIds:
+    - equipment.hand-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - manipulation
+    tags: []
+    order: 120
+  - nodeId: part.leg.left
+    displayName: Left Leg
+    description: Left lower limb.
+    category: 3
+    parentNodeId: region.leg.left
+    regionNodeId: region.leg.left
+    bodySide: 2
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: leg
+    mirrorGroup: limb.leg
+    equipmentTagIds:
+    - equipment.foot-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - locomotion
+    tags: []
+    order: 130
+  - nodeId: part.foot.left
+    displayName: Left Foot
+    description: Left foot.
+    category: 2
+    parentNodeId: part.leg.left
+    regionNodeId: region.leg.left
+    bodySide: 2
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0.5
+    repeatGroup: foot
+    mirrorGroup: foot
+    equipmentTagIds:
+    - equipment.foot-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - locomotion
+    tags: []
+    order: 140
+  - nodeId: part.leg.right
+    displayName: Right Leg
+    description: Right lower limb.
+    category: 3
+    parentNodeId: region.leg.right
+    regionNodeId: region.leg.right
+    bodySide: 3
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 1
+    repeatGroup: leg
+    mirrorGroup: limb.leg
+    equipmentTagIds:
+    - equipment.foot-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - locomotion
+    tags: []
+    order: 150
+  - nodeId: part.foot.right
+    displayName: Right Foot
+    description: Right foot.
+    category: 2
+    parentNodeId: part.leg.right
+    regionNodeId: region.leg.right
+    bodySide: 3
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0.5
+    repeatGroup: foot
+    mirrorGroup: foot
+    equipmentTagIds:
+    - equipment.foot-compatible
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags:
+    - locomotion
+    tags: []
+    order: 160
+  - nodeId: organ.brain
+    displayName: Brain
+    description: Vital internal nervous structure.
+    category: 5
+    parentNodeId: part.head
+    regionNodeId: region.head
+    bodySide: 1
+    internalStructure: 1
+    corporeal: 1
+    targetable: 0
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds: []
+    futureDamageTagIds:
+    - damage.organ.brain
+    futureBiologicalFunctionTags:
+    - consciousness
+    tags: []
+    order: 170
+  - nodeId: organ.heart
+    displayName: Heart
+    description: Vital circulatory organ.
+    category: 5
+    parentNodeId: part.torso
+    regionNodeId: region.torso
+    bodySide: 1
+    internalStructure: 1
+    corporeal: 1
+    targetable: 0
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds: []
+    futureDamageTagIds:
+    - damage.organ.heart
+    futureBiologicalFunctionTags:
+    - circulation
+    tags: []
+    order: 180
+  - nodeId: organ.lung.left
+    displayName: Left Lung
+    description: Left respiratory organ.
+    category: 5
+    parentNodeId: part.torso
+    regionNodeId: region.torso
+    bodySide: 2
+    internalStructure: 1
+    corporeal: 1
+    targetable: 0
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: lung
+    mirrorGroup: lung
+    equipmentTagIds: []
+    futureDamageTagIds:
+    - damage.organ.lung
+    futureBiologicalFunctionTags:
+    - breathing
+    tags: []
+    order: 190
+  - nodeId: organ.lung.right
+    displayName: Right Lung
+    description: Right respiratory organ.
+    category: 5
+    parentNodeId: part.torso
+    regionNodeId: region.torso
+    bodySide: 3
+    internalStructure: 1
+    corporeal: 1
+    targetable: 0
+    vital: 1
+    optional: 0
+    defaultPresence: 0
+    relativeTargetingWeight: 0
+    repeatGroup: lung
+    mirrorGroup: lung
+    equipmentTagIds: []
+    futureDamageTagIds:
+    - damage.organ.lung
+    futureBiologicalFunctionTags:
+    - breathing
+    tags: []
+    order: 200
+  - nodeId: part.tail.optional
+    displayName: Optional Tail
+    description: Optional authored structure used for presence override validation.
+    category: 4
+    parentNodeId: structure.human-root
+    regionNodeId: 
+    bodySide: 6
+    internalStructure: 0
+    corporeal: 1
+    targetable: 1
+    vital: 0
+    optional: 1
+    defaultPresence: 1
+    relativeTargetingWeight: 0.25
+    repeatGroup: 
+    mirrorGroup: 
+    equipmentTagIds: []
+    futureDamageTagIds: []
+    futureBiologicalFunctionTags: []
+    tags: []
+    order: 210
+  tags: []

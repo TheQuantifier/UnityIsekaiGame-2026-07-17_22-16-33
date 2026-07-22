@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
+using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.Capabilities;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Stats;
@@ -26,6 +27,7 @@ namespace UnityIsekaiGame.Beings.Biology
         private string appliedSpeciesSourceId;
         private string appliedClassificationSourceId;
         private bool suppressEvents;
+        private readonly AnatomyRuntime anatomyRuntime = new AnatomyRuntime();
 
         public event Action<ActorBodyRuntime, BodyOperationResult, bool> BodyChanged;
 
@@ -37,11 +39,13 @@ namespace UnityIsekaiGame.Beings.Biology
         public SpeciesDefinition Species => ResolveSpecies(SpeciesDefinitionId);
         public BiologicalClassificationDefinition BiologicalClassification => Species == null ? null : Species.BiologicalClassification;
         public BodyFormDefinition BodyForm => Species == null ? null : Species.BodyForm;
+        public AnatomyRuntime Anatomy => anatomyRuntime;
         public bool IsReady => Readiness == BodyReadinessState.Ready;
 
         private void OnDisable()
         {
             Readiness = BodyReadinessState.Disposed;
+            anatomyRuntime.Dispose();
         }
 
         public void Configure(
@@ -67,6 +71,7 @@ namespace UnityIsekaiGame.Beings.Biology
             if (!string.IsNullOrWhiteSpace(SpeciesDefinitionId))
             {
                 ReapplyCurrentBiologicalSources(restoring);
+                BuildAnatomyForCurrentSpecies(restoring, null, preserveRevision: true);
             }
 
             ValidateBody(out _);
@@ -85,7 +90,7 @@ namespace UnityIsekaiGame.Beings.Biology
                 return resolved;
             }
 
-            if (string.Equals(SpeciesDefinitionId, species.Id, StringComparison.Ordinal) && Readiness == BodyReadinessState.Ready)
+            if (string.Equals(SpeciesDefinitionId, species.Id, StringComparison.Ordinal) && Readiness == BodyReadinessState.Ready && anatomyRuntime.IsReady)
             {
                 BodyOperationResult duplicate = BodyOperationResult.Success($"Species '{species.Id}' is already assigned to body '{ActorBodyId}'.", CreateSnapshot(), duplicate: true);
                 RaiseChanged(duplicate, restoring);
@@ -97,6 +102,7 @@ namespace UnityIsekaiGame.Beings.Biology
             string previousClassificationSource = appliedClassificationSourceId;
             long previousRevision = BodyRevision;
             BodyReadinessState previousReadiness = Readiness;
+            AnatomySaveData previousAnatomy = anatomyRuntime.CreateSaveData();
 
             try
             {
@@ -136,8 +142,14 @@ namespace UnityIsekaiGame.Beings.Biology
                 speciesDefinitionId = species.Id;
                 appliedSpeciesSourceId = speciesSourceId;
                 appliedClassificationSourceId = classificationSourceId;
-                Readiness = BodyReadinessState.Ready;
                 BodyRevision++;
+                BodyOperationResult anatomyResult = BuildAnatomyForCurrentSpecies(restoring, null, preserveRevision: false);
+                if (!anatomyResult.Succeeded)
+                {
+                    throw new InvalidOperationException(anatomyResult.Message);
+                }
+
+                Readiness = BodyReadinessState.Ready;
 
                 BodyOperationResult result = BodyOperationResult.Success($"Assigned Species '{species.Id}' to body '{ActorBodyId}'.", CreateSnapshot());
                 RaiseChanged(result, restoring);
@@ -174,6 +186,18 @@ namespace UnityIsekaiGame.Beings.Biology
                             CalculatedStatContributionSourceCategory.Species,
                             previousSpeciesSource,
                             restoring);
+                        BodyOperationResult rollbackAnatomy = anatomyRuntime.Build(
+                            ActorBodyId,
+                            previousRevision,
+                            rollbackSpecies,
+                            rollbackSpecies.AnatomyDefinition,
+                            ToPresenceOverrideDictionary(previousAnatomy),
+                            restoring,
+                            preserveRevision: true);
+                        if (rollbackAnatomy.Succeeded)
+                        {
+                            anatomyRuntime.SetRevision(previousAnatomy == null ? 0L : previousAnatomy.anatomyRevision);
+                        }
                     }
                 }
 
@@ -189,7 +213,8 @@ namespace UnityIsekaiGame.Beings.Biology
                 actorBodyId = ActorBodyId,
                 personId = PersonId,
                 speciesDefinitionId = SpeciesDefinitionId,
-                bodyRevision = BodyRevision
+                bodyRevision = BodyRevision,
+                anatomy = anatomyRuntime.CreateSaveData()
             };
         }
 
@@ -214,6 +239,22 @@ namespace UnityIsekaiGame.Beings.Biology
             }
 
             BodyRevision = Math.Max(1L, saveData.bodyRevision);
+            SpeciesDefinition restoredSpecies = Species;
+            AnatomySaveData anatomySave = saveData.anatomy;
+            BodyOperationResult anatomyResult = anatomyRuntime.Build(
+                ActorBodyId,
+                BodyRevision,
+                restoredSpecies,
+                restoredSpecies == null ? null : restoredSpecies.AnatomyDefinition,
+                ToPresenceOverrideDictionary(anatomySave),
+                restoring: true,
+                preserveRevision: true);
+            if (!anatomyResult.Succeeded)
+            {
+                return anatomyResult;
+            }
+
+            anatomyRuntime.SetRevision(anatomySave == null ? 1L : Math.Max(1L, anatomySave.anatomyRevision));
             Readiness = BodyReadinessState.Ready;
             return BodyOperationResult.Success("Body restored.", CreateSnapshot());
         }
@@ -227,7 +268,7 @@ namespace UnityIsekaiGame.Beings.Biology
                 return false;
             }
 
-            if (saveData.schemaVersion != BodySaveData.CurrentSchemaVersion)
+            if (saveData.schemaVersion < 1 || saveData.schemaVersion > BodySaveData.CurrentSchemaVersion)
             {
                 failureReason = $"Unsupported body schema version {saveData.schemaVersion}.";
                 return false;
@@ -263,6 +304,27 @@ namespace UnityIsekaiGame.Beings.Biology
                 return false;
             }
 
+            if (species.AnatomyDefinition == null)
+            {
+                failureReason = $"Saved body Species '{species.Id}' has no Anatomy definition.";
+                return false;
+            }
+
+            if (saveData.schemaVersion >= 2 && saveData.anatomy != null)
+            {
+                if (!string.IsNullOrWhiteSpace(saveData.anatomy.actorBodyId) && !string.Equals(saveData.anatomy.actorBodyId, saveData.actorBodyId, StringComparison.Ordinal))
+                {
+                    failureReason = $"Saved anatomy body '{saveData.anatomy.actorBodyId}' does not match saved body '{saveData.actorBodyId}'.";
+                    return false;
+                }
+
+                if (!string.IsNullOrWhiteSpace(saveData.anatomy.anatomyDefinitionId) && !string.Equals(saveData.anatomy.anatomyDefinitionId, species.AnatomyDefinition.Id, StringComparison.Ordinal))
+                {
+                    failureReason = $"Saved anatomy '{saveData.anatomy.anatomyDefinitionId}' does not match Species anatomy '{species.AnatomyDefinition.Id}'.";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -285,6 +347,11 @@ namespace UnityIsekaiGame.Beings.Biology
             List<BodyCapabilitySummary> capabilitySummaries = BuildCapabilitySummaries();
             List<BodyTraitSummary> traitSummaries = BuildTraitSummaries(species);
             List<BodyStatContributionSummary> statSummaries = BuildStatSummaries(species, classification);
+            AnatomySnapshot anatomySnapshot = anatomyRuntime.CreateSnapshot(BodyRevision);
+            if (anatomySnapshot != null && !anatomySnapshot.Coherent)
+            {
+                diagnostics.AddRange(anatomySnapshot.Diagnostics);
+            }
 
             return new BodySnapshot(
                 ActorBodyId,
@@ -308,7 +375,8 @@ namespace UnityIsekaiGame.Beings.Biology
                 EvaluateBoolean(BiologyCapabilityIds.AcceptsBiologicalHealing),
                 EvaluateBoolean(BiologyCapabilityIds.AcceptsRepair),
                 EvaluateBoolean(BiologyCapabilityIds.HasPhysicalBody),
-                coherent,
+                anatomySnapshot,
+                coherent && anatomySnapshot != null && anatomySnapshot.Coherent,
                 diagnostics);
         }
 
@@ -358,6 +426,24 @@ namespace UnityIsekaiGame.Beings.Biology
                 return false;
             }
 
+            if (species.AnatomyDefinition == null)
+            {
+                Readiness = BodyReadinessState.Invalid;
+                failureReason = $"Species '{species.Id}' is missing an Anatomy definition.";
+                return false;
+            }
+
+            if (!anatomyRuntime.IsReady)
+            {
+                BodyOperationResult anatomyResult = BuildAnatomyForCurrentSpecies(restoring: false, null, preserveRevision: false);
+                if (!anatomyResult.Succeeded)
+                {
+                    Readiness = BodyReadinessState.Invalid;
+                    failureReason = anatomyResult.Message;
+                    return false;
+                }
+            }
+
             if (Readiness != BodyReadinessState.Restoring && Readiness != BodyReadinessState.ApplyingBiologicalContributions)
             {
                 Readiness = BodyReadinessState.Ready;
@@ -399,12 +485,105 @@ namespace UnityIsekaiGame.Beings.Biology
                 return BodyOperationResult.Failure(BodyOperationResultCode.MissingBodyForm, $"Species '{species.Id}' is missing a body form.", preview);
             }
 
+            if (species.AnatomyDefinition == null)
+            {
+                return BodyOperationResult.Failure(BodyOperationResultCode.MissingAnatomyDefinition, $"Species '{species.Id}' is missing an Anatomy definition.", preview);
+            }
+
+            if (!species.AnatomyDefinition.IsCompatibleWith(bodyForm, species))
+            {
+                return BodyOperationResult.Failure(BodyOperationResultCode.InvalidAnatomyDefinition, $"Anatomy '{species.AnatomyDefinition.Id}' is incompatible with Species '{species.Id}'.", preview);
+            }
+
             if (preview)
             {
                 return BodyOperationResult.Success($"Preview resolved Species '{species.Id}' for body '{ActorBodyId}'.", CreateSnapshot(), preview: true);
             }
 
             return BodyOperationResult.Success("Assignment resolved.", null);
+        }
+
+        public BodyOperationResult RebuildAnatomy(bool restoring = false)
+        {
+            BodyOperationResult result = BuildAnatomyForCurrentSpecies(restoring, null, preserveRevision: false);
+            if (result.Succeeded)
+            {
+                BodyOperationResult operation = BodyOperationResult.Success("Anatomy rebuilt.", CreateSnapshot());
+                RaiseChanged(operation, restoring);
+                return operation;
+            }
+
+            return result;
+        }
+
+        public BodyOperationResult SetAnatomyPresenceOverride(string nodeId, AnatomyPresenceState presence, bool restoring = false)
+        {
+            SpeciesDefinition species = Species;
+            if (species == null || species.AnatomyDefinition == null)
+            {
+                return BodyOperationResult.Failure(BodyOperationResultCode.MissingAnatomyDefinition, "Anatomy presence override requires a resolved Species anatomy.");
+            }
+
+            BodyOperationResult result = anatomyRuntime.SetPresenceOverride(species.AnatomyDefinition, nodeId, presence);
+            if (!result.Succeeded)
+            {
+                return result;
+            }
+
+            BodyOperationResult operation = BodyOperationResult.Success(result.Message, CreateSnapshot(), duplicate: result.Duplicate);
+            RaiseChanged(operation, restoring);
+            return operation;
+        }
+
+        public BodyOperationResult ValidateAnatomy()
+        {
+            AnatomySnapshot snapshot = anatomyRuntime.CreateSnapshot(BodyRevision);
+            return snapshot != null && snapshot.Coherent && anatomyRuntime.IsReady
+                ? BodyOperationResult.Success("Anatomy is ready.", CreateSnapshot())
+                : BodyOperationResult.Failure(BodyOperationResultCode.InvalidAnatomyDefinition, snapshot == null ? "Anatomy snapshot is missing." : string.Join(" ", snapshot.Diagnostics), snapshot: CreateSnapshot());
+        }
+
+        public AnatomySnapshot CreateAnatomySnapshot()
+        {
+            return anatomyRuntime.CreateSnapshot(BodyRevision);
+        }
+
+        private BodyOperationResult BuildAnatomyForCurrentSpecies(bool restoring, IReadOnlyDictionary<string, AnatomyPresenceState> overrides, bool preserveRevision)
+        {
+            SpeciesDefinition species = Species;
+            if (species == null)
+            {
+                return BodyOperationResult.Failure(BodyOperationResultCode.MissingSpecies, "Anatomy build requires a resolved Species.");
+            }
+
+            BodyOperationResult result = anatomyRuntime.Build(ActorBodyId, BodyRevision, species, species.AnatomyDefinition, overrides ?? anatomyRuntime.PresenceOverrides, restoring, preserveRevision);
+            if (result.Succeeded)
+            {
+                return result;
+            }
+
+            return result;
+        }
+
+        private static Dictionary<string, AnatomyPresenceState> ToPresenceOverrideDictionary(AnatomySaveData saveData)
+        {
+            Dictionary<string, AnatomyPresenceState> overrides = new Dictionary<string, AnatomyPresenceState>(StringComparer.Ordinal);
+            if (saveData?.presenceOverrides == null)
+            {
+                return overrides;
+            }
+
+            foreach (AnatomyPresenceOverrideData entry in saveData.presenceOverrides)
+            {
+                if (entry == null || string.IsNullOrWhiteSpace(entry.nodeId))
+                {
+                    continue;
+                }
+
+                overrides[entry.nodeId] = entry.presence;
+            }
+
+            return overrides;
         }
 
         private BodyOperationResult ApplyBiologicalSources(
