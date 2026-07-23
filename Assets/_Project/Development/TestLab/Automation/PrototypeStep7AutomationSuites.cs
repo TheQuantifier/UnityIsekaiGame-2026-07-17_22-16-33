@@ -5,6 +5,7 @@ using System.Linq;
 using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.Recovery;
+using UnityIsekaiGame.Beings.Biology.Transformation;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Combat;
@@ -27,6 +28,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildBiologicalHazardsSuite());
             TryRegister(registry, BuildBiologicalCompatibilitySuite());
             TryRegister(registry, BuildNaturalRecoverySuite());
+            TryRegister(registry, BuildTransformationSuite());
         }
 
         private static ITestLabAutomationSuite BuildBodySpeciesSuite()
@@ -432,6 +434,43 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("resume", "Tick resumed recovery", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-interrupt-resume"))),
                 Scenario("save-restore-preserves-progress-silently", "Save and restore preserve recovery processes without events", 80,
                     Step("restore", "Save restore recovery", context => Operation(context.Service.ValidateBiologicalRecoverySaveRestore(), context, "step7-recovery-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildTransformationSuite()
+        {
+            return Suite("feature.7.8.transformation-body-replacement", "Feature 7.8 Transformation and Body Replacement", "7.8", 780,
+                Required("ActorBodyRuntime", "BodyTransformationRuntime", "TransformationMethodDefinition", "TransformationProfileDefinition", "BiologicalCompatibilityRuntime"),
+                Scenario("transformation-runtime-ready", "Transformation runtime is ready with canonical definitions", 10,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-transformation-human")),
+                    Step("validate", "Validate transformation runtime", context => Operation(context.Service.ValidateBodyTransformationIntegrity(), context, "step7-transformation-validate"))),
+                Scenario("preview-mutates-nothing", "Transformation preview does not mutate body-owned state", 20,
+                    Step("preview-safe", "Preview mutation proof", context => Operation(context.Service.ProveTransformationPreviewNoMutation(), context, "step7-transformation-preview-safe"))),
+                Scenario("temporary-polymorph-reverts", "Temporary polymorph captures and reverts body state", 30,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-transformation-temp-human")),
+                    Step("execute", "Execute temporary polymorph", context => Operation(context.Service.ExecuteTemporaryPolymorphConstruct(), context, "step7-transformation-temp-execute")),
+                    Step("revert", "Revert temporary polymorph", context => Operation(context.Service.RevertTemporaryPolymorph(), context, "step7-transformation-temp-revert")),
+                    Step("validate", "Validate after revert", context => Operation(context.Service.ValidateBodyTransformationIntegrity(), context, "step7-transformation-temp-validate"))),
+                Scenario("permanent-species-change", "Permanent Species change rebuilds body-owned state", 40,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-transformation-permanent-human")),
+                    Step("construct", "Change to Construct", context => Operation(context.Service.ExecutePermanentSpeciesChangeConstruct(), context, "step7-transformation-permanent-construct")),
+                    Step("human-again", "Change back to Human", context => Operation(context.Service.ExecutePermanentSpeciesChangeHuman(), context, "step7-transformation-permanent-human-again"))),
+                Scenario("duplicate-transaction-idempotent", "Duplicate transformation transaction is idempotent", 50,
+                    Step("duplicate", "Duplicate proof", context => Operation(context.Service.ProveTransformationDuplicateProtection(), context, "step7-transformation-duplicate"))),
+                Scenario("body-reassociation-plans", "Body replacement, swap, possession, reincarnation, and embodiment produce plans", 60,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-transformation-plan-human")),
+                    Step("replace", "Preview body replacement", context => Operation(context.Service.PreviewBodyReplacementPlan(), context, "step7-transformation-plan-replace")),
+                    Step("swap", "Preview body swap", context => Operation(context.Service.PreviewBodySwapPlan(), context, "step7-transformation-plan-swap")),
+                    Step("possess", "Preview possession", context => Operation(context.Service.PreviewPossessionPlan(), context, "step7-transformation-plan-possess")),
+                    Step("reincarnate", "Preview reincarnation", context => Operation(context.Service.PreviewReincarnationPlan(), context, "step7-transformation-plan-reincarnate")),
+                    Step("spirit", "Assign Spirit", context => Operation(context.Service.AssignBodySpecies("species.basic-spirit"), context, "step7-transformation-plan-spirit")),
+                    Step("embody", "Preview embodiment", context => Operation(context.Service.PreviewSpiritEmbodimentPlan(), context, "step7-transformation-plan-embody"))),
+                Scenario("structure-replacement-plan", "Structure replacement is planned by stable anatomy node", 70,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-transformation-structure-human")),
+                    Step("structure", "Preview structure replacement", context => Operation(context.Service.PreviewStructureReplacement(), context, "step7-transformation-structure"))),
+                Scenario("compatibility-suppression-blocks", "Compatibility suppression blocks transformation", 80,
+                    Step("suppression", "Suppress transformation compatibility", context => Operation(context.Service.TestTransformationSuppression(), context, "step7-transformation-suppression"))),
+                Scenario("save-restore-preserves-temporary", "Save and restore preserve active temporary transformation without replay", 90,
+                    Step("save-restore", "Save restore transformation", context => Operation(context.Service.ValidateTransformationSaveRestore(), context, "step7-transformation-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a780000000000000000000000000002, type: 3}
+  m_Name: ResurrectionBody
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Transformation.TransformationMethodDefinition
+  methodId: transformation.resurrection-body
+  displayName: Resurrection Body
+  description: Canonical alpha plan for restoring identity into a resurrection body without implementing revival gameplay.
+  biologicalInteractionDefinitionId: interaction.transformation.reincarnation
+  category: 8
+  temporary: 0
+  defaultDurationSeconds: 0
+  allowedTargetSpeciesIds:
+  - species.human
+  - species.undead-human
+  allowedTargetBodyFormIds:
+  - body-form.humanoid
+  requiredRuntimeCapabilityKeys: []
+  blockingRuntimeCapabilityKeys: []
+  transferPolicy: 2
+  anatomyPolicy: 1
+  conditionPolicy: 6
+  vitalPolicy: 6
+  hazardPolicy: 4
+  recoveryPolicy: 3
+  equipmentPolicy: 1
+  lifecyclePolicy: 3
+  controllerPolicy: 1
+  associationPolicy: 1
+  reversionPolicy: 0
+  allowSameSpecies: 1
+  alphaExecutionEnabled: 1
+  tags: []
+  validationMetadata: Feature 7.8 canonical alpha method.

@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a780000000000000000000000000003, type: 3}
+  m_Name: HumanTransformationProfile
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Transformation.TransformationProfileDefinition
+  profileId: transformation-profile.species.human
+  displayName: Human Transformation Profile
+  description: Alpha transformation profile for humans and humanoid bodies.
+  speciesDefinitionIds:
+  - species.human
+  - species.undead-human
+  bodyFormDefinitionIds:
+  - body-form.humanoid
+  enabledMethodIds:
+  - transformation.body-form-change
+  - transformation.body-replacement
+  - transformation.body-swap
+  - transformation.limb-replacement
+  - transformation.organ-replacement
+  - transformation.polymorph.temporary
+  - transformation.possession
+  - transformation.reincarnation
+  - transformation.resurrection-body
+  - transformation.species-change.permanent
+  - transformation.structure-replacement
+  defaultTransferPolicy: 2
+  defaultConditionPolicy: 4
+  defaultVitalPolicy: 6
+  defaultHazardPolicy: 4
+  defaultRecoveryPolicy: 3
+  validationMetadata: Feature 7.8 human profile.

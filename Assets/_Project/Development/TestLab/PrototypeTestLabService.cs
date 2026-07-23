@@ -10,6 +10,7 @@ using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.Recovery;
+using UnityIsekaiGame.Beings.Biology.Transformation;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
@@ -71,6 +72,7 @@ namespace UnityIsekaiGame.Development
         private TestLabAutomationRunner automationRunner;
         private TestLabAutomationResult lastAutomationResult;
         private readonly List<TestLabScenarioResult> automationBatchScenarios = new List<TestLabScenarioResult>();
+        private readonly HashSet<string> loggedAutomationFailureKeys = new HashSet<string>(StringComparer.Ordinal);
         private DateTime automationBatchStartedAtUtc;
         private string automationBatchRunId;
         private TestLabAutomationRunMode automationBatchMode;
@@ -215,35 +217,45 @@ namespace UnityIsekaiGame.Development
         public PrototypeTestLabOperation RunAutomationScenario(string suiteId, string scenarioId, bool stopOnFirstFailure)
         {
             EnsureAutomation();
+            loggedAutomationFailureKeys.Clear();
             lastAutomationResult = automationRunner.RunScenario(suiteId, scenarioId, CreateAutomationOptions(stopOnFirstFailure));
+            LogAutomationScenarioFailures(lastAutomationResult);
             return Record(!lastAutomationResult.HasFailures, "Run Automation Scenario", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
         }
 
         public PrototypeTestLabOperation RunAutomationSuite(string suiteId, bool stopOnFirstFailure)
         {
             EnsureAutomation();
+            loggedAutomationFailureKeys.Clear();
             lastAutomationResult = automationRunner.RunSuite(suiteId, CreateAutomationOptions(stopOnFirstFailure));
+            LogAutomationScenarioFailures(lastAutomationResult);
             return Record(!lastAutomationResult.HasFailures, "Run Automation Suite", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
         }
 
         public PrototypeTestLabOperation RunAutomationQuick(bool stopOnFirstFailure)
         {
             EnsureAutomation();
+            loggedAutomationFailureKeys.Clear();
             lastAutomationResult = automationRunner.RunAll(quickOnly: true, CreateAutomationOptions(stopOnFirstFailure));
+            LogAutomationScenarioFailures(lastAutomationResult);
             return Record(!lastAutomationResult.HasFailures, "Run Quick Automation", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
         }
 
         public PrototypeTestLabOperation RunAutomationAll(bool stopOnFirstFailure)
         {
             EnsureAutomation();
+            loggedAutomationFailureKeys.Clear();
             lastAutomationResult = automationRunner.RunAll(quickOnly: false, CreateAutomationOptions(stopOnFirstFailure));
+            LogAutomationScenarioFailures(lastAutomationResult);
             return Record(!lastAutomationResult.HasFailures, "Run All Automation", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
         }
 
         public PrototypeTestLabOperation RerunFailedAutomation(bool stopOnFirstFailure)
         {
             EnsureAutomation();
+            loggedAutomationFailureKeys.Clear();
             lastAutomationResult = automationRunner.RerunFailed(CreateAutomationOptions(stopOnFirstFailure));
+            LogAutomationScenarioFailures(lastAutomationResult);
             return Record(!lastAutomationResult.HasFailures, "Rerun Failed Automation", lastAutomationResult.HasFailures ? "Failed" : "Passed", FormatAutomationRun(lastAutomationResult));
         }
 
@@ -256,6 +268,7 @@ namespace UnityIsekaiGame.Development
             automationBatchStartedAtUtc = DateTime.UtcNow;
             automationBatchCancelled = false;
             automationBatchScenarios.Clear();
+            loggedAutomationFailureKeys.Clear();
             UpdateAutomationBatchResult();
             return RecordSuccess("Begin Automation Batch", $"Started {runMode} automation batch {automationBatchRunId}.");
         }
@@ -290,6 +303,7 @@ namespace UnityIsekaiGame.Development
             automationBatchCancelled = cancelled;
             UpdateAutomationBatchResult();
             string status = cancelled ? "Cancelled" : lastAutomationResult != null && lastAutomationResult.HasFailures ? "Failed" : "Passed";
+            LogAutomationScenarioFailures(lastAutomationResult);
             return Record(status == "Passed", "Complete Automation Batch", status, FormatAutomationRun(lastAutomationResult));
         }
 
@@ -2474,6 +2488,270 @@ namespace UnityIsekaiGame.Development
             }
         }
 
+        public string BuildBodyTransformationSummary()
+        {
+            if (!EnsureTransformationRuntime(out ActorBodyRuntime body, out _))
+            {
+                return "Body transformation runtime is missing.";
+            }
+
+            BodySnapshot bodySnapshot = body.CreateSnapshot();
+            BodyTransformationSnapshot snapshot = body.Transformation.CreateSnapshot();
+            List<string> lines = new List<string>
+            {
+                "Feature 7.8 Transformation, Body Replacement, and Species Change",
+                $"Body: {bodySnapshot.ActorBodyId}",
+                $"Person: {bodySnapshot.PersonId}",
+                $"Species: {bodySnapshot.SpeciesId}",
+                $"Body Form: {bodySnapshot.BodyFormId}",
+                $"Readiness: {snapshot.Readiness}",
+                $"Revision: {snapshot.TransformationRevision}",
+                $"Active Temporary: {snapshot.ActiveTemporaryTransformation}",
+                $"Active Method: {snapshot.ActiveMethodId}",
+                $"Original Species: {snapshot.OriginalSpeciesId}",
+                $"Transformed Species: {snapshot.TransformedSpeciesId}",
+                $"Target Body: {snapshot.TargetBodyId}",
+                $"Processed Transactions: {snapshot.ProcessedTransactionIds.Count}",
+                $"Coherent: {snapshot.Coherent}",
+                $"Canonical Methods: {registry.DefinitionsById.Values.OfType<TransformationMethodDefinition>().Count()}",
+                $"Profiles: {string.Join(", ", registry.DefinitionsById.Values.OfType<TransformationProfileDefinition>().Select(profile => profile.Id).OrderBy(id => id, StringComparer.Ordinal))}"
+            };
+
+            if (snapshot.Diagnostics.Count > 0)
+            {
+                lines.AddRange(snapshot.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateBodyTransformationIntegrity()
+        {
+            if (!EnsureTransformationRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BodyTransformationSnapshot snapshot = body.Transformation.CreateSnapshot();
+            string[] requiredMethods =
+            {
+                "transformation.polymorph.temporary",
+                "transformation.species-change.permanent",
+                "transformation.body-form-change",
+                "transformation.body-replacement",
+                "transformation.body-swap",
+                "transformation.possession",
+                "transformation.reincarnation",
+                "transformation.resurrection-body",
+                "transformation.spirit-embodiment",
+                "transformation.structure-replacement",
+                "transformation.organ-replacement",
+                "transformation.limb-replacement",
+                "transformation.construct-component-replacement"
+            };
+            bool registered = requiredMethods.All(id => registry.TryGet(id, out TransformationMethodDefinition method) && method != null);
+            bool succeeded = snapshot.Readiness == TransformationReadinessState.Ready && snapshot.Coherent && registered;
+            return Record(succeeded, "Validate Body Transformation", succeeded ? "Success" : "InvalidTransformationRuntime", $"Readiness={snapshot.Readiness} Coherent={snapshot.Coherent} MethodsRegistered={registered} Revision={snapshot.TransformationRevision}.");
+        }
+
+        public PrototypeTestLabOperation PreviewTemporaryPolymorphConstruct()
+        {
+            return RunTransformation("Preview Temporary Polymorph", "transformation.polymorph.temporary", "species.basic-construct", targetBodyId: string.Empty, targetNodeId: string.Empty, preview: true);
+        }
+
+        public PrototypeTestLabOperation ExecuteTemporaryPolymorphConstruct()
+        {
+            return RunTransformation("Execute Temporary Polymorph", "transformation.polymorph.temporary", "species.basic-construct", targetBodyId: string.Empty, targetNodeId: string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation RevertTemporaryPolymorph()
+        {
+            if (!EnsureTransformationRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            return RecordTransformationResult("Revert Temporary Transformation", body.Transformation.RevertTemporaryTransformation($"test-lab.transformation.revert.{Guid.NewGuid():N}"));
+        }
+
+        public PrototypeTestLabOperation ExecutePermanentSpeciesChangeConstruct()
+        {
+            return RunTransformation("Execute Permanent Species Change", "transformation.species-change.permanent", "species.basic-construct", targetBodyId: string.Empty, targetNodeId: string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation ExecutePermanentSpeciesChangeHuman()
+        {
+            return RunTransformation("Execute Permanent Species Change", "transformation.species-change.permanent", "species.human", targetBodyId: string.Empty, targetNodeId: string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation PreviewBodyReplacementPlan()
+        {
+            return RunTransformation("Preview Body Replacement Plan", "transformation.body-replacement", string.Empty, "body.target.replacement.prototype", string.Empty, preview: true);
+        }
+
+        public PrototypeTestLabOperation PreviewBodySwapPlan()
+        {
+            return RunTransformation("Preview Body Swap Plan", "transformation.body-swap", string.Empty, "body.target.swap.prototype", string.Empty, preview: true);
+        }
+
+        public PrototypeTestLabOperation PreviewPossessionPlan()
+        {
+            return RunTransformation("Preview Possession Plan", "transformation.possession", string.Empty, "body.target.possession.prototype", string.Empty, preview: true);
+        }
+
+        public PrototypeTestLabOperation PreviewReincarnationPlan()
+        {
+            return RunTransformation("Preview Reincarnation Plan", "transformation.reincarnation", "species.human", "body.target.reincarnation.prototype", string.Empty, preview: true);
+        }
+
+        public PrototypeTestLabOperation PreviewSpiritEmbodimentPlan()
+        {
+            return RunTransformation("Preview Spirit Embodiment Plan", "transformation.spirit-embodiment", "species.human", "body.target.embodiment.prototype", string.Empty, preview: true);
+        }
+
+        public PrototypeTestLabOperation PreviewStructureReplacement()
+        {
+            return RunTransformation("Preview Structure Replacement", "transformation.limb-replacement", string.Empty, string.Empty, "part.tail.optional", preview: true);
+        }
+
+        public PrototypeTestLabOperation ProveTransformationPreviewNoMutation()
+        {
+            PrototypeTestLabOperation reset = AssignBodySpecies("species.human");
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureTransformationRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BodySnapshot before = body.CreateSnapshot();
+            BodyTransformationSnapshot transformationBefore = body.Transformation.CreateSnapshot();
+            BodyTransformationResult preview = body.Transformation.Preview(BuildTransformationRequest(body, "transformation.polymorph.temporary", "species.basic-construct", string.Empty, string.Empty, $"test-lab.transformation.preview-proof.{Guid.NewGuid():N}", preview: true));
+            BodySnapshot after = body.CreateSnapshot();
+            BodyTransformationSnapshot transformationAfter = body.Transformation.CreateSnapshot();
+            bool succeeded = preview.Succeeded
+                && string.Equals(before.SpeciesId, after.SpeciesId, StringComparison.Ordinal)
+                && before.BodyRevision == after.BodyRevision
+                && transformationBefore.TransformationRevision == transformationAfter.TransformationRevision
+                && !transformationAfter.ActiveTemporaryTransformation;
+            return Record(succeeded, "Prove Transformation Preview", succeeded ? "Success" : "PreviewMutated", $"Preview={preview.Code} Species={before.SpeciesId}->{after.SpeciesId} BodyRev={before.BodyRevision}->{after.BodyRevision} TxRev={transformationBefore.TransformationRevision}->{transformationAfter.TransformationRevision}.");
+        }
+
+        public PrototypeTestLabOperation ProveTransformationDuplicateProtection()
+        {
+            PrototypeTestLabOperation reset = AssignBodySpecies("species.human");
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureTransformationRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            string transactionId = $"test-lab.transformation.duplicate.{Guid.NewGuid():N}";
+            BodyTransformationRequest request = BuildTransformationRequest(body, "transformation.species-change.permanent", "species.basic-construct", string.Empty, string.Empty, transactionId, preview: false);
+            BodyTransformationResult first = body.Transformation.Execute(request);
+            long bodyRevisionAfterFirst = body.BodyRevision;
+            long transformationRevisionAfterFirst = body.Transformation.TransformationRevision;
+            BodyTransformationResult second = body.Transformation.Execute(request);
+            bool succeeded = first.Succeeded
+                && second.Succeeded
+                && second.Duplicate
+                && body.BodyRevision == bodyRevisionAfterFirst
+                && body.Transformation.TransformationRevision == transformationRevisionAfterFirst;
+            return Record(succeeded, "Prove Transformation Duplicate Protection", succeeded ? "Success" : "DuplicateProofFailed", $"First={first.Code} Second={second.Code} Duplicate={second.Duplicate} BodyRev={bodyRevisionAfterFirst}->{body.BodyRevision} TransformRev={transformationRevisionAfterFirst}->{body.Transformation.TransformationRevision}.");
+        }
+
+        public PrototypeTestLabOperation ValidateTransformationSaveRestore()
+        {
+            PrototypeTestLabOperation reset = AssignBodySpecies("species.human");
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            PrototypeTestLabOperation transform = ExecuteTemporaryPolymorphConstruct();
+            if (!transform.Succeeded)
+            {
+                return transform;
+            }
+
+            if (!EnsureTransformationRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BodyTransformationSnapshot before = body.Transformation.CreateSnapshot();
+            BodySaveData saveData = body.CreateSaveData();
+            int eventCount = 0;
+            body.Transformation.TransformationChanged += CountTransformationEvent;
+            BodyOperationResult restore = body.RestoreFromSaveData(saveData, registry, body.ActorBodyId, body.PersonId, restoring: true);
+            body.Transformation.TransformationChanged -= CountTransformationEvent;
+            BodyTransformationSnapshot after = body.Transformation.CreateSnapshot();
+            bool succeeded = restore.Succeeded
+                && after.ActiveTemporaryTransformation
+                && string.Equals(before.ActiveMethodId, after.ActiveMethodId, StringComparison.Ordinal)
+                && string.Equals(before.OriginalSpeciesId, after.OriginalSpeciesId, StringComparison.Ordinal)
+                && eventCount == 0
+                && after.Coherent;
+            return Record(succeeded, "Validate Transformation Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} Active={after.ActiveTemporaryTransformation} Method={after.ActiveMethodId} Original={after.OriginalSpeciesId} Events={eventCount}.");
+
+            void CountTransformationEvent(BodyTransformationRuntime _, BodyTransformationResult __, bool ___)
+            {
+                eventCount++;
+            }
+        }
+
+        public PrototypeTestLabOperation TestTransformationSuppression()
+        {
+            PrototypeTestLabOperation reset = AssignBodySpecies("species.human");
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureTransformationRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            RuntimeBiologicalInteractionRule rule = new RuntimeBiologicalInteractionRule(
+                "test-lab.transformation.suppression",
+                BiologicalCompatibilitySourceKind.Development,
+                "test-lab.transformation",
+                BiologicalInteractionIds.Polymorph,
+                BiologicalInteractionCategory.Transformation,
+                BiologicalInteractionRuleKind.Suppression,
+                BiologicalCompatibilityState.Compatible,
+                0f,
+                0f,
+                0f,
+                0f,
+                999f,
+                1000,
+                string.Empty,
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<AnatomyStructuralCategory>(),
+                string.Empty,
+                "Development suppression blocks transformation compatibility.");
+            BiologicalCompatibilityOperationResult add = body.BiologicalCompatibility.AddOrUpdateContribution(rule);
+            if (!add.Succeeded)
+            {
+                return RecordCompatibilityOperation("Suppress Transformation Compatibility", add);
+            }
+
+            BodyTransformationResult result = body.Transformation.Preview(BuildTransformationRequest(body, "transformation.polymorph.temporary", "species.basic-construct", string.Empty, string.Empty, $"test-lab.transformation.suppressed.{Guid.NewGuid():N}", preview: true));
+            body.BiologicalCompatibility.RemoveContribution("test-lab.transformation", "test-lab.transformation.suppression");
+            return Record(!result.Succeeded && result.Code == TransformationResultCode.Suppressed, "Test Transformation Suppression", !result.Succeeded ? result.Code.ToString() : "SuppressionBypassed", FormatTransformationResult(result));
+        }
+
         private PrototypeTestLabOperation StartRecoveryProcess(string methodId, RecoveryTargetCategory targetCategory, string nodeId, string resourceId, bool preview, bool ensureTarget, string injuryDefinitionId = "injury.laceration")
         {
             if (!EnsureRecoveryRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
@@ -2579,6 +2857,92 @@ namespace UnityIsekaiGame.Development
             }
 
             return true;
+        }
+
+        private bool EnsureTransformationRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure)
+        {
+            body = null;
+            failure = default;
+            if (!EnsureBodyRuntime(out body))
+            {
+                failure = RecordFailure("Body Transformation Operation", "Body runtime is missing.", TransformationResultCode.MissingSourceBody.ToString());
+                return false;
+            }
+
+            EnsureBiologicalRecoveryReady(body);
+            body.Transformation.Configure(body, registry, restoring: false, preserveRevision: true);
+            if (!body.Transformation.IsReady)
+            {
+                failure = RecordFailure("Body Transformation Operation", "Body transformation runtime is not ready.", body.Transformation.Readiness.ToString());
+                return false;
+            }
+
+            return true;
+        }
+
+        private PrototypeTestLabOperation RunTransformation(string operationName, string methodId, string targetSpeciesId, string targetBodyId, string targetNodeId, bool preview)
+        {
+            if (!EnsureTransformationRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BodyTransformationRequest request = BuildTransformationRequest(body, methodId, targetSpeciesId, targetBodyId, targetNodeId, $"test-lab.transformation.{Guid.NewGuid():N}", preview);
+            BodyTransformationResult result = preview
+                ? body.Transformation.Preview(request)
+                : body.Transformation.Execute(request);
+            return RecordTransformationResult(operationName, result);
+        }
+
+        private static BodyTransformationRequest BuildTransformationRequest(ActorBodyRuntime body, string methodId, string targetSpeciesId, string targetBodyId, string targetNodeId, string transactionId, bool preview)
+        {
+            BodySnapshot snapshot = body == null ? null : body.CreateSnapshot();
+            AnatomySnapshot anatomy = snapshot?.Anatomy;
+            BiologicalCompatibilitySnapshot compatibility = snapshot?.BiologicalCompatibility;
+            return new BodyTransformationRequest(
+                methodId,
+                transactionId,
+                snapshot?.PersonId ?? string.Empty,
+                snapshot?.ActorBodyId ?? string.Empty,
+                snapshot?.ActorBodyId ?? string.Empty,
+                targetBodyId,
+                targetSpeciesId,
+                string.Empty,
+                targetNodeId,
+                string.Empty,
+                "test-lab.transformation",
+                "Prototype Test Lab",
+                "Feature 7.8 manual/automation operation",
+                preview,
+                requestedDurationSeconds: 0f,
+                expectedBodyRevision: snapshot?.BodyRevision ?? 0L,
+                expectedAnatomyRevision: anatomy?.AnatomyRevision ?? 0L,
+                expectedCompatibilityRevision: compatibility?.CompatibilityRevision ?? 0L);
+        }
+
+        private PrototypeTestLabOperation RecordTransformationResult(string operationName, BodyTransformationResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Transformation operation returned no result.", TransformationResultCode.InvalidRequest.ToString());
+            }
+
+            return Record(result.Succeeded, operationName, result.Duplicate ? TransformationResultCode.Duplicate.ToString() : result.Preview ? TransformationResultCode.Preview.ToString() : result.Code.ToString(), FormatTransformationResult(result));
+        }
+
+        private static string FormatTransformationResult(BodyTransformationResult result)
+        {
+            if (result == null)
+            {
+                return "No transformation result.";
+            }
+
+            BodyTransformationPlan plan = result.Plan;
+            BodyTransformationSnapshot snapshot = result.Snapshot;
+            string decisions = plan == null || plan.Decisions.Count == 0
+                ? "None"
+                : string.Join("; ", plan.Decisions.Select(decision => $"{decision.StateName}:{decision.Ownership}/{decision.Policy}/Transfer={decision.Transfers}"));
+            return $"Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code} Method={plan?.Method?.Id ?? string.Empty} Source={plan?.SourceBody?.SpeciesId ?? string.Empty} TargetSpecies={plan?.TargetSpecies?.Id ?? string.Empty} TargetBody={plan?.Request?.TargetActorBodyId ?? string.Empty} Node={plan?.Request?.TargetAnatomyNodeId ?? string.Empty} Flags={plan?.Flags.ToString() ?? string.Empty} ActiveTemporary={snapshot?.ActiveTemporaryTransformation ?? false} Revision={snapshot?.TransformationRevision ?? 0}. {result.Message} Decisions=[{decisions}]";
         }
 
         private bool TryBuildRecoveryTickRequest(
@@ -7766,29 +8130,43 @@ namespace UnityIsekaiGame.Development
             {
                 Debug.LogWarning($"{operationName}: {message}");
             }
+            else if (!succeeded && !suppressExpectedAutomationWarnings && !automationBatchRunning && automationRecord)
+            {
+                Debug.LogWarning($"{operationName}: {code}. {message}");
+            }
 
             HistoryChanged?.Invoke();
             return operation;
         }
 
-        private static void LogAutomationScenarioFailures(TestLabAutomationResult result)
+        private void LogAutomationScenarioFailures(TestLabAutomationResult result)
         {
-            if (result == null || !result.HasFailures)
+            if (result == null)
             {
                 return;
             }
 
             foreach (TestLabScenarioResult scenario in result.Scenarios)
             {
-                if (scenario.Status != TestLabAutomationStatus.Failed && scenario.Status != TestLabAutomationStatus.Error)
+                if (scenario.Status == TestLabAutomationStatus.Passed)
                 {
                     continue;
                 }
 
-                TestLabAutomationStepResult failedStep = scenario.Steps.FirstOrDefault(step => step.Status == TestLabAutomationStatus.Failed || step.Status == TestLabAutomationStatus.Error);
+                TestLabAutomationStepResult failedStep = scenario.Steps.FirstOrDefault(step => step.Status == TestLabAutomationStatus.Failed || step.Status == TestLabAutomationStatus.Error)
+                    ?? scenario.Steps.FirstOrDefault(step => step.Status != TestLabAutomationStatus.Passed && step.Status != TestLabAutomationStatus.Skipped);
+                string failureKey = $"{result.RunId}:{scenario.SuiteId}:{scenario.ScenarioId}:{scenario.Status}:{failedStep?.StepId ?? string.Empty}";
+                if (!loggedAutomationFailureKeys.Add(failureKey))
+                {
+                    continue;
+                }
+
+                string exception = failedStep == null || string.IsNullOrWhiteSpace(failedStep.ExceptionType)
+                    ? string.Empty
+                    : $" Exception={failedStep.ExceptionType}: {failedStep.ExceptionMessage}";
                 string message = failedStep == null
                     ? $"Automation failed: {scenario.SuiteId}/{scenario.ScenarioId} - {scenario.DisplayName}. Status={scenario.Status}."
-                    : $"Automation failed: {scenario.SuiteId}/{scenario.ScenarioId} - {scenario.DisplayName}. Step={failedStep.StepId}. Expected='{failedStep.Expected}' Actual='{failedStep.Actual}'. Assertion={failedStep.AssertionType}. Tx='{failedStep.TransactionId}'. Diagnostics: {failedStep.Diagnostics}";
+                    : $"Automation failed: {scenario.SuiteId}/{scenario.ScenarioId} - {scenario.DisplayName}. Status={scenario.Status}. Step={failedStep.StepId}. Expected='{failedStep.Expected}' Actual='{failedStep.Actual}'. Assertion={failedStep.AssertionType}. Tx='{failedStep.TransactionId}'. Diagnostics: {failedStep.Diagnostics}{exception}";
                 Debug.LogWarning(message);
             }
         }
