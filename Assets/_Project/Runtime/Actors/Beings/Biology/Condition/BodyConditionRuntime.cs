@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
+using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.GameData;
 
@@ -86,12 +88,12 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
                 duplicate: false);
         }
 
-        public LocalizedStructuralDamageResult PreviewLocalizedDamage(LocalizedStructuralDamageRequest request, AnatomySnapshot anatomy)
+        public LocalizedStructuralDamageResult PreviewLocalizedDamage(LocalizedStructuralDamageRequest request, AnatomySnapshot anatomy, BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
         {
-            return ResolveDamage(request, anatomy, preview: true, out _, out _, out _, out _, out _);
+            return ResolveDamage(request, anatomy, preview: true, out _, out _, out _, out _, out _, compatibility, body);
         }
 
-        public LocalizedStructuralDamageResult ApplyLocalizedDamage(LocalizedStructuralDamageRequest request, AnatomySnapshot anatomy, bool restoring = false)
+        public LocalizedStructuralDamageResult ApplyLocalizedDamage(LocalizedStructuralDamageRequest request, AnatomySnapshot anatomy, BiologicalCompatibilityRuntime compatibility, BodySnapshot body, bool restoring = false)
         {
             LocalizedStructuralDamageResult duplicateReplay = TryResolveCommittedDuplicate(request);
             if (duplicateReplay != null)
@@ -99,7 +101,7 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
                 return duplicateReplay;
             }
 
-            LocalizedStructuralDamageResult resolved = ResolveDamage(request, anatomy, preview: false, out InjuryTypeDefinition injuryDefinition, out StructureConditionRecord structure, out int requestedDamage, out InjurySeverity severity, out DamageTypeDefinition damageType);
+            LocalizedStructuralDamageResult resolved = ResolveDamage(request, anatomy, preview: false, out InjuryTypeDefinition injuryDefinition, out StructureConditionRecord structure, out int requestedDamage, out InjurySeverity severity, out DamageTypeDefinition damageType, compatibility, body);
             if (!resolved.Succeeded)
             {
                 return resolved;
@@ -407,7 +409,9 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
             out StructureConditionRecord structure,
             out int requestedDamage,
             out InjurySeverity severity,
-            out DamageTypeDefinition damageType)
+            out DamageTypeDefinition damageType,
+            BiologicalCompatibilityRuntime compatibility = null,
+            BodySnapshot body = null)
         {
             injuryDefinition = null;
             structure = null;
@@ -471,7 +475,31 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
                 return LocalizedStructuralDamageResult.Failure(request, LocalizedDamageResultCode.IncompatibleInjury, $"Injury '{injuryDefinition.Id}' is incompatible with node '{node.NodeId}' and damage '{damageType?.Id ?? string.Empty}'.", CreateSnapshot());
             }
 
+            LocalizedStructuralDamageResult compatibilityValidation = ValidateCompatibilityContext(request, compatibility, body);
+            if (!compatibilityValidation.Succeeded)
+            {
+                return compatibilityValidation;
+            }
+
+            BiologicalInteractionEvaluationResult compatibilityResult = EvaluateInjuryCompatibility(compatibility, body, injuryDefinition, node, request.TransactionId, preview);
+            if (compatibilityResult == null)
+            {
+                return LocalizedStructuralDamageResult.Failure(request, LocalizedDamageResultCode.MissingInteraction, $"Injury '{injuryDefinition.Id}' does not map to a biological interaction.", CreateSnapshot());
+            }
+
+            if (compatibilityResult.Code != BiologicalCompatibilityResultCode.Success)
+            {
+                return LocalizedStructuralDamageResult.Failure(request, compatibilityResult.Code == BiologicalCompatibilityResultCode.StaleBody ? LocalizedDamageResultCode.StaleBody : LocalizedDamageResultCode.MissingCompatibility, compatibilityResult.Message, CreateSnapshot());
+            }
+
+            if (compatibilityResult.CompatibilityState == BiologicalCompatibilityState.Incompatible || compatibilityResult.Immune || compatibilityResult.Suppressed)
+            {
+                return LocalizedStructuralDamageResult.Failure(request, LocalizedDamageResultCode.IncompatibleInjury, $"Injury '{injuryDefinition.Id}' is not biologically compatible: {compatibilityResult.Message}", CreateSnapshot());
+            }
+
             requestedDamage = Math.Max(0, request.StructuralDamage <= 0 ? injuryDefinition.BaseIntegrityDamage : request.StructuralDamage);
+            requestedDamage = (int)Math.Round(requestedDamage * compatibilityResult.ConsequenceMultiplier);
+
             severity = DeriveSeverity(requestedDamage, structure.MaximumIntegrity, node.Vital);
             int projected = Math.Max(0, structure.CurrentIntegrity - requestedDamage);
             if (preview)
@@ -501,6 +529,48 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
                 ProjectStructuralState(structure, injuryDefinition, projected),
                 ProjectPresenceState(structure, injuryDefinition, projected),
                 CreateSnapshot());
+        }
+
+        private LocalizedStructuralDamageResult ValidateCompatibilityContext(LocalizedStructuralDamageRequest request, BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
+        {
+            if (compatibility == null || body == null)
+            {
+                return LocalizedStructuralDamageResult.Failure(request, LocalizedDamageResultCode.MissingCompatibility, "Localized structural damage requires a biological compatibility runtime and current body snapshot.", CreateSnapshot());
+            }
+
+            if (!compatibility.IsReady)
+            {
+                return LocalizedStructuralDamageResult.Failure(request, LocalizedDamageResultCode.MissingCompatibility, "Biological compatibility runtime is not Ready.", CreateSnapshot());
+            }
+
+            if (!string.Equals(compatibility.ActorBodyId, ActorBodyId, StringComparison.Ordinal)
+                || !string.Equals(body.ActorBodyId, ActorBodyId, StringComparison.Ordinal))
+            {
+                return LocalizedStructuralDamageResult.Failure(request, LocalizedDamageResultCode.StaleBody, $"Compatibility body '{compatibility.ActorBodyId}' and snapshot body '{body.ActorBodyId}' must match condition body '{ActorBodyId}'.", CreateSnapshot());
+            }
+
+            if (body.BodyRevision != bodyRevision)
+            {
+                return LocalizedStructuralDamageResult.Failure(request, LocalizedDamageResultCode.StaleBody, $"Body snapshot revision {body.BodyRevision} does not match condition body revision {bodyRevision}.", CreateSnapshot());
+            }
+
+            if (body.Anatomy == null || body.Anatomy.AnatomyRevision != anatomyRevision)
+            {
+                return LocalizedStructuralDamageResult.Failure(request, LocalizedDamageResultCode.StaleAnatomy, $"Body snapshot anatomy revision {body.Anatomy?.AnatomyRevision ?? 0L} does not match condition anatomy revision {anatomyRevision}.", CreateSnapshot());
+            }
+
+            return LocalizedStructuralDamageResult.Success(
+                request,
+                string.Empty,
+                0,
+                0,
+                0,
+                InjurySeverity.Trivial,
+                StructureFunctionalState.Normal,
+                StructureDamageState.Intact,
+                RuntimeStructurePresenceState.Present,
+                CreateSnapshot(),
+                preview: true);
         }
 
         private bool ValidateCondition(out string failureReason)
@@ -602,6 +672,28 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
             }
 
             return ratio >= 0.05f ? InjurySeverity.Minor : InjurySeverity.Trivial;
+        }
+
+        private static BiologicalInteractionEvaluationResult EvaluateInjuryCompatibility(
+            BiologicalCompatibilityRuntime compatibility,
+            BodySnapshot body,
+            InjuryTypeDefinition injuryDefinition,
+            AnatomyNodeSnapshot node,
+            string transactionId,
+            bool preview)
+        {
+            if (compatibility == null || body == null || injuryDefinition == null)
+            {
+                return null;
+            }
+
+            string interactionId = BiologicalInteractionIds.FromInjuryTypeId(injuryDefinition.Id);
+            if (string.IsNullOrWhiteSpace(interactionId))
+            {
+                return null;
+            }
+
+            return compatibility.Evaluate(body, interactionId, BiologicalInteractionCategory.Injury, node, injuryDefinition.Id, transactionId, preview);
         }
 
         private static StructureFunctionalState ProjectFunctionalState(StructureConditionRecord structure, InjuryTypeDefinition injury, int projectedIntegrity)

@@ -429,7 +429,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.7.2.body-anatomy",
                 "feature.7.3.body-condition",
                 "feature.7.4.vital-processes",
-                "feature.7.5.biological-hazards"
+                "feature.7.5.biological-hazards",
+                "feature.7.6.biological-compatibility"
             }));
         }
 

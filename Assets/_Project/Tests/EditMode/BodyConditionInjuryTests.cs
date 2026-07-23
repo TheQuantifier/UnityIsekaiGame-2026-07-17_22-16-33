@@ -86,7 +86,7 @@ namespace UnityIsekaiGame.Tests
             int events = 0;
             body.Condition.ConditionChanged += (_, _, _) => events++;
 
-            LocalizedStructuralDamageResult result = body.Condition.PreviewLocalizedDamage(Request(body, "tx.condition.preview", "injury.blunt-trauma", "part.arm.left", 12), body.CreateAnatomySnapshot());
+            LocalizedStructuralDamageResult result = body.Condition.PreviewLocalizedDamage(Request(body, "tx.condition.preview", "injury.blunt-trauma", "part.arm.left", 12), body.CreateAnatomySnapshot(), body.BiologicalCompatibility, body.CreateSnapshot());
 
             Assert.That(result.Succeeded, Is.True, result.Message);
             Assert.That(result.Preview, Is.True);
@@ -109,7 +109,7 @@ namespace UnityIsekaiGame.Tests
                 events++;
             };
 
-            LocalizedStructuralDamageResult result = body.Condition.ApplyLocalizedDamage(Request(body, "tx.condition.execute", "injury.laceration", "part.hand.left", 14), body.CreateAnatomySnapshot());
+            LocalizedStructuralDamageResult result = body.Condition.ApplyLocalizedDamage(Request(body, "tx.condition.execute", "injury.laceration", "part.hand.left", 14), body.CreateAnatomySnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
             BodyConditionSnapshot snapshot = body.Condition.CreateSnapshot();
 
             Assert.That(result.Succeeded, Is.True, result.Message);
@@ -128,9 +128,9 @@ namespace UnityIsekaiGame.Tests
             Assert.That(body.AssignSpecies("species.human").Succeeded, Is.True);
             LocalizedStructuralDamageRequest request = Request(body, "tx.condition.duplicate", "injury.blunt-trauma", "part.arm.left", 12);
 
-            LocalizedStructuralDamageResult first = body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot());
+            LocalizedStructuralDamageResult first = body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
             long revisionAfterFirst = body.Condition.ConditionRevision;
-            LocalizedStructuralDamageResult duplicate = body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot());
+            LocalizedStructuralDamageResult duplicate = body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
             BodyConditionSnapshot snapshot = body.Condition.CreateSnapshot();
 
             Assert.That(first.Succeeded, Is.True, first.Message);
@@ -148,8 +148,8 @@ namespace UnityIsekaiGame.Tests
             Assert.That(body.AssignSpecies("species.human").Succeeded, Is.True);
             LocalizedStructuralDamageRequest request = Request(body, "tx.condition.duplicate.unavailable", "injury.severing", "part.arm.left", 100);
 
-            LocalizedStructuralDamageResult first = body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot());
-            LocalizedStructuralDamageResult duplicate = body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot());
+            LocalizedStructuralDamageResult first = body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
+            LocalizedStructuralDamageResult duplicate = body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
             BodyConditionSnapshot snapshot = body.Condition.CreateSnapshot();
 
             Assert.That(first.Succeeded, Is.True, first.Message);
@@ -167,8 +167,8 @@ namespace UnityIsekaiGame.Tests
             Assert.That(body.AssignSpecies("species.basic-spirit").Succeeded, Is.True);
             long revisionBefore = body.Condition.ConditionRevision;
 
-            LocalizedStructuralDamageResult missing = body.Condition.PreviewLocalizedDamage(Request(body, "tx.condition.missing", "injury.blunt-trauma", "part.missing", 10), body.CreateAnatomySnapshot());
-            LocalizedStructuralDamageResult incompatible = body.Condition.PreviewLocalizedDamage(Request(body, "tx.condition.incompatible", "injury.fracture", "core.spiritual", 25), body.CreateAnatomySnapshot());
+            LocalizedStructuralDamageResult missing = body.Condition.PreviewLocalizedDamage(Request(body, "tx.condition.missing", "injury.blunt-trauma", "part.missing", 10), body.CreateAnatomySnapshot(), body.BiologicalCompatibility, body.CreateSnapshot());
+            LocalizedStructuralDamageResult incompatible = body.Condition.PreviewLocalizedDamage(Request(body, "tx.condition.incompatible", "injury.fracture", "core.spiritual", 25), body.CreateAnatomySnapshot(), body.BiologicalCompatibility, body.CreateSnapshot());
 
             Assert.That(missing.Succeeded, Is.False);
             Assert.That(missing.Code, Is.EqualTo(LocalizedDamageResultCode.MissingAnatomyNode));
@@ -184,7 +184,7 @@ namespace UnityIsekaiGame.Tests
             DefinitionRegistry registry = LoadRegistry();
             ActorBodyRuntime original = CreateBodyRuntime(registry, "actor.runtime.condition.restore", "person.condition");
             Assert.That(original.AssignSpecies("species.human").Succeeded, Is.True);
-            Assert.That(original.Condition.ApplyLocalizedDamage(Request(original, "tx.condition.restore", "injury.fracture", "part.leg.left", 30), original.CreateAnatomySnapshot()).Succeeded, Is.True);
+            Assert.That(original.Condition.ApplyLocalizedDamage(Request(original, "tx.condition.restore", "injury.fracture", "part.leg.left", 30), original.CreateAnatomySnapshot(), compatibility: original.BiologicalCompatibility, body: original.CreateSnapshot()).Succeeded, Is.True);
             BodySaveData saveData = original.CreateSaveData();
 
             ActorBodyRuntime restored = CreateBodyRuntime(registry, "actor.runtime.condition.restore", "person.condition");

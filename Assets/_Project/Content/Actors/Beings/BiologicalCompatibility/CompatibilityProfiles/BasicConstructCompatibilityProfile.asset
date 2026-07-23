@@ -1,0 +1,253 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a760000000000000000000000000002, type: 3}
+  m_Name: BasicConstructCompatibilityProfile
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Compatibility.BiologicalCompatibilityProfileDefinition
+  profileId: compatibility-profile.species.basic-construct
+  displayName: BasicConstruct Compatibility Profile
+  description: Canonical alpha compatibility profile for species.basic-construct.
+  speciesDefinitionId: species.basic-construct
+  bodyFormDefinitionId: 
+  biologicalClassificationId: 
+  rules:
+  - entryId: profile.construct.bleeding-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.biology.bleeding
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs are structurally incompatible with ordinary bleeding.
+    alphaEnabled: 1
+  - entryId: profile.construct.suffocation-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.biology.suffocation
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs do not require ordinary breath.
+    alphaEnabled: 1
+  - entryId: profile.construct.starvation-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.biology.starvation
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs do not use ordinary nutrition.
+    alphaEnabled: 1
+  - entryId: profile.construct.dehydration-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.biology.dehydration
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs do not use ordinary hydration.
+    alphaEnabled: 1
+  - entryId: profile.construct.fatigue-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.biology.extreme-fatigue
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs do not suffer ordinary fatigue.
+    alphaEnabled: 1
+  - entryId: profile.construct.sleep-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.biology.sleep-deprivation
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs do not require ordinary sleep.
+    alphaEnabled: 1
+  - entryId: profile.construct.biological-healing-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.recovery.biological-healing
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs are incompatible with ordinary biological healing.
+    alphaEnabled: 1
+  - entryId: profile.construct.repair-compatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.recovery.construct-repair
+    category: 0
+    ruleKind: 0
+    compatibilityState: 0
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Construct repair is compatible with constructs.
+    alphaEnabled: 1
+  - entryId: profile.construct.core-damage-compatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.injury.core-damage
+    category: 0
+    ruleKind: 0
+    compatibilityState: 0
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Construct core damage targets construct cores.
+    alphaEnabled: 1
+  - entryId: profile.construct.disease-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.condition.disease
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs are not biological disease hosts.
+    alphaEnabled: 1
+  - entryId: profile.construct.poison-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.condition.poison
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Constructs are not ordinary poison targets.
+    alphaEnabled: 1
+  alphaEnabled: 1

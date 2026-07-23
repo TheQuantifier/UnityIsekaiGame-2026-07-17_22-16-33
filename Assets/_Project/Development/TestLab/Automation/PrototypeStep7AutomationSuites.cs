@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Beings.Biology.Condition;
@@ -23,6 +24,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildBodyConditionSuite());
             TryRegister(registry, BuildVitalProcessesSuite());
             TryRegister(registry, BuildBiologicalHazardsSuite());
+            TryRegister(registry, BuildBiologicalCompatibilitySuite());
         }
 
         private static ITestLabAutomationSuite BuildBodySpeciesSuite()
@@ -278,6 +280,79 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("suppress", "Suppress bleeding", context => Operation(context.Service.SuppressBleedingHazard(), context, "step7-hazards-suppress"))),
                 Scenario("save-restore-preserves-hazards-silently", "Save and restore preserve hazards without restore events", 140,
                     Step("restore", "Save restore hazards", context => Operation(context.Service.ValidateBiologicalHazardSaveRestore(), context, "step7-hazards-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildBiologicalCompatibilitySuite()
+        {
+            return Suite("feature.7.6.biological-compatibility", "Feature 7.6 Biological Compatibility", "7.6", 760,
+                Required("ActorBodyRuntime", "BiologicalCompatibilityRuntime", "BiologicalInteractionDefinition", "BiologicalCompatibilityProfileDefinition"),
+                Scenario("healthy-human-ready", "Human compatibility runtime is ready", 10,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-reset")),
+                    Step("validate", "Validate compatibility", context => Operation(context.Service.ValidateBiologicalCompatibilityIntegrity(), context, "step7-compat-validate"))),
+                Scenario("human-bleeding-compatible", "Human ordinary Bleeding is compatible", 20,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-bleed-reset")),
+                    Step("evaluate", "Evaluate Human bleeding", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, string.Empty), context, "step7-compat-bleed"))),
+                Scenario("human-suffocation-compatible", "Human Suffocation remains compatible", 25,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-suffocation-human-reset")),
+                    Step("evaluate", "Evaluate Human suffocation", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Suffocation, BiologicalInteractionCategory.Hazard, string.Empty), context, "step7-compat-suffocation-human"))),
+                Scenario("spirit-bleeding-incompatible", "Spirit ordinary Bleeding is incompatible", 30,
+                    Step("spirit", "Assign Spirit", context => Operation(context.Service.AssignBodySpecies("species.basic-spirit"), context, "step7-compat-spirit")),
+                    Step("evaluate", "Evaluate Spirit bleeding", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, string.Empty), context, "step7-compat-spirit-bleed"))),
+                Scenario("construct-repair-compatible", "Construct Repair is compatible with Constructs", 40,
+                    Step("construct", "Assign Construct", context => Operation(context.Service.AssignBodySpecies("species.basic-construct"), context, "step7-compat-construct")),
+                    Step("repair", "Evaluate Construct Repair", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.ConstructRepair, BiologicalInteractionCategory.Repair, string.Empty), context, "step7-compat-construct-repair")),
+                    Step("suffocation", "Evaluate Construct Suffocation", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Suffocation, BiologicalInteractionCategory.Hazard, string.Empty), context, "step7-compat-construct-suffocation")),
+                    Step("core", "Evaluate Construct core damage", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.CoreDamage, BiologicalInteractionCategory.Injury, "core.power"), context, "step7-compat-construct-core"))),
+                Scenario("biological-healing-contract", "Biological healing contract distinguishes body types", 50,
+                    Step("human", "Reset Human", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-heal-human-reset")),
+                    Step("human-heal", "Evaluate Human healing", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.BiologicalHealing, BiologicalInteractionCategory.Healing, string.Empty), context, "step7-compat-heal-human")),
+                    Step("construct", "Assign Construct", context => Operation(context.Service.AssignBodySpecies("species.basic-construct"), context, "step7-compat-heal-construct")),
+                    Step("construct-heal", "Evaluate Construct biological healing", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.BiologicalHealing, BiologicalInteractionCategory.Healing, string.Empty), context, "step7-compat-heal-construct-eval"))),
+                Scenario("resistance-combines-deterministically", "Resistance contributions combine deterministically", 60,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-resist-reset")),
+                    Step("resist", "Add resistance", context => Operation(context.Service.AddBiologicalCompatibilityResistance(), context, "step7-compat-resist")),
+                    Step("second", "Add second resistance", context => Operation(context.Service.AddSecondBiologicalCompatibilityResistance(), context, "step7-compat-resist-second")),
+                    Step("order", "Prove deterministic order", context => Operation(context.Service.ProveBiologicalCompatibilityDeterministicOrder(), context, "step7-compat-resist-order"))),
+                Scenario("specific-rule-precedence", "Specific interaction rules override category defaults at equal priority", 65,
+                    Step("prove", "Prove specific precedence", context => Operation(context.Service.ProveBiologicalCompatibilitySpecificRulePrecedence(), context, "step7-compat-precedence"))),
+                Scenario("source-safe-removal", "Removing one compatibility source preserves others", 70,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-source-reset")),
+                    Step("resist", "Add resistance", context => Operation(context.Service.AddBiologicalCompatibilityResistance(), context, "step7-compat-source-resist")),
+                    Step("vulnerable", "Add vulnerability", context => Operation(context.Service.AddBiologicalCompatibilityVulnerability(), context, "step7-compat-source-vulnerable")),
+                    Step("remove", "Remove one rule", context => Operation(context.Service.RemoveFirstBiologicalCompatibilityRule(), context, "step7-compat-source-remove"))),
+                Scenario("dynamic-reset-restores-canonical", "Reset removes development compatibility rules", 75,
+                    Step("prove", "Prove dynamic reset", context => Operation(context.Service.ProveBiologicalCompatibilityDynamicReset(), context, "step7-compat-dynamic-reset"))),
+                Scenario("immunity-is-semantic", "Immunity is reported semantically", 80,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-immune-reset")),
+                    Step("immune", "Add immunity", context => Operation(context.Service.AddBiologicalCompatibilityImmunity(), context, "step7-compat-immune")),
+                    Step("evaluate", "Evaluate bleeding immunity", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, string.Empty), context, "step7-compat-immune-eval"))),
+                Scenario("suppression-is-not-immunity", "Suppression is distinct from immunity", 90,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-suppress-reset")),
+                    Step("suppress", "Add suppression", context => Operation(context.Service.AddBiologicalCompatibilitySuppression(), context, "step7-compat-suppress")),
+                    Step("evaluate", "Evaluate suppressed bleeding", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, string.Empty), context, "step7-compat-suppress-eval"))),
+                Scenario("affinity-conversion-absorption", "Affinity, conversion, and absorption are reported", 100,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-special-reset")),
+                    Step("affinity", "Add affinity", context => Operation(context.Service.AddBiologicalCompatibilityAffinity(), context, "step7-compat-affinity")),
+                    Step("conversion", "Add conversion", context => Operation(context.Service.AddBiologicalCompatibilityConversion(), context, "step7-compat-conversion")),
+                    Step("absorption", "Add absorption", context => Operation(context.Service.AddBiologicalCompatibilityAbsorption(), context, "step7-compat-absorption"))),
+                Scenario("hazards-consume-compatibility", "Feature 7.5 hazards consume compatibility result", 110,
+                    Step("spirit", "Assign Spirit", context => Operation(context.Service.AssignBodySpecies("species.basic-spirit"), context, "step7-compat-hazard-spirit")),
+                    Step("bleeding", "Bleeding rejected on Spirit", context => Operation(context.Service.AddBleedingHazard(), context, "step7-compat-hazard-spirit-bleed", acceptFailure: true))),
+                Scenario("injuries-consume-compatibility", "Feature 7.3 injuries consume compatibility result", 120,
+                    Step("spirit", "Assign Spirit", context => Operation(context.Service.AssignBodySpecies("species.basic-spirit"), context, "step7-compat-injury-spirit")),
+                    Step("fracture", "Fracture rejected on Spirit", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.fracture", "essence.aura", 20), context, "step7-compat-injury-fracture", acceptFailure: true)),
+                    Step("disrupt", "Incorporeal disruption accepted", context => Operation(context.Service.ApplyLocalizedStructuralDamage("injury.incorporeal-disruption", "essence.aura", 20), context, "step7-compat-injury-disrupt"))),
+                Scenario("missing-and-stale-contexts-reject", "Missing interactions and stale body snapshots fail closed", 125,
+                    Step("missing", "Missing interaction rejected", context => Operation(context.Service.ProveBiologicalCompatibilityMissingInteractionRejected(), context, "step7-compat-missing-interaction")),
+                    Step("stale", "Stale body rejected", context => Operation(context.Service.ProveBiologicalCompatibilityStaleBodyRejected(), context, "step7-compat-stale-body"))),
+                Scenario("snapshot-read-only", "Compatibility snapshot mutates nothing", 130,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-snapshot-reset")),
+                    Step("snapshot", "Snapshot read-only", context => Operation(context.Service.ProveBiologicalCompatibilitySnapshotReadOnly(), context, "step7-compat-snapshot"))),
+                Scenario("future-contracts-resolve", "Future recovery disease and transformation contracts resolve", 140,
+                    Step("reset", "Reset Human compatibility", context => Operation(context.Service.ResetBiologicalCompatibilityHuman(), context, "step7-compat-contract-reset")),
+                    Step("disease", "Evaluate Disease", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Disease, BiologicalInteractionCategory.Disease, string.Empty), context, "step7-compat-contract-disease")),
+                    Step("poison", "Evaluate Poison", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Poison, BiologicalInteractionCategory.Poison, string.Empty), context, "step7-compat-contract-poison")),
+                    Step("polymorph", "Evaluate Polymorph", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Polymorph, BiologicalInteractionCategory.Transformation, string.Empty), context, "step7-compat-contract-polymorph"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

@@ -76,6 +76,8 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
         MissingAnatomy,
         MissingAnatomyNode,
         MissingInjuryDefinition,
+        MissingCompatibility,
+        MissingInteraction,
         IncompatibleInjury,
         InvalidRequest,
         InvalidIntegrity,

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Combat;
@@ -48,6 +49,7 @@ namespace UnityIsekaiGame.Development
             "Body Condition 7.3",
             "Vital Processes 7.4",
             "Biological Hazards 7.5",
+            "Biological Compatibility 7.6",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -102,6 +104,7 @@ namespace UnityIsekaiGame.Development
         private Text bodyConditionText;
         private Text vitalProcessesText;
         private Text biologicalHazardsText;
+        private Text biologicalCompatibilityText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -282,6 +285,7 @@ namespace UnityIsekaiGame.Development
             Transform bodyConditionSection = AddSection(content, "Body Condition 7.3 Section");
             Transform vitalProcessesSection = AddSection(content, "Vital Processes 7.4 Section");
             Transform biologicalHazardsSection = AddSection(content, "Biological Hazards 7.5 Section");
+            Transform biologicalCompatibilitySection = AddSection(content, "Biological Compatibility 7.6 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -314,6 +318,7 @@ namespace UnityIsekaiGame.Development
             BuildBodyConditionSection(bodyConditionSection, font);
             BuildVitalProcessesSection(vitalProcessesSection, font);
             BuildBiologicalHazardsSection(biologicalHazardsSection, font);
+            BuildBiologicalCompatibilitySection(biologicalCompatibilitySection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -511,6 +516,41 @@ namespace UnityIsekaiGame.Development
                 ("Construct Blood", () => service.TestInactiveBiologicalHazardResource("species.basic-construct", BiologicalHazardIds.Bleeding)),
                 ("Spirit Breath", () => service.TestInactiveBiologicalHazardResource("species.basic-spirit", BiologicalHazardIds.Suffocation)));
             biologicalHazardsText = AddText(parent, font, "Biological hazard runtime not available.", 12, 720);
+        }
+
+        private void BuildBiologicalCompatibilitySection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Human", () => service.ResetBiologicalCompatibilityHuman()),
+                ("Validate", () => service.ValidateBiologicalCompatibilityIntegrity()),
+                ("Snapshot", () => service.ProveBiologicalCompatibilitySnapshotReadOnly()),
+                ("Order", () => service.ProveBiologicalCompatibilityDeterministicOrder()));
+            AddButtonRow(parent, font,
+                ("Bleeding", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, string.Empty)),
+                ("Suffocate", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Suffocation, BiologicalInteractionCategory.Hazard, string.Empty)),
+                ("Fracture", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Fracture, BiologicalInteractionCategory.Injury, "part.leg.left")),
+                ("Disrupt", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.IncorporealDisruption, BiologicalInteractionCategory.Injury, "essence.aura")));
+            AddButtonRow(parent, font,
+                ("Spirit", () => service.AssignBodySpecies("species.basic-spirit")),
+                ("Construct", () => service.AssignBodySpecies("species.basic-construct")),
+                ("Healing", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.BiologicalHealing, BiologicalInteractionCategory.Healing, string.Empty)),
+                ("Repair", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.ConstructRepair, BiologicalInteractionCategory.Repair, string.Empty)));
+            AddButtonRow(parent, font,
+                ("Resist", () => service.AddBiologicalCompatibilityResistance()),
+                ("2nd Resist", () => service.AddSecondBiologicalCompatibilityResistance()),
+                ("Vulnerable", () => service.AddBiologicalCompatibilityVulnerability()),
+                ("Remove", () => service.RemoveFirstBiologicalCompatibilityRule()));
+            AddButtonRow(parent, font,
+                ("Immune", () => service.AddBiologicalCompatibilityImmunity()),
+                ("Suppress", () => service.AddBiologicalCompatibilitySuppression()),
+                ("Affinity", () => service.AddBiologicalCompatibilityAffinity()),
+                ("Convert", () => service.AddBiologicalCompatibilityConversion()));
+            AddButtonRow(parent, font,
+                ("Absorb", () => service.AddBiologicalCompatibilityAbsorption()),
+                ("Disease", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Disease, BiologicalInteractionCategory.Disease, string.Empty)),
+                ("Poison", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Poison, BiologicalInteractionCategory.Poison, string.Empty)),
+                ("Polymorph", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Polymorph, BiologicalInteractionCategory.Transformation, string.Empty)));
+            biologicalCompatibilityText = AddText(parent, font, "Biological compatibility runtime not available.", 12, 760);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1089,6 +1129,9 @@ namespace UnityIsekaiGame.Development
                 case "Biological Hazards 7.5":
                     SetValue(biologicalHazardsText, service.BuildBiologicalHazardSummary());
                     break;
+                case "Biological Compatibility 7.6":
+                    SetValue(biologicalCompatibilityText, service.BuildBiologicalCompatibilitySummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1576,7 +1619,7 @@ namespace UnityIsekaiGame.Development
                 Group("Persistence Step 4", "Persistence", "Location", "World Entities"),
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
-                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5")
+                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6")
             };
         }
 
