@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.Beings.Biology.Condition;
+using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
@@ -1381,6 +1382,295 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "Validate Vital Process Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} Blood={beforeBlood:0.##}->{afterBlood:0.##} Events={eventCount}.");
 
             void CountVitalEvent(VitalProcessRuntime _, VitalResourceMutationResult __, bool ___)
+            {
+                eventCount++;
+            }
+        }
+
+        public string BuildBiologicalHazardSummary()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return "Biological hazard runtime is missing.";
+            }
+
+            EnsureBiologicalHazardsReady(body);
+            BodySnapshot bodySnapshot = body.CreateSnapshot();
+            BiologicalHazardSnapshot hazards = bodySnapshot.BiologicalHazards;
+            if (hazards == null)
+            {
+                return "Biological hazard snapshot is missing.";
+            }
+
+            List<string> lines = new List<string>
+            {
+                "Feature 7.5 Biological Hazards",
+                $"Body: {bodySnapshot.ActorBodyId}",
+                $"Species: {bodySnapshot.SpeciesId}",
+                $"Readiness: {hazards.Readiness}",
+                $"Body/Vital/Hazard Revisions: {hazards.BodyRevision}/{hazards.VitalRevision}/{hazards.HazardRevision}",
+                $"Active Hazards: {hazards.ActiveHazards.Count}",
+                $"Coherent: {hazards.Coherent}"
+            };
+
+            foreach (BiologicalHazardInstanceSnapshot hazard in hazards.ActiveHazards)
+            {
+                lines.Add($"- {hazard.DisplayName} [{hazard.HazardDefinitionId}] Severity={hazard.Severity} Rate={hazard.EffectiveRatePerHour:0.###}/h Sources={hazard.Sources.Count} Suppressions={hazard.Suppressions.Count}");
+                foreach (BiologicalHazardSourceSnapshot source in hazard.Sources.Take(4))
+                {
+                    lines.Add($"  Source: {source.SourceContributionId} Category={source.SourceCategory} Severity={source.Severity} Rate={source.RateMultiplier:0.###} Remaining={source.RemainingSeconds:0.##}");
+                }
+            }
+
+            if (hazards.Diagnostics.Count > 0)
+            {
+                lines.AddRange(hazards.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateBiologicalHazardIntegrity()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Biological Hazards", "Body runtime is missing.", BiologicalHazardResultCode.MissingActorBody.ToString());
+            }
+
+            EnsureBiologicalHazardsReady(body);
+            BiologicalHazardSnapshot snapshot = body.BiologicalHazards.CreateSnapshot();
+            bool succeeded = snapshot.Coherent && snapshot.Readiness == BiologicalHazardReadinessState.Ready;
+            return Record(succeeded, "Validate Biological Hazards", succeeded ? "Success" : "InvalidBiologicalHazards", $"Readiness={snapshot.Readiness} Active={snapshot.ActiveHazards.Count} Coherent={snapshot.Coherent}.");
+        }
+
+        public PrototypeTestLabOperation ResetBiologicalHazardsHuman()
+        {
+            PrototypeTestLabOperation reset = ResetVitalProcessesHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Reset Biological Hazards", "Body runtime is missing.", BiologicalHazardResultCode.MissingActorBody.ToString());
+            }
+
+            return RecordHazardOperation("Reset Biological Hazards", body.BiologicalHazards.BuildForBody(body.ActorBodyId, body.VitalProcesses, registry));
+        }
+
+        public PrototypeTestLabOperation AddBleedingHazard()
+        {
+            return AddHazardSource(BiologicalHazardIds.Bleeding, $"test-lab.hazard.bleeding.{Guid.NewGuid():N}", BiologicalHazardSourceCategory.Injury, BiologicalHazardSeverity.Moderate, 1f, 0f, "injury.laceration");
+        }
+
+        public PrototypeTestLabOperation AddSecondBleedingHazardSource()
+        {
+            return AddHazardSource(BiologicalHazardIds.Bleeding, $"test-lab.hazard.bleeding.second.{Guid.NewGuid():N}", BiologicalHazardSourceCategory.Injury, BiologicalHazardSeverity.Minor, 0.5f, 0f, "injury.puncture");
+        }
+
+        public PrototypeTestLabOperation AddSuffocationExposure()
+        {
+            return AddHazardSource(BiologicalHazardIds.Suffocation, $"test-lab.exposure.air.{Guid.NewGuid():N}", BiologicalHazardSourceCategory.Environment, BiologicalHazardSeverity.Serious, 1f, 0f, BiologicalExposureIds.BreathableAirUnavailable);
+        }
+
+        public PrototypeTestLabOperation AddHeatExposure()
+        {
+            return AddHazardSource(BiologicalHazardIds.Overheating, $"test-lab.exposure.heat.{Guid.NewGuid():N}", BiologicalHazardSourceCategory.Environment, BiologicalHazardSeverity.Serious, 1f, 0f, BiologicalExposureIds.Heat);
+        }
+
+        public PrototypeTestLabOperation AddColdExposure()
+        {
+            return AddHazardSource(BiologicalHazardIds.Hypothermia, $"test-lab.exposure.cold.{Guid.NewGuid():N}", BiologicalHazardSourceCategory.Environment, BiologicalHazardSeverity.Serious, 1f, 0f, BiologicalExposureIds.Cold);
+        }
+
+        public PrototypeTestLabOperation PreviewBiologicalHazardTick(float elapsedGameSeconds)
+        {
+            if (!TryBuildHazardTickRequest(elapsedGameSeconds, "preview", preview: true, out ActorBodyRuntime body, out BiologicalHazardTickRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            long hazardRevision = body.BiologicalHazards.HazardRevision;
+            long vitalRevision = body.VitalProcesses.VitalRevision;
+            BiologicalHazardTickResult result = body.BiologicalHazards.PreviewTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
+            bool succeeded = result.Succeeded && result.Preview && hazardRevision == body.BiologicalHazards.HazardRevision && vitalRevision == body.VitalProcesses.VitalRevision;
+            return succeeded
+                ? RecordHazardTick("Preview Biological Hazard Tick", result)
+                : Record(false, "Preview Biological Hazard Tick", result.Code.ToString(), $"{result.Message} HazardRevision={hazardRevision}->{body.BiologicalHazards.HazardRevision} VitalRevision={vitalRevision}->{body.VitalProcesses.VitalRevision}.");
+        }
+
+        public PrototypeTestLabOperation ApplyBiologicalHazardTick(float elapsedGameSeconds)
+        {
+            return ApplyBiologicalHazardTickWithTransaction(elapsedGameSeconds, $"test-lab.hazard.tick.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation ApplyBiologicalHazardTickWithTransaction(float elapsedGameSeconds, string transactionId)
+        {
+            if (!TryBuildHazardTickRequest(elapsedGameSeconds, transactionId, preview: false, out ActorBodyRuntime body, out BiologicalHazardTickRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            return RecordHazardTick("Apply Biological Hazard Tick", body.BiologicalHazards.ApplyTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()));
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalHazardTickDuplicateProtection()
+        {
+            const string transactionId = "test-lab.hazard.duplicate-proof";
+            PrototypeTestLabOperation add = AddBleedingHazard();
+            if (!add.Succeeded)
+            {
+                return add;
+            }
+
+            PrototypeTestLabOperation first = ApplyBiologicalHazardTickWithTransaction(1800f, transactionId);
+            PrototypeTestLabOperation second = ApplyBiologicalHazardTickWithTransaction(1800f, transactionId);
+            bool succeeded = first.Succeeded && second.Succeeded && string.Equals(second.Code, BiologicalHazardResultCode.Duplicate.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Biological Hazard Duplicate Proof", succeeded ? "Success" : "DuplicateProofFailed", $"First={first.Code} Second={second.Code}. Duplicate biological hazard tick did not apply a second mutation.");
+        }
+
+        public PrototypeTestLabOperation SuppressBleedingHazard()
+        {
+            if (!EnsureHazardRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            if (!body.BiologicalHazards.CreateSnapshot().ActiveHazards.Any(hazard => hazard.HazardDefinitionId == BiologicalHazardIds.Bleeding))
+            {
+                PrototypeTestLabOperation add = AddBleedingHazard();
+                if (!add.Succeeded)
+                {
+                    return add;
+                }
+            }
+
+            BiologicalHazardSuppressionRequest request = new BiologicalHazardSuppressionRequest(body.ActorBodyId, BiologicalHazardIds.Bleeding, "test-lab.hazard.suppression.bandage", BiologicalHazardSuppressionMode.RateMultiplier, 0.25f, "Prototype bleeding suppression");
+            return RecordHazardOperation("Suppress Bleeding Hazard", body.BiologicalHazards.AddOrUpdateSuppression(request));
+        }
+
+        public PrototypeTestLabOperation RemoveFirstBiologicalHazardSource()
+        {
+            if (!EnsureHazardRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalHazardInstanceSnapshot hazard = body.BiologicalHazards.CreateSnapshot().ActiveHazards.FirstOrDefault(active => active.Sources.Count > 0);
+            BiologicalHazardSourceSnapshot source = hazard?.Sources.FirstOrDefault();
+            if (hazard == null || source == null)
+            {
+                return RecordFailure("Remove Biological Hazard Source", "No active hazard source exists.", BiologicalHazardResultCode.MissingSource.ToString());
+            }
+
+            return RecordHazardOperation("Remove Biological Hazard Source", body.BiologicalHazards.RemoveSource(hazard.HazardDefinitionId, source.SourceContributionId));
+        }
+
+        public PrototypeTestLabOperation SynchronizeBiologicalHazardsFromVitals()
+        {
+            if (!EnsureHazardRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            return RecordHazardOperation("Synchronize Biological Hazards", body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()));
+        }
+
+        public PrototypeTestLabOperation CreateStarvationAndDehydrationPressure()
+        {
+            PrototypeTestLabOperation nutrition = ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Nutrition, VitalResourceMutationOperation.Set, 0f, $"test-lab.hazard.nutrition.{Guid.NewGuid():N}");
+            if (!nutrition.Succeeded)
+            {
+                return nutrition;
+            }
+
+            PrototypeTestLabOperation hydration = ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Hydration, VitalResourceMutationOperation.Set, 0f, $"test-lab.hazard.hydration.{Guid.NewGuid():N}");
+            if (!hydration.Succeeded)
+            {
+                return hydration;
+            }
+
+            return SynchronizeBiologicalHazardsFromVitals();
+        }
+
+        public PrototypeTestLabOperation CreateFatigueAndSleepPressure()
+        {
+            PrototypeTestLabOperation fatigue = ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Fatigue, VitalResourceMutationOperation.Set, 100f, $"test-lab.hazard.fatigue.{Guid.NewGuid():N}");
+            if (!fatigue.Succeeded)
+            {
+                return fatigue;
+            }
+
+            PrototypeTestLabOperation sleep = ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.SleepNeed, VitalResourceMutationOperation.Set, 100f, $"test-lab.hazard.sleep.{Guid.NewGuid():N}");
+            if (!sleep.Succeeded)
+            {
+                return sleep;
+            }
+
+            return SynchronizeBiologicalHazardsFromVitals();
+        }
+
+        public PrototypeTestLabOperation CreateTemperatureHazard(bool high)
+        {
+            PrototypeTestLabOperation temperature = ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Temperature, VitalResourceMutationOperation.Set, high ? 42f : 30f, $"test-lab.hazard.temperature.{Guid.NewGuid():N}");
+            if (!temperature.Succeeded)
+            {
+                return temperature;
+            }
+
+            return SynchronizeBiologicalHazardsFromVitals();
+        }
+
+        public PrototypeTestLabOperation TestInactiveBiologicalHazardResource(string speciesId, string hazardId)
+        {
+            PrototypeTestLabOperation assign = AssignBodySpecies(speciesId);
+            if (!assign.Succeeded)
+            {
+                return assign;
+            }
+
+            return AddHazardSource(hazardId, $"test-lab.hazard.inactive.{Guid.NewGuid():N}", BiologicalHazardSourceCategory.System, BiologicalHazardSeverity.Minor, 1f, 0f, "inactive-resource-proof");
+        }
+
+        public PrototypeTestLabOperation ValidateBiologicalHazardSaveRestore()
+        {
+            PrototypeTestLabOperation reset = ResetBiologicalHazardsHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            PrototypeTestLabOperation add = AddBleedingHazard();
+            if (!add.Succeeded)
+            {
+                return add;
+            }
+
+            if (!EnsureHazardRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalHazardSnapshot before = body.BiologicalHazards.CreateSnapshot();
+            BodySaveData saveData = body.CreateSaveData();
+            int eventCount = 0;
+            body.BiologicalHazards.HazardChanged += CountHazardEvent;
+            body.BiologicalHazards.HazardTicked += CountHazardTickEvent;
+            BodyOperationResult restore = body.RestoreFromSaveData(saveData, registry, body.ActorBodyId, body.PersonId, restoring: true);
+            body.BiologicalHazards.HazardChanged -= CountHazardEvent;
+            body.BiologicalHazards.HazardTicked -= CountHazardTickEvent;
+            BiologicalHazardSnapshot after = body.BiologicalHazards.CreateSnapshot();
+            bool stable = before.ActiveHazards.Select(hazard => hazard.HazardDefinitionId).SequenceEqual(after.ActiveHazards.Select(hazard => hazard.HazardDefinitionId));
+            bool succeeded = restore.Succeeded && stable && eventCount == 0 && after.Coherent;
+            return Record(succeeded, "Validate Biological Hazard Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} StableHazards={stable} Events={eventCount} Active={after.ActiveHazards.Count}.");
+
+            void CountHazardEvent(BiologicalHazardRuntime _, BiologicalHazardOperationResult __, bool ___)
+            {
+                eventCount++;
+            }
+
+            void CountHazardTickEvent(BiologicalHazardRuntime _, BiologicalHazardTickResult __, bool ___)
             {
                 eventCount++;
             }
@@ -6065,6 +6355,79 @@ namespace UnityIsekaiGame.Development
             return body.VitalProcesses.IsReady;
         }
 
+        private bool EnsureBiologicalHazardsReady(ActorBodyRuntime body)
+        {
+            if (body == null)
+            {
+                return false;
+            }
+
+            if (!EnsureVitalProcessesReady(body))
+            {
+                return false;
+            }
+
+            if (!body.BiologicalHazards.IsReady)
+            {
+                body.BiologicalHazards.BuildForBody(body.ActorBodyId, body.VitalProcesses, registry);
+            }
+
+            return body.BiologicalHazards.IsReady;
+        }
+
+        private bool EnsureHazardRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure)
+        {
+            body = null;
+            failure = default;
+            if (!EnsureBodyRuntime(out body))
+            {
+                failure = RecordFailure("Biological Hazard Operation", "Body runtime is missing.", BiologicalHazardResultCode.MissingActorBody.ToString());
+                return false;
+            }
+
+            if (!EnsureBiologicalHazardsReady(body))
+            {
+                failure = RecordFailure("Biological Hazard Operation", "Biological hazard runtime is not ready.", BiologicalHazardResultCode.RuntimeNotReady.ToString());
+                return false;
+            }
+
+            return true;
+        }
+
+        private PrototypeTestLabOperation AddHazardSource(string hazardId, string sourceContributionId, BiologicalHazardSourceCategory category, BiologicalHazardSeverity severity, float rateMultiplier, float durationSeconds, string sourceObjectId)
+        {
+            if (!EnsureHazardRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalHazardSourceRequest request = new BiologicalHazardSourceRequest(body.ActorBodyId, hazardId, sourceContributionId, category, severity, rateMultiplier, durationSeconds, sourceObjectId, "Prototype Test Lab hazard source");
+            return RecordHazardOperation("Apply Biological Hazard Source", body.BiologicalHazards.AddOrUpdateSource(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()));
+        }
+
+        private bool TryBuildHazardTickRequest(
+            float elapsedGameSeconds,
+            string transactionSeed,
+            bool preview,
+            out ActorBodyRuntime body,
+            out BiologicalHazardTickRequest request,
+            out PrototypeTestLabOperation failure)
+        {
+            body = null;
+            request = default;
+            failure = default;
+            if (!EnsureHazardRuntime(out body, out failure))
+            {
+                return false;
+            }
+
+            string transactionId = string.IsNullOrWhiteSpace(transactionSeed) || string.Equals(transactionSeed, "preview", StringComparison.Ordinal)
+                ? $"test-lab.hazard.{(string.IsNullOrWhiteSpace(transactionSeed) ? "tick" : transactionSeed)}.{Guid.NewGuid():N}"
+                : transactionSeed;
+            request = new BiologicalHazardTickRequest(body.ActorBodyId, elapsedGameSeconds, transactionId, preview, "Prototype Test Lab hazard tick");
+            return true;
+        }
+
         private bool TryBuildVitalRequest(
             string resourceId,
             VitalResourceMutationOperation operation,
@@ -6119,6 +6482,35 @@ namespace UnityIsekaiGame.Development
             string message = $"{result.Message} Resource={result.Request.ResourceId} Operation={result.Request.Operation} Amount={result.Request.Amount:0.###} Preview={result.Preview} Duplicate={result.Duplicate} Value={result.PreviousValue:0.##}->{result.NewValue:0.##} Applied={result.AppliedAmount:0.##} State={result.PreviousState}->{result.NewState} Profile={snapshot?.ProfileId ?? string.Empty} Revision={snapshot?.VitalRevision ?? 0}.";
             return result.Succeeded
                 ? Record(true, operationName, result.Duplicate ? VitalProcessResultCode.Duplicate.ToString() : result.Preview ? VitalProcessResultCode.Preview.ToString() : result.Code.ToString(), message)
+                : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private PrototypeTestLabOperation RecordHazardOperation(string operationName, BiologicalHazardOperationResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Biological hazard operation returned no result.", BiologicalHazardResultCode.InvalidRequest.ToString());
+            }
+
+            BiologicalHazardSnapshot snapshot = result.Snapshot;
+            string message = $"{result.Message} Preview={result.Preview} Duplicate={result.Duplicate} Body={snapshot?.ActorBodyId ?? string.Empty} Active={snapshot?.ActiveHazards.Count ?? 0} Revision={snapshot?.HazardRevision ?? 0}.";
+            return result.Succeeded
+                ? Record(true, operationName, result.Duplicate ? BiologicalHazardResultCode.Duplicate.ToString() : result.Preview ? BiologicalHazardResultCode.Preview.ToString() : result.Code.ToString(), message)
+                : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private PrototypeTestLabOperation RecordHazardTick(string operationName, BiologicalHazardTickResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Biological hazard tick returned no result.", BiologicalHazardResultCode.InvalidRequest.ToString());
+            }
+
+            BiologicalHazardSnapshot snapshot = result.Snapshot;
+            string consequenceSummary = string.Join(", ", result.Consequences.Select(consequence => $"{consequence.Kind}:{consequence.HazardDefinitionId}:{consequence.ResourceId}"));
+            string message = $"{result.Message} Preview={result.Preview} Duplicate={result.Duplicate} Elapsed={result.Request.ElapsedGameSeconds:0.###} Consequences={result.Consequences.Count} DamagePlans={result.DamagePlans.Count} Lifecycle={result.HasLifecyclePressure} Active={snapshot?.ActiveHazards.Count ?? 0} Revision={snapshot?.HazardRevision ?? 0}. {consequenceSummary}";
+            return result.Succeeded
+                ? Record(true, operationName, result.Duplicate ? BiologicalHazardResultCode.Duplicate.ToString() : result.Preview ? BiologicalHazardResultCode.Preview.ToString() : result.Code.ToString(), message)
                 : RecordFailure(operationName, message, result.Code.ToString());
         }
 

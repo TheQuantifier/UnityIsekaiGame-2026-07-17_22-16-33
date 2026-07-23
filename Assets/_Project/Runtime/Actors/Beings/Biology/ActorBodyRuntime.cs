@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.Beings.Biology.Condition;
+using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Capabilities;
 using UnityIsekaiGame.GameData;
@@ -32,6 +33,7 @@ namespace UnityIsekaiGame.Beings.Biology
         private readonly AnatomyRuntime anatomyRuntime = new AnatomyRuntime();
         private readonly BodyConditionRuntime conditionRuntime = new BodyConditionRuntime();
         private readonly VitalProcessRuntime vitalProcessRuntime = new VitalProcessRuntime();
+        private readonly BiologicalHazardRuntime biologicalHazardRuntime = new BiologicalHazardRuntime();
 
         public event Action<ActorBodyRuntime, BodyOperationResult, bool> BodyChanged;
 
@@ -46,6 +48,7 @@ namespace UnityIsekaiGame.Beings.Biology
         public AnatomyRuntime Anatomy => anatomyRuntime;
         public BodyConditionRuntime Condition => conditionRuntime;
         public VitalProcessRuntime VitalProcesses => vitalProcessRuntime;
+        public BiologicalHazardRuntime BiologicalHazards => biologicalHazardRuntime;
         public bool IsReady => Readiness == BodyReadinessState.Ready;
 
         private void OnDisable()
@@ -54,6 +57,7 @@ namespace UnityIsekaiGame.Beings.Biology
             anatomyRuntime.Dispose();
             conditionRuntime.Dispose();
             vitalProcessRuntime.Dispose();
+            biologicalHazardRuntime.Dispose();
         }
 
         public void Configure(
@@ -82,6 +86,7 @@ namespace UnityIsekaiGame.Beings.Biology
                 BuildAnatomyForCurrentSpecies(restoring, null, preserveRevision: true);
                 conditionRuntime.BuildHealthy(ActorBodyId, anatomyRuntime.CreateSnapshot(BodyRevision), registry, restoring, preserveRevision: true);
                 BuildVitalProcessesForCurrentBody(restoring, preserveRevision: true);
+                BuildBiologicalHazardsForCurrentBody(restoring, preserveRevision: true);
             }
 
             ValidateBody(out _);
@@ -115,6 +120,7 @@ namespace UnityIsekaiGame.Beings.Biology
             AnatomySaveData previousAnatomy = anatomyRuntime.CreateSaveData();
             BodyConditionSaveData previousCondition = conditionRuntime.CreateSaveData();
             VitalProcessSaveData previousVitalProcesses = vitalProcessRuntime.CreateSaveData();
+            BiologicalHazardSaveData previousBiologicalHazards = biologicalHazardRuntime.CreateSaveData();
 
             try
             {
@@ -171,6 +177,12 @@ namespace UnityIsekaiGame.Beings.Biology
                 if (!vitalResult.Succeeded)
                 {
                     throw new InvalidOperationException(vitalResult.Message);
+                }
+
+                BiologicalHazardOperationResult hazardResult = BuildBiologicalHazardsForCurrentBody(restoring, preserveRevision: false);
+                if (!hazardResult.Succeeded)
+                {
+                    throw new InvalidOperationException(hazardResult.Message);
                 }
 
                 Readiness = BodyReadinessState.Ready;
@@ -232,6 +244,11 @@ namespace UnityIsekaiGame.Beings.Biology
                         {
                             vitalProcessRuntime.RestoreFromSaveData(previousVitalProcesses, rollbackSpecies, anatomyRuntime.CreateSnapshot(BodyRevision), conditionRuntime.CreateSnapshot(), registry);
                         }
+
+                        if (previousBiologicalHazards != null && previousBiologicalHazards.activeHazards != null)
+                        {
+                            biologicalHazardRuntime.RestoreFromSaveData(previousBiologicalHazards, ActorBodyId, vitalProcessRuntime, registry);
+                        }
                     }
                 }
 
@@ -250,7 +267,8 @@ namespace UnityIsekaiGame.Beings.Biology
                 bodyRevision = BodyRevision,
                 anatomy = anatomyRuntime.CreateSaveData(),
                 condition = conditionRuntime.CreateSaveData(),
-                vitalProcesses = vitalProcessRuntime.CreateSaveData()
+                vitalProcesses = vitalProcessRuntime.CreateSaveData(),
+                biologicalHazards = biologicalHazardRuntime.CreateSaveData()
             };
         }
 
@@ -318,6 +336,23 @@ namespace UnityIsekaiGame.Beings.Biology
                 if (!vitalResult.Succeeded)
                 {
                     return BodyOperationResult.Failure(BodyOperationResultCode.RestoreResolutionFailure, vitalResult.Message, snapshot: CreateSnapshot());
+                }
+            }
+
+            if (saveData.schemaVersion >= 5 && saveData.biologicalHazards != null)
+            {
+                BiologicalHazardOperationResult hazardResult = biologicalHazardRuntime.RestoreFromSaveData(saveData.biologicalHazards, ActorBodyId, vitalProcessRuntime, registry);
+                if (!hazardResult.Succeeded)
+                {
+                    return BodyOperationResult.Failure(BodyOperationResultCode.RestoreResolutionFailure, hazardResult.Message, snapshot: CreateSnapshot());
+                }
+            }
+            else
+            {
+                BiologicalHazardOperationResult hazardResult = BuildBiologicalHazardsForCurrentBody(restoring: true, preserveRevision: true);
+                if (!hazardResult.Succeeded)
+                {
+                    return BodyOperationResult.Failure(BodyOperationResultCode.RestoreResolutionFailure, hazardResult.Message, snapshot: CreateSnapshot());
                 }
             }
 
@@ -469,6 +504,20 @@ namespace UnityIsekaiGame.Beings.Biology
                 }
             }
 
+            if (saveData.schemaVersion >= 5)
+            {
+                if (saveData.biologicalHazards == null)
+                {
+                    failureReason = "Body save data schema 5 is missing biological hazard data.";
+                    return false;
+                }
+
+                if (!BiologicalHazardRuntime.ValidateSaveData(saveData.biologicalHazards, saveData.actorBodyId, registry, out failureReason))
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -509,6 +558,12 @@ namespace UnityIsekaiGame.Beings.Biology
                 diagnostics.AddRange(vitalSnapshot.Diagnostics);
             }
 
+            BiologicalHazardSnapshot hazardSnapshot = biologicalHazardRuntime.CreateSnapshot();
+            if (hazardSnapshot != null && !hazardSnapshot.Coherent)
+            {
+                diagnostics.AddRange(hazardSnapshot.Diagnostics);
+            }
+
             return new BodySnapshot(
                 ActorBodyId,
                 PersonId,
@@ -534,7 +589,8 @@ namespace UnityIsekaiGame.Beings.Biology
                 anatomySnapshot,
                 conditionSnapshot,
                 vitalSnapshot,
-                coherent && anatomySnapshot != null && anatomySnapshot.Coherent && conditionSnapshot != null && conditionSnapshot.Coherent && vitalSnapshot != null && vitalSnapshot.Coherent,
+                hazardSnapshot,
+                coherent && anatomySnapshot != null && anatomySnapshot.Coherent && conditionSnapshot != null && conditionSnapshot.Coherent && vitalSnapshot != null && vitalSnapshot.Coherent && hazardSnapshot != null && hazardSnapshot.Coherent,
                 diagnostics);
         }
 
@@ -731,6 +787,11 @@ namespace UnityIsekaiGame.Beings.Biology
         private VitalResourceMutationResult BuildVitalProcessesForCurrentBody(bool restoring, bool preserveRevision)
         {
             return vitalProcessRuntime.BuildForBody(ActorBodyId, Species, anatomyRuntime.CreateSnapshot(BodyRevision), conditionRuntime.CreateSnapshot(), registry, restoring, preserveRevision);
+        }
+
+        private BiologicalHazardOperationResult BuildBiologicalHazardsForCurrentBody(bool restoring, bool preserveRevision)
+        {
+            return biologicalHazardRuntime.BuildForBody(ActorBodyId, vitalProcessRuntime, registry, restoring, preserveRevision);
         }
 
         private BodyOperationResult BuildAnatomyForCurrentSpecies(bool restoring, IReadOnlyDictionary<string, AnatomyPresenceState> overrides, bool preserveRevision)

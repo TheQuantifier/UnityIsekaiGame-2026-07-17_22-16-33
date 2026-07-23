@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Combat;
@@ -21,6 +22,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildBodyAnatomySuite());
             TryRegister(registry, BuildBodyConditionSuite());
             TryRegister(registry, BuildVitalProcessesSuite());
+            TryRegister(registry, BuildBiologicalHazardsSuite());
         }
 
         private static ITestLabAutomationSuite BuildBodySpeciesSuite()
@@ -223,6 +225,59 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("lung", "Damage lung and recalculate", context => Operation(context.Service.DamageLungAndRecalculateBreath(), context, "step7-vitals-lung-capacity"))),
                 Scenario("save-restore-preserves-vitals", "Save and restore preserve vital process state silently", 130,
                     Step("restore", "Save restore vitals", context => Operation(context.Service.ValidateVitalProcessSaveRestore(), context, "step7-vitals-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildBiologicalHazardsSuite()
+        {
+            return Suite("feature.7.5.biological-hazards", "Feature 7.5 Biological Hazards", "7.5", 750,
+                Required("ActorBodyRuntime", "VitalProcessRuntime", "BiologicalHazardRuntime", "BiologicalHazardDefinition", "EnvironmentalExposureDefinition"),
+                Scenario("healthy-human-hazard-free", "Healthy Human starts with a ready empty hazard runtime", 10,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-reset")),
+                    Step("validate", "Validate biological hazards", context => Operation(context.Service.ValidateBiologicalHazardIntegrity(), context, "step7-hazards-validate"))),
+                Scenario("bleeding-preview-mutates-nothing", "Bleeding preview uses vital rules without mutation", 20,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-preview-reset")),
+                    Step("bleeding", "Add bleeding source", context => Operation(context.Service.AddBleedingHazard(), context, "step7-hazards-preview-bleeding")),
+                    Step("preview", "Preview hazard tick", context => Operation(context.Service.PreviewBiologicalHazardTick(1800f), context, "step7-hazards-preview"))),
+                Scenario("bleeding-tick-consumes-blood-once", "Bleeding tick consumes Blood through vital process runtime", 30,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-bleed-reset")),
+                    Step("bleeding", "Add bleeding source", context => Operation(context.Service.AddBleedingHazard(), context, "step7-hazards-bleed-source")),
+                    Step("tick", "Apply bleeding tick", context => Operation(context.Service.ApplyBiologicalHazardTick(1800f), context, "step7-hazards-bleed-tick"))),
+                Scenario("duplicate-hazard-tick-idempotent", "Duplicate biological hazard tick is idempotent", 40,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-duplicate-reset")),
+                    Step("duplicate", "Duplicate proof", context => Operation(context.Service.ProveBiologicalHazardTickDuplicateProtection(), context, "step7-hazards-duplicate"))),
+                Scenario("multiple-bleeding-sources-source-safe-removal", "Multiple bleeding sources merge and remove source-safely", 50,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-source-reset")),
+                    Step("first", "Add bleeding source", context => Operation(context.Service.AddBleedingHazard(), context, "step7-hazards-source-first")),
+                    Step("second", "Add second bleeding source", context => Operation(context.Service.AddSecondBleedingHazardSource(), context, "step7-hazards-source-second")),
+                    Step("remove", "Remove first source", context => Operation(context.Service.RemoveFirstBiologicalHazardSource(), context, "step7-hazards-source-remove"))),
+                Scenario("inactive-blood-rejects-bleeding", "Inactive Blood rejects bleeding source", 60,
+                    Step("inactive", "Construct blood rejects bleeding", context => Operation(context.Service.TestInactiveBiologicalHazardResource("species.basic-construct", BiologicalHazardIds.Bleeding), context, "step7-hazards-inactive-blood", acceptFailure: true))),
+                Scenario("suffocation-exposure-consumes-breath", "Suffocation exposure consumes Breath", 70,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-suffocation-reset")),
+                    Step("source", "Add suffocation exposure", context => Operation(context.Service.AddSuffocationExposure(), context, "step7-hazards-suffocation-source")),
+                    Step("tick", "Apply suffocation tick", context => Operation(context.Service.ApplyBiologicalHazardTick(1800f), context, "step7-hazards-suffocation-tick"))),
+                Scenario("inactive-breath-rejects-suffocation", "Inactive Breath rejects suffocation source", 80,
+                    Step("inactive", "Spirit breath rejects suffocation", context => Operation(context.Service.TestInactiveBiologicalHazardResource("species.basic-spirit", BiologicalHazardIds.Suffocation), context, "step7-hazards-inactive-breath", acceptFailure: true))),
+                Scenario("temperature-overheating-hypothermia-exclusive", "Temperature hazards are mutually exclusive", 90,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-temperature-reset")),
+                    Step("high", "Create overheating", context => Operation(context.Service.CreateTemperatureHazard(high: true), context, "step7-hazards-temperature-high")),
+                    Step("low", "Create hypothermia", context => Operation(context.Service.CreateTemperatureHazard(high: false), context, "step7-hazards-temperature-low"))),
+                Scenario("starvation-dehydration-from-critical-vitals", "Critical nutrition and hydration create hazard pressure", 100,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-food-reset")),
+                    Step("critical", "Create starvation and dehydration", context => Operation(context.Service.CreateStarvationAndDehydrationPressure(), context, "step7-hazards-food-critical"))),
+                Scenario("fatigue-sleep-deprivation-from-critical-needs", "Critical fatigue and sleep need create hazard pressure", 110,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-needs-reset")),
+                    Step("critical", "Create fatigue and sleep pressure", context => Operation(context.Service.CreateFatigueAndSleepPressure(), context, "step7-hazards-needs-critical"))),
+                Scenario("environmental-exposure-source-removal", "Environmental exposure sources can be removed cleanly", 120,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-exposure-reset")),
+                    Step("heat", "Add heat exposure", context => Operation(context.Service.AddHeatExposure(), context, "step7-hazards-exposure-heat")),
+                    Step("remove", "Remove exposure source", context => Operation(context.Service.RemoveFirstBiologicalHazardSource(), context, "step7-hazards-exposure-remove"))),
+                Scenario("suppression-weakens-hazard", "Hazard suppression lowers effective rate", 130,
+                    Step("reset", "Reset Human biological hazards", context => Operation(context.Service.ResetBiologicalHazardsHuman(), context, "step7-hazards-suppress-reset")),
+                    Step("bleeding", "Add bleeding source", context => Operation(context.Service.AddBleedingHazard(), context, "step7-hazards-suppress-source")),
+                    Step("suppress", "Suppress bleeding", context => Operation(context.Service.SuppressBleedingHazard(), context, "step7-hazards-suppress"))),
+                Scenario("save-restore-preserves-hazards-silently", "Save and restore preserve hazards without restore events", 140,
+                    Step("restore", "Save restore hazards", context => Operation(context.Service.ValidateBiologicalHazardSaveRestore(), context, "step7-hazards-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.CombatState;
@@ -46,6 +47,7 @@ namespace UnityIsekaiGame.Development
             "Body Anatomy 7.2",
             "Body Condition 7.3",
             "Vital Processes 7.4",
+            "Biological Hazards 7.5",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -99,6 +101,7 @@ namespace UnityIsekaiGame.Development
         private Text bodyAnatomyText;
         private Text bodyConditionText;
         private Text vitalProcessesText;
+        private Text biologicalHazardsText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -278,6 +281,7 @@ namespace UnityIsekaiGame.Development
             Transform bodyAnatomySection = AddSection(content, "Body Anatomy 7.2 Section");
             Transform bodyConditionSection = AddSection(content, "Body Condition 7.3 Section");
             Transform vitalProcessesSection = AddSection(content, "Vital Processes 7.4 Section");
+            Transform biologicalHazardsSection = AddSection(content, "Biological Hazards 7.5 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -309,6 +313,7 @@ namespace UnityIsekaiGame.Development
             BuildBodyAnatomySection(bodyAnatomySection, font);
             BuildBodyConditionSection(bodyConditionSection, font);
             BuildVitalProcessesSection(vitalProcessesSection, font);
+            BuildBiologicalHazardsSection(biologicalHazardsSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -476,6 +481,36 @@ namespace UnityIsekaiGame.Development
                 ("Spirit Breath", () => service.TestInactiveVitalResource("species.basic-spirit", BiologicalResourceIds.Breath)),
                 ("Save/Load", () => service.ValidateVitalProcessSaveRestore()));
             vitalProcessesText = AddText(parent, font, "Vital process runtime not available.", 12, 680);
+        }
+
+        private void BuildBiologicalHazardsSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Human", () => service.ResetBiologicalHazardsHuman()),
+                ("Validate", () => service.ValidateBiologicalHazardIntegrity()),
+                ("Sync Vitals", () => service.SynchronizeBiologicalHazardsFromVitals()),
+                ("Save/Load", () => service.ValidateBiologicalHazardSaveRestore()));
+            AddButtonRow(parent, font,
+                ("Bleeding", () => service.AddBleedingHazard()),
+                ("2nd Bleed", () => service.AddSecondBleedingHazardSource()),
+                ("Preview Tick", () => service.PreviewBiologicalHazardTick(GetFloat(amountInput, 1800f))),
+                ("Tick", () => service.ApplyBiologicalHazardTick(GetFloat(amountInput, 1800f))));
+            AddButtonRow(parent, font,
+                ("Duplicate", () => service.ProveBiologicalHazardTickDuplicateProtection()),
+                ("Suppress", () => service.SuppressBleedingHazard()),
+                ("Remove Source", () => service.RemoveFirstBiologicalHazardSource()),
+                ("Suffocate", () => service.AddSuffocationExposure()));
+            AddButtonRow(parent, font,
+                ("Heat", () => service.CreateTemperatureHazard(high: true)),
+                ("Cold", () => service.CreateTemperatureHazard(high: false)),
+                ("Hunger/Thirst", () => service.CreateStarvationAndDehydrationPressure()),
+                ("Fatigue/Sleep", () => service.CreateFatigueAndSleepPressure()));
+            AddButtonRow(parent, font,
+                ("Heat Exposure", () => service.AddHeatExposure()),
+                ("Cold Exposure", () => service.AddColdExposure()),
+                ("Construct Blood", () => service.TestInactiveBiologicalHazardResource("species.basic-construct", BiologicalHazardIds.Bleeding)),
+                ("Spirit Breath", () => service.TestInactiveBiologicalHazardResource("species.basic-spirit", BiologicalHazardIds.Suffocation)));
+            biologicalHazardsText = AddText(parent, font, "Biological hazard runtime not available.", 12, 720);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1051,6 +1086,9 @@ namespace UnityIsekaiGame.Development
                 case "Vital Processes 7.4":
                     SetValue(vitalProcessesText, service.BuildVitalProcessSummary());
                     break;
+                case "Biological Hazards 7.5":
+                    SetValue(biologicalHazardsText, service.BuildBiologicalHazardSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1538,7 +1576,7 @@ namespace UnityIsekaiGame.Development
                 Group("Persistence Step 4", "Persistence", "Location", "World Entities"),
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
-                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4")
+                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5")
             };
         }
 
