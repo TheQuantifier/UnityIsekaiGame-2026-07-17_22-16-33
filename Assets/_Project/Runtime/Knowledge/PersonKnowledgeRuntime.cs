@@ -478,6 +478,20 @@ namespace UnityIsekaiGame.Knowledge
             string evidenceId = string.IsNullOrWhiteSpace(request.EvidenceId)
                 ? StableEvidenceId(PersonId, request.TransactionId, propositionId)
                 : request.EvidenceId;
+            if (!preview && evidenceById.TryGetValue(evidenceId, out KnowledgeEvidenceRecordData existingEvidence))
+            {
+                if (!string.Equals(KnowledgeProposition.BuildIdentity(existingEvidence.proposition), propositionId, StringComparison.Ordinal)
+                    || existingEvidence.direction != request.Direction
+                    || existingEvidence.provenance != request.Provenance)
+                {
+                    return KnowledgeOperationResult.Failure(KnowledgeResultCode.InvalidEvidence, $"Evidence ID '{evidenceId}' is already used for different evidence.", request.TransactionId, preview, KnowledgeRevision);
+                }
+
+                KnowledgeBeliefRecord existingBelief = priorBelief;
+                KnowledgeEvidenceRecord existingEvidenceRecord = new KnowledgeEvidenceRecord(existingEvidence);
+                RememberTransaction(request.TransactionId, KnowledgeResultCode.Duplicate, existingBelief?.BeliefId ?? string.Empty, evidenceId);
+                return KnowledgeOperationResult.Success("Duplicate Knowledge evidence ignored.", request.TransactionId, existingBelief, existingBelief, existingEvidenceRecord, null, KnowledgeRevision, KnowledgeRevision, duplicate: true);
+            }
 
             KnowledgeEvidenceRecordData evidence = new KnowledgeEvidenceRecordData
             {

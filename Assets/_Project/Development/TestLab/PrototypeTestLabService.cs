@@ -34,6 +34,7 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.Observation;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
@@ -3349,6 +3350,203 @@ namespace UnityIsekaiGame.Development
             return Record(result.Succeeded, "Reset Knowledge Fixture", result.Code.ToString(), result.Message);
         }
 
+        public string BuildObservationSummary()
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 8.2 Observation, Examination, Identification, and Diagnosis");
+            builder.AppendLine(FormatObservationMethodCounts());
+            if (EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                KnowledgeSnapshot snapshot = knowledge.CreateSnapshot();
+                builder.AppendLine($"Observer Person={snapshot.PersonId} Body={EmptyAs(snapshot.CurrentBodyId, "None")} Revision={snapshot.Revision} Beliefs={snapshot.Beliefs.Count} Evidence={snapshot.Evidence.Count}");
+            }
+            else
+            {
+                builder.AppendLine("Observer Knowledge runtime is not ready.");
+            }
+
+            PrototypeTestLabOperation last = history.Count == 0 ? default : history[0];
+            if (!string.IsNullOrWhiteSpace(last.OperationName) && last.OperationName.Contains("8.2", StringComparison.Ordinal))
+            {
+                builder.AppendLine($"Last 8.2: {last.OperationName} Code={last.Code} Success={last.Succeeded}");
+                builder.AppendLine(last.Message);
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateObservationFoundation()
+        {
+            int observations = CountDefinitions<ObservationMethodDefinition>();
+            int examinations = CountDefinitions<ExaminationMethodDefinition>();
+            int identifications = CountDefinitions<IdentificationMethodDefinition>();
+            int diagnostics = CountDefinitions<DiagnosticMethodDefinition>();
+            bool succeeded = observations >= 8 && examinations >= 8 && identifications >= 8 && diagnostics >= 7;
+            return Record(succeeded, "Validate 8.2 Observation Foundation", succeeded ? "Success" : "MissingDefinitions", FormatObservationMethodCounts());
+        }
+
+        public PrototypeTestLabOperation PreviewOrdinaryVisualObservation()
+        {
+            return TryBuildObservationRequest("observation.8.2.preview-visual", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure)
+                ? RecordObservationResult("Preview 8.2 Visual Observation", service.Observe(knowledge, context, projection, preview: true))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation CommitOrdinaryVisualObservation()
+        {
+            return TryBuildObservationRequest($"observation.8.2.visual.{Guid.NewGuid():N}", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure)
+                ? RecordObservationResult("Commit 8.2 Visual Observation", service.Observe(knowledge, context, projection, preview: false))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation ProveObservationDuplicateProtection()
+        {
+            if (!TryBuildObservationRequest("observation.8.2.duplicate", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ObservationResult first = service.Observe(knowledge, context, projection, preview: false);
+            ObservationResult second = service.Observe(knowledge, context, projection, preview: false);
+            bool succeeded = first.Succeeded && second.Succeeded && second.Code == ObservationOutcomeCode.Duplicate && first.KnowledgeResult?.ResultingRevision == second.KnowledgeResult?.ResultingRevision;
+            return Record(succeeded, "Duplicate 8.2 Observation", succeeded ? "Success" : "DuplicateProofFailed", $"First={FormatObservationResult(first)} Second={FormatObservationResult(second)}");
+        }
+
+        public PrototypeTestLabOperation CommitMedicalExaminationObservation()
+        {
+            if (!TryBuildObservationRequest($"observation.8.2.medical.{Guid.NewGuid():N}", "examination-method.medical", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: true, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            if (!registry.TryGet("examination-method.medical", out ExaminationMethodDefinition method))
+            {
+                return RecordFailure("Commit 8.2 Medical Examination", "Examination Method is missing.", ObservationOutcomeCode.MissingMethod.ToString());
+            }
+
+            ExaminationProjection examination = new ExaminationProjection("examination.prototype.medical", new[] { projection }, new[] { "injury", "medical" });
+            return RecordObservationResult("Commit 8.2 Medical Examination", service.Examine(knowledge, context, examination, method, preview: false));
+        }
+
+        public PrototypeTestLabOperation DiagnoseBiologicalConditionFoundation()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Diagnose 8.2 Condition", "Knowledge runtime is missing.", ObservationOutcomeCode.MissingKnowledgeRuntime.ToString());
+            }
+
+            if (!registry.TryGet("diagnostic-method.symptom-based", out DiagnosticMethodDefinition method))
+            {
+                return RecordFailure("Diagnose 8.2 Condition", "Diagnostic Method is missing.", ObservationOutcomeCode.MissingMethod.ToString());
+            }
+
+            ObservationService service = new ObservationService(registry);
+            ObservationContext context = BuildObservationContext($"observation.8.2.diagnosis.{Guid.NewGuid():N}", method.Id, SensoryChannel.Touch, ObservationTargetType.BiologicalCondition, KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: true);
+            DiagnosticProjection projection = new DiagnosticProjection("projection.prototype.symptom-diagnosis", new[]
+            {
+                new DiagnosticHypothesis("condition.biology.prototype-poison", "condition-family.poison", 620, new[] { "symptom.nausea", "route.ingestion" }),
+                new DiagnosticHypothesis("condition.biology.prototype-infection", "condition-family.infection", 520, new[] { "symptom.fever", "injury.wound" }),
+                new DiagnosticHypothesis("condition.biology.prototype-fatigue", "condition-family.fatigue", 360, new[] { "symptom.tired" })
+            });
+            return RecordObservationResult("Diagnose 8.2 Condition", service.Diagnose(knowledge, context, projection, method, preview: false));
+        }
+
+        public PrototypeTestLabOperation ProvePlayerIrrelevantObservationNotTracked()
+        {
+            return TryBuildObservationRequest($"observation.8.2.irrelevant.{Guid.NewGuid():N}", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: false, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure)
+                ? RecordObservationResult("Player 8.2 Irrelevant Observation", service.Observe(knowledge, context, projection, preview: false))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation ProveNpcFullObservationTracks()
+        {
+            return TryBuildObservationRequest($"observation.8.2.npc.{Guid.NewGuid():N}", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.NpcFullTracking, mechanicallyRelevant: false, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure)
+                ? RecordObservationResult("NPC 8.2 Full Observation", service.Observe(knowledge, context, projection, preview: false))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation ProveRemotePlayerIrrelevantObservationNotTracked()
+        {
+            return TryBuildObservationRequest($"observation.8.2.remote.{Guid.NewGuid():N}", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.RemotePlayerMechanicalOnly, mechanicallyRelevant: false, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure)
+                ? RecordObservationResult("Remote 8.2 Irrelevant Observation", service.Observe(knowledge, context, projection, preview: false))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation ProveDevelopmentObserverDoesNotMutate()
+        {
+            return TryBuildObservationRequest($"observation.8.2.development.{Guid.NewGuid():N}", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.DevelopmentObserverNoMutation, mechanicallyRelevant: true, privateAccess: true, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure)
+                ? RecordObservationResult("Development 8.2 Observer", service.Observe(knowledge, context, projection, preview: false))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation ProveConcealmentLowersObservationQuality()
+        {
+            if (!TryBuildObservationRequest($"observation.8.2.concealed.{Guid.NewGuid():N}", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext clear, out ObservableProjection projection, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ObservationContext concealed = BuildObservationContext(clear.TransactionId + ".concealed", clear.MethodId, clear.SensoryChannel, clear.TargetType, clear.TrackingPolicy, clear.MechanicallyRelevant, clear.PrivateAccessAuthorized, ConcealmentState.Major);
+            int clearQuality = ObservationService.CalculateQuality(550, clear, privacyBypass: false);
+            int concealedQuality = ObservationService.CalculateQuality(550, concealed, privacyBypass: false);
+            bool succeeded = concealedQuality < clearQuality;
+            return Record(succeeded, "Concealment 8.2 Quality", succeeded ? "Success" : ObservationOutcomeCode.Concealed.ToString(), $"Clear={clearQuality} Concealed={concealedQuality}. Concealment lowers quality before evidence is applied.");
+        }
+
+        public PrototypeTestLabOperation ProveRepeatedObservationIsBounded()
+        {
+            if (!TryBuildObservationRequest("observation.8.2.repeat-a", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext firstContext, out ObservableProjection projection, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ObservationResult first = service.Observe(knowledge, firstContext, projection, preview: false);
+            long revision = knowledge.KnowledgeRevision;
+            int confidence = first.KnowledgeResult?.ResultingBelief?.Confidence ?? 0;
+            ObservationContext secondContext = BuildObservationContext("observation.8.2.repeat-b", firstContext.MethodId, firstContext.SensoryChannel, firstContext.TargetType, firstContext.TrackingPolicy, firstContext.MechanicallyRelevant, firstContext.PrivateAccessAuthorized);
+            ObservationResult second = service.Observe(knowledge, secondContext, projection, preview: false);
+            bool succeeded = first.Succeeded && second.Succeeded && second.Code == ObservationOutcomeCode.Duplicate && knowledge.KnowledgeRevision == revision && (second.KnowledgeResult?.ResultingBelief?.Confidence ?? 0) == confidence;
+            return Record(succeeded, "Repeated 8.2 Observation Bound", succeeded ? "Success" : "RepeatedObservationUnbounded", $"First={FormatObservationResult(first)} Second={FormatObservationResult(second)} Revision={revision}->{knowledge.KnowledgeRevision}");
+        }
+
+        public PrototypeTestLabOperation RejectStaleObservationProjection()
+        {
+            if (!TryBuildObservationRequest($"observation.8.2.stale.{Guid.NewGuid():N}", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ObservationContext staleContext = BuildObservationContext(context.TransactionId, context.MethodId, context.SensoryChannel, context.TargetType, context.TrackingPolicy, context.MechanicallyRelevant, context.PrivateAccessAuthorized, ConcealmentState.None, expectedConditionRevision: 2L);
+            ObservationResult result = service.Observe(knowledge, staleContext, projection, preview: false);
+            bool succeeded = !result.Succeeded && result.Code == ObservationOutcomeCode.StaleTarget;
+            return Record(succeeded, "Reject 8.2 Stale Projection", succeeded ? "Success" : result.Code.ToString(), FormatObservationResult(result));
+        }
+
+        public PrototypeTestLabOperation RejectInactiveFoundationObservationMethod()
+        {
+            if (!TryBuildObservationRequest($"observation.8.2.inactive.{Guid.NewGuid():N}", "observation-method.magical-analysis-foundation", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: true, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ObservationResult result = service.Observe(knowledge, context, projection, preview: false);
+            bool succeeded = !result.Succeeded && result.Code == ObservationOutcomeCode.MissingMethod;
+            return Record(succeeded, "Reject 8.2 Inactive Foundation", succeeded ? "Success" : result.Code.ToString(), FormatObservationResult(result));
+        }
+
+        public PrototypeTestLabOperation RejectPrivateMedicalObservationWithoutAccess()
+        {
+            if (!TryBuildObservationRequest($"observation.8.2.private.{Guid.NewGuid():N}", "observation-method.ordinary-visual", KnowledgeTrackingPolicy.PlayerMechanicalOnly, mechanicallyRelevant: true, privateAccess: false, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            ObservableProjection privateProjection = new ObservableProjection(projection.ProjectionId, projection.TargetType, projection.Proposition, KnowledgeVisibility.Private, projection.MinimumQuality, projection.BaseEvidenceStrength, projection.Channels.ToArray(), projection.MechanicallyRelevant, "Prototype private medical evidence", projection.Tags.ToArray());
+            ObservationResult result = service.Observe(knowledge, context, privateProjection, preview: false);
+            bool succeeded = !result.Succeeded && result.Code == ObservationOutcomeCode.AccessDenied;
+            return Record(succeeded, "Reject 8.2 Private Observation", succeeded ? "Success" : result.Code.ToString(), FormatObservationResult(result));
+        }
+
         private bool EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge)
         {
             knowledge = context?.PlayerKnowledge;
@@ -3435,6 +3633,120 @@ namespace UnityIsekaiGame.Development
             };
             failure = default;
             return true;
+        }
+
+        private bool TryBuildObservationRequest(string transactionId, string methodId, KnowledgeTrackingPolicy trackingPolicy, bool mechanicallyRelevant, bool privateAccess, out ObservationService service, out PersonKnowledgeRuntime knowledge, out ObservationContext context, out ObservableProjection projection, out PrototypeTestLabOperation failure)
+        {
+            service = null;
+            context = null;
+            projection = null;
+            if (!EnsureKnowledgeRuntime(out knowledge))
+            {
+                failure = RecordFailure("Build 8.2 Observation", "Knowledge runtime is missing or not ready.", ObservationOutcomeCode.MissingKnowledgeRuntime.ToString());
+                return false;
+            }
+
+            service = new ObservationService(registry);
+            context = BuildObservationContext(transactionId, methodId, SensoryChannel.Vision, ObservationTargetType.Body, trackingPolicy, mechanicallyRelevant, privateAccess);
+            projection = new ObservableProjection(
+                "projection.prototype.visible-injury",
+                ObservationTargetType.Body,
+                new KnowledgePropositionData
+                {
+                    factDefinitionId = BuiltInKnowledgeFacts.BodyInjury,
+                    subjectType = KnowledgeSubjectType.Body,
+                    subjectId = string.IsNullOrWhiteSpace(context.TargetBodyId) ? "body.prototype.target" : context.TargetBodyId,
+                    valueType = KnowledgeValueType.StableId,
+                    stableValueId = privateAccess ? "injury.blunt-trauma" : "injury.visible-wound",
+                    bodyContextId = context.TargetBodyId,
+                    sourceContextId = "projection.prototype.visible-injury",
+                    sourceRevision = context.ExpectedConditionRevision
+                },
+                privateAccess ? KnowledgeVisibility.PersonallyObservable : KnowledgeVisibility.Public,
+                privateAccess ? 550 : 300,
+                privateAccess ? KnowledgeConfidence.DefaultTrustedEvidence : KnowledgeConfidence.DefaultObservation,
+                new[] { SensoryChannel.Vision, SensoryChannel.Touch },
+                mechanicallyRelevant,
+                privateAccess ? "Medical examination grants stronger injury evidence." : "Visible injury evidence.",
+                new[] { "feature.8.2", "injury" });
+            failure = default;
+            return true;
+        }
+
+        private ObservationContext BuildObservationContext(string transactionId, string methodId, SensoryChannel channel, ObservationTargetType targetType, KnowledgeTrackingPolicy trackingPolicy, bool mechanicallyRelevant, bool privateAccess, ConcealmentState concealment = ConcealmentState.None, long expectedConditionRevision = 1L, long expectedBodyRevision = 1L)
+        {
+            string body = context?.PlayerTransform == null ? string.Empty : context.PlayerTransform.GetComponentInParent<ActorBodyRuntime>()?.ActorBodyId ?? string.Empty;
+            string person = context?.IdentityProgression == null ? "person.prototype.local-player" : context.IdentityProgression.PersonId;
+            return new ObservationContext(
+                person,
+                transactionId,
+                methodId,
+                channel,
+                targetType,
+                string.IsNullOrWhiteSpace(body) ? "body.prototype.target" : body,
+                observerActorId: ResolveActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject),
+                observerBodyId: body,
+                targetPersonId: person,
+                targetActorId: ResolveActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject),
+                targetBodyId: body,
+                distanceQuality: 900,
+                visibility: ObservationVisibilityState.Clear,
+                concealment: concealment,
+                accessLevel: privateAccess ? ObservationAccessLevel.Medical : ObservationAccessLevel.Public,
+                consent: privateAccess ? ObservationConsentState.Granted : ObservationConsentState.NotRequired,
+                environmentalQuality: 900,
+                lightingQuality: 900,
+                noiseQuality: 900,
+                obstructionQuality: 900,
+                expertiseQuality: privateAccess ? 800 : 550,
+                toolQuality: privateAccess ? 700 : 550,
+                gameTimeSeconds: this.context?.Persistence?.PlayTime == null ? 0d : this.context.Persistence.PlayTime.CumulativeSeconds,
+                trackingPolicy: trackingPolicy,
+                mechanicallyRelevant: mechanicallyRelevant,
+                privateAccessAuthorized: privateAccess,
+                expectedBodyRevision: expectedBodyRevision,
+                expectedConditionRevision: expectedConditionRevision,
+                authorityContext: "Prototype Test Lab 8.2",
+                tags: new[] { "feature.8.2" });
+        }
+
+        private int CountDefinitions<T>() where T : class, IGameDefinition
+        {
+            return registry == null ? 0 : registry.DefinitionsById.Values.OfType<T>().Count();
+        }
+
+        private string FormatObservationMethodCounts()
+        {
+            return $"Methods: Observation={CountDefinitions<ObservationMethodDefinition>()} Examination={CountDefinitions<ExaminationMethodDefinition>()} Identification={CountDefinitions<IdentificationMethodDefinition>()} Diagnostic={CountDefinitions<DiagnosticMethodDefinition>()}.";
+        }
+
+        private PrototypeTestLabOperation RecordObservationResult(string operationName, ObservationResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Observation operation returned no result.", ObservationOutcomeCode.InvalidContext.ToString());
+            }
+
+            string message = FormatObservationResult(result);
+            return result.Succeeded
+                ? Record(true, operationName, result.Code.ToString(), message)
+                : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private string FormatObservationResult(ObservationResult result)
+        {
+            if (result == null)
+            {
+                return "Observation=None";
+            }
+
+            string knowledge = result.KnowledgeResult == null
+                ? "Knowledge=None"
+                : $"Knowledge={result.KnowledgeResult.Code} Belief={result.KnowledgeResult.ResultingBelief?.BeliefId ?? "None"} Confidence={result.KnowledgeResult.ResultingBelief?.Confidence.ToString() ?? "0"}";
+            string hypotheses = result.Hypotheses.Count == 0
+                ? "Hypotheses=None"
+                : $"Hypotheses={string.Join(", ", result.Hypotheses.Take(4).Select(hypothesis => $"{hypothesis.CandidateId}:{hypothesis.Confidence}"))}";
+            return $"Success={result.Succeeded} Code={result.Code} Preview={result.Preview} Tracked={result.Tracked} Method={result.MethodId} Quality={result.Quality} Strength={result.EvidenceStrength} Identification={result.IdentificationState} Diagnosis={result.DiagnosticState}. {knowledge}. {hypotheses}. {result.Message}";
         }
 
         private PrototypeTestLabOperation RecordKnowledgeResult(string operationName, KnowledgeOperationResult result)

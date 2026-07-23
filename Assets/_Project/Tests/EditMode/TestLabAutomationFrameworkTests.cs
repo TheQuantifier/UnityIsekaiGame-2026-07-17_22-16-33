@@ -399,7 +399,8 @@ namespace UnityIsekaiGame.Tests
             TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(registry);
 
             Assert.That(validation.Succeeded, Is.True, string.Join(Environment.NewLine, validation.Errors));
-            Assert.That(registry.Suites.Select(suite => suite.SuiteId), Is.EqualTo(new[]
+            string[] actualSuiteIds = registry.Suites.Select(suite => suite.SuiteId).ToArray();
+            Assert.That(actualSuiteIds, Is.EqualTo(new[]
             {
                 "feature.3.runtime-taxonomy",
                 "feature.4.1.save-file-foundation",
@@ -436,7 +437,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.7.8.transformation-body-replacement",
                 "feature.7.9.diseases-biological-conditions",
                 "feature.7.10.biological-integration",
-                "feature.8.1.knowledge-facts-beliefs"
+                "feature.8.1.knowledge-facts-beliefs",
+                "feature.8.2.observation-examination-identification-diagnosis"
             }));
         }
 

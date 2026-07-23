@@ -14,6 +14,7 @@ namespace UnityIsekaiGame.Development.Automation
             }
 
             TryRegister(registry, BuildKnowledgeSuite());
+            TryRegister(registry, BuildObservationSuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -131,6 +132,57 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-auto-reset-record")),
                     Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-auto-reset")),
                     Step("validate", "Validate reset", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-auto-reset-validate"))));
+        }
+
+        private static ITestLabAutomationSuite BuildObservationSuite()
+        {
+            return Suite("feature.8.2.observation-examination-identification-diagnosis", "Feature 8.2 Observation, Examination, Identification, and Diagnosis", "8.2", 820,
+                Required("ObservationService", "ObservationMethodDefinition", "ExaminationMethodDefinition", "IdentificationMethodDefinition", "DiagnosticMethodDefinition"),
+                Scenario("foundation-validates", "Observation definitions and service are ready", 10,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-foundation-reset")),
+                    Step("validate", "Validate Observation", context => Operation(context.Service.ValidateObservationFoundation(), context, "step8-observation-foundation"))),
+                Scenario("preview-visual-no-mutation", "Visual observation preview does not mutate Knowledge", 20,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-preview-reset")),
+                    Step("preview", "Preview visual observation", context => Operation(context.Service.PreviewOrdinaryVisualObservation(), context, "step8-observation-preview"))),
+                Scenario("commit-visual-records-evidence", "Visual observation records evidence", 30,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-commit-reset")),
+                    Step("record", "Record visual observation", context => Operation(context.Service.CommitOrdinaryVisualObservation(), context, "step8-observation-commit"))),
+                Scenario("duplicate-observation-idempotent", "Duplicate observation transaction is idempotent", 40,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-duplicate-reset")),
+                    Step("duplicate", "Duplicate observation", context => Operation(context.Service.ProveObservationDuplicateProtection(), context, "step8-observation-duplicate"))),
+                Scenario("medical-examination-stronger-evidence", "Medical examination records higher-quality evidence", 50,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-medical-reset")),
+                    Step("medical", "Medical examination", context => Operation(context.Service.CommitMedicalExaminationObservation(), context, "step8-observation-medical"))),
+                Scenario("diagnosis-produces-differential", "Diagnosis produces a differential hypothesis", 60,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-diagnosis-reset")),
+                    Step("diagnose", "Diagnose biological condition", context => Operation(context.Service.DiagnoseBiologicalConditionFoundation(), context, "step8-observation-diagnosis"))),
+                Scenario("player-irrelevant-not-tracked", "Player-irrelevant observation is not tracked", 70,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-filter-reset")),
+                    Step("filter", "Player irrelevant observation", context => Operation(context.Service.ProvePlayerIrrelevantObservationNotTracked(), context, "step8-observation-filter"))),
+                Scenario("npc-full-tracking-records", "NPC full tracking records relevant observations", 80,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-npc-reset")),
+                    Step("npc", "NPC full observation", context => Operation(context.Service.ProveNpcFullObservationTracks(), context, "step8-observation-npc"))),
+                Scenario("remote-player-irrelevant-not-tracked", "Remote player irrelevant observation is not tracked", 90,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-remote-reset")),
+                    Step("remote", "Remote player irrelevant observation", context => Operation(context.Service.ProveRemotePlayerIrrelevantObservationNotTracked(), context, "step8-observation-remote"))),
+                Scenario("development-observer-no-mutation", "Development observer does not mutate Knowledge", 100,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-dev-reset")),
+                    Step("dev", "Development observer", context => Operation(context.Service.ProveDevelopmentObserverDoesNotMutate(), context, "step8-observation-dev"))),
+                Scenario("repeated-observation-bounded", "Repeated identical observations are bounded", 110,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-repeat-reset")),
+                    Step("repeat", "Repeated observation bound", context => Operation(context.Service.ProveRepeatedObservationIsBounded(), context, "step8-observation-repeat"))),
+                Scenario("stale-projection-rejected", "Stale observation projection is rejected", 120,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-stale-reset")),
+                    Step("stale", "Reject stale projection", context => Operation(context.Service.RejectStaleObservationProjection(), context, "step8-observation-stale"))),
+                Scenario("inactive-foundation-method-rejected", "Inactive foundation methods do not execute", 130,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-inactive-reset")),
+                    Step("inactive", "Reject inactive foundation", context => Operation(context.Service.RejectInactiveFoundationObservationMethod(), context, "step8-observation-inactive"))),
+                Scenario("concealment-lowers-quality", "Concealment reduces observation quality", 140,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-conceal-reset")),
+                    Step("conceal", "Concealment quality", context => Operation(context.Service.ProveConcealmentLowersObservationQuality(), context, "step8-observation-conceal"))),
+                Scenario("private-medical-without-access-rejected", "Private medical observation requires access", 150,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-private-reset")),
+                    Step("reject", "Reject private observation", context => Operation(context.Service.RejectPrivateMedicalObservationWithoutAccess(), context, "step8-observation-private"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)
