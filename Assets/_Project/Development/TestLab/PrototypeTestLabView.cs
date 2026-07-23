@@ -59,6 +59,7 @@ namespace UnityIsekaiGame.Development
             "Natural Recovery 7.7",
             "Transformation 7.8",
             "Biological Conditions 7.9",
+            "Biology Integration 7.10",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -117,6 +118,7 @@ namespace UnityIsekaiGame.Development
         private Text biologicalRecoveryText;
         private Text bodyTransformationText;
         private Text biologicalConditionsText;
+        private Text bodyBiologyIntegrationText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -301,6 +303,7 @@ namespace UnityIsekaiGame.Development
             Transform biologicalRecoverySection = AddSection(content, "Natural Recovery 7.7 Section");
             Transform bodyTransformationSection = AddSection(content, "Transformation 7.8 Section");
             Transform biologicalConditionsSection = AddSection(content, "Biological Conditions 7.9 Section");
+            Transform bodyBiologyIntegrationSection = AddSection(content, "Biology Integration 7.10 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -337,6 +340,7 @@ namespace UnityIsekaiGame.Development
             BuildBiologicalRecoverySection(biologicalRecoverySection, font);
             BuildBodyTransformationSection(bodyTransformationSection, font);
             BuildBiologicalConditionsSection(biologicalConditionsSection, font);
+            BuildBodyBiologyIntegrationSection(bodyBiologyIntegrationSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -653,6 +657,21 @@ namespace UnityIsekaiGame.Development
             AddButtonRow(parent, font,
                 ("Save/Load", () => service.ValidateBiologicalConditionSaveRestore()));
             biologicalConditionsText = AddText(parent, font, "Biological condition runtime not available.", 12, 820);
+        }
+
+        private void BuildBodyBiologyIntegrationSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Human", () => service.AssignBodySpecies("species.human")),
+                ("Inspect", () => service.InspectBodyBiologyIntegration()),
+                ("Validate", () => service.ValidateBodyBiologyIntegration()),
+                ("Preview Tick", () => service.PreviewBodyBiologyAdvance(GetFloat(amountInput, 60f))));
+            AddButtonRow(parent, font,
+                ("Advance", () => service.AdvanceBodyBiology(GetFloat(amountInput, 60f))),
+                ("Duplicate", () => service.ProveBodyBiologyAdvanceDuplicateProtection()),
+                ("Fever", () => service.ApplyFever()),
+                ("Recovery", () => service.StartNaturalWoundClosureRecovery()));
+            bodyBiologyIntegrationText = AddText(parent, font, "Biological integration facade not available.", 12, 820);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1243,6 +1262,9 @@ namespace UnityIsekaiGame.Development
                 case "Biological Conditions 7.9":
                     SetValue(biologicalConditionsText, service.BuildBiologicalConditionSummary());
                     break;
+                case "Biology Integration 7.10":
+                    SetValue(bodyBiologyIntegrationText, service.BuildBodyBiologyIntegrationSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1730,7 +1752,7 @@ namespace UnityIsekaiGame.Development
                 Group("Persistence Step 4", "Persistence", "Location", "World Entities"),
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
-                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8", "Biological Conditions 7.9")
+                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8", "Biological Conditions 7.9", "Biology Integration 7.10")
             };
         }
 

@@ -10,6 +10,7 @@ using UnityIsekaiGame.Beings.Biology.BiologicalConditions;
 using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Beings.Biology.Hazards;
+using UnityIsekaiGame.Beings.Biology.Integration;
 using UnityIsekaiGame.Beings.Biology.Recovery;
 using UnityIsekaiGame.Beings.Biology.Transformation;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
@@ -2816,6 +2817,108 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "Validate Biological Conditions", succeeded ? "Success" : "InvalidBiologicalConditionRuntime", $"Readiness={snapshot.Readiness} Coherent={snapshot.Coherent} CanonicalRegistered={registered} Revision={snapshot.BiologicalConditionRevision}.");
         }
 
+        public string BuildBodyBiologyIntegrationSummary()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return "Body runtime is missing.";
+            }
+
+            BodyBiologyFacade facade = new BodyBiologyFacade(body);
+            BodyBiologySnapshot snapshot = facade.CaptureSnapshot();
+            BodyBiologyValidationResult validation = BodyBiologyValidator.Validate(snapshot);
+            List<string> lines = new List<string>
+            {
+                "Feature 7.10 Biological Integration",
+                $"Ready: {snapshot.Ready}",
+                $"Validation: {validation.Code}",
+                $"Actor/body: {snapshot.ActorBodyId}",
+                $"Person: {snapshot.PersonId}",
+                $"Species: {snapshot.SpeciesId}",
+                $"Classification: {snapshot.BiologicalClassificationId}",
+                $"Body Form: {snapshot.BodyFormId}",
+                $"Revisions: {snapshot.Revisions}",
+                $"Anatomy Nodes: {snapshot.Body?.Anatomy?.Nodes.Count ?? 0}",
+                $"Active Injuries: {snapshot.Body?.Condition?.ActiveInjuries.Count ?? 0}",
+                $"Active Biological Conditions: {snapshot.BiologicalConditions?.ActiveInstances.Count ?? 0}",
+                $"Active Hazards: {snapshot.Body?.BiologicalHazards?.ActiveHazards.Count ?? 0}",
+                $"Active Recovery Processes: {snapshot.Body?.BiologicalRecovery?.ActiveProcesses.Count ?? 0}",
+                $"Temporary Transformation: {snapshot.Transformation?.ActiveTemporaryTransformation ?? false}",
+                $"Coherent: {snapshot.Coherent}"
+            };
+
+            if (validation.Diagnostics.Count > 0)
+            {
+                lines.AddRange(validation.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation InspectBodyBiologyIntegration()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Inspect Body Biology Integration", "Body runtime is missing.", BodyBiologyValidationCode.MissingBody.ToString());
+            }
+
+            BodyBiologySnapshot snapshot = new BodyBiologyFacade(body).CaptureSnapshot();
+            return Record(snapshot.Coherent, "Inspect Body Biology Integration", snapshot.Coherent ? "Success" : BodyBiologyValidationCode.IncoherentSnapshot.ToString(), FormatBodyBiologySnapshot(snapshot));
+        }
+
+        public PrototypeTestLabOperation ValidateBodyBiologyIntegration()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Body Biology Integration", "Body runtime is missing.", BodyBiologyValidationCode.MissingBody.ToString());
+            }
+
+            BodyBiologyValidationResult result = new BodyBiologyFacade(body).Validate();
+            return Record(result.Succeeded, "Validate Body Biology Integration", result.Code.ToString(), result.Succeeded ? FormatBodyBiologySnapshot(result.Snapshot) : $"{result.Message} {FormatBodyBiologySnapshot(result.Snapshot)}");
+        }
+
+        public PrototypeTestLabOperation PreviewBodyBiologyAdvance(float elapsedGameSeconds)
+        {
+            return AdvanceBodyBiology("Preview Body Biology Advance", elapsedGameSeconds, preview: true, transactionId: string.Empty);
+        }
+
+        public PrototypeTestLabOperation AdvanceBodyBiology(float elapsedGameSeconds)
+        {
+            return AdvanceBodyBiology("Advance Body Biology", elapsedGameSeconds, preview: false, transactionId: string.Empty);
+        }
+
+        public PrototypeTestLabOperation ProveBodyBiologyAdvanceDuplicateProtection()
+        {
+            string tx = $"test-lab.body-biology.advance.duplicate.{Guid.NewGuid():N}";
+            PrototypeTestLabOperation first = AdvanceBodyBiology("Advance Body Biology Duplicate", 60f, preview: false, transactionId: tx);
+            PrototypeTestLabOperation second = AdvanceBodyBiology("Advance Body Biology Duplicate", 60f, preview: false, transactionId: tx);
+            bool succeeded = first.Succeeded && second.Succeeded && string.Equals(second.Code, BodyBiologyAdvanceCode.Duplicate.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Prove Body Biology Advance Duplicate", succeeded ? "Success" : "DuplicateProofFailed", $"First={first.Code} Second={second.Code}. Duplicate integrated advance should not mutate twice.");
+        }
+
+        private PrototypeTestLabOperation AdvanceBodyBiology(string operationName, float elapsedGameSeconds, bool preview, string transactionId)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure(operationName, "Body runtime is missing.", BodyBiologyValidationCode.MissingBody.ToString());
+            }
+
+            BodyBiologyFacade facade = new BodyBiologyFacade(body);
+            GameObject target = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            BodyBiologyAdvanceRequest request = new BodyBiologyAdvanceRequest(
+                body.ActorBodyId,
+                Mathf.Max(0f, elapsedGameSeconds),
+                string.IsNullOrWhiteSpace(transactionId) ? $"test-lab.body-biology.advance.{Guid.NewGuid():N}" : transactionId,
+                "Prototype Test Lab",
+                damageHealingService,
+                target,
+                target,
+                body.ActorBodyId,
+                body.ActorBodyId);
+            BodyBiologyAdvanceResult result = preview ? facade.PreviewAdvance(request) : facade.Advance(request);
+            return Record(result.Succeeded, operationName, result.Duplicate ? BodyBiologyAdvanceCode.Duplicate.ToString() : result.Code.ToString(), FormatBodyBiologyAdvanceResult(result));
+        }
+
         public PrototypeTestLabOperation PreviewViralExposure()
         {
             return ApplyBiologicalConditionExposure("Preview Viral Exposure", "condition.biology.prototype-viral-malaise", BiologicalExposureRoute.Inhalation, 16f, string.Empty, preview: true);
@@ -3133,6 +3236,28 @@ namespace UnityIsekaiGame.Development
                 ? null
                 : result.Snapshot?.Instances.FirstOrDefault(candidate => string.Equals(candidate.InstanceId, result.InstanceId, StringComparison.Ordinal));
             return $"Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code} Instance={result.InstanceId} EffectiveDose={result.EffectiveDose:0.##} Stage={instance?.Stage.ToString() ?? string.Empty} Severity={instance?.Severity.ToString() ?? string.Empty} Load={instance?.Load ?? 0f:0.##} CompatibilityRev={result.Compatibility?.CompatibilityRevision ?? 0}. {result.Message}";
+        }
+
+        private static string FormatBodyBiologySnapshot(BodyBiologySnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return "No Body Biology snapshot.";
+            }
+
+            string diagnostics = snapshot.Diagnostics.Count == 0 ? string.Empty : " Diagnostics=" + string.Join(" ", snapshot.Diagnostics);
+            return $"Body={snapshot.ActorBodyId} Person={snapshot.PersonId} Species={snapshot.SpeciesId} Ready={snapshot.Ready} Coherent={snapshot.Coherent} Revisions=[{snapshot.Revisions}] ActiveConditions={snapshot.BiologicalConditions?.ActiveInstances.Count ?? 0} ActiveHazards={snapshot.Body?.BiologicalHazards?.ActiveHazards.Count ?? 0} ActiveRecovery={snapshot.Body?.BiologicalRecovery?.ActiveProcesses.Count ?? 0} TemporaryTransformation={snapshot.Transformation?.ActiveTemporaryTransformation ?? false}.{diagnostics}";
+        }
+
+        private static string FormatBodyBiologyAdvanceResult(BodyBiologyAdvanceResult result)
+        {
+            if (result == null)
+            {
+                return "No Body Biology advance result.";
+            }
+
+            string steps = string.Join(" | ", result.Steps.Select(step => $"{step.StepId}:{step.Code}:Succeeded={step.Succeeded}:Preview={step.Preview}:Duplicate={step.Duplicate}"));
+            return $"{result.Code} Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate}. Before=[{result.Before?.Revisions}] After=[{result.After?.Revisions}] Steps=[{steps}]. {result.Message}";
         }
 
         private static string FormatBiologicalConditionTickResult(BiologicalConditionTickResult result)

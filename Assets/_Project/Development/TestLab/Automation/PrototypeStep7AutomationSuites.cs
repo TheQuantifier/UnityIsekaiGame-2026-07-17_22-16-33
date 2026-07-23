@@ -31,6 +31,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildNaturalRecoverySuite());
             TryRegister(registry, BuildTransformationSuite());
             TryRegister(registry, BuildBiologicalConditionsSuite());
+            TryRegister(registry, BuildBiologicalIntegrationSuite());
         }
 
         private static ITestLabAutomationSuite BuildBodySpeciesSuite()
@@ -509,6 +510,28 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("fever", "Apply fever", context => Operation(context.Service.ApplyFever(), context, "step7-biocond-fever")),
                     Step("intoxication", "Apply intoxication", context => Operation(context.Service.ApplyIntoxication(), context, "step7-biocond-intoxication")),
                     Step("tick", "Progress conditions", context => Operation(context.Service.ApplyBiologicalConditionTick(600f), context, "step7-biocond-fever-tick"))));
+        }
+
+        private static ITestLabAutomationSuite BuildBiologicalIntegrationSuite()
+        {
+            return Suite("feature.7.10.biological-integration", "Feature 7.10 Biological Integration", "7.10", 800,
+                Required("ActorBodyRuntime", "BodyBiologyFacade", "BiologicalCompatibilityRuntime", "BiologicalConditionRuntime", "BiologicalRecoveryRuntime"),
+                Scenario("aggregate-snapshot-coherent", "Aggregate body biology snapshot is coherent", 10,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-integration-human")),
+                    Step("inspect", "Inspect integration snapshot", context => Operation(context.Service.InspectBodyBiologyIntegration(), context, "step7-integration-inspect")),
+                    Step("validate", "Validate integration", context => Operation(context.Service.ValidateBodyBiologyIntegration(), context, "step7-integration-validate"))),
+                Scenario("preview-mutates-nothing", "Integrated preview uses all owners without mutation", 20,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-integration-preview-human")),
+                    Step("fever", "Apply fever fixture", context => Operation(context.Service.ApplyFever(), context, "step7-integration-preview-fever")),
+                    Step("preview", "Preview integrated advance", context => Operation(context.Service.PreviewBodyBiologyAdvance(600f), context, "step7-integration-preview"))),
+                Scenario("deterministic-advance", "Integrated advance commits through deterministic owner order", 30,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-integration-advance-human")),
+                    Step("fever", "Apply fever fixture", context => Operation(context.Service.ApplyFever(), context, "step7-integration-advance-fever")),
+                    Step("advance", "Advance integrated biology", context => Operation(context.Service.AdvanceBodyBiology(600f), context, "step7-integration-advance")),
+                    Step("validate", "Validate after advance", context => Operation(context.Service.ValidateBodyBiologyIntegration(), context, "step7-integration-advance-validate"))),
+                Scenario("duplicate-advance-idempotent", "Integrated duplicate advance is idempotent", 40,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-integration-duplicate-human")),
+                    Step("duplicate", "Duplicate advance proof", context => Operation(context.Service.ProveBodyBiologyAdvanceDuplicateProtection(), context, "step7-integration-duplicate"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

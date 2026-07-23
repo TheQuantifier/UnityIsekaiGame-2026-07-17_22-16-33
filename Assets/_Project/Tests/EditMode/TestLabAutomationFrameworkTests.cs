@@ -433,7 +433,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.7.6.biological-compatibility",
                 "feature.7.7.natural-recovery-repair",
                 "feature.7.8.transformation-body-replacement",
-                "feature.7.9.diseases-biological-conditions"
+                "feature.7.9.diseases-biological-conditions",
+                "feature.7.10.biological-integration"
             }));
         }
 
