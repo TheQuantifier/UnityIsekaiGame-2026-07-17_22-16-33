@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ef9c9894cc2749229b5a3d8e0253712b, type: 3}
+  m_Name: SpeciesAnalysisFoundation
+  m_EditorClassIdentifier: 
+  methodId: examination-method.species-analysis-foundation
+  displayName: Species Analysis Foundation
+  description: Foundation for distinguishing apparent Species from verified Species
+    identity.
+  category: 7
+  active: 0
+  targetType: 3
+  requiredProximity: 2
+  requiresConsent: 1
+  requiredAccess: 2
+  requiredSkillId: 
+  requiredToolTagId: 
+  basePrecision: 650
+  exposesAnatomy: 0
+  exposesInternalState: 0
+  exposesBiologicalConditions: 0
+  exposesPoisonOrToxin: 0
+  detectsTransformation: 0
+  privacyClassification: 2
+  resultingEvidenceCategories: []
+  validationMetadata: 
