@@ -88,6 +88,8 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
         MissingActorBody,
         MissingVitalProcesses,
         MissingHazardDefinition,
+        MissingCompatibility,
+        MissingInteraction,
         MissingSource,
         InactiveResource,
         InvalidRequest,

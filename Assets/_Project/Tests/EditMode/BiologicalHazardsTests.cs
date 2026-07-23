@@ -70,7 +70,7 @@ namespace UnityIsekaiGame.Tests
             body.BiologicalHazards.HazardTicked += (_, _, _) => hazardEvents++;
             body.VitalProcesses.VitalResourceChanged += (_, _, _) => vitalEvents++;
 
-            BiologicalHazardTickResult result = body.BiologicalHazards.PreviewTick(Tick(body, "tx.hazard.preview", 1800f, preview: true), body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
+            BiologicalHazardTickResult result = body.BiologicalHazards.PreviewTick(Tick(body, "tx.hazard.preview", 1800f, preview: true), body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), body.BiologicalCompatibility, body.CreateSnapshot());
 
             Assert.That(result.Succeeded, Is.True, result.Message);
             Assert.That(result.Preview, Is.True);
@@ -90,8 +90,8 @@ namespace UnityIsekaiGame.Tests
             long vitalRevision = body.VitalProcesses.VitalRevision;
 
             BiologicalHazardTickRequest request = Tick(body, "tx.hazard.execute", 1800f);
-            BiologicalHazardTickResult first = body.BiologicalHazards.ApplyTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
-            BiologicalHazardTickResult second = body.BiologicalHazards.ApplyTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
+            BiologicalHazardTickResult first = body.BiologicalHazards.ApplyTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
+            BiologicalHazardTickResult second = body.BiologicalHazards.ApplyTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
 
             Assert.That(first.Succeeded, Is.True, first.Message);
             Assert.That(second.Succeeded, Is.True, second.Message);
@@ -138,17 +138,17 @@ namespace UnityIsekaiGame.Tests
             ActorBodyRuntime body = CreateHumanBody("actor.runtime.hazard.sync");
             ApplyVital(body, BiologicalResourceIds.Nutrition, VitalResourceMutationOperation.Set, 0f, "tx.hazard.nutrition");
             ApplyVital(body, BiologicalResourceIds.Hydration, VitalResourceMutationOperation.Set, 0f, "tx.hazard.hydration");
-            Assert.That(body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()).Succeeded, Is.True);
+            Assert.That(body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot()).Succeeded, Is.True);
             Assert.That(HasHazard(body, BiologicalHazardIds.Starvation), Is.True);
             Assert.That(HasHazard(body, BiologicalHazardIds.Dehydration), Is.True);
 
             ApplyVital(body, BiologicalResourceIds.Temperature, VitalResourceMutationOperation.Set, 42f, "tx.hazard.temp.high");
-            Assert.That(body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()).Succeeded, Is.True);
+            Assert.That(body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot()).Succeeded, Is.True);
             Assert.That(HasHazard(body, BiologicalHazardIds.Overheating), Is.True);
             Assert.That(HasHazard(body, BiologicalHazardIds.Hypothermia), Is.False);
 
             ApplyVital(body, BiologicalResourceIds.Temperature, VitalResourceMutationOperation.Set, 30f, "tx.hazard.temp.low");
-            Assert.That(body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()).Succeeded, Is.True);
+            Assert.That(body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot()).Succeeded, Is.True);
             Assert.That(HasHazard(body, BiologicalHazardIds.Overheating), Is.False);
             Assert.That(HasHazard(body, BiologicalHazardIds.Hypothermia), Is.True);
         }
@@ -223,7 +223,7 @@ namespace UnityIsekaiGame.Tests
 
         private static BiologicalHazardOperationResult AddSource(ActorBodyRuntime body, string hazardId, string sourceId, BiologicalHazardSourceCategory category, BiologicalHazardSeverity severity, float rate = 1f)
         {
-            return body.BiologicalHazards.AddOrUpdateSource(new BiologicalHazardSourceRequest(body.ActorBodyId, hazardId, sourceId, category, severity, rate, 0f, "edit-mode-test", "Edit Mode biological hazard test"), body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
+            return body.BiologicalHazards.AddOrUpdateSource(new BiologicalHazardSourceRequest(body.ActorBodyId, hazardId, sourceId, category, severity, rate, 0f, "edit-mode-test", "Edit Mode biological hazard test"), body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
         }
 
         private static BiologicalHazardTickRequest Tick(ActorBodyRuntime body, string transactionId, float elapsedSeconds, bool preview = false)

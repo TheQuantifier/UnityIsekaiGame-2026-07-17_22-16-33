@@ -1,0 +1,211 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a760000000000000000000000000002, type: 3}
+  m_Name: BasicSpiritCompatibilityProfile
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Compatibility.BiologicalCompatibilityProfileDefinition
+  profileId: compatibility-profile.species.basic-spirit
+  displayName: BasicSpirit Compatibility Profile
+  description: Canonical alpha compatibility profile for species.basic-spirit.
+  speciesDefinitionId: species.basic-spirit
+  bodyFormDefinitionId: 
+  biologicalClassificationId: 
+  rules:
+  - entryId: profile.spirit.bleeding-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.biology.bleeding
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Spirits are incompatible with ordinary bleeding.
+    alphaEnabled: 1
+  - entryId: profile.spirit.suffocation-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.biology.suffocation
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Spirits do not require ordinary breath.
+    alphaEnabled: 1
+  - entryId: profile.spirit.fracture-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.injury.fracture
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Spirits are incompatible with conventional fracture.
+    alphaEnabled: 1
+  - entryId: profile.spirit.laceration-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.injury.laceration
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Spirits are incompatible with conventional laceration.
+    alphaEnabled: 1
+  - entryId: profile.spirit.puncture-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.injury.puncture
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Spirits are incompatible with conventional puncture.
+    alphaEnabled: 1
+  - entryId: profile.spirit.disruption-compatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.injury.incorporeal-disruption
+    category: 0
+    ruleKind: 0
+    compatibilityState: 0
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Incorporeal disruption can affect spirits.
+    alphaEnabled: 1
+  - entryId: profile.spirit.biological-healing-incompatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.recovery.biological-healing
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Spirits are incompatible with ordinary biological healing.
+    alphaEnabled: 1
+  - entryId: profile.spirit.restoration-affinity
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.recovery.spirit-restoration
+    category: 0
+    ruleKind: 4
+    compatibilityState: 0
+    rateMultiplier: 1.1
+    severityMultiplier: 1
+    consequenceMultiplier: 1.2
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 20
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Spirits have affinity with spirit restoration.
+    alphaEnabled: 1
+  - entryId: profile.spirit.possession-compatible
+    sourceKind: 1
+    sourceId: 
+    interactionDefinitionId: interaction.transformation.possession
+    category: 0
+    ruleKind: 0
+    compatibilityState: 0
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId: 
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories: 
+    requiredNodeId: 
+    explanation: Possession compatibility is a future spirit contract.
+    alphaEnabled: 1
+  alphaEnabled: 1

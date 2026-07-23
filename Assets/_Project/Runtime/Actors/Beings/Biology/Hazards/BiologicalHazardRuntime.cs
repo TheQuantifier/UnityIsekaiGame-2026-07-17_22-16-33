@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
+using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.GameData;
@@ -63,7 +65,7 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             return BiologicalHazardOperationResult.Success("Biological hazards initialized.", CreateSnapshot());
         }
 
-        public BiologicalHazardOperationResult AddOrUpdateSource(BiologicalHazardSourceRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, bool restoring = false)
+        public BiologicalHazardOperationResult AddOrUpdateSource(BiologicalHazardSourceRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, BiologicalCompatibilityRuntime compatibility, BodySnapshot body, bool restoring = false)
         {
             BiologicalHazardOperationResult validation = ValidateSourceRequest(request, vitalProcesses, anatomy, condition);
             if (!validation.Succeeded)
@@ -76,6 +78,28 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
                 && (!vitalProcesses.TryGetResource(definition.TargetResourceId, out VitalResourceSnapshot resource) || !resource.Active))
             {
                 return BiologicalHazardOperationResult.Failure(BiologicalHazardResultCode.InactiveResource, $"Hazard '{definition.Id}' requires active biological resource '{definition.TargetResourceId}'.", CreateSnapshot());
+            }
+
+            BiologicalHazardOperationResult compatibilityValidation = ValidateCompatibilityContext(compatibility, body);
+            if (!compatibilityValidation.Succeeded)
+            {
+                return compatibilityValidation;
+            }
+
+            BiologicalInteractionEvaluationResult compatibilityResult = EvaluateHazardCompatibility(compatibility, body, definition, request.SourceContributionId, preview: true);
+            if (compatibilityResult == null)
+            {
+                return BiologicalHazardOperationResult.Failure(BiologicalHazardResultCode.MissingInteraction, $"Hazard '{definition.Id}' does not map to a biological interaction.", CreateSnapshot());
+            }
+
+            if (compatibilityResult.Code != BiologicalCompatibilityResultCode.Success)
+            {
+                return BiologicalHazardOperationResult.Failure(compatibilityResult.Code == BiologicalCompatibilityResultCode.StaleBody ? BiologicalHazardResultCode.StaleBody : BiologicalHazardResultCode.MissingCompatibility, compatibilityResult.Message, CreateSnapshot());
+            }
+
+            if (!compatibilityResult.Compatible || compatibilityResult.CompatibilityState == BiologicalCompatibilityState.Incompatible || compatibilityResult.Immune || compatibilityResult.Suppressed)
+            {
+                return BiologicalHazardOperationResult.Failure(BiologicalHazardResultCode.InvalidRequest, $"Hazard '{definition.Id}' is not biologically compatible: {compatibilityResult.Message}", CreateSnapshot());
             }
 
             if (!hazardsById.TryGetValue(definition.Id, out HazardInstanceRecord hazard))
@@ -175,7 +199,7 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             return result;
         }
 
-        public BiologicalHazardOperationResult SynchronizeFromVitalProcesses(VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, bool restoring = false)
+        public BiologicalHazardOperationResult SynchronizeFromVitalProcesses(VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, BiologicalCompatibilityRuntime compatibility, BodySnapshot body, bool restoring = false)
         {
             if (!IsReady)
             {
@@ -187,12 +211,18 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
                 return BiologicalHazardOperationResult.Failure(BiologicalHazardResultCode.MissingVitalProcesses, "Biological hazards require ready vital processes.", CreateSnapshot());
             }
 
+            BiologicalHazardOperationResult compatibilityValidation = ValidateCompatibilityContext(compatibility, body);
+            if (!compatibilityValidation.Succeeded)
+            {
+                return compatibilityValidation;
+            }
+
             bool changed = false;
-            changed |= SyncCritical(vitalProcesses, BiologicalResourceIds.Nutrition, VitalProcessState.CriticalLow, BiologicalHazardIds.Starvation, BiologicalHazardSeverity.Serious);
-            changed |= SyncCritical(vitalProcesses, BiologicalResourceIds.Hydration, VitalProcessState.CriticalLow, BiologicalHazardIds.Dehydration, BiologicalHazardSeverity.Severe);
-            changed |= SyncCritical(vitalProcesses, BiologicalResourceIds.Fatigue, VitalProcessState.CriticalHigh, BiologicalHazardIds.ExtremeFatigue, BiologicalHazardSeverity.Serious);
-            changed |= SyncCritical(vitalProcesses, BiologicalResourceIds.SleepNeed, VitalProcessState.CriticalHigh, BiologicalHazardIds.SleepDeprivation, BiologicalHazardSeverity.Serious);
-            changed |= SyncTemperature(vitalProcesses);
+            changed |= SyncCritical(vitalProcesses, BiologicalResourceIds.Nutrition, VitalProcessState.CriticalLow, BiologicalHazardIds.Starvation, BiologicalHazardSeverity.Serious, compatibility, body);
+            changed |= SyncCritical(vitalProcesses, BiologicalResourceIds.Hydration, VitalProcessState.CriticalLow, BiologicalHazardIds.Dehydration, BiologicalHazardSeverity.Severe, compatibility, body);
+            changed |= SyncCritical(vitalProcesses, BiologicalResourceIds.Fatigue, VitalProcessState.CriticalHigh, BiologicalHazardIds.ExtremeFatigue, BiologicalHazardSeverity.Serious, compatibility, body);
+            changed |= SyncCritical(vitalProcesses, BiologicalResourceIds.SleepNeed, VitalProcessState.CriticalHigh, BiologicalHazardIds.SleepDeprivation, BiologicalHazardSeverity.Serious, compatibility, body);
+            changed |= SyncTemperature(vitalProcesses, compatibility, body);
             if (changed)
             {
                 HazardRevision++;
@@ -208,14 +238,14 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             return result;
         }
 
-        public BiologicalHazardTickResult PreviewTick(BiologicalHazardTickRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition)
+        public BiologicalHazardTickResult PreviewTick(BiologicalHazardTickRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
         {
-            return Tick(new BiologicalHazardTickRequest(request.ActorBodyId, request.ElapsedGameSeconds, request.TransactionId, preview: true, request.Reason), vitalProcesses, anatomy, condition, restoring: false);
+            return Tick(new BiologicalHazardTickRequest(request.ActorBodyId, request.ElapsedGameSeconds, request.TransactionId, preview: true, request.Reason), vitalProcesses, anatomy, condition, restoring: false, compatibility, body);
         }
 
-        public BiologicalHazardTickResult ApplyTick(BiologicalHazardTickRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, bool restoring = false)
+        public BiologicalHazardTickResult ApplyTick(BiologicalHazardTickRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, BiologicalCompatibilityRuntime compatibility, BodySnapshot body, bool restoring = false)
         {
-            return Tick(new BiologicalHazardTickRequest(request.ActorBodyId, request.ElapsedGameSeconds, request.TransactionId, preview: false, request.Reason), vitalProcesses, anatomy, condition, restoring);
+            return Tick(new BiologicalHazardTickRequest(request.ActorBodyId, request.ElapsedGameSeconds, request.TransactionId, preview: false, request.Reason), vitalProcesses, anatomy, condition, restoring, compatibility, body);
         }
 
         public BiologicalHazardSaveData CreateSaveData()
@@ -372,7 +402,7 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             definitionsById.Clear();
         }
 
-        private BiologicalHazardTickResult Tick(BiologicalHazardTickRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, bool restoring)
+        private BiologicalHazardTickResult Tick(BiologicalHazardTickRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, bool restoring, BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
         {
             if (!IsReady)
             {
@@ -394,6 +424,12 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
                 return BiologicalHazardTickResult.Failure(request, BiologicalHazardResultCode.InvalidAmount, "Elapsed game seconds must be finite and non-negative.", CreateSnapshot());
             }
 
+            BiologicalHazardOperationResult compatibilityValidation = ValidateCompatibilityContext(compatibility, body);
+            if (!compatibilityValidation.Succeeded)
+            {
+                return BiologicalHazardTickResult.Failure(request, compatibilityValidation.Code, compatibilityValidation.Message, CreateSnapshot());
+            }
+
             if (!request.Preview && !string.IsNullOrWhiteSpace(request.TransactionId) && committedTickTransactionIds.Contains(request.TransactionId))
             {
                 return BiologicalHazardTickResult.Success(request, Array.Empty<BiologicalHazardConsequence>(), CreateSnapshot(), duplicate: true);
@@ -405,7 +441,26 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             float hours = request.ElapsedGameSeconds / 3600f;
             foreach (HazardInstanceRecord hazard in hazardsById.Values.OrderBy(hazard => hazard.HazardDefinitionId, StringComparer.Ordinal).ToArray())
             {
-                float rate = hazard.EffectiveRatePerHour;
+                BiologicalInteractionEvaluationResult compatibilityResult = EvaluateHazardCompatibility(compatibility, body, hazard.Definition, request.TransactionId, request.Preview);
+                if (compatibilityResult == null)
+                {
+                    return BiologicalHazardTickResult.Failure(request, BiologicalHazardResultCode.MissingInteraction, $"Hazard '{hazard.HazardDefinitionId}' does not map to a biological interaction.", CreateSnapshot());
+                }
+
+                if (compatibilityResult.Code != BiologicalCompatibilityResultCode.Success)
+                {
+                    return BiologicalHazardTickResult.Failure(request, compatibilityResult.Code == BiologicalCompatibilityResultCode.StaleBody ? BiologicalHazardResultCode.StaleBody : BiologicalHazardResultCode.MissingCompatibility, compatibilityResult.Message, CreateSnapshot());
+                }
+
+                if (compatibilityResult.CompatibilityState == BiologicalCompatibilityState.Incompatible || compatibilityResult.Immune || compatibilityResult.Suppressed)
+                {
+                    consequences.Add(new BiologicalHazardConsequence(BiologicalHazardTickConsequenceKind.None, hazard.HazardDefinitionId, string.Empty, null, null, BiologicalHazardLifecycleRequestKind.None, $"Hazard skipped by biological compatibility: {compatibilityResult.Message}"));
+                    continue;
+                }
+
+                float compatibilityRate = compatibilityResult.RateMultiplier;
+                float compatibilityConsequence = compatibilityResult.ConsequenceMultiplier;
+                float rate = hazard.EffectiveRatePerHour * compatibilityRate;
                 if (rate > 0f && hours > 0f && !string.IsNullOrWhiteSpace(hazard.Definition.TargetResourceId))
                 {
                     string vitalTransaction = $"{request.TransactionId}.{hazard.HazardDefinitionId}.{hazard.Definition.TargetResourceId}";
@@ -441,7 +496,7 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
                         hazard.HazardDefinitionId,
                         string.Empty,
                         null,
-                        new BiologicalHazardDamagePlan(hazard.HazardDefinitionId, $"{request.TransactionId}.{hazard.HazardDefinitionId}.damage", ActorBodyId, hazard.Definition.DamageType, hazard.Definition.BaseDamagePerHour * hours * hazard.EffectiveSourceMultiplier, "Biological hazard damage must be committed by Step 6 DamageHealingService."),
+                        new BiologicalHazardDamagePlan(hazard.HazardDefinitionId, $"{request.TransactionId}.{hazard.HazardDefinitionId}.damage", ActorBodyId, hazard.Definition.DamageType, hazard.Definition.BaseDamagePerHour * hours * hazard.EffectiveSourceMultiplier * compatibilityConsequence, "Biological hazard damage must be committed by Step 6 DamageHealingService."),
                         BiologicalHazardLifecycleRequestKind.None,
                         "Step 6 damage plan created; Health was not mutated by the hazard runtime."));
                 }
@@ -487,6 +542,48 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             return result;
         }
 
+        private static BiologicalInteractionEvaluationResult EvaluateHazardCompatibility(BiologicalCompatibilityRuntime compatibility, BodySnapshot body, BiologicalHazardDefinition definition, string sourceId, bool preview)
+        {
+            if (compatibility == null || body == null || definition == null)
+            {
+                return null;
+            }
+
+            string interactionId = BiologicalInteractionIds.FromHazardId(definition.Id);
+            if (string.IsNullOrWhiteSpace(interactionId))
+            {
+                return null;
+            }
+
+            return compatibility.Evaluate(body, interactionId, BiologicalInteractionCategory.Hazard, sourceId: sourceId, preview: preview);
+        }
+
+        private BiologicalHazardOperationResult ValidateCompatibilityContext(BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
+        {
+            if (compatibility == null || body == null)
+            {
+                return BiologicalHazardOperationResult.Failure(BiologicalHazardResultCode.MissingCompatibility, "Biological hazard execution requires a biological compatibility runtime and current body snapshot.", CreateSnapshot());
+            }
+
+            if (!compatibility.IsReady)
+            {
+                return BiologicalHazardOperationResult.Failure(BiologicalHazardResultCode.MissingCompatibility, "Biological compatibility runtime is not Ready.", CreateSnapshot());
+            }
+
+            if (!string.Equals(compatibility.ActorBodyId, ActorBodyId, StringComparison.Ordinal)
+                || !string.Equals(body.ActorBodyId, ActorBodyId, StringComparison.Ordinal))
+            {
+                return BiologicalHazardOperationResult.Failure(BiologicalHazardResultCode.StaleBody, $"Compatibility body '{compatibility.ActorBodyId}' and snapshot body '{body.ActorBodyId}' must match hazard body '{ActorBodyId}'.", CreateSnapshot());
+            }
+
+            if (body.BodyRevision != bodyRevision)
+            {
+                return BiologicalHazardOperationResult.Failure(BiologicalHazardResultCode.StaleBody, $"Body snapshot revision {body.BodyRevision} does not match hazard body revision {bodyRevision}.", CreateSnapshot());
+            }
+
+            return BiologicalHazardOperationResult.Success("Biological hazard compatibility context validated.", CreateSnapshot());
+        }
+
         private BiologicalHazardOperationResult ValidateSourceRequest(BiologicalHazardSourceRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition)
         {
             if (!IsReady)
@@ -522,28 +619,28 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             return BiologicalHazardOperationResult.Success("Hazard source request validated.", CreateSnapshot());
         }
 
-        private bool SyncCritical(VitalProcessRuntime vitalProcesses, string resourceId, VitalProcessState criticalState, string hazardDefinitionId, BiologicalHazardSeverity severity)
+        private bool SyncCritical(VitalProcessRuntime vitalProcesses, string resourceId, VitalProcessState criticalState, string hazardDefinitionId, BiologicalHazardSeverity severity, BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
         {
             string sourceId = $"hazard.vital.{ActorBodyId}.{resourceId}";
             bool critical = vitalProcesses.TryGetResource(resourceId, out VitalResourceSnapshot resource) && resource.Active && resource.State == criticalState;
             if (critical && definitionsById.ContainsKey(hazardDefinitionId))
             {
+                BiologicalInteractionEvaluationResult compatibilityResult = EvaluateHazardCompatibility(compatibility, body, definitionsById[hazardDefinitionId], sourceId, preview: true);
+                if (compatibilityResult == null || !compatibilityResult.Compatible || compatibilityResult.CompatibilityState == BiologicalCompatibilityState.Incompatible || compatibilityResult.Immune || compatibilityResult.Suppressed)
+                {
+                    return RemoveHazardSource(hazardDefinitionId, sourceId);
+                }
+
                 HazardInstanceRecord hazard = hazardsById.TryGetValue(hazardDefinitionId, out HazardInstanceRecord existing)
                     ? existing
                     : hazardsById[hazardDefinitionId] = new HazardInstanceRecord(InstanceIdFor(ActorBodyId, hazardDefinitionId), definitionsById[hazardDefinitionId]);
                 return hazard.AddOrUpdateSource(new BiologicalHazardSourceRequest(ActorBodyId, hazardDefinitionId, sourceId, BiologicalHazardSourceCategory.VitalProcess, severity, 1f, 0f, resourceId, "Critical vital resource state"));
             }
 
-            if (hazardsById.TryGetValue(hazardDefinitionId, out HazardInstanceRecord active) && active.RemoveSource(sourceId))
-            {
-                CleanupHazardIfEmpty(hazardDefinitionId);
-                return true;
-            }
-
-            return false;
+            return RemoveHazardSource(hazardDefinitionId, sourceId);
         }
 
-        private bool SyncTemperature(VitalProcessRuntime vitalProcesses)
+        private bool SyncTemperature(VitalProcessRuntime vitalProcesses, BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
         {
             string hotSource = $"hazard.vital.{ActorBodyId}.{BiologicalResourceIds.Temperature}.high";
             string coldSource = $"hazard.vital.{ActorBodyId}.{BiologicalResourceIds.Temperature}.low";
@@ -558,12 +655,12 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             if (temperature.State == VitalProcessState.CriticalHigh)
             {
                 changed |= RemoveTemperatureSource(BiologicalHazardIds.Hypothermia, coldSource);
-                changed |= AddTemperatureSource(BiologicalHazardIds.Overheating, hotSource, BiologicalHazardSeverity.Severe);
+                changed |= AddTemperatureSource(BiologicalHazardIds.Overheating, hotSource, BiologicalHazardSeverity.Severe, compatibility, body);
             }
             else if (temperature.State == VitalProcessState.CriticalLow)
             {
                 changed |= RemoveTemperatureSource(BiologicalHazardIds.Overheating, hotSource);
-                changed |= AddTemperatureSource(BiologicalHazardIds.Hypothermia, coldSource, BiologicalHazardSeverity.Severe);
+                changed |= AddTemperatureSource(BiologicalHazardIds.Hypothermia, coldSource, BiologicalHazardSeverity.Severe, compatibility, body);
             }
             else
             {
@@ -574,17 +671,34 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             return changed;
         }
 
-        private bool AddTemperatureSource(string hazardDefinitionId, string sourceId, BiologicalHazardSeverity severity)
+        private bool AddTemperatureSource(string hazardDefinitionId, string sourceId, BiologicalHazardSeverity severity, BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
         {
             if (!definitionsById.ContainsKey(hazardDefinitionId))
             {
                 return false;
             }
 
+            BiologicalInteractionEvaluationResult compatibilityResult = EvaluateHazardCompatibility(compatibility, body, definitionsById[hazardDefinitionId], sourceId, preview: true);
+            if (compatibilityResult == null || !compatibilityResult.Compatible || compatibilityResult.CompatibilityState == BiologicalCompatibilityState.Incompatible || compatibilityResult.Immune || compatibilityResult.Suppressed)
+            {
+                return RemoveHazardSource(hazardDefinitionId, sourceId);
+            }
+
             HazardInstanceRecord hazard = hazardsById.TryGetValue(hazardDefinitionId, out HazardInstanceRecord existing)
                 ? existing
                 : hazardsById[hazardDefinitionId] = new HazardInstanceRecord(InstanceIdFor(ActorBodyId, hazardDefinitionId), definitionsById[hazardDefinitionId]);
             return hazard.AddOrUpdateSource(new BiologicalHazardSourceRequest(ActorBodyId, hazardDefinitionId, sourceId, BiologicalHazardSourceCategory.VitalProcess, severity, 1f, 0f, BiologicalResourceIds.Temperature, "Critical body temperature"));
+        }
+
+        private bool RemoveHazardSource(string hazardDefinitionId, string sourceId)
+        {
+            if (hazardsById.TryGetValue(hazardDefinitionId, out HazardInstanceRecord active) && active.RemoveSource(sourceId))
+            {
+                CleanupHazardIfEmpty(hazardDefinitionId);
+                return true;
+            }
+
+            return false;
         }
 
         private bool RemoveTemperatureSource(string hazardDefinitionId, string sourceId)

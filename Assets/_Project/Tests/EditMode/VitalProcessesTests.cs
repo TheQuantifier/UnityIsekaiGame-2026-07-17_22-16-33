@@ -162,7 +162,7 @@ namespace UnityIsekaiGame.Tests
             ActorBodyRuntime body = CreateHumanBody("actor.runtime.vital.lung");
             float maxBefore = Get(body.VitalProcesses.CreateSnapshot(), BiologicalResourceIds.Breath).EffectiveMaximumValue;
 
-            LocalizedStructuralDamageResult damage = body.Condition.ApplyLocalizedDamage(ConditionRequest(body, "tx.vital.lung.damage", "injury.blunt-trauma", "organ.lung.left", 50), body.CreateAnatomySnapshot());
+            LocalizedStructuralDamageResult damage = body.Condition.ApplyLocalizedDamage(ConditionRequest(body, "tx.vital.lung.damage", "injury.blunt-trauma", "organ.lung.left", 50), body.CreateAnatomySnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot());
             Assert.That(damage.Succeeded, Is.True, damage.Message);
             body.VitalProcesses.RecalculateCapacities(body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), preservingCurrent: true);
 

@@ -6,6 +6,7 @@ using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
+using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
@@ -1071,7 +1072,7 @@ namespace UnityIsekaiGame.Development
                 return failure;
             }
 
-            return RecordConditionResult("Preview Localized Structural Damage", body.Condition.PreviewLocalizedDamage(request, body.CreateAnatomySnapshot()));
+            return RecordConditionResult("Preview Localized Structural Damage", body.Condition.PreviewLocalizedDamage(request, body.CreateAnatomySnapshot(), body.BiologicalCompatibility, body.CreateSnapshot()));
         }
 
         public PrototypeTestLabOperation ApplyLocalizedStructuralDamage(string injuryDefinitionId, string targetNodeId, int structuralDamage)
@@ -1086,7 +1087,7 @@ namespace UnityIsekaiGame.Development
                 return failure;
             }
 
-            return RecordConditionResult("Apply Localized Structural Damage", body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot()));
+            return RecordConditionResult("Apply Localized Structural Damage", body.Condition.ApplyLocalizedDamage(request, body.CreateAnatomySnapshot(), restoring: false, compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot()));
         }
 
         public PrototypeTestLabOperation ProveLocalizedDamageDuplicateProtection()
@@ -1493,7 +1494,7 @@ namespace UnityIsekaiGame.Development
 
             long hazardRevision = body.BiologicalHazards.HazardRevision;
             long vitalRevision = body.VitalProcesses.VitalRevision;
-            BiologicalHazardTickResult result = body.BiologicalHazards.PreviewTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot());
+            BiologicalHazardTickResult result = body.BiologicalHazards.PreviewTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), body.BiologicalCompatibility, body.CreateSnapshot());
             bool succeeded = result.Succeeded && result.Preview && hazardRevision == body.BiologicalHazards.HazardRevision && vitalRevision == body.VitalProcesses.VitalRevision;
             return succeeded
                 ? RecordHazardTick("Preview Biological Hazard Tick", result)
@@ -1512,7 +1513,7 @@ namespace UnityIsekaiGame.Development
                 return failure;
             }
 
-            return RecordHazardTick("Apply Biological Hazard Tick", body.BiologicalHazards.ApplyTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()));
+            return RecordHazardTick("Apply Biological Hazard Tick", body.BiologicalHazards.ApplyTick(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), restoring: false, compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot()));
         }
 
         public PrototypeTestLabOperation ProveBiologicalHazardTickDuplicateProtection()
@@ -1574,7 +1575,7 @@ namespace UnityIsekaiGame.Development
                 return failure;
             }
 
-            return RecordHazardOperation("Synchronize Biological Hazards", body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()));
+            return RecordHazardOperation("Synchronize Biological Hazards", body.BiologicalHazards.SynchronizeFromVitalProcesses(body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot()));
         }
 
         public PrototypeTestLabOperation CreateStarvationAndDehydrationPressure()
@@ -1674,6 +1675,382 @@ namespace UnityIsekaiGame.Development
             {
                 eventCount++;
             }
+        }
+
+        public string BuildBiologicalCompatibilitySummary()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return "Biological compatibility runtime is missing.";
+            }
+
+            BodySnapshot snapshot = body.CreateSnapshot();
+            BiologicalCompatibilitySnapshot compatibility = snapshot.BiologicalCompatibility;
+            List<string> lines = new List<string>
+            {
+                "Feature 7.6 Biological Compatibility",
+                $"Body: {snapshot.ActorBodyId}",
+                $"Species: {snapshot.SpeciesId}",
+                $"Classification: {snapshot.BiologicalClassificationId}",
+                $"Body Form: {snapshot.BodyFormId}",
+                $"Readiness: {compatibility?.Readiness}",
+                $"Profile: {compatibility?.ProfileId}",
+                $"Body/Anatomy/Condition/Vital/Hazard/Compatibility Revisions: {compatibility?.BodyRevision}/{compatibility?.AnatomyRevision}/{compatibility?.ConditionRevision}/{compatibility?.VitalRevision}/{compatibility?.HazardRevision}/{compatibility?.CompatibilityRevision}",
+                $"Dynamic Rules: {compatibility?.Rules.Count ?? 0}",
+                $"Coherent: {compatibility?.Coherent}"
+            };
+
+            BiologicalInteractionEvaluationResult bleeding = body.BiologicalCompatibility.Evaluate(snapshot, BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard);
+            BiologicalInteractionEvaluationResult healing = body.BiologicalCompatibility.Evaluate(snapshot, BiologicalInteractionIds.BiologicalHealing, BiologicalInteractionCategory.Healing);
+            BiologicalInteractionEvaluationResult repair = body.BiologicalCompatibility.Evaluate(snapshot, BiologicalInteractionIds.ConstructRepair, BiologicalInteractionCategory.Repair);
+            lines.Add($"Bleeding: {FormatCompatibilityResult(bleeding)}");
+            lines.Add($"Biological Healing: {FormatCompatibilityResult(healing)}");
+            lines.Add($"Construct Repair: {FormatCompatibilityResult(repair)}");
+
+            foreach (BiologicalCompatibilityRuleSnapshot rule in compatibility?.Rules.Take(8) ?? Array.Empty<BiologicalCompatibilityRuleSnapshot>())
+            {
+                lines.Add($"Rule: {rule.EntryId} Source={rule.SourceId} Kind={rule.RuleKind} Interaction={rule.InteractionDefinitionId} Category={rule.Category} Priority={rule.Priority}");
+            }
+
+            if (compatibility?.Diagnostics.Count > 0)
+            {
+                lines.AddRange(compatibility.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateBiologicalCompatibilityIntegrity()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Biological Compatibility", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            BodySnapshot snapshot = body.CreateSnapshot();
+            BiologicalCompatibilitySnapshot compatibility = snapshot.BiologicalCompatibility;
+            bool succeeded = compatibility != null && compatibility.Coherent && compatibility.Readiness == BiologicalCompatibilityReadinessState.Ready;
+            return Record(succeeded, "Validate Biological Compatibility", succeeded ? "Success" : "InvalidBiologicalCompatibility", $"Readiness={compatibility?.Readiness} Profile={compatibility?.ProfileId} Rules={compatibility?.Rules.Count ?? 0} Coherent={compatibility?.Coherent}.");
+        }
+
+        public PrototypeTestLabOperation ResetBiologicalCompatibilityHuman()
+        {
+            PrototypeTestLabOperation reset = ResetBiologicalHazardsHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Reset Biological Compatibility", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            body.BiologicalCompatibility.ClearSource("test-lab.compatibility", restoring: false);
+            BodyOperationResult reassign = body.AssignSpecies("species.human", restoring: false, "Test Lab compatibility reset");
+            if (!reassign.Succeeded && !reassign.Duplicate)
+            {
+                return Record(reassign.Succeeded, "Reset Biological Compatibility", reassign.Code.ToString(), reassign.Message);
+            }
+
+            return RecordCompatibilityOperation("Reset Biological Compatibility", body.BiologicalCompatibility.BuildForBody(body.CreateSnapshot(), registry, restoring: false));
+        }
+
+        public PrototypeTestLabOperation EvaluateBiologicalCompatibility(string interactionId)
+        {
+            return EvaluateBiologicalCompatibility(interactionId, BiologicalInteractionCategory.Unknown, string.Empty);
+        }
+
+        public PrototypeTestLabOperation EvaluateBiologicalCompatibility(string interactionId, BiologicalInteractionCategory category, string nodeId)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Evaluate Biological Compatibility", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            BodySnapshot snapshot = body.CreateSnapshot();
+            AnatomyNodeSnapshot node = string.IsNullOrWhiteSpace(nodeId)
+                ? null
+                : snapshot.Anatomy?.Nodes.FirstOrDefault(candidate => string.Equals(candidate.NodeId, nodeId, StringComparison.Ordinal));
+            BiologicalInteractionEvaluationResult result = body.BiologicalCompatibility.Evaluate(snapshot, interactionId, category, node, "test-lab.compatibility", $"test-lab.compatibility.evaluate.{Guid.NewGuid():N}", preview: true);
+            return RecordCompatibility("Evaluate Biological Compatibility", result);
+        }
+
+        public PrototypeTestLabOperation AddBiologicalCompatibilityResistance()
+        {
+            return AddCompatibilityRule("test-lab.compatibility.resistance", BiologicalInteractionIds.Bleeding, BiologicalInteractionRuleKind.Resistance, BiologicalCompatibilityState.Compatible, 0.5f, 0.75f, 0.5f, "Development resistance halves bleeding rate and consequence.");
+        }
+
+        public PrototypeTestLabOperation AddSecondBiologicalCompatibilityResistance()
+        {
+            return AddCompatibilityRule("test-lab.compatibility.resistance.second", BiologicalInteractionIds.Bleeding, BiologicalInteractionRuleKind.Resistance, BiologicalCompatibilityState.Compatible, 0.8f, 1f, 0.8f, "Second source-safe resistance.");
+        }
+
+        public PrototypeTestLabOperation AddBiologicalCompatibilityVulnerability()
+        {
+            return AddCompatibilityRule("test-lab.compatibility.vulnerability", BiologicalInteractionIds.Bleeding, BiologicalInteractionRuleKind.Vulnerability, BiologicalCompatibilityState.Compatible, 1.5f, 1.25f, 1.5f, "Development vulnerability increases bleeding.");
+        }
+
+        public PrototypeTestLabOperation AddBiologicalCompatibilityImmunity()
+        {
+            return AddCompatibilityRule("test-lab.compatibility.immunity", BiologicalInteractionIds.Bleeding, BiologicalInteractionRuleKind.Immunity, BiologicalCompatibilityState.Compatible, 1f, 1f, 1f, "Development immunity blocks bleeding semantically.");
+        }
+
+        public PrototypeTestLabOperation AddBiologicalCompatibilitySuppression()
+        {
+            return AddCompatibilityRule("test-lab.compatibility.suppression", BiologicalInteractionIds.Bleeding, BiologicalInteractionRuleKind.Suppression, BiologicalCompatibilityState.Compatible, 0f, 0f, 0f, "Development suppression pauses bleeding without intrinsic immunity.");
+        }
+
+        public PrototypeTestLabOperation AddBiologicalCompatibilityAffinity()
+        {
+            return AddCompatibilityRule("test-lab.compatibility.affinity", BiologicalInteractionIds.SpiritRestoration, BiologicalInteractionRuleKind.Affinity, BiologicalCompatibilityState.Compatible, 1.2f, 1f, 1.2f, "Development affinity improves restoration.");
+        }
+
+        public PrototypeTestLabOperation AddBiologicalCompatibilityConversion()
+        {
+            return AddCompatibilityRule("test-lab.compatibility.conversion", BiologicalInteractionIds.Necrotic, BiologicalInteractionRuleKind.Conversion, BiologicalCompatibilityState.Compatible, 1f, 1f, 1f, "Development conversion maps necrotic to restoration.", BiologicalInteractionIds.NecroticRestoration);
+        }
+
+        public PrototypeTestLabOperation AddBiologicalCompatibilityAbsorption()
+        {
+            return AddCompatibilityRule("test-lab.compatibility.absorption", BiologicalInteractionIds.Fire, BiologicalInteractionRuleKind.Absorption, BiologicalCompatibilityState.Compatible, 1f, 1f, 1f, "Development absorption reports special beneficial handling.");
+        }
+
+        public PrototypeTestLabOperation RemoveFirstBiologicalCompatibilityRule()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Remove Biological Compatibility Rule", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            BiologicalCompatibilityRuleSnapshot first = body.BiologicalCompatibility.CreateSnapshot().Rules.FirstOrDefault();
+            if (first == null)
+            {
+                return RecordFailure("Remove Biological Compatibility Rule", "No dynamic compatibility rule exists.", BiologicalCompatibilityResultCode.MissingContribution.ToString());
+            }
+
+            return RecordCompatibilityOperation("Remove Biological Compatibility Rule", body.BiologicalCompatibility.RemoveContribution(first.SourceId, first.EntryId));
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalCompatibilityDeterministicOrder()
+        {
+            PrototypeTestLabOperation reset = ResetBiologicalCompatibilityHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            AddBiologicalCompatibilityResistance();
+            AddSecondBiologicalCompatibilityResistance();
+            BiologicalInteractionEvaluationResult first = EvaluateBiologicalCompatibilityRaw(BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, string.Empty);
+            ResetBiologicalCompatibilityHuman();
+            AddSecondBiologicalCompatibilityResistance();
+            AddBiologicalCompatibilityResistance();
+            BiologicalInteractionEvaluationResult second = EvaluateBiologicalCompatibilityRaw(BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, string.Empty);
+            string firstSignature = FormatCompatibilityDeterminismSignature(first);
+            string secondSignature = FormatCompatibilityDeterminismSignature(second);
+            bool succeeded = first != null
+                && second != null
+                && first.Code == BiologicalCompatibilityResultCode.Success
+                && second.Code == BiologicalCompatibilityResultCode.Success
+                && string.Equals(firstSignature, secondSignature, StringComparison.Ordinal);
+            return Record(succeeded, "Biological Compatibility Deterministic Order", succeeded ? "Success" : "Nondeterministic", $"First='{firstSignature}' Second='{secondSignature}'.");
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalCompatibilitySnapshotReadOnly()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Biological Compatibility Snapshot", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            long before = body.BiologicalCompatibility.CompatibilityRevision;
+            BiologicalCompatibilitySnapshot snapshot = body.BiologicalCompatibility.CreateSnapshot();
+            long after = body.BiologicalCompatibility.CompatibilityRevision;
+            bool succeeded = snapshot != null && before == after;
+            return Record(succeeded, "Biological Compatibility Snapshot", succeeded ? "Success" : "Mutated", $"Revision={before}->{after} Rules={snapshot?.Rules.Count ?? 0}.");
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalCompatibilitySpecificRulePrecedence()
+        {
+            PrototypeTestLabOperation reset = ResetBiologicalCompatibilityHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Biological Compatibility Precedence", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            RuntimeBiologicalInteractionRule categoryRule = new RuntimeBiologicalInteractionRule(
+                "test-lab.compatibility.category-injury-block",
+                BiologicalCompatibilitySourceKind.Development,
+                "test-lab.compatibility",
+                string.Empty,
+                BiologicalInteractionCategory.Injury,
+                BiologicalInteractionRuleKind.CompatibilityOverride,
+                BiologicalCompatibilityState.Incompatible,
+                1f,
+                1f,
+                1f,
+                0f,
+                float.PositiveInfinity,
+                100,
+                string.Empty,
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<AnatomyStructuralCategory>(),
+                string.Empty,
+                "Development category-level injury block.");
+            RuntimeBiologicalInteractionRule specificRule = new RuntimeBiologicalInteractionRule(
+                "test-lab.compatibility.specific-fracture-allow",
+                BiologicalCompatibilitySourceKind.Development,
+                "test-lab.compatibility",
+                BiologicalInteractionIds.Fracture,
+                BiologicalInteractionCategory.Unknown,
+                BiologicalInteractionRuleKind.CompatibilityOverride,
+                BiologicalCompatibilityState.Compatible,
+                1f,
+                1f,
+                1f,
+                0f,
+                float.PositiveInfinity,
+                100,
+                string.Empty,
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<AnatomyStructuralCategory>(),
+                string.Empty,
+                "Development specific fracture allow.");
+            BiologicalCompatibilityOperationResult category = body.BiologicalCompatibility.AddOrUpdateContribution(categoryRule);
+            BiologicalCompatibilityOperationResult specific = body.BiologicalCompatibility.AddOrUpdateContribution(specificRule);
+            BodySnapshot snapshot = body.CreateSnapshot();
+            AnatomyNodeSnapshot leg = snapshot.Anatomy?.Nodes.FirstOrDefault(node => string.Equals(node.NodeId, "part.leg.left", StringComparison.Ordinal));
+            BiologicalInteractionEvaluationResult result = body.BiologicalCompatibility.Evaluate(snapshot, BiologicalInteractionIds.Fracture, BiologicalInteractionCategory.Injury, leg, "test-lab.compatibility", $"test-lab.compatibility.precedence.{Guid.NewGuid():N}", preview: true);
+            bool succeeded = category.Succeeded && specific.Succeeded && result.Code == BiologicalCompatibilityResultCode.Success && result.Compatible;
+            return Record(succeeded, "Biological Compatibility Precedence", succeeded ? "Success" : result.Code.ToString(), $"{FormatCompatibilityResult(result)} Category={category.Code} Specific={specific.Code}.");
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalCompatibilityMissingInteractionRejected()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Biological Compatibility Missing Interaction", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            BiologicalInteractionEvaluationResult result = body.BiologicalCompatibility.Evaluate(body.CreateSnapshot(), "interaction.missing.not-authored", BiologicalInteractionCategory.Hazard, null, "test-lab.compatibility", $"test-lab.compatibility.missing.{Guid.NewGuid():N}", preview: true);
+            bool succeeded = result.Code == BiologicalCompatibilityResultCode.MissingInteraction;
+            return Record(succeeded, "Biological Compatibility Missing Interaction", result.Code.ToString(), FormatCompatibilityResult(result));
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalCompatibilityStaleBodyRejected()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Biological Compatibility Stale Body", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            BodySnapshot oldSnapshot = body.CreateSnapshot();
+            BodyOperationResult assign = body.AssignSpecies("species.basic-construct", restoring: false, "Test Lab stale compatibility proof");
+            if (!assign.Succeeded && !assign.Duplicate)
+            {
+                return Record(false, "Biological Compatibility Stale Body", assign.Code.ToString(), assign.Message);
+            }
+
+            BiologicalInteractionEvaluationResult stale = body.BiologicalCompatibility.Evaluate(oldSnapshot, BiologicalInteractionIds.CoreDamage, BiologicalInteractionCategory.Injury, null, "test-lab.compatibility", $"test-lab.compatibility.stale.{Guid.NewGuid():N}", preview: true);
+            ResetBiologicalCompatibilityHuman();
+            bool succeeded = stale.Code == BiologicalCompatibilityResultCode.StaleBody;
+            return Record(succeeded, "Biological Compatibility Stale Body", stale.Code.ToString(), FormatCompatibilityResult(stale));
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalCompatibilityDynamicReset()
+        {
+            PrototypeTestLabOperation reset = ResetBiologicalCompatibilityHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Biological Compatibility Dynamic Reset", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            BiologicalCompatibilityOperationResult add = body.BiologicalCompatibility.AddOrUpdateContribution(new RuntimeBiologicalInteractionRule(
+                "test-lab.compatibility.dynamic-reset",
+                BiologicalCompatibilitySourceKind.Development,
+                "test-lab.compatibility",
+                BiologicalInteractionIds.Bleeding,
+                BiologicalInteractionCategory.Unknown,
+                BiologicalInteractionRuleKind.Immunity,
+                BiologicalCompatibilityState.Compatible,
+                1f,
+                1f,
+                1f,
+                0f,
+                float.PositiveInfinity,
+                100,
+                string.Empty,
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<AnatomyStructuralCategory>(),
+                string.Empty,
+                "Development reset proof immunity."));
+            BiologicalInteractionEvaluationResult immune = body.BiologicalCompatibility.Evaluate(body.CreateSnapshot(), BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, null, "test-lab.compatibility", $"test-lab.compatibility.dynamic.immune.{Guid.NewGuid():N}", preview: true);
+            PrototypeTestLabOperation resetAgain = ResetBiologicalCompatibilityHuman();
+            BiologicalInteractionEvaluationResult restored = body.BiologicalCompatibility.Evaluate(body.CreateSnapshot(), BiologicalInteractionIds.Bleeding, BiologicalInteractionCategory.Hazard, null, "test-lab.compatibility", $"test-lab.compatibility.dynamic.restored.{Guid.NewGuid():N}", preview: true);
+            bool succeeded = add.Succeeded && immune.Immune && resetAgain.Succeeded && restored.Compatible && !restored.Immune;
+            return Record(succeeded, "Biological Compatibility Dynamic Reset", succeeded ? "Success" : restored.Code.ToString(), $"Immune={FormatCompatibilityResult(immune)} Restored={FormatCompatibilityResult(restored)}.");
+        }
+
+        private PrototypeTestLabOperation AddCompatibilityRule(string entryId, string interactionId, BiologicalInteractionRuleKind kind, BiologicalCompatibilityState state, float rate, float severity, float consequence, string explanation, string convertedInteractionId = "")
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Add Biological Compatibility Rule", "Body runtime is missing.", BiologicalCompatibilityResultCode.MissingBody.ToString());
+            }
+
+            RuntimeBiologicalInteractionRule rule = new RuntimeBiologicalInteractionRule(
+                entryId,
+                BiologicalCompatibilitySourceKind.Development,
+                "test-lab.compatibility",
+                interactionId,
+                BiologicalInteractionCategory.Unknown,
+                kind,
+                state,
+                rate,
+                severity,
+                consequence,
+                0f,
+                float.PositiveInfinity,
+                100,
+                convertedInteractionId,
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<AnatomyStructuralCategory>(),
+                string.Empty,
+                explanation);
+            return RecordCompatibilityOperation("Add Biological Compatibility Rule", body.BiologicalCompatibility.AddOrUpdateContribution(rule));
+        }
+
+        private BiologicalInteractionEvaluationResult EvaluateBiologicalCompatibilityRaw(string interactionId, BiologicalInteractionCategory category, string nodeId)
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return null;
+            }
+
+            BodySnapshot snapshot = body.CreateSnapshot();
+            AnatomyNodeSnapshot node = string.IsNullOrWhiteSpace(nodeId)
+                ? null
+                : snapshot.Anatomy?.Nodes.FirstOrDefault(candidate => string.Equals(candidate.NodeId, nodeId, StringComparison.Ordinal));
+            return body.BiologicalCompatibility.Evaluate(snapshot, interactionId, category, node, "test-lab.compatibility", $"test-lab.compatibility.evaluate.{Guid.NewGuid():N}", preview: true);
         }
 
         public PrototypeTestLabOperation InitializeCharacterSystem()
@@ -6402,7 +6779,7 @@ namespace UnityIsekaiGame.Development
             }
 
             BiologicalHazardSourceRequest request = new BiologicalHazardSourceRequest(body.ActorBodyId, hazardId, sourceContributionId, category, severity, rateMultiplier, durationSeconds, sourceObjectId, "Prototype Test Lab hazard source");
-            return RecordHazardOperation("Apply Biological Hazard Source", body.BiologicalHazards.AddOrUpdateSource(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot()));
+            return RecordHazardOperation("Apply Biological Hazard Source", body.BiologicalHazards.AddOrUpdateSource(request, body.VitalProcesses, body.CreateAnatomySnapshot(), body.Condition.CreateSnapshot(), restoring: false, compatibility: body.BiologicalCompatibility, body: body.CreateSnapshot()));
         }
 
         private bool TryBuildHazardTickRequest(
@@ -6512,6 +6889,56 @@ namespace UnityIsekaiGame.Development
             return result.Succeeded
                 ? Record(true, operationName, result.Duplicate ? BiologicalHazardResultCode.Duplicate.ToString() : result.Preview ? BiologicalHazardResultCode.Preview.ToString() : result.Code.ToString(), message)
                 : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private PrototypeTestLabOperation RecordCompatibilityOperation(string operationName, BiologicalCompatibilityOperationResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Biological compatibility operation returned no result.", BiologicalCompatibilityResultCode.InvalidRequest.ToString());
+            }
+
+            BiologicalCompatibilitySnapshot snapshot = result.Snapshot;
+            string message = $"{result.Message} Duplicate={result.Duplicate} Body={snapshot?.ActorBodyId ?? string.Empty} Profile={snapshot?.ProfileId ?? string.Empty} Rules={snapshot?.Rules.Count ?? 0} Revision={snapshot?.CompatibilityRevision ?? 0}.";
+            return result.Succeeded
+                ? Record(true, operationName, result.Duplicate ? BiologicalCompatibilityResultCode.Duplicate.ToString() : result.Code.ToString(), message)
+                : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private PrototypeTestLabOperation RecordCompatibility(string operationName, BiologicalInteractionEvaluationResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Biological compatibility evaluation returned no result.", BiologicalCompatibilityResultCode.InvalidRequest.ToString());
+            }
+
+            string message = FormatCompatibilityResult(result);
+            return result.Code == BiologicalCompatibilityResultCode.Success
+                ? Record(true, operationName, result.Code.ToString(), message)
+                : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private static string FormatCompatibilityResult(BiologicalInteractionEvaluationResult result)
+        {
+            if (result == null)
+            {
+                return "None";
+            }
+
+            string matched = string.Join(", ", result.RuleTrace.Where(trace => trace.Matched).Select(trace => $"{trace.EntryId}:{trace.RuleKind}"));
+            string ignored = string.Join(", ", result.RuleTrace.Where(trace => !trace.Matched).Take(4).Select(trace => $"{trace.EntryId}:{trace.Reason}"));
+            return $"{result.InteractionDefinitionId} State={result.CompatibilityState} Compatible={result.Compatible} Immune={result.Immune} Suppressed={result.Suppressed} Affinity={result.Affinity} Absorbed={result.Absorbed} Converted={result.ConvertedInteractionDefinitionId} Rate={result.RateMultiplier:0.###} Severity={result.SeverityMultiplier:0.###} Consequence={result.ConsequenceMultiplier:0.###} MaxSeverity={result.MaximumSeverity:0.###} Rev={result.BodyRevision}/{result.AnatomyRevision}/{result.ConditionRevision}/{result.VitalRevision}/{result.HazardRevision}/{result.CompatibilityRevision}. Matched=[{matched}] Ignored=[{ignored}] Message={result.Message}";
+        }
+
+        private static string FormatCompatibilityDeterminismSignature(BiologicalInteractionEvaluationResult result)
+        {
+            if (result == null)
+            {
+                return "None";
+            }
+
+            string matched = string.Join(", ", result.RuleTrace.Where(trace => trace.Matched).Select(trace => $"{trace.EntryId}:{trace.RuleKind}"));
+            return $"{result.InteractionDefinitionId} Code={result.Code} State={result.CompatibilityState} Compatible={result.Compatible} Immune={result.Immune} Suppressed={result.Suppressed} Affinity={result.Affinity} Absorbed={result.Absorbed} Converted={result.ConvertedInteractionDefinitionId} Rate={result.RateMultiplier:0.###} Severity={result.SeverityMultiplier:0.###} Consequence={result.ConsequenceMultiplier:0.###} MaxSeverity={result.MaximumSeverity:0.###} Matched=[{matched}]";
         }
 
         private bool TryBuildConditionDamageRequest(

@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
+using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
@@ -34,6 +35,7 @@ namespace UnityIsekaiGame.Beings.Biology
         private readonly BodyConditionRuntime conditionRuntime = new BodyConditionRuntime();
         private readonly VitalProcessRuntime vitalProcessRuntime = new VitalProcessRuntime();
         private readonly BiologicalHazardRuntime biologicalHazardRuntime = new BiologicalHazardRuntime();
+        private readonly BiologicalCompatibilityRuntime biologicalCompatibilityRuntime = new BiologicalCompatibilityRuntime();
 
         public event Action<ActorBodyRuntime, BodyOperationResult, bool> BodyChanged;
 
@@ -49,6 +51,7 @@ namespace UnityIsekaiGame.Beings.Biology
         public BodyConditionRuntime Condition => conditionRuntime;
         public VitalProcessRuntime VitalProcesses => vitalProcessRuntime;
         public BiologicalHazardRuntime BiologicalHazards => biologicalHazardRuntime;
+        public BiologicalCompatibilityRuntime BiologicalCompatibility => biologicalCompatibilityRuntime;
         public bool IsReady => Readiness == BodyReadinessState.Ready;
 
         private void OnDisable()
@@ -58,6 +61,7 @@ namespace UnityIsekaiGame.Beings.Biology
             conditionRuntime.Dispose();
             vitalProcessRuntime.Dispose();
             biologicalHazardRuntime.Dispose();
+            biologicalCompatibilityRuntime.Dispose();
         }
 
         public void Configure(
@@ -87,6 +91,7 @@ namespace UnityIsekaiGame.Beings.Biology
                 conditionRuntime.BuildHealthy(ActorBodyId, anatomyRuntime.CreateSnapshot(BodyRevision), registry, restoring, preserveRevision: true);
                 BuildVitalProcessesForCurrentBody(restoring, preserveRevision: true);
                 BuildBiologicalHazardsForCurrentBody(restoring, preserveRevision: true);
+                BuildBiologicalCompatibilityForCurrentBody(restoring, preserveRevision: true);
             }
 
             ValidateBody(out _);
@@ -121,6 +126,7 @@ namespace UnityIsekaiGame.Beings.Biology
             BodyConditionSaveData previousCondition = conditionRuntime.CreateSaveData();
             VitalProcessSaveData previousVitalProcesses = vitalProcessRuntime.CreateSaveData();
             BiologicalHazardSaveData previousBiologicalHazards = biologicalHazardRuntime.CreateSaveData();
+            BiologicalCompatibilitySnapshot previousBiologicalCompatibility = biologicalCompatibilityRuntime.CreateSnapshot();
 
             try
             {
@@ -183,6 +189,12 @@ namespace UnityIsekaiGame.Beings.Biology
                 if (!hazardResult.Succeeded)
                 {
                     throw new InvalidOperationException(hazardResult.Message);
+                }
+
+                BiologicalCompatibilityOperationResult compatibilityResult = BuildBiologicalCompatibilityForCurrentBody(restoring, preserveRevision: false);
+                if (!compatibilityResult.Succeeded)
+                {
+                    throw new InvalidOperationException(compatibilityResult.Message);
                 }
 
                 Readiness = BodyReadinessState.Ready;
@@ -248,6 +260,11 @@ namespace UnityIsekaiGame.Beings.Biology
                         if (previousBiologicalHazards != null && previousBiologicalHazards.activeHazards != null)
                         {
                             biologicalHazardRuntime.RestoreFromSaveData(previousBiologicalHazards, ActorBodyId, vitalProcessRuntime, registry);
+                        }
+
+                        if (previousBiologicalCompatibility != null)
+                        {
+                            BuildBiologicalCompatibilityForCurrentBody(restoring, preserveRevision: true);
                         }
                     }
                 }
@@ -354,6 +371,12 @@ namespace UnityIsekaiGame.Beings.Biology
                 {
                     return BodyOperationResult.Failure(BodyOperationResultCode.RestoreResolutionFailure, hazardResult.Message, snapshot: CreateSnapshot());
                 }
+            }
+
+            BiologicalCompatibilityOperationResult compatibilityResult = BuildBiologicalCompatibilityForCurrentBody(restoring: true, preserveRevision: true);
+            if (!compatibilityResult.Succeeded)
+            {
+                return BodyOperationResult.Failure(BodyOperationResultCode.RestoreResolutionFailure, compatibilityResult.Message, snapshot: CreateSnapshot());
             }
 
             Readiness = BodyReadinessState.Ready;
@@ -523,6 +546,11 @@ namespace UnityIsekaiGame.Beings.Biology
 
         public BodySnapshot CreateSnapshot()
         {
+            return CreateSnapshot(includeCompatibility: true);
+        }
+
+        private BodySnapshot CreateSnapshot(bool includeCompatibility)
+        {
             SpeciesDefinition species = Species;
             BiologicalClassificationDefinition classification = species == null ? null : species.BiologicalClassification;
             BodyFormDefinition bodyForm = species == null ? null : species.BodyForm;
@@ -564,6 +592,12 @@ namespace UnityIsekaiGame.Beings.Biology
                 diagnostics.AddRange(hazardSnapshot.Diagnostics);
             }
 
+            BiologicalCompatibilitySnapshot compatibilitySnapshot = includeCompatibility ? biologicalCompatibilityRuntime.CreateSnapshot() : null;
+            if (compatibilitySnapshot != null && !compatibilitySnapshot.Coherent)
+            {
+                diagnostics.AddRange(compatibilitySnapshot.Diagnostics);
+            }
+
             return new BodySnapshot(
                 ActorBodyId,
                 PersonId,
@@ -590,7 +624,13 @@ namespace UnityIsekaiGame.Beings.Biology
                 conditionSnapshot,
                 vitalSnapshot,
                 hazardSnapshot,
-                coherent && anatomySnapshot != null && anatomySnapshot.Coherent && conditionSnapshot != null && conditionSnapshot.Coherent && vitalSnapshot != null && vitalSnapshot.Coherent && hazardSnapshot != null && hazardSnapshot.Coherent,
+                compatibilitySnapshot,
+                coherent
+                    && anatomySnapshot != null && anatomySnapshot.Coherent
+                    && conditionSnapshot != null && conditionSnapshot.Coherent
+                    && vitalSnapshot != null && vitalSnapshot.Coherent
+                    && hazardSnapshot != null && hazardSnapshot.Coherent
+                    && (!includeCompatibility || compatibilitySnapshot == null || compatibilitySnapshot.Coherent),
                 diagnostics);
         }
 
@@ -792,6 +832,11 @@ namespace UnityIsekaiGame.Beings.Biology
         private BiologicalHazardOperationResult BuildBiologicalHazardsForCurrentBody(bool restoring, bool preserveRevision)
         {
             return biologicalHazardRuntime.BuildForBody(ActorBodyId, vitalProcessRuntime, registry, restoring, preserveRevision);
+        }
+
+        private BiologicalCompatibilityOperationResult BuildBiologicalCompatibilityForCurrentBody(bool restoring, bool preserveRevision)
+        {
+            return biologicalCompatibilityRuntime.BuildForBody(CreateSnapshot(includeCompatibility: false), registry, restoring, preserveRevision);
         }
 
         private BodyOperationResult BuildAnatomyForCurrentSpecies(bool restoring, IReadOnlyDictionary<string, AnatomyPresenceState> overrides, bool preserveRevision)
