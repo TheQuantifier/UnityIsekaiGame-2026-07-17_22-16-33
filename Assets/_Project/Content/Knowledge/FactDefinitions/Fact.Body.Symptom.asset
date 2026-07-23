@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73dc67e3f5c345ce9bcdcf1410b296b3, type: 3}
+  m_Name: Fact.Body.Symptom
+  m_EditorClassIdentifier: 
+  factId: fact.body.symptom
+  displayName: Body Symptom
+  description: A sensed or observed symptom of a Body state.
+  domain: 5
+  propositionType: 13
+  subjectType: 3
+  objectType: 0
+  valueType: 3
+  defaultVisibility: 0
+  defaultDiscoverable: 1
+  certaintyThreshold: 700
+  requiredEvidenceCount: 1
+  contradictionPolicy: 0
+  stalenessPolicy: 6
+  forgettingPolicy: 0
+  shareable: 1
+  tags: []
+  validationMetadata: canonical.8.1

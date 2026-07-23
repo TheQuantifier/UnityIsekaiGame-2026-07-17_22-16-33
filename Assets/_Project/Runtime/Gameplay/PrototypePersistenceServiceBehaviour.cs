@@ -11,6 +11,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Places;
@@ -44,6 +45,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private CharacterSkillCollection playerSkills;
         [SerializeField] private CharacterTraitCollection playerTraits;
         [SerializeField] private ActorBodyRuntime playerBody;
+        [SerializeField] private PersonKnowledgeRuntime playerKnowledge;
         [SerializeField] private PlayerSkillActionEventSource playerSkillActionEventSource;
         [SerializeField] private StatusEffectController statusEffectController;
         [SerializeField] private PlayerIdentityProgression playerIdentityProgression;
@@ -63,6 +65,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerSkills = true;
         [SerializeField] private bool registerPlayerTraits = true;
         [SerializeField] private bool registerPlayerBody = true;
+        [SerializeField] private bool registerPlayerKnowledge = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerCombatExecution = true;
@@ -86,6 +89,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerSkillsPersistenceParticipant playerSkillsParticipant;
         private PlayerTraitsPersistenceParticipant playerTraitsParticipant;
         private PlayerBodyPersistenceParticipant playerBodyParticipant;
+        private PersonKnowledgePersistenceParticipant playerKnowledgeParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
@@ -156,6 +160,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(playerBodyParticipant);
                 playerBodyParticipant = null;
+            }
+
+            if (service != null && playerKnowledgeParticipant != null)
+            {
+                service.UnregisterParticipant(playerKnowledgeParticipant);
+                playerKnowledgeParticipant = null;
             }
 
             if (service != null && statsVitalsStatusParticipant != null)
@@ -266,6 +276,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerSkillsParticipant();
             EnsurePlayerTraitsParticipant();
             EnsurePlayerBodyParticipant();
+            EnsurePlayerKnowledgeParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -788,6 +799,56 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsurePlayerKnowledgeParticipant()
+        {
+            if (!registerPlayerKnowledge || playerKnowledgeParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerIdentityProgression == null)
+            {
+                Debug.LogWarning("Person Knowledge persistence participant was not registered because the prototype Person identity/progression component is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Person Knowledge persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            GameObject owner = playerBody == null ? playerIdentityProgression.gameObject : playerBody.gameObject;
+            if (playerKnowledge == null)
+            {
+                playerKnowledge = owner.GetComponent<PersonKnowledgeRuntime>();
+            }
+
+            if (playerKnowledge == null)
+            {
+                playerKnowledge = owner.AddComponent<PersonKnowledgeRuntime>();
+            }
+
+            playerKnowledge.Configure(
+                GetDefinitionRegistry(),
+                playerIdentityProgression.PersonId,
+                ResolvePlayerActorId(),
+                playerBody == null ? string.Empty : playerBody.ActorBodyId);
+
+            playerKnowledgeParticipant = new PersonKnowledgePersistenceParticipant(
+                playerKnowledge,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerKnowledgeParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerKnowledgeParticipant = null;
+            }
+        }
+
         private void ResolvePlayerPersistenceReferences()
         {
             if (playerInventory == null)
@@ -876,6 +937,11 @@ namespace UnityIsekaiGame.Gameplay
                 playerBody = playerObject.AddComponent<ActorBodyRuntime>();
             }
 
+            if (playerKnowledge == null)
+            {
+                playerKnowledge = playerObject == null ? Object.FindAnyObjectByType<PersonKnowledgeRuntime>() : playerObject.GetComponent<PersonKnowledgeRuntime>();
+            }
+
             if (playerResources == null)
             {
                 playerResources = playerObject == null ? Object.FindAnyObjectByType<CharacterResourceCollection>() : playerObject.GetComponent<CharacterResourceCollection>();
@@ -918,6 +984,10 @@ namespace UnityIsekaiGame.Gameplay
                 playerOngoingEffects?.Configure(playerObject == null ? null : playerObject.GetComponent<CharacterSystemCoordinator>());
                 playerStats?.ConfigureDerivedStats(registry);
                 playerStats?.RefreshEquipmentModifiers();
+                if (playerKnowledge != null && playerIdentityProgression != null)
+                {
+                    playerKnowledge.Configure(registry, playerIdentityProgression.PersonId, ResolvePlayerActorId(), playerBody == null ? string.Empty : playerBody.ActorBodyId);
+                }
             }
 
             if (playerHealth == null)
@@ -1416,6 +1486,11 @@ namespace UnityIsekaiGame.Gameplay
                 playerBody.BodyChanged += OnBodyChanged;
             }
 
+            if (playerKnowledge != null)
+            {
+                playerKnowledge.KnowledgeChanged += OnKnowledgeChanged;
+            }
+
             dirtyEventsSubscribed = true;
         }
 
@@ -1522,6 +1597,11 @@ namespace UnityIsekaiGame.Gameplay
             if (playerBody != null)
             {
                 playerBody.BodyChanged -= OnBodyChanged;
+            }
+
+            if (playerKnowledge != null)
+            {
+                playerKnowledge.KnowledgeChanged -= OnKnowledgeChanged;
             }
 
             if (playerQuestLog != null)
@@ -1746,6 +1826,23 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             dirtyTracker?.MarkDirty("Player body Species changed.");
+            if (playerKnowledge != null && result.Snapshot != null)
+            {
+                foreach (KnowledgeBeliefRecord belief in playerKnowledge.CreateSnapshot(bodyId: result.Snapshot.ActorBodyId).Beliefs)
+                {
+                    playerKnowledge.MarkStale(belief.BeliefId, $"knowledge.body-stale.{result.Snapshot.ActorBodyId}.{result.Snapshot.BodyRevision}.{belief.BeliefId}", "Body-specific Knowledge marked stale after body change.");
+                }
+            }
+        }
+
+        private void OnKnowledgeChanged(PersonKnowledgeRuntime runtime, KnowledgeOperationResult result)
+        {
+            if (result == null || result.Preview || result.Duplicate)
+            {
+                return;
+            }
+
+            dirtyTracker?.MarkDirty("Player Knowledge changed.");
         }
 
         private string ResolveSceneKey()

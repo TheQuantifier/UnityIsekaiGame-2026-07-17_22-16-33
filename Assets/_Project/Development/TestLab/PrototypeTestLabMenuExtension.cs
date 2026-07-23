@@ -7,6 +7,7 @@ using UnityIsekaiGame.Combat.CombatState;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.StatusEffects;
@@ -187,6 +188,7 @@ namespace UnityIsekaiGame.Development
                 PlayerOngoingEffects = playerOngoingEffects,
                 PlayerSkills = menuController.RuntimeSkills,
                 PlayerTraits = menuController.RuntimeTraits,
+                PlayerKnowledge = playerTransform == null ? null : playerTransform.GetComponentInParent<PersonKnowledgeRuntime>(),
                 CharacterSystem = menuController.RuntimeCharacterSystem,
                 PlayerStatuses = menuController.StatusEffects,
                 IdentityProgression = menuController.IdentityProgression,

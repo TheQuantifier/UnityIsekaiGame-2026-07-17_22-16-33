@@ -1,0 +1,170 @@
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+using System;
+using System.Linq;
+
+namespace UnityIsekaiGame.Development.Automation
+{
+    public static class PrototypeStep8AutomationSuites
+    {
+        public static void RegisterDefaults(TestLabAutomationRegistry registry)
+        {
+            if (registry == null)
+            {
+                return;
+            }
+
+            TryRegister(registry, BuildKnowledgeSuite());
+        }
+
+        private static ITestLabAutomationSuite BuildKnowledgeSuite()
+        {
+            return Suite("feature.8.1.knowledge-facts-beliefs", "Feature 8.1 Knowledge, Facts, and Beliefs", "8.1", 810,
+                Required("PersonKnowledgeRuntime", "KnowledgeFactDefinition", "KnowledgeObservationProjection"),
+                Scenario("person-knowledge-ready", "Person Knowledge runtime is ready", 10,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-reset")),
+                    Step("validate", "Validate Knowledge", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-ready"))),
+                Scenario("person-starts-with-authored-baseline", "Only authored baseline Knowledge is present", 20,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-baseline-reset")),
+                    Step("validate", "Validate baseline", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-baseline"))),
+                Scenario("observation-preview-mutates-nothing", "Observation preview does not mutate", 30,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-preview-reset")),
+                    Step("preview", "Preview visible injury", context => Operation(context.Service.PreviewKnowledgeVisibleInjury(), context, "step8-preview"))),
+                Scenario("observation-creates-belief", "Observation creates evidence and belief", 40,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-reset")),
+                    Step("record", "Record visible injury", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-observation-record"))),
+                Scenario("duplicate-observation-idempotent", "Duplicate observation is idempotent", 50,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-duplicate-reset")),
+                    Step("duplicate", "Duplicate observation", context => Operation(context.Service.ProveKnowledgeDuplicateObservation(), context, "step8-duplicate"))),
+                Scenario("subthreshold-evidence-creates-suspicion", "Weak evidence creates suspicion", 60,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-weak-reset")),
+                    Step("weak", "Add weak evidence", context => Operation(context.Service.AddWeakKnowledgeEvidence(), context, "step8-weak"))),
+                Scenario("repeated-evidence-increases-confidence", "Distinct evidence increases confidence deterministically", 70,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-repeat-reset")),
+                    Step("weak", "Add weak evidence", context => Operation(context.Service.AddWeakKnowledgeEvidence(), context, "step8-repeat-weak")),
+                    Step("strong", "Add strong evidence", context => Operation(context.Service.AddStrongKnowledgeEvidence(), context, "step8-repeat-strong"))),
+                Scenario("conflicting-evidence-creates-dispute", "Opposing evidence creates dispute", 80,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-conflict-reset")),
+                    Step("support", "Add strong evidence", context => Operation(context.Service.AddStrongKnowledgeEvidence(), context, "step8-conflict-support")),
+                    Step("oppose", "Add opposing evidence", context => Operation(context.Service.AddOpposingKnowledgeEvidence(), context, "step8-conflict-oppose"))),
+                Scenario("high-confidence-belief-can-be-wrong", "High-confidence misconception does not alter truth", 90,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-misconception-reset")),
+                    Step("misconception", "Create misconception", context => Operation(context.Service.CreateKnowledgeMisconception(), context, "step8-misconception"))),
+                Scenario("authoritative-correction-revises-belief", "Authorized correction revises belief", 100,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-correction-reset")),
+                    Step("misconception", "Create misconception", context => Operation(context.Service.CreateKnowledgeMisconception(), context, "step8-correction-misconception")),
+                    Step("correct", "Correct belief", context => Operation(context.Service.CorrectKnowledgeMisconception(), context, "step8-correction"))),
+                Scenario("testimony-is-not-direct-observation", "Shared belief becomes testimony evidence", 110,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-testimony-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-testimony-record")),
+                    Step("share", "Share belief", context => Operation(context.Service.ShareFirstKnowledgeBelief(), context, "step8-testimony-share"))),
+                Scenario("source-credibility-affects-confidence", "Credibility changes confidence", 120,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-credibility-reset")),
+                    Step("weak", "Weak source", context => Operation(context.Service.AddWeakKnowledgeEvidence(), context, "step8-credibility-weak")),
+                    Step("strong", "Strong source", context => Operation(context.Service.AddStrongKnowledgeEvidence(), context, "step8-credibility-strong"))),
+                Scenario("visible-injury-observation-limited", "Visible injury does not expose hidden internals", 130,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-visible-reset")),
+                    Step("record", "Record visible injury", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-visible"))),
+                Scenario("symptom-does-not-equal-diagnosis", "Symptom and diagnosis remain separate", 140,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-symptom-reset")),
+                    Step("weak", "Add symptom-like weak evidence", context => Operation(context.Service.AddWeakKnowledgeEvidence(), context, "step8-symptom"))),
+                Scenario("species-capability-discovery", "Species capability discovery updates belief", 150,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-species-reset")),
+                    Step("strong", "Add species capability evidence", context => Operation(context.Service.AddStrongKnowledgeEvidence(), context, "step8-species"))),
+                Scenario("false-species-rumor", "False species rumor can create misconception", 160,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-rumor-reset")),
+                    Step("rumor", "Create false species rumor", context => Operation(context.Service.CreateKnowledgeMisconception(), context, "step8-rumor"))),
+                Scenario("body-replacement-preserves-person-knowledge", "Body replacement preserves Person Knowledge", 170,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-body-preserve-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-body-preserve-record")),
+                    Step("construct", "Assign Construct body", context => Operation(context.Service.AssignBodySpecies("species.basic-construct"), context, "step8-body-preserve-construct")),
+                    Step("validate", "Validate Knowledge", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-body-preserve-validate"))),
+                Scenario("body-specific-belief-becomes-stale", "Body-specific belief can become stale", 180,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-stale-body-reset")),
+                    Step("record", "Record body belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-stale-body-record")),
+                    Step("stale", "Mark stale", context => Operation(context.Service.MarkFirstKnowledgeStale(), context, "step8-stale-body"))),
+                Scenario("previous-body-history-retained", "Previous body history can be retained", 190,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-history-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-history-record")),
+                    Step("validate", "Validate history-capable Knowledge", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-history"))),
+                Scenario("knowledge-does-not-transfer-between-persons", "Knowledge does not transfer automatically", 200,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-isolation-reset")),
+                    Step("record", "Record player belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-isolation-record")),
+                    Step("validate", "Validate player-only Knowledge", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-isolation"))),
+                Scenario("share-belief-creates-listener-evidence", "Sharing creates listener evidence", 210,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-share-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-share-record")),
+                    Step("share", "Share belief", context => Operation(context.Service.ShareFirstKnowledgeBelief(), context, "step8-share"))),
+                Scenario("private-fact-blocked", "Diagnostic-only fact is blocked", 220,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-private-reset")),
+                    Step("blocked", "Attempt private diagnostic observation", context => Operation(context.Service.AttemptPrivateDiagnosticKnowledgeObservation(), context, "step8-private"))),
+                Scenario("development-truth-comparison-separate", "Development truth comparison remains separate", 230,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-truth-reset")),
+                    Step("misconception", "Use authorized development fixture", context => Operation(context.Service.CreateKnowledgeMisconception(), context, "step8-truth"))),
+                Scenario("forgetting-reduces-or-removes-active-belief", "Forgetting changes active belief", 240,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-forget-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-forget-record")),
+                    Step("forget", "Forget belief", context => Operation(context.Service.ForgetFirstKnowledgeBelief(), context, "step8-forget"))),
+                Scenario("stale-belief-not-deleted", "Stale belief remains queryable", 250,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-stale-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-stale-record")),
+                    Step("stale", "Mark stale", context => Operation(context.Service.MarkFirstKnowledgeStale(), context, "step8-stale"))),
+                Scenario("snapshot-read-only", "Snapshot creation is read-only", 260,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-snapshot-reset")),
+                    Step("validate", "Validate snapshot-ready Knowledge", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-snapshot"))),
+                Scenario("snapshot-immutable", "Snapshot collections are immutable", 270,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-immutable-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-immutable-record")),
+                    Step("validate", "Validate immutable snapshot boundary", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-immutable"))),
+                Scenario("save-restore-preserves-beliefs", "Save and restore preserves beliefs", 280,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-save-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-save-record")),
+                    Step("save-restore", "Save restore Knowledge", context => Operation(context.Service.ValidateKnowledgeSaveRestore(), context, "step8-save"))),
+                Scenario("restore-no-discovery-replay", "Restore emits no discovery replay", 290,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-restore-events-reset")),
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-restore-events-record")),
+                    Step("save-restore", "Save restore without events", context => Operation(context.Service.ValidateKnowledgeSaveRestore(), context, "step8-restore-events"))),
+                Scenario("replacement-body-isolation", "Body-bound observations stay with owning Person", 300,
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-replacement-reset")),
+                    Step("record", "Record body observation", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-replacement-record")),
+                    Step("validate", "Validate Person isolation", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-replacement"))),
+                Scenario("automation-reset-knowledge", "Automation reset restores canonical Knowledge", 310,
+                    Step("record", "Record belief", context => Operation(context.Service.RecordKnowledgeVisibleInjury(), context, "step8-auto-reset-record")),
+                    Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-auto-reset")),
+                    Step("validate", "Validate reset", context => Operation(context.Service.ValidateKnowledgeRuntime(), context, "step8-auto-reset-validate"))));
+        }
+
+        private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)
+        {
+            return new TestLabAutomationSuite(suiteId, displayName, feature, $"{displayName} runtime integration scenarios.", order, TestLabAutomationCategory.Standard, includeInRunAll: true, requiredServices: required, scenarios: scenarios);
+        }
+
+        private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(scenarioId, displayName, displayName, order, order <= 30 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard, includeInQuickRun: order <= 30, steps: steps);
+        }
+
+        private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
+        {
+            return new TestLabScenarioStep(stepId, displayName, action);
+        }
+
+        private static System.Collections.Generic.IReadOnlyList<string> Required(params string[] services)
+        {
+            return services.ToArray();
+        }
+
+        private static TestLabAutomationStepResult Operation(PrototypeTestLabOperation operation, TestLabAutomationContext context, string operationId)
+        {
+            string transactionId = context.TransactionIds.Create(context.CurrentSuiteId, context.CurrentScenarioId, context.RunId, context.CurrentStepIndex, operationId);
+            return operation.Succeeded
+                ? new TestLabAutomationStepResult(operationId, operation.OperationName, TestLabAutomationStatus.Passed, "OperationSucceeded", "Succeeded", operation.Code, string.Empty, transactionId, operation.Message)
+                : new TestLabAutomationStepResult(operationId, operation.OperationName, TestLabAutomationStatus.Failed, "OperationSucceeded", "Succeeded", operation.Code, string.Empty, transactionId, operation.Message);
+        }
+
+        private static void TryRegister(TestLabAutomationRegistry registry, ITestLabAutomationSuite suite)
+        {
+            registry.TryRegister(suite, out _);
+        }
+    }
+}
+#endif
