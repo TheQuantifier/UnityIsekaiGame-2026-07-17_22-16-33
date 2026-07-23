@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a770000000000000000000000000001, type: 3}
+  m_Name: NaturalNutritionRecovery
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Recovery.RecoveryMethodDefinition
+  methodId: recovery.natural.nutrition-recovery
+  displayName: Natural Nutrition Recovery Hook
+  description: Canonical alpha recovery method for Feature 7.7.
+  biologicalInteractionDefinitionId: interaction.recovery.natural-healing
+  category: 6
+  supportedTargets:
+  - 4
+  baseProgressPerHour: 10
+  structuralIntegrityPerHour: 0
+  vitalResourcePerHour: 10
+  allocationPolicy: 0
+  recoveryLimit: 5
+  maximumRecoverableIntegrityPercent: 1
+  canRestoreDestroyedStructure: 0
+  canRestoreMissingStructure: 0
+  canRestoreSeveredStructure: 0
+  resolvesInjuryOnCompletion: 0
+  requiresRestContext: 0
+  allowedRestTypes: []
+  requiredRuntimeCapabilityKeys: []
+  blockingRuntimeCapabilityKeys: []
+  compatibleInjuryTypeIds: []
+  compatibleAnatomyTagIds: []
+  restoredResourceIds:
+  - resource.biology.nutrition
+  permanentOutcome: 0
+  interruptionPolicy: 0
+  alphaExecutionEnabled: 1
+  tags: []
+  validationMetadata: Feature 7.7 canonical alpha recovery method.

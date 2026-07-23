@@ -87,4 +87,22 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
         TargetUnavailable,
         AlreadyDestroyed
     }
+
+    public enum StructuralRecoveryResultCode
+    {
+        Success,
+        Preview,
+        Duplicate,
+        RuntimeNotReady,
+        MissingActorBody,
+        MissingAnatomyNode,
+        MissingInjury,
+        InvalidRequest,
+        InvalidAmount,
+        StaleBody,
+        StaleCondition,
+        TargetUnavailable,
+        AlreadyComplete,
+        RecoveryLimitReached
+    }
 }

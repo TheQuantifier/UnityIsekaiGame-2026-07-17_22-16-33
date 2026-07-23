@@ -1,0 +1,110 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a770000000000000000000000000002, type: 3}
+  m_Name: HumanRecoveryProfile
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Recovery.BiologicalRecoveryProfileDefinition
+  profileId: recovery-profile.species.human
+  displayName: Human Recovery Profile
+  description: Canonical alpha recovery profile for Feature 7.7.
+  speciesDefinitionId: species.human
+  bodyFormDefinitionId: 
+  biologicalClassificationId: 
+  baseRecoveryCapacityPerHour: 1
+  allocationPolicy: 4
+  methods:
+  - recoveryMethodId: recovery.natural.tissue-healing
+    enabled: 1
+    rateMultiplier: 1
+    priority: 10
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 4
+  - recoveryMethodId: recovery.natural.wound-closure
+    enabled: 1
+    rateMultiplier: 1
+    priority: 20
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 7
+  - recoveryMethodId: recovery.natural.fracture-healing
+    enabled: 1
+    rateMultiplier: 1
+    priority: 30
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 8
+  - recoveryMethodId: recovery.natural.organ-recovery
+    enabled: 1
+    rateMultiplier: 0.8
+    priority: 40
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 4
+  - recoveryMethodId: recovery.natural.blood-restoration
+    enabled: 1
+    rateMultiplier: 1
+    priority: 50
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 11
+  - recoveryMethodId: recovery.natural.breath-restoration
+    enabled: 1
+    rateMultiplier: 1
+    priority: 60
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 11
+  - recoveryMethodId: recovery.natural.nutrition-recovery
+    enabled: 1
+    rateMultiplier: 1
+    priority: 65
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 11
+  - recoveryMethodId: recovery.natural.hydration-recovery
+    enabled: 1
+    rateMultiplier: 1
+    priority: 66
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 11
+  - recoveryMethodId: recovery.natural.fatigue-reduction
+    enabled: 1
+    rateMultiplier: 1
+    priority: 70
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 11
+  - recoveryMethodId: recovery.natural.sleep-need-reduction
+    enabled: 1
+    rateMultiplier: 1
+    priority: 80
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 11
+  - recoveryMethodId: recovery.magical.biological-healing
+    enabled: 1
+    rateMultiplier: 1
+    priority: 90
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 11
+  - recoveryMethodId: recovery.magical.holy-healing
+    enabled: 1
+    rateMultiplier: 1
+    priority: 100
+    autoStart: 0
+    allocationPolicy: 0
+    recoveryLimit: 11
+  blockingHazardIds: []
+  tags: []
+  validationMetadata: Feature 7.7 canonical alpha recovery profile.

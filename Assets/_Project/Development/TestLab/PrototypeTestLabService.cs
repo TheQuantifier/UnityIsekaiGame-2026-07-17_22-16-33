@@ -9,6 +9,7 @@ using UnityIsekaiGame.Beings.Biology.Anatomy;
 using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Beings.Biology.Hazards;
+using UnityIsekaiGame.Beings.Biology.Recovery;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Abilities;
@@ -94,6 +95,7 @@ namespace UnityIsekaiGame.Development
         private string lastCombatExecutionInstanceId;
         private string lastLifecycleTransactionId;
         private string lastOngoingEffectTransactionId;
+        private string lastBiologicalRecoveryTickId;
         private DamageApplicationResult lastContributionDamageSource;
         private HealingApplicationResult lastContributionHealingSource;
         private string lastContributionCreditTargetActorId;
@@ -2051,6 +2053,566 @@ namespace UnityIsekaiGame.Development
                 ? null
                 : snapshot.Anatomy?.Nodes.FirstOrDefault(candidate => string.Equals(candidate.NodeId, nodeId, StringComparison.Ordinal));
             return body.BiologicalCompatibility.Evaluate(snapshot, interactionId, category, node, "test-lab.compatibility", $"test-lab.compatibility.evaluate.{Guid.NewGuid():N}", preview: true);
+        }
+
+        public string BuildBiologicalRecoverySummary()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return "Biological recovery runtime is missing.";
+            }
+
+            EnsureBiologicalRecoveryReady(body);
+            BodySnapshot bodySnapshot = body.CreateSnapshot();
+            BiologicalRecoverySnapshot recovery = bodySnapshot.BiologicalRecovery;
+            if (recovery == null)
+            {
+                return "Biological recovery snapshot is missing.";
+            }
+
+            List<string> lines = new List<string>
+            {
+                "Feature 7.7 Natural Recovery and Biological Repair",
+                $"Body: {bodySnapshot.ActorBodyId}",
+                $"Species: {bodySnapshot.SpeciesId}",
+                $"Profile: {recovery.ProfileId}",
+                $"Readiness: {recovery.Readiness}",
+                $"Rest Context: {recovery.RestContext?.RestType} Quality={recovery.RestContext?.Quality ?? 0f:0.##}",
+                $"Body/Condition/Vital/Hazard/Compatibility/Recovery Revisions: {recovery.BodyRevision}/{recovery.ConditionRevision}/{recovery.VitalRevision}/{recovery.HazardRevision}/{recovery.CompatibilityRevision}/{recovery.RecoveryRevision}",
+                $"Active Processes: {recovery.ActiveProcesses.Count}",
+                $"Coherent: {recovery.Coherent}"
+            };
+
+            if (recovery.Processes.Count == 0)
+            {
+                lines.Add("Processes: None");
+            }
+            else
+            {
+                foreach (RecoveryProcessSnapshot process in recovery.Processes.Take(12))
+                {
+                    lines.Add($"- {process.RecoveryMethodId} [{process.ProcessId}] State={process.State} Progress={process.CurrentProgress:0.##}/{process.RequiredProgress:0.##} Target={process.Target?.TargetCategory}:{process.Target?.AnatomyNodeId}{process.Target?.ResourceDefinitionId} Tick={process.LastCommittedTickId}");
+                    if (!string.IsNullOrWhiteSpace(process.CompatibilitySummary))
+                    {
+                        lines.Add($"  Compatibility: {process.CompatibilitySummary}");
+                    }
+                }
+            }
+
+            if (recovery.Diagnostics.Count > 0)
+            {
+                lines.AddRange(recovery.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateBiologicalRecoveryIntegrity()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Biological Recovery", "Body runtime is missing.", BiologicalRecoveryResultCode.MissingBody.ToString());
+            }
+
+            EnsureBiologicalRecoveryReady(body);
+            BiologicalRecoverySnapshot snapshot = body.BiologicalRecovery.CreateSnapshot();
+            bool succeeded = snapshot.Coherent && snapshot.Readiness == RecoveryReadinessState.Ready && !string.IsNullOrWhiteSpace(snapshot.ProfileId);
+            return Record(succeeded, "Validate Biological Recovery", succeeded ? "Success" : "InvalidBiologicalRecovery", $"Readiness={snapshot.Readiness} Profile={snapshot.ProfileId} Active={snapshot.ActiveProcesses.Count} Coherent={snapshot.Coherent}.");
+        }
+
+        public PrototypeTestLabOperation ResetBiologicalRecoveryHuman()
+        {
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Reset Biological Recovery", "Body runtime is missing.", BiologicalRecoveryResultCode.MissingBody.ToString());
+            }
+
+            BodyOperationResult assignment = body.AssignSpecies("species.human", restoring: false, "Test Lab biological recovery reset");
+            if (!assignment.Succeeded)
+            {
+                return RecordBodyResult("Reset Biological Recovery", assignment);
+            }
+
+            LocalizedStructuralDamageResult condition = body.Condition.BuildHealthy(body.ActorBodyId, body.CreateAnatomySnapshot(), registry, restoring: false);
+            if (!condition.Succeeded)
+            {
+                return RecordConditionResult("Reset Biological Recovery", condition);
+            }
+
+            return RecordRecoveryResult("Reset Biological Recovery", body.BiologicalRecovery.BuildForBody(body.CreateSnapshot(), registry, restoring: false));
+        }
+
+        public PrototypeTestLabOperation ApplyRecoveryLaceration()
+        {
+            return ApplyLocalizedStructuralDamageWithTransaction("injury.laceration", "part.hand.left", 40, $"test-lab.recovery.laceration.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation DrainRecoveryBlood()
+        {
+            return ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Blood, VitalResourceMutationOperation.Consume, 30f, $"test-lab.recovery.blood-drain.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation DrainRecoveryBreath()
+        {
+            return ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Breath, VitalResourceMutationOperation.Consume, 30f, $"test-lab.recovery.breath-drain.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation AddRecoveryFatigue()
+        {
+            return ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Fatigue, VitalResourceMutationOperation.Consume, 30f, $"test-lab.recovery.fatigue-add.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation AddRecoverySleepNeed()
+        {
+            return ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.SleepNeed, VitalResourceMutationOperation.Consume, 30f, $"test-lab.recovery.sleep-need-add.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation DrainRecoveryNutrition()
+        {
+            return ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Nutrition, VitalResourceMutationOperation.Consume, 30f, $"test-lab.recovery.nutrition-drain.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation DrainRecoveryHydration()
+        {
+            return ApplyVitalResourceMutationWithTransaction(BiologicalResourceIds.Hydration, VitalResourceMutationOperation.Consume, 30f, $"test-lab.recovery.hydration-drain.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation SetBiologicalRecoveryRestContext(RecoveryRestType restType)
+        {
+            if (!EnsureRecoveryRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            RecoveryRestContextRequest request = new RecoveryRestContextRequest
+            {
+                ActorBodyId = body.ActorBodyId,
+                RestType = restType,
+                SourceId = "test-lab.recovery.rest-context",
+                TransactionId = $"test-lab.recovery.rest.{Guid.NewGuid():N}",
+                Quality = restType == RecoveryRestType.NotResting ? 0f : 1f,
+                Tags = Array.Empty<string>()
+            };
+            return RecordRecoveryResult("Set Biological Recovery Rest Context", body.BiologicalRecovery.SetRestContext(request));
+        }
+
+        public PrototypeTestLabOperation PreviewNaturalWoundClosureRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.wound-closure", RecoveryTargetCategory.Injury, "part.hand.left", string.Empty, preview: true, ensureTarget: true);
+        }
+
+        public PrototypeTestLabOperation StartNaturalWoundClosureRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.wound-closure", RecoveryTargetCategory.Injury, "part.hand.left", string.Empty, preview: false, ensureTarget: true);
+        }
+
+        public PrototypeTestLabOperation StartNaturalTissueRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.tissue-healing", RecoveryTargetCategory.Injury, "part.arm.left", string.Empty, preview: false, ensureTarget: true, injuryDefinitionId: "injury.blunt-trauma");
+        }
+
+        public PrototypeTestLabOperation StartNaturalFractureRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.fracture-healing", RecoveryTargetCategory.Injury, "part.leg.left", string.Empty, preview: false, ensureTarget: true, injuryDefinitionId: "injury.fracture");
+        }
+
+        public PrototypeTestLabOperation StartNaturalOrganRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.organ-recovery", RecoveryTargetCategory.Injury, "organ.lung.left", string.Empty, preview: false, ensureTarget: true, injuryDefinitionId: "injury.organ-trauma");
+        }
+
+        public PrototypeTestLabOperation StartNaturalBloodRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.blood-restoration", RecoveryTargetCategory.VitalResource, string.Empty, BiologicalResourceIds.Blood, preview: false, ensureTarget: true);
+        }
+
+        public PrototypeTestLabOperation StartNaturalBreathRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.breath-restoration", RecoveryTargetCategory.VitalResource, string.Empty, BiologicalResourceIds.Breath, preview: false, ensureTarget: true);
+        }
+
+        public PrototypeTestLabOperation StartNaturalFatigueRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.fatigue-reduction", RecoveryTargetCategory.VitalResource, string.Empty, BiologicalResourceIds.Fatigue, preview: false, ensureTarget: true);
+        }
+
+        public PrototypeTestLabOperation StartNaturalSleepNeedRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.sleep-need-reduction", RecoveryTargetCategory.VitalResource, string.Empty, BiologicalResourceIds.SleepNeed, preview: false, ensureTarget: true);
+        }
+
+        public PrototypeTestLabOperation StartNaturalNutritionRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.nutrition-recovery", RecoveryTargetCategory.VitalResource, string.Empty, BiologicalResourceIds.Nutrition, preview: false, ensureTarget: true);
+        }
+
+        public PrototypeTestLabOperation StartNaturalHydrationRecovery()
+        {
+            return StartRecoveryProcess("recovery.natural.hydration-recovery", RecoveryTargetCategory.VitalResource, string.Empty, BiologicalResourceIds.Hydration, preview: false, ensureTarget: true);
+        }
+
+        public PrototypeTestLabOperation StartConstructBiologicalHealingRecovery()
+        {
+            PrototypeTestLabOperation assign = AssignBodySpecies("species.basic-construct");
+            if (!assign.Succeeded)
+            {
+                return assign;
+            }
+
+            return StartRecoveryProcess("recovery.magical.biological-healing", RecoveryTargetCategory.StructuralIntegrity, "core.power", string.Empty, preview: false, ensureTarget: false);
+        }
+
+        public PrototypeTestLabOperation StartSpiritRestorationRecovery()
+        {
+            PrototypeTestLabOperation assign = AssignBodySpecies("species.basic-spirit");
+            if (!assign.Succeeded)
+            {
+                return assign;
+            }
+
+            PrototypeTestLabOperation rest = SetBiologicalRecoveryRestContext(RecoveryRestType.SpiritSanctuary);
+            if (!rest.Succeeded)
+            {
+                return rest;
+            }
+
+            return StartRecoveryProcess("recovery.restoration.spirit", RecoveryTargetCategory.StructuralIntegrity, "core.spiritual", string.Empty, preview: false, ensureTarget: false);
+        }
+
+        public PrototypeTestLabOperation ProveNaturalRecoveryLimit()
+        {
+            PrototypeTestLabOperation reset = ResetBiologicalRecoveryHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            PrototypeTestLabOperation start = StartNaturalWoundClosureRecovery();
+            if (!start.Succeeded)
+            {
+                return start;
+            }
+
+            PrototypeTestLabOperation tick = ApplyBiologicalRecoveryTick(24f * 3600f);
+            if (!tick.Succeeded)
+            {
+                return tick;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Prove Natural Recovery Limit", "Body runtime is missing.", BiologicalRecoveryResultCode.MissingBody.ToString());
+            }
+
+            StructureConditionSnapshot hand = body.Condition.CreateSnapshot().Structures.FirstOrDefault(candidate => string.Equals(candidate.NodeId, "part.hand.left", StringComparison.Ordinal));
+            bool limited = hand != null && hand.CurrentIntegrity <= Mathf.RoundToInt(hand.MaximumIntegrity * 0.75f);
+            return Record(limited, "Prove Natural Recovery Limit", limited ? "Success" : "RecoveryLimitBypassed", hand == null ? "Missing hand structure." : $"Integrity={hand.CurrentIntegrity}/{hand.MaximumIntegrity} Limit={Mathf.RoundToInt(hand.MaximumIntegrity * 0.75f)}.");
+        }
+
+        public PrototypeTestLabOperation SuppressNaturalRecovery()
+        {
+            if (!EnsureRecoveryRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            RuntimeBiologicalInteractionRule suppression = new RuntimeBiologicalInteractionRule(
+                "test-lab.recovery.natural-suppression",
+                BiologicalCompatibilitySourceKind.Development,
+                "test-lab.recovery",
+                BiologicalInteractionIds.NaturalHealing,
+                BiologicalInteractionCategory.Recovery,
+                BiologicalInteractionRuleKind.Suppression,
+                BiologicalCompatibilityState.Compatible,
+                1f,
+                1f,
+                1f,
+                0f,
+                999f,
+                1,
+                string.Empty,
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<AnatomyStructuralCategory>(),
+                string.Empty,
+                "Prototype Test Lab natural recovery suppression");
+            BiologicalCompatibilityOperationResult result = body.BiologicalCompatibility.AddOrUpdateContribution(suppression);
+            return Record(result.Succeeded, "Suppress Natural Recovery", result.Code.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation ClearNaturalRecoverySuppression()
+        {
+            if (!EnsureRecoveryRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalCompatibilityOperationResult result = body.BiologicalCompatibility.RemoveContribution("test-lab.recovery", "test-lab.recovery.natural-suppression");
+            return Record(result.Succeeded, "Clear Natural Recovery Suppression", result.Code.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation StartConstructRepairRecovery()
+        {
+            PrototypeTestLabOperation assign = AssignBodySpecies("species.basic-construct");
+            if (!assign.Succeeded)
+            {
+                return assign;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Start Construct Repair Recovery", "Body runtime is missing.", BiologicalRecoveryResultCode.MissingBody.ToString());
+            }
+
+            if (!body.Condition.CreateSnapshot().ActiveInjuries.Any(injury => string.Equals(injury.TargetNodeId, "core.power", StringComparison.Ordinal)))
+            {
+                PrototypeTestLabOperation damage = ApplyLocalizedStructuralDamageWithTransaction("injury.core-damage", "core.power", 40, $"test-lab.recovery.construct.damage.{Guid.NewGuid():N}");
+                if (!damage.Succeeded)
+                {
+                    return damage;
+                }
+            }
+
+            PrototypeTestLabOperation rest = SetBiologicalRecoveryRestContext(RecoveryRestType.RepairStation);
+            if (!rest.Succeeded)
+            {
+                return rest;
+            }
+
+            return StartRecoveryProcess("recovery.repair.construct", RecoveryTargetCategory.Injury, "core.power", string.Empty, preview: false, ensureTarget: false);
+        }
+
+        public PrototypeTestLabOperation PreviewBiologicalRecoveryTick(float elapsedGameSeconds)
+        {
+            if (!TryBuildRecoveryTickRequest(elapsedGameSeconds, "preview", out ActorBodyRuntime body, out RecoveryTickRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            long recoveryRevision = body.BiologicalRecovery.RecoveryRevision;
+            long conditionRevision = body.Condition.ConditionRevision;
+            long vitalRevision = body.VitalProcesses.VitalRevision;
+            BiologicalRecoveryResult result = body.BiologicalRecovery.PreviewTick(request, body.CreateSnapshot(), body.BiologicalCompatibility, body.Condition, body.VitalProcesses);
+            bool succeeded = result.Succeeded && result.Preview && body.BiologicalRecovery.RecoveryRevision == recoveryRevision && body.Condition.ConditionRevision == conditionRevision && body.VitalProcesses.VitalRevision == vitalRevision;
+            return succeeded
+                ? RecordRecoveryResult("Preview Biological Recovery Tick", result)
+                : Record(false, "Preview Biological Recovery Tick", result.Code.ToString(), $"{result.Message} Preview={result.Preview} Revisions Recovery={recoveryRevision}->{body.BiologicalRecovery.RecoveryRevision} Condition={conditionRevision}->{body.Condition.ConditionRevision} Vital={vitalRevision}->{body.VitalProcesses.VitalRevision}.");
+        }
+
+        public PrototypeTestLabOperation ApplyBiologicalRecoveryTick(float elapsedGameSeconds)
+        {
+            string tickId = $"test-lab.recovery.tick.{Guid.NewGuid():N}";
+            lastBiologicalRecoveryTickId = tickId;
+            return ApplyBiologicalRecoveryTickWithId(elapsedGameSeconds, tickId);
+        }
+
+        public PrototypeTestLabOperation ReapplyBiologicalRecoveryTick(float elapsedGameSeconds)
+        {
+            if (string.IsNullOrWhiteSpace(lastBiologicalRecoveryTickId))
+            {
+                return RecordFailure("Reapply Biological Recovery Tick", "No previous recovery tick exists.", BiologicalRecoveryResultCode.InvalidRequest.ToString());
+            }
+
+            return ApplyBiologicalRecoveryTickWithId(elapsedGameSeconds, lastBiologicalRecoveryTickId);
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalRecoveryDuplicateTick()
+        {
+            PrototypeTestLabOperation setup = StartNaturalWoundClosureRecovery();
+            if (!setup.Succeeded)
+            {
+                return setup;
+            }
+
+            const string tickId = "test-lab.recovery.duplicate-proof";
+            PrototypeTestLabOperation first = ApplyBiologicalRecoveryTickWithId(3600f, tickId);
+            PrototypeTestLabOperation second = ApplyBiologicalRecoveryTickWithId(3600f, tickId);
+            bool succeeded = first.Succeeded && second.Succeeded && string.Equals(second.Code, BiologicalRecoveryResultCode.Duplicate.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Biological Recovery Duplicate Proof", succeeded ? "Success" : "DuplicateProofFailed", $"First={first.Code} Second={second.Code}. Duplicate recovery tick did not apply a second mutation.");
+        }
+
+        public PrototypeTestLabOperation ValidateBiologicalRecoverySaveRestore()
+        {
+            PrototypeTestLabOperation reset = ResetBiologicalRecoveryHuman();
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            PrototypeTestLabOperation start = StartNaturalWoundClosureRecovery();
+            if (!start.Succeeded)
+            {
+                return start;
+            }
+
+            PrototypeTestLabOperation tick = ApplyBiologicalRecoveryTick(3600f);
+            if (!tick.Succeeded)
+            {
+                return tick;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                return RecordFailure("Validate Biological Recovery Save Restore", "Body runtime is missing.", BiologicalRecoveryResultCode.MissingBody.ToString());
+            }
+
+            BiologicalRecoverySnapshot before = body.BiologicalRecovery.CreateSnapshot();
+            BodySaveData saveData = body.CreateSaveData();
+            int eventCount = 0;
+            body.BiologicalRecovery.RecoveryChanged += CountRecoveryEvent;
+            BodyOperationResult restore = body.RestoreFromSaveData(saveData, registry, body.ActorBodyId, body.PersonId, restoring: true);
+            body.BiologicalRecovery.RecoveryChanged -= CountRecoveryEvent;
+            BiologicalRecoverySnapshot after = body.BiologicalRecovery.CreateSnapshot();
+            bool stable = before.Processes.Select(process => process.ProcessId).SequenceEqual(after.Processes.Select(process => process.ProcessId));
+            bool succeeded = restore.Succeeded && stable && eventCount == 0 && after.Coherent;
+            return Record(succeeded, "Validate Biological Recovery Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} StableProcesses={stable} Events={eventCount} Active={after.ActiveProcesses.Count}.");
+
+            void CountRecoveryEvent(BiologicalRecoveryRuntime _, BiologicalRecoveryResult __, bool ___)
+            {
+                eventCount++;
+            }
+        }
+
+        private PrototypeTestLabOperation StartRecoveryProcess(string methodId, RecoveryTargetCategory targetCategory, string nodeId, string resourceId, bool preview, bool ensureTarget, string injuryDefinitionId = "injury.laceration")
+        {
+            if (!EnsureRecoveryRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            if (ensureTarget)
+            {
+                if (targetCategory == RecoveryTargetCategory.Injury && !body.Condition.CreateSnapshot().ActiveInjuries.Any(injury => string.Equals(injury.TargetNodeId, nodeId, StringComparison.Ordinal)))
+                {
+                    PrototypeTestLabOperation damage = ApplyLocalizedStructuralDamageWithTransaction(injuryDefinitionId, nodeId, 40, $"test-lab.recovery.auto-damage.{Guid.NewGuid():N}");
+                    if (!damage.Succeeded)
+                    {
+                        return damage;
+                    }
+                }
+                else if (targetCategory == RecoveryTargetCategory.VitalResource && body.VitalProcesses.TryGetResource(resourceId, out VitalResourceSnapshot resource) && resource.CurrentValue >= resource.EffectiveMaximumValue)
+                {
+                    PrototypeTestLabOperation drain = ApplyVitalResourceMutationWithTransaction(resourceId, VitalResourceMutationOperation.Consume, 30f, $"test-lab.recovery.auto-drain.{Guid.NewGuid():N}");
+                    if (!drain.Succeeded)
+                    {
+                        return drain;
+                    }
+                }
+            }
+
+            BodyConditionSnapshot condition = body.Condition.CreateSnapshot();
+            InjuryRecordSnapshot injury = string.IsNullOrWhiteSpace(nodeId) ? null : condition.ActiveInjuries.FirstOrDefault(candidate => string.Equals(candidate.TargetNodeId, nodeId, StringComparison.Ordinal));
+            RecoveryProcessStartRequest request = new RecoveryProcessStartRequest
+            {
+                ActorBodyId = body.ActorBodyId,
+                RecoveryMethodId = methodId,
+                SourceId = "test-lab.recovery",
+                TransactionId = $"test-lab.recovery.start.{Guid.NewGuid():N}",
+                AuthorityContext = "Prototype Test Lab biological recovery",
+                ExpectedBodyRevision = body.BodyRevision,
+                Target = new RecoveryTargetReference
+                {
+                    ActorBodyId = body.ActorBodyId,
+                    TargetCategory = targetCategory,
+                    AnatomyNodeId = nodeId,
+                    InjuryId = injury?.InjuryId ?? string.Empty,
+                    ResourceDefinitionId = resourceId,
+                    OwningSystemRevision = targetCategory == RecoveryTargetCategory.VitalResource ? body.VitalProcesses.VitalRevision : body.Condition.ConditionRevision
+                }
+            };
+            BiologicalRecoveryResult result = preview
+                ? body.BiologicalRecovery.PreviewStartProcess(request, body.CreateSnapshot(), body.BiologicalCompatibility)
+                : body.BiologicalRecovery.StartProcess(request, body.CreateSnapshot(), body.BiologicalCompatibility);
+            return RecordRecoveryResult(preview ? "Preview Biological Recovery Process" : "Start Biological Recovery Process", result);
+        }
+
+        private PrototypeTestLabOperation ApplyBiologicalRecoveryTickWithId(float elapsedGameSeconds, string tickId)
+        {
+            if (!TryBuildRecoveryTickRequest(elapsedGameSeconds, tickId, out ActorBodyRuntime body, out RecoveryTickRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            return RecordRecoveryResult("Apply Biological Recovery Tick", body.BiologicalRecovery.ApplyTick(request, body.CreateSnapshot(), body.BiologicalCompatibility, body.Condition, body.VitalProcesses));
+        }
+
+        private bool EnsureBiologicalRecoveryReady(ActorBodyRuntime body)
+        {
+            if (body == null)
+            {
+                return false;
+            }
+
+            if (!EnsureBiologicalHazardsReady(body))
+            {
+                return false;
+            }
+
+            if (!body.BiologicalCompatibility.IsReady)
+            {
+                body.BiologicalCompatibility.BuildForBody(body.CreateSnapshot(), registry, restoring: false);
+            }
+
+            if (!body.BiologicalRecovery.IsReady)
+            {
+                body.BiologicalRecovery.BuildForBody(body.CreateSnapshot(), registry, restoring: false, preserveRevision: true);
+            }
+
+            return body.BiologicalRecovery.IsReady;
+        }
+
+        private bool EnsureRecoveryRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure)
+        {
+            body = null;
+            failure = default;
+            if (!EnsureBodyRuntime(out body))
+            {
+                failure = RecordFailure("Biological Recovery Operation", "Body runtime is missing.", BiologicalRecoveryResultCode.MissingBody.ToString());
+                return false;
+            }
+
+            if (!EnsureBiologicalRecoveryReady(body))
+            {
+                failure = RecordFailure("Biological Recovery Operation", "Biological recovery runtime is not ready.", BiologicalRecoveryResultCode.RuntimeNotReady.ToString());
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryBuildRecoveryTickRequest(
+            float elapsedGameSeconds,
+            string transactionSeed,
+            out ActorBodyRuntime body,
+            out RecoveryTickRequest request,
+            out PrototypeTestLabOperation failure)
+        {
+            body = null;
+            request = null;
+            failure = default;
+            if (!EnsureRecoveryRuntime(out body, out failure))
+            {
+                return false;
+            }
+
+            string tickId = string.IsNullOrWhiteSpace(transactionSeed) || string.Equals(transactionSeed, "preview", StringComparison.Ordinal)
+                ? $"test-lab.recovery.{(string.IsNullOrWhiteSpace(transactionSeed) ? "tick" : transactionSeed)}.{Guid.NewGuid():N}"
+                : transactionSeed;
+            request = new RecoveryTickRequest
+            {
+                ActorBodyId = body.ActorBodyId,
+                TickId = tickId,
+                ElapsedGameSeconds = elapsedGameSeconds,
+                AuthorityContext = "Prototype Test Lab biological recovery",
+                ExpectedRecoveryRevision = body.BiologicalRecovery.RecoveryRevision,
+                ExpectedBodyRevision = body.BodyRevision,
+                ExpectedConditionRevision = body.Condition.ConditionRevision,
+                ExpectedVitalRevision = body.VitalProcesses.VitalRevision,
+                ExpectedHazardRevision = body.BiologicalHazards.HazardRevision,
+                ExpectedCompatibilityRevision = body.BiologicalCompatibility.CompatibilityRevision
+            };
+            return true;
         }
 
         public PrototypeTestLabOperation InitializeCharacterSystem()
@@ -4906,11 +5468,16 @@ namespace UnityIsekaiGame.Development
             OngoingEffectService service = targetEnemy ? labContext.EnemyOngoingEffects : labContext.PlayerOngoingEffects;
             if (service == null)
             {
-                service = actor.GetComponentInParent<OngoingEffectService>();
+                service = actor.GetComponent<OngoingEffectService>() ?? actor.GetComponentInParent<OngoingEffectService>(includeInactive: true);
             }
 
             if (service == null)
             {
+                if (!actor.activeInHierarchy)
+                {
+                    return null;
+                }
+
                 service = actor.AddComponent<OngoingEffectService>();
             }
 
@@ -6918,6 +7485,29 @@ namespace UnityIsekaiGame.Development
                 : RecordFailure(operationName, message, result.Code.ToString());
         }
 
+        private PrototypeTestLabOperation RecordRecoveryResult(string operationName, BiologicalRecoveryResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Biological recovery operation returned no result.", BiologicalRecoveryResultCode.InvalidRequest.ToString());
+            }
+
+            BiologicalRecoverySnapshot snapshot = result.Snapshot;
+            string structural = result.StructuralRecovery == null
+                ? "Structure=None"
+                : $"Structure={result.StructuralRecovery.Code} {result.StructuralRecovery.PreviousIntegrity}->{result.StructuralRecovery.NewIntegrity} Restored={result.StructuralRecovery.IntegrityRestored}";
+            string vital = result.VitalResourceMutation == null
+                ? "Vital=None"
+                : $"Vital={result.VitalResourceMutation.Code} {result.VitalResourceMutation.PreviousValue:0.##}->{result.VitalResourceMutation.NewValue:0.##} Applied={result.VitalResourceMutation.AppliedAmount:0.##}";
+            string compatibility = result.Compatibility == null
+                ? "Compatibility=None"
+                : $"Compatibility={result.Compatibility.CompatibilityState} Rate={result.Compatibility.RateMultiplier:0.###} Suppressed={result.Compatibility.Suppressed}";
+            string message = $"{result.Message} Tx={result.TransactionId} Preview={result.Preview} Duplicate={result.Duplicate} Body={result.ActorBodyId} Method={result.RecoveryMethodId} Process={result.ProcessId} Progress={result.PreviousProgress:0.##}->{result.NewProgress:0.##} Applied={result.AppliedProgress:0.##} State={result.PreviousState}->{result.NewState} Active={snapshot?.ActiveProcesses.Count ?? 0} Revision={snapshot?.RecoveryRevision ?? 0}. {structural}. {vital}. {compatibility}.";
+            return result.Succeeded
+                ? Record(true, operationName, result.Duplicate ? BiologicalRecoveryResultCode.Duplicate.ToString() : result.Preview ? BiologicalRecoveryResultCode.Preview.ToString() : result.Code.ToString(), message)
+                : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
         private static string FormatCompatibilityResult(BiologicalInteractionEvaluationResult result)
         {
             if (result == null)
@@ -6966,6 +7556,11 @@ namespace UnityIsekaiGame.Development
                 return false;
             }
 
+            if (!EnsureBiologicalCompatibilityCurrent(body, anatomy, out failure))
+            {
+                return false;
+            }
+
             string transactionId = string.IsNullOrWhiteSpace(transactionSeed) || string.Equals(transactionSeed, "preview", StringComparison.Ordinal)
                 ? $"test-lab.body-condition.{(string.IsNullOrWhiteSpace(transactionSeed) ? "operation" : transactionSeed)}.{Guid.NewGuid():N}"
                 : transactionSeed;
@@ -6982,6 +7577,38 @@ namespace UnityIsekaiGame.Development
                 Context = "Prototype Test Lab localized structural damage"
             };
             return true;
+        }
+
+        private bool EnsureBiologicalCompatibilityCurrent(ActorBodyRuntime body, AnatomySnapshot anatomy, out PrototypeTestLabOperation failure)
+        {
+            failure = default;
+            if (body == null)
+            {
+                failure = RecordFailure("Localized Structural Damage", "Body runtime is missing.", LocalizedDamageResultCode.MissingActorBody.ToString());
+                return false;
+            }
+
+            BodySnapshot bodySnapshot = body.CreateSnapshot();
+            BiologicalCompatibilitySnapshot compatibility = body.BiologicalCompatibility.CreateSnapshot();
+            bool stale = compatibility == null
+                || compatibility.Readiness != BiologicalCompatibilityReadinessState.Ready
+                || !string.Equals(compatibility.ActorBodyId, body.ActorBodyId, StringComparison.Ordinal)
+                || compatibility.BodyRevision != bodySnapshot.BodyRevision
+                || compatibility.AnatomyRevision != (anatomy?.AnatomyRevision ?? 0L);
+
+            if (!stale)
+            {
+                return true;
+            }
+
+            BiologicalCompatibilityOperationResult result = body.BiologicalCompatibility.BuildForBody(bodySnapshot, registry, restoring: false, preserveRevision: true);
+            if (result.Succeeded)
+            {
+                return true;
+            }
+
+            failure = RecordFailure("Localized Structural Damage", $"Biological compatibility could not be synchronized: {result.Message}", LocalizedDamageResultCode.MissingCompatibility.ToString());
+            return false;
         }
 
         private PrototypeTestLabOperation RecordConditionResult(string operationName, LocalizedStructuralDamageResult result)

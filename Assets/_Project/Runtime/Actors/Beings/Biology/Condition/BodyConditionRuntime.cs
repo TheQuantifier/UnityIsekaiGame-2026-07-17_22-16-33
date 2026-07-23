@@ -211,6 +211,65 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
             return result;
         }
 
+        public StructuralRecoveryResult PreviewStructuralRecovery(StructuralRecoveryRequest request)
+        {
+            return ResolveStructuralRecovery(request, preview: true, out _, out _, out _, out _, out _);
+        }
+
+        public StructuralRecoveryResult ApplyStructuralRecovery(StructuralRecoveryRequest request, bool restoring = false)
+        {
+            StructuralRecoveryResult duplicate = TryResolveStructuralRecoveryDuplicate(request);
+            if (duplicate != null)
+            {
+                return duplicate;
+            }
+
+            StructuralRecoveryResult resolved = ResolveStructuralRecovery(request, preview: false, out StructureConditionRecord structure, out InjuryRecord injury, out int restoreAmount, out int newIntegrity, out bool resolveInjury);
+            if (!resolved.Succeeded)
+            {
+                return resolved;
+            }
+
+            int previousIntegrity = structure.CurrentIntegrity;
+            structure.ApplyRecovery(newIntegrity, resolveInjury ? StructureFunctionalState.Normal : ProjectRecoveredFunctionalState(newIntegrity, structure.MaximumIntegrity), resolveInjury ? StructureDamageState.Intact : ProjectRecoveredStructuralState(newIntegrity, structure.MaximumIntegrity));
+            if (resolveInjury && injury != null)
+            {
+                injury.State = InjuryRecordState.Resolved;
+                injury.Revision++;
+                structure.RemoveInjury(injury.InjuryId, injuriesById.Values.Where(candidate => candidate.State == InjuryRecordState.Active));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.TransactionId))
+            {
+                committedTransactionIds.Add(request.TransactionId);
+            }
+
+            ConditionRevision++;
+            IsDirty = !restoring;
+            StructuralRecoveryResult result = StructuralRecoveryResult.Success(
+                request,
+                Math.Max(0, structure.CurrentIntegrity - previousIntegrity),
+                previousIntegrity,
+                structure.CurrentIntegrity,
+                structure.FunctionalState,
+                structure.StructuralState,
+                structure.RuntimePresence,
+                CreateSnapshot());
+            RaiseChanged(LocalizedStructuralDamageResult.Success(
+                new LocalizedStructuralDamageRequest { TransactionId = request.TransactionId, TargetActorBodyId = ActorBodyId, TargetNodeId = structure.NodeId, InjuryDefinitionId = injury == null ? string.Empty : injury.InjuryDefinitionId },
+                injury == null ? string.Empty : injury.InjuryId,
+                0,
+                previousIntegrity,
+                structure.CurrentIntegrity,
+                injury == null ? InjurySeverity.Trivial : injury.Severity,
+                structure.FunctionalState,
+                structure.StructuralState,
+                structure.RuntimePresence,
+                CreateSnapshot()),
+                restoring);
+            return result;
+        }
+
         public BodyConditionSaveData CreateSaveData()
         {
             return new BodyConditionSaveData
@@ -609,6 +668,174 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
             return Readiness == BodyConditionReadinessState.Ready || Readiness == BodyConditionReadinessState.Uninitialized;
         }
 
+        private StructuralRecoveryResult TryResolveStructuralRecoveryDuplicate(StructuralRecoveryRequest request)
+        {
+            if (!IsReady || request == null || string.IsNullOrWhiteSpace(request.TransactionId) || !committedTransactionIds.Contains(request.TransactionId))
+            {
+                return null;
+            }
+
+            if (!string.Equals(request.TargetActorBodyId, ActorBodyId, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            structuresByNodeId.TryGetValue(request.TargetNodeId ?? string.Empty, out StructureConditionRecord structure);
+            return StructuralRecoveryResult.Success(
+                request,
+                0,
+                structure == null ? 0 : structure.CurrentIntegrity,
+                structure == null ? 0 : structure.CurrentIntegrity,
+                structure == null ? StructureFunctionalState.Unknown : structure.FunctionalState,
+                structure == null ? StructureDamageState.Unknown : structure.StructuralState,
+                structure == null ? RuntimeStructurePresenceState.Unknown : structure.RuntimePresence,
+                CreateSnapshot(),
+                duplicate: true);
+        }
+
+        private StructuralRecoveryResult ResolveStructuralRecovery(
+            StructuralRecoveryRequest request,
+            bool preview,
+            out StructureConditionRecord structure,
+            out InjuryRecord injury,
+            out int restoreAmount,
+            out int newIntegrity,
+            out bool resolveInjury)
+        {
+            structure = null;
+            injury = null;
+            restoreAmount = 0;
+            newIntegrity = 0;
+            resolveInjury = false;
+
+            if (!IsReady)
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.RuntimeNotReady, "Body condition runtime is not Ready.", CreateSnapshot());
+            }
+
+            if (request == null || string.IsNullOrWhiteSpace(request.TransactionId) || string.IsNullOrWhiteSpace(request.RecoveryMethodId))
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.InvalidRequest, "Structural recovery requires a transaction ID and Recovery Method ID.", CreateSnapshot());
+            }
+
+            if (!string.Equals(request.TargetActorBodyId, ActorBodyId, StringComparison.Ordinal))
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.StaleBody, $"Request target body '{request.TargetActorBodyId}' does not match runtime body '{ActorBodyId}'.", CreateSnapshot());
+            }
+
+            if (request.ExpectedConditionRevision > 0L && request.ExpectedConditionRevision != ConditionRevision)
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.StaleCondition, $"Request expected condition revision {request.ExpectedConditionRevision} but runtime is {ConditionRevision}.", CreateSnapshot());
+            }
+
+            if (!structuresByNodeId.TryGetValue(request.TargetNodeId ?? string.Empty, out structure))
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.MissingAnatomyNode, $"Structure '{request.TargetNodeId}' does not exist.", CreateSnapshot());
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.TargetInjuryId) && !injuriesById.TryGetValue(request.TargetInjuryId, out injury))
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.MissingInjury, $"Injury '{request.TargetInjuryId}' does not exist.", CreateSnapshot());
+            }
+
+            if (!StructureCanRecover(structure, request, out string unavailableReason))
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.TargetUnavailable, unavailableReason, CreateSnapshot());
+            }
+
+            if (request.IntegrityRestoration <= 0)
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.InvalidAmount, "Structural recovery amount must be positive.", CreateSnapshot());
+            }
+
+            int recoveryLimit = request.MaximumRecoverableIntegrity <= 0 ? structure.MaximumIntegrity : Math.Min(structure.MaximumIntegrity, request.MaximumRecoverableIntegrity);
+            if (structure.CurrentIntegrity >= recoveryLimit)
+            {
+                return StructuralRecoveryResult.Failure(request, StructuralRecoveryResultCode.RecoveryLimitReached, $"Structure '{structure.NodeId}' is already at recovery limit {recoveryLimit}.", CreateSnapshot());
+            }
+
+            newIntegrity = Math.Min(recoveryLimit, structure.CurrentIntegrity + request.IntegrityRestoration);
+            restoreAmount = Math.Max(0, newIntegrity - structure.CurrentIntegrity);
+            resolveInjury = request.ResolveInjuryOnCompletion && newIntegrity >= recoveryLimit;
+            return StructuralRecoveryResult.Success(
+                request,
+                restoreAmount,
+                structure.CurrentIntegrity,
+                newIntegrity,
+                resolveInjury ? StructureFunctionalState.Normal : ProjectRecoveredFunctionalState(newIntegrity, structure.MaximumIntegrity),
+                resolveInjury ? StructureDamageState.Intact : ProjectRecoveredStructuralState(newIntegrity, structure.MaximumIntegrity),
+                structure.RuntimePresence,
+                CreateSnapshot(),
+                preview);
+        }
+
+        private static bool StructureCanRecover(StructureConditionRecord structure, StructuralRecoveryRequest request, out string reason)
+        {
+            reason = string.Empty;
+            if (structure == null)
+            {
+                reason = "Structure is missing.";
+                return false;
+            }
+
+            if (structure.RuntimePresence == RuntimeStructurePresenceState.AuthoredAbsent)
+            {
+                reason = $"Structure '{structure.NodeId}' is authored absent.";
+                return false;
+            }
+
+            if (structure.RuntimePresence == RuntimeStructurePresenceState.Destroyed && !request.AllowDestroyedStructure)
+            {
+                reason = $"Structure '{structure.NodeId}' is destroyed and this recovery method does not allow destroyed-structure restoration.";
+                return false;
+            }
+
+            if (structure.RuntimePresence == RuntimeStructurePresenceState.Missing && !request.AllowMissingStructure)
+            {
+                reason = $"Structure '{structure.NodeId}' is missing and this recovery method does not allow missing-structure restoration.";
+                return false;
+            }
+
+            if (structure.RuntimePresence == RuntimeStructurePresenceState.Severed && !request.AllowSeveredStructure)
+            {
+                reason = $"Structure '{structure.NodeId}' is severed and this recovery method does not allow severed-structure restoration.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static StructureFunctionalState ProjectRecoveredFunctionalState(int integrity, int maximumIntegrity)
+        {
+            if (maximumIntegrity <= 0 || integrity <= 0)
+            {
+                return StructureFunctionalState.Disabled;
+            }
+
+            float ratio = (float)integrity / maximumIntegrity;
+            if (ratio >= 1f)
+            {
+                return StructureFunctionalState.Normal;
+            }
+
+            if (ratio >= 0.5f)
+            {
+                return StructureFunctionalState.Reduced;
+            }
+
+            return StructureFunctionalState.SeverelyReduced;
+        }
+
+        private static StructureDamageState ProjectRecoveredStructuralState(int integrity, int maximumIntegrity)
+        {
+            if (maximumIntegrity <= 0 || integrity <= 0)
+            {
+                return StructureDamageState.Destroyed;
+            }
+
+            return integrity >= maximumIntegrity ? StructureDamageState.Intact : StructureDamageState.Damaged;
+        }
+
         private void RaiseChanged(LocalizedStructuralDamageResult result, bool restoring)
         {
             if (!suppressEvents)
@@ -843,6 +1070,14 @@ namespace UnityIsekaiGame.Beings.Biology.Condition
                     FunctionalState = CurrentIntegrity == MaximumIntegrity ? StructureFunctionalState.Normal : StructureFunctionalState.Reduced;
                 }
 
+                Revision++;
+            }
+
+            public void ApplyRecovery(int newIntegrity, StructureFunctionalState functionalState, StructureDamageState structuralState)
+            {
+                CurrentIntegrity = Math.Max(0, Math.Min(MaximumIntegrity, newIntegrity));
+                FunctionalState = functionalState;
+                StructuralState = structuralState;
                 Revision++;
             }
 
