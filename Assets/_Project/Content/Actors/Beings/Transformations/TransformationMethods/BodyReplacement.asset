@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a780000000000000000000000000002, type: 3}
+  m_Name: BodyReplacement
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Transformation.TransformationMethodDefinition
+  methodId: transformation.body-replacement
+  displayName: Body Replacement
+  description: Canonical alpha plan for moving identity context to an existing target body.
+  biologicalInteractionDefinitionId: interaction.transformation.body-replacement
+  category: 4
+  temporary: 0
+  defaultDurationSeconds: 0
+  allowedTargetSpeciesIds: []
+  allowedTargetBodyFormIds: []
+  requiredRuntimeCapabilityKeys: []
+  blockingRuntimeCapabilityKeys: []
+  transferPolicy: 2
+  anatomyPolicy: 2
+  conditionPolicy: 2
+  vitalPolicy: 2
+  hazardPolicy: 2
+  recoveryPolicy: 3
+  equipmentPolicy: 0
+  lifecyclePolicy: 4
+  controllerPolicy: 1
+  associationPolicy: 1
+  reversionPolicy: 0
+  allowSameSpecies: 1
+  alphaExecutionEnabled: 1
+  tags: []
+  validationMetadata: Feature 7.8 canonical alpha method.
