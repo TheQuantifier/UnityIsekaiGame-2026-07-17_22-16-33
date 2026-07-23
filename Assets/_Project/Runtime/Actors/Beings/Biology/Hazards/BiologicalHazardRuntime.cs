@@ -125,6 +125,20 @@ namespace UnityIsekaiGame.Beings.Biology.Hazards
             return result;
         }
 
+        public BiologicalHazardOperationResult PreviewAddOrUpdateSource(BiologicalHazardSourceRequest request, VitalProcessRuntime vitalProcesses, AnatomySnapshot anatomy, BodyConditionSnapshot condition, BiologicalCompatibilityRuntime compatibility, BodySnapshot body)
+        {
+            BiologicalHazardSaveData previewState = CreateSaveData();
+            bool dirtyBeforePreview = IsDirty;
+            using (SuppressEvents())
+            {
+                BiologicalHazardOperationResult result = AddOrUpdateSource(request, vitalProcesses, anatomy, condition, compatibility, body, restoring: true);
+                RestoreRuntimeState(previewState, dirtyBeforePreview);
+                return result.Succeeded
+                    ? BiologicalHazardOperationResult.Success(result.Message, CreateSnapshot(), preview: true, duplicate: result.Duplicate)
+                    : BiologicalHazardOperationResult.Failure(result.Code, result.Message, CreateSnapshot());
+            }
+        }
+
         public BiologicalHazardOperationResult RemoveSource(string hazardDefinitionId, string sourceContributionId, bool restoring = false)
         {
             if (!IsReady)

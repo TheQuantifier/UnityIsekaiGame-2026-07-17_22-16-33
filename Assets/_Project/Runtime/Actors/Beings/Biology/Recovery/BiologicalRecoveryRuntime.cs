@@ -14,6 +14,7 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
     public sealed class BiologicalRecoveryRuntime
     {
         private readonly Dictionary<string, RecoveryProcessRecord> processesById = new Dictionary<string, RecoveryProcessRecord>(StringComparer.Ordinal);
+        private readonly Dictionary<string, RecoveryRateModifierRecord> rateModifiersBySource = new Dictionary<string, RecoveryRateModifierRecord>(StringComparer.Ordinal);
         private readonly HashSet<string> committedTransactionIds = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> committedTickIds = new HashSet<string>(StringComparer.Ordinal);
         private DefinitionRegistry registry;
@@ -66,6 +67,7 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
             hazardRevision = body.BiologicalHazards.HazardRevision;
             compatibilityRevision = body.BiologicalCompatibility.CompatibilityRevision;
             processesById.Clear();
+            rateModifiersBySource.Clear();
             committedTransactionIds.Clear();
             committedTickIds.Clear();
             restContext = new RecoveryRestContextSnapshot(actorBodyId, RecoveryRestType.NotResting, string.Empty, string.Empty, 0f, Array.Empty<string>());
@@ -79,6 +81,21 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
             IsDirty = !restoring;
             Readiness = RecoveryReadinessState.Ready;
             return BiologicalRecoveryResult.Success("recovery.build", ActorBodyId, string.Empty, string.Empty, 0f, 0f, 0f, RecoveryProcessState.Unknown, RecoveryProcessState.Unknown, null, null, null, CreateSnapshot(), message: "Biological recovery runtime built.");
+        }
+
+        public BiologicalRecoveryResult PreviewRateModifier(RecoveryRateModifierRequest request)
+        {
+            return ResolveRateModifier(request, remove: false, preview: true, restoring: false);
+        }
+
+        public BiologicalRecoveryResult AddOrUpdateRateModifier(RecoveryRateModifierRequest request, bool restoring = false)
+        {
+            return ResolveRateModifier(request, remove: false, preview: false, restoring);
+        }
+
+        public BiologicalRecoveryResult RemoveRateModifier(RecoveryRateModifierRequest request, bool restoring = false)
+        {
+            return ResolveRateModifier(request, remove: true, preview: false, restoring);
         }
 
         public BiologicalRecoveryResult PreviewStartProcess(RecoveryProcessStartRequest request, BodySnapshot body, BiologicalCompatibilityRuntime compatibility)
@@ -304,6 +321,7 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
                 recoveryRevision = RecoveryRevision,
                 restContext = RestToSaveData(restContext),
                 processes = processesById.Values.OrderBy(process => process.ProcessId, StringComparer.Ordinal).Select(process => process.ToSaveData()).ToArray(),
+                rateModifiers = rateModifiersBySource.Values.OrderBy(modifier => modifier.SourceId, StringComparer.Ordinal).Select(modifier => modifier.ToSaveData()).ToArray(),
                 committedTransactionIds = committedTransactionIds.OrderBy(id => id, StringComparer.Ordinal).ToArray(),
                 committedTickIds = committedTickIds.OrderBy(id => id, StringComparer.Ordinal).ToArray()
             };
@@ -399,6 +417,22 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
                 }
             }
 
+            HashSet<string> modifierIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (RecoveryRateModifierSaveData modifier in saveData.rateModifiers ?? Array.Empty<RecoveryRateModifierSaveData>())
+            {
+                if (modifier == null || string.IsNullOrWhiteSpace(modifier.sourceId) || !modifierIds.Add(modifier.sourceId))
+                {
+                    failureReason = "Saved recovery rate modifiers contain a missing or duplicate source ID.";
+                    return false;
+                }
+
+                if (modifier.rateMultiplier < 0f || float.IsNaN(modifier.rateMultiplier) || float.IsInfinity(modifier.rateMultiplier))
+                {
+                    failureReason = $"Recovery rate modifier '{modifier.sourceId}' has an invalid multiplier.";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -425,6 +459,7 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
                 RecoveryRevision,
                 restContext,
                 processesById.Values.OrderBy(process => process.ProcessId, StringComparer.Ordinal).Select(process => process.CreateSnapshot()).ToArray(),
+                rateModifiersBySource.Values.OrderBy(modifier => modifier.SourceId, StringComparer.Ordinal).Select(modifier => modifier.CreateSnapshot()).ToArray(),
                 IsDirty,
                 coherent,
                 diagnostics);
@@ -451,8 +486,79 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
         {
             Readiness = RecoveryReadinessState.Disposed;
             processesById.Clear();
+            rateModifiersBySource.Clear();
             committedTransactionIds.Clear();
             committedTickIds.Clear();
+        }
+
+        private BiologicalRecoveryResult ResolveRateModifier(RecoveryRateModifierRequest request, bool remove, bool preview, bool restoring)
+        {
+            if (!IsReady)
+            {
+                return BiologicalRecoveryResult.Failure(BiologicalRecoveryResultCode.RuntimeNotReady, "Biological recovery runtime is not Ready.", request.TransactionId, request.ActorBodyId, snapshot: CreateSnapshot());
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ActorBodyId) || !string.Equals(request.ActorBodyId, ActorBodyId, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(request.SourceId) || string.IsNullOrWhiteSpace(request.TransactionId))
+            {
+                return BiologicalRecoveryResult.Failure(BiologicalRecoveryResultCode.InvalidRequest, "Recovery rate modifier requires matching body, source, and transaction IDs.", request.TransactionId, request.ActorBodyId, snapshot: CreateSnapshot());
+            }
+
+            if (!preview && committedTransactionIds.Contains(request.TransactionId))
+            {
+                return BiologicalRecoveryResult.Success(request.TransactionId, ActorBodyId, string.Empty, string.Empty, 0f, 0f, 0f, RecoveryProcessState.Unknown, RecoveryProcessState.Unknown, null, null, null, CreateSnapshot(), duplicate: true);
+            }
+
+            if (remove)
+            {
+                if (!rateModifiersBySource.ContainsKey(request.SourceId))
+                {
+                    return BiologicalRecoveryResult.Success(request.TransactionId, ActorBodyId, string.Empty, string.Empty, 0f, 0f, 0f, RecoveryProcessState.Unknown, RecoveryProcessState.Unknown, null, null, null, CreateSnapshot(), preview: preview, duplicate: true, message: "Recovery rate modifier was already absent.");
+                }
+
+                if (!preview)
+                {
+                    rateModifiersBySource.Remove(request.SourceId);
+                    committedTransactionIds.Add(request.TransactionId);
+                    RecoveryRevision++;
+                    IsDirty = !restoring;
+                }
+
+                BiologicalRecoveryResult removeResult = BiologicalRecoveryResult.Success(request.TransactionId, ActorBodyId, string.Empty, string.Empty, 0f, 0f, 0f, RecoveryProcessState.Unknown, RecoveryProcessState.Unknown, null, null, null, CreateSnapshot(), preview: preview, message: "Recovery rate modifier removed.");
+                if (!preview)
+                {
+                    RaiseChanged(removeResult, restoring);
+                }
+
+                return removeResult;
+            }
+
+            if (request.RateMultiplier < 0f || float.IsNaN(request.RateMultiplier) || float.IsInfinity(request.RateMultiplier))
+            {
+                return BiologicalRecoveryResult.Failure(BiologicalRecoveryResultCode.InvalidRequest, "Recovery rate modifier multiplier must be finite and non-negative.", request.TransactionId, ActorBodyId, snapshot: CreateSnapshot());
+            }
+
+            bool changed = !rateModifiersBySource.TryGetValue(request.SourceId, out RecoveryRateModifierRecord existing)
+                || Math.Abs(existing.RateMultiplier - request.RateMultiplier) > 0.0001f
+                || !string.Equals(existing.Reason, request.Reason, StringComparison.Ordinal);
+            if (!preview && changed)
+            {
+                rateModifiersBySource[request.SourceId] = new RecoveryRateModifierRecord(request.SourceId, request.RateMultiplier, request.Reason, (existing?.Revision ?? 0L) + 1L);
+                committedTransactionIds.Add(request.TransactionId);
+                RecoveryRevision++;
+                IsDirty = !restoring;
+            }
+            else if (!preview)
+            {
+                committedTransactionIds.Add(request.TransactionId);
+            }
+
+            BiologicalRecoveryResult result = BiologicalRecoveryResult.Success(request.TransactionId, ActorBodyId, string.Empty, string.Empty, 0f, 0f, 0f, RecoveryProcessState.Unknown, RecoveryProcessState.Unknown, null, null, null, CreateSnapshot(), preview: preview, duplicate: !changed, message: changed ? "Recovery rate modifier applied." : "Recovery rate modifier unchanged.");
+            if (!preview && changed)
+            {
+                RaiseChanged(result, restoring);
+            }
+
+            return result;
         }
 
         private BiologicalRecoveryResult ResolveStartProcess(
@@ -583,7 +689,7 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
 
             float previousProgress = process.CurrentProgress;
             RecoveryProcessState previousState = process.State;
-            float amount = Mathf.Max(0f, process.EffectiveRatePerHour * evaluation.RateMultiplier * hours);
+            float amount = Mathf.Max(0f, process.EffectiveRatePerHour * evaluation.RateMultiplier * ResolveRateModifierMultiplier() * hours);
             if (Mathf.Approximately(amount, 0f))
             {
                 return BiologicalRecoveryResult.Success(request.TickId, ActorBodyId, method.Id, process.ProcessId, previousProgress, previousProgress, 0f, previousState, process.State, evaluation, null, null, CreateSnapshot(), preview: preview, message: "Recovery tick produced no progress.");
@@ -658,6 +764,17 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
             }
 
             return BiologicalRecoveryResult.Success(request.TickId, ActorBodyId, method.Id, process.ProcessId, previousProgress, newProgress, amount, previousState, newProgress >= process.RequiredProgress ? RecoveryProcessState.Completed : RecoveryProcessState.Active, evaluation, structural, vital, CreateSnapshot(), preview: preview);
+        }
+
+        private float ResolveRateModifierMultiplier()
+        {
+            float multiplier = 1f;
+            foreach (RecoveryRateModifierRecord modifier in rateModifiersBySource.Values)
+            {
+                multiplier *= Math.Max(0f, modifier.RateMultiplier);
+            }
+
+            return multiplier;
         }
 
         private bool ValidateBodySnapshot(BodySnapshot body, out BiologicalRecoveryResult failure, bool updateReadiness = true)
@@ -1039,6 +1156,16 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
                 nextProcessSequence = Math.Max(nextProcessSequence, process.CreatedSequence + 1L);
             }
 
+            rateModifiersBySource.Clear();
+            foreach (RecoveryRateModifierSaveData modifierData in saveData.rateModifiers ?? Array.Empty<RecoveryRateModifierSaveData>())
+            {
+                RecoveryRateModifierRecord modifier = RecoveryRateModifierRecord.FromSaveData(modifierData);
+                if (modifier != null)
+                {
+                    rateModifiersBySource[modifier.SourceId] = modifier;
+                }
+            }
+
             committedTransactionIds.Clear();
             foreach (string transactionId in saveData.committedTransactionIds ?? Array.Empty<string>())
             {
@@ -1274,6 +1401,45 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
                     saveData.createdSequence,
                     saveData.lastCommittedTickId,
                     saveData.revision);
+            }
+        }
+
+        private sealed class RecoveryRateModifierRecord
+        {
+            public RecoveryRateModifierRecord(string sourceId, float rateMultiplier, string reason, long revision)
+            {
+                SourceId = sourceId ?? string.Empty;
+                RateMultiplier = Math.Max(0f, rateMultiplier);
+                Reason = reason ?? string.Empty;
+                Revision = Math.Max(0L, revision);
+            }
+
+            public string SourceId { get; }
+            public float RateMultiplier { get; }
+            public string Reason { get; }
+            public long Revision { get; }
+
+            public RecoveryRateModifierSnapshot CreateSnapshot()
+            {
+                return new RecoveryRateModifierSnapshot(SourceId, RateMultiplier, Reason, Revision);
+            }
+
+            public RecoveryRateModifierSaveData ToSaveData()
+            {
+                return new RecoveryRateModifierSaveData
+                {
+                    sourceId = SourceId,
+                    rateMultiplier = RateMultiplier,
+                    reason = Reason,
+                    revision = Revision
+                };
+            }
+
+            public static RecoveryRateModifierRecord FromSaveData(RecoveryRateModifierSaveData saveData)
+            {
+                return saveData == null || string.IsNullOrWhiteSpace(saveData.sourceId)
+                    ? null
+                    : new RecoveryRateModifierRecord(saveData.sourceId, saveData.rateMultiplier, saveData.reason, saveData.revision);
             }
         }
     }

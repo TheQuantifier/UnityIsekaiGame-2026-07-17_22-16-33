@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityIsekaiGame.Beings.Biology.BiologicalConditions;
 using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.Recovery;
@@ -57,6 +58,7 @@ namespace UnityIsekaiGame.Development
             "Biological Compatibility 7.6",
             "Natural Recovery 7.7",
             "Transformation 7.8",
+            "Biological Conditions 7.9",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -114,6 +116,7 @@ namespace UnityIsekaiGame.Development
         private Text biologicalCompatibilityText;
         private Text biologicalRecoveryText;
         private Text bodyTransformationText;
+        private Text biologicalConditionsText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -297,6 +300,7 @@ namespace UnityIsekaiGame.Development
             Transform biologicalCompatibilitySection = AddSection(content, "Biological Compatibility 7.6 Section");
             Transform biologicalRecoverySection = AddSection(content, "Natural Recovery 7.7 Section");
             Transform bodyTransformationSection = AddSection(content, "Transformation 7.8 Section");
+            Transform biologicalConditionsSection = AddSection(content, "Biological Conditions 7.9 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -332,6 +336,7 @@ namespace UnityIsekaiGame.Development
             BuildBiologicalCompatibilitySection(biologicalCompatibilitySection, font);
             BuildBiologicalRecoverySection(biologicalRecoverySection, font);
             BuildBodyTransformationSection(bodyTransformationSection, font);
+            BuildBiologicalConditionsSection(biologicalConditionsSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -616,6 +621,38 @@ namespace UnityIsekaiGame.Development
             AddButtonRow(parent, font,
                 ("Suppression", () => service.TestTransformationSuppression()));
             bodyTransformationText = AddText(parent, font, "Body transformation runtime not available.", 12, 720);
+        }
+
+        private void BuildBiologicalConditionsSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Human", () => service.AssignBodySpecies("species.human")),
+                ("Validate", () => service.ValidateBiologicalConditionIntegrity()),
+                ("Preview Viral", () => service.PreviewViralExposure()),
+                ("Subthreshold", () => service.ApplySubthresholdViralExposure()));
+            AddButtonRow(parent, font,
+                ("Apply Viral", () => service.ApplyViralExposure()),
+                ("Tick", () => service.ApplyBiologicalConditionTick(GetFloat(amountInput, 600f))),
+                ("Duplicate Dose", () => service.ProveBiologicalConditionDuplicateExposure()),
+                ("Duplicate Tick", () => service.ProveBiologicalConditionDuplicateTick()));
+            AddButtonRow(parent, font,
+                ("No-Wound Reject", () => service.RejectWoundInfectionWithoutWound()),
+                ("Wound Infect", () => service.ApplyWoundInfection()),
+                ("Poison", () => service.ApplyPoison()),
+                ("Bad Venom", () => service.RejectVenomInvalidRoute()));
+            AddButtonRow(parent, font,
+                ("Venom", () => service.ApplyVenom()),
+                ("Fever", () => service.ApplyFever()),
+                ("Intoxicate", () => service.ApplyIntoxication()),
+                ("Medicine", () => service.ApplyPrototypeMedicine()));
+            AddButtonRow(parent, font,
+                ("Antidote", () => service.ApplyPrototypeAntidote()),
+                ("Transmit", () => service.PreviewConditionTransmission()),
+                ("Spirit Reject", () => service.RejectSpiritOrdinaryDisease()),
+                ("Construct Reject", () => service.RejectConstructOrdinaryPoison()));
+            AddButtonRow(parent, font,
+                ("Save/Load", () => service.ValidateBiologicalConditionSaveRestore()));
+            biologicalConditionsText = AddText(parent, font, "Biological condition runtime not available.", 12, 820);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1203,6 +1240,9 @@ namespace UnityIsekaiGame.Development
                 case "Transformation 7.8":
                     SetValue(bodyTransformationText, service.BuildBodyTransformationSummary());
                     break;
+                case "Biological Conditions 7.9":
+                    SetValue(biologicalConditionsText, service.BuildBiologicalConditionSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1690,7 +1730,7 @@ namespace UnityIsekaiGame.Development
                 Group("Persistence Step 4", "Persistence", "Location", "World Entities"),
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
-                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8")
+                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8", "Biological Conditions 7.9")
             };
         }
 

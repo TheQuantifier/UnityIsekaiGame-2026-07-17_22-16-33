@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.Beings.Biology.Compatibility;
+using UnityIsekaiGame.Beings.Biology.BiologicalConditions;
 using UnityIsekaiGame.Beings.Biology.Hazards;
 using UnityIsekaiGame.Beings.Biology.Recovery;
 using UnityIsekaiGame.Beings.Biology.Transformation;
@@ -29,6 +30,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildBiologicalCompatibilitySuite());
             TryRegister(registry, BuildNaturalRecoverySuite());
             TryRegister(registry, BuildTransformationSuite());
+            TryRegister(registry, BuildBiologicalConditionsSuite());
         }
 
         private static ITestLabAutomationSuite BuildBodySpeciesSuite()
@@ -471,6 +473,42 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("suppression", "Suppress transformation compatibility", context => Operation(context.Service.TestTransformationSuppression(), context, "step7-transformation-suppression"))),
                 Scenario("save-restore-preserves-temporary", "Save and restore preserve active temporary transformation without replay", 90,
                     Step("save-restore", "Save restore transformation", context => Operation(context.Service.ValidateTransformationSaveRestore(), context, "step7-transformation-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildBiologicalConditionsSuite()
+        {
+            return Suite("feature.7.9.diseases-biological-conditions", "Feature 7.9 Diseases and Biological Conditions", "7.9", 790,
+                Required("ActorBodyRuntime", "BiologicalConditionRuntime", "BiologicalConditionDefinition", "BiologicalCompatibilityRuntime"),
+                Scenario("runtime-ready", "Biological Condition runtime is ready with canonical definitions", 10,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-biocond-human")),
+                    Step("validate", "Validate Biological Conditions", context => Operation(context.Service.ValidateBiologicalConditionIntegrity(), context, "step7-biocond-validate"))),
+                Scenario("preview-and-establishment", "Preview mutates nothing and exposure establishes at threshold", 20,
+                    Step("preview", "Preview viral exposure", context => Operation(context.Service.PreviewViralExposure(), context, "step7-biocond-preview")),
+                    Step("subthreshold", "Subthreshold viral exposure", context => Operation(context.Service.ApplySubthresholdViralExposure(), context, "step7-biocond-subthreshold")),
+                    Step("establish", "Establish viral condition", context => Operation(context.Service.ApplyViralExposure(), context, "step7-biocond-establish"))),
+                Scenario("duplicate-safety", "Duplicate exposure and tick transactions are idempotent", 30,
+                    Step("duplicate-exposure", "Duplicate exposure", context => Operation(context.Service.ProveBiologicalConditionDuplicateExposure(), context, "step7-biocond-duplicate-exposure")),
+                    Step("duplicate-tick", "Duplicate tick", context => Operation(context.Service.ProveBiologicalConditionDuplicateTick(), context, "step7-biocond-duplicate-tick"))),
+                Scenario("wound-poison-venom", "Wound infection, poison, and venom route boundaries work", 40,
+                    Step("wound-reject", "Reject wound infection without wound", context => Operation(context.Service.RejectWoundInfectionWithoutWound(), context, "step7-biocond-wound-reject")),
+                    Step("wound", "Apply wound infection", context => Operation(context.Service.ApplyWoundInfection(), context, "step7-biocond-wound")),
+                    Step("poison", "Apply poison", context => Operation(context.Service.ApplyPoison(), context, "step7-biocond-poison")),
+                    Step("bad-venom", "Reject bad venom route", context => Operation(context.Service.RejectVenomInvalidRoute(), context, "step7-biocond-bad-venom")),
+                    Step("venom", "Apply venom", context => Operation(context.Service.ApplyVenom(), context, "step7-biocond-venom"))),
+                Scenario("treatment-transmission-save", "Treatments, transmission planning, and save restore preserve state", 50,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-biocond-treatment-human")),
+                    Step("viral", "Apply viral exposure", context => Operation(context.Service.ApplyViralExposure(), context, "step7-biocond-treatment-viral")),
+                    Step("medicine", "Apply medicine", context => Operation(context.Service.ApplyPrototypeMedicine(), context, "step7-biocond-medicine")),
+                    Step("transmit", "Preview transmission", context => Operation(context.Service.PreviewConditionTransmission(), context, "step7-biocond-transmit")),
+                    Step("restore", "Save restore", context => Operation(context.Service.ValidateBiologicalConditionSaveRestore(), context, "step7-biocond-save-restore"))),
+                Scenario("species-compatibility-boundaries", "Spirit disease and Construct poison are rejected through compatibility", 60,
+                    Step("spirit", "Reject Spirit disease", context => Operation(context.Service.RejectSpiritOrdinaryDisease(), context, "step7-biocond-spirit")),
+                    Step("construct", "Reject Construct poison", context => Operation(context.Service.RejectConstructOrdinaryPoison(), context, "step7-biocond-construct"))),
+                Scenario("fever-intoxication", "Fever and intoxication fixtures establish and request consequences", 70,
+                    Step("human", "Assign Human", context => Operation(context.Service.AssignBodySpecies("species.human"), context, "step7-biocond-fever-human")),
+                    Step("fever", "Apply fever", context => Operation(context.Service.ApplyFever(), context, "step7-biocond-fever")),
+                    Step("intoxication", "Apply intoxication", context => Operation(context.Service.ApplyIntoxication(), context, "step7-biocond-intoxication")),
+                    Step("tick", "Progress conditions", context => Operation(context.Service.ApplyBiologicalConditionTick(600f), context, "step7-biocond-fever-tick"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a790000000000000000000000000002, type: 3}
+  m_Name: PrototypeFungalBloom
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalConditions.BiologicalConditionDefinition
+  conditionId: condition.biology.prototype-fungal-bloom
+  displayName: Prototype Fungal Bloom
+  description: Fictional fungal-like condition fixture.
+  family: 4
+  strainId: strain.prototype.fungal-alpha
+  biologicalInteractionDefinitionId: interaction.condition.infection
+  allowedRoutes: [1, 9]
+  targetAnatomyTagIds: []
+  requiredAnatomyNodeId: 
+  requiresActiveInjury: 0
+  stackingPolicy: 0
+  establishmentThreshold: 10
+  baseProgressionRate: 0.7
+  baseRegressionRate: 0.15
+  immuneClearanceRate: 0.03
+  symptomThreshold: 10
+  vitalResourceId: 
+  vitalPressurePerTick: 0
+  hazardDefinitionId: 
+  hazardRateMultiplier: 1
+  damageType: {fileID: 0}
+  step6DamagePerTick: 0
+  recoveryRateMultiplier: 0.75
+  grantsImmunityMemoryOnClear: 0
+  transmissionMode: 7
+  transmissionDose: 3
+  transformationPolicy: 1
+  bodyReplacementPolicy: 0
+  stageRules:
+  - stage: 1
+    minimumLoad: 0
+    severity: 0
+    terminal: 0
+  - stage: 4
+    minimumLoad: 10
+    severity: 1
+    terminal: 0
+  - stage: 10
+    minimumLoad: 35
+    severity: 3
+    terminal: 0
+  symptoms:
+  - symptomId: symptom.prototype-fungal-irritation
+    displayName: Fungal Irritation
+    minimumStage: 4
+    minimumSeverity: 1
+    sourceContributionId: 
+  tags: []
+  alphaEnabled: 1
+  validationMetadata: Feature 7.9 canonical alpha condition.

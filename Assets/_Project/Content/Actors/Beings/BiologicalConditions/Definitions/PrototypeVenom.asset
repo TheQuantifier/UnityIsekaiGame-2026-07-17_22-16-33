@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a790000000000000000000000000002, type: 3}
+  m_Name: PrototypeVenom
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalConditions.BiologicalConditionDefinition
+  conditionId: condition.biology.prototype-venom
+  displayName: Prototype Venom
+  description: Fictional venom fixture requiring bite, sting, injection, or wound routes.
+  family: 8
+  strainId: strain.prototype.venom-alpha
+  biologicalInteractionDefinitionId: interaction.condition.venom
+  allowedRoutes: [4, 5, 6, 7]
+  targetAnatomyTagIds: []
+  requiredAnatomyNodeId: 
+  requiresActiveInjury: 0
+  stackingPolicy: 1
+  establishmentThreshold: 5
+  baseProgressionRate: 1.6
+  baseRegressionRate: 0.15
+  immuneClearanceRate: 0
+  symptomThreshold: 5
+  vitalResourceId: 
+  vitalPressurePerTick: 0
+  hazardDefinitionId: 
+  hazardRateMultiplier: 1
+  damageType: {fileID: 11400000, guid: a916bba7f8eb452fa53e888295aa3cc8, type: 2}
+  step6DamagePerTick: 3
+  recoveryRateMultiplier: 0.7
+  grantsImmunityMemoryOnClear: 0
+  transmissionMode: 0
+  transmissionDose: 0
+  transformationPolicy: 1
+  bodyReplacementPolicy: 0
+  stageRules:
+  - stage: 1
+    minimumLoad: 0
+    severity: 0
+    terminal: 0
+  - stage: 4
+    minimumLoad: 5
+    severity: 2
+    terminal: 0
+  - stage: 6
+    minimumLoad: 20
+    severity: 5
+    terminal: 0
+  symptoms:
+  - symptomId: symptom.prototype-venom-shock
+    displayName: Venom Shock
+    minimumStage: 4
+    minimumSeverity: 2
+    sourceContributionId: 
+  tags: []
+  alphaEnabled: 1
+  validationMetadata: Feature 7.9 canonical alpha condition.
