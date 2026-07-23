@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Hazards;
+using UnityIsekaiGame.Beings.Biology.Recovery;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.CombatState;
@@ -38,6 +39,9 @@ namespace UnityIsekaiGame.Development
         private static readonly Color FieldColor = new Color(0.10f, 0.12f, 0.14f, 1f);
         private static readonly Color ButtonColor = new Color(0.17f, 0.25f, 0.29f, 1f);
         private static readonly Color ActiveButtonColor = new Color(0.20f, 0.42f, 0.55f, 1f);
+        private const int MaximumDynamicReportCharacters = 10000;
+        private const int MaximumDynamicReportLines = 220;
+        private const float MaximumDynamicReportHeight = 3600f;
 
         private static readonly string[] SectionNames =
         {
@@ -50,6 +54,7 @@ namespace UnityIsekaiGame.Development
             "Vital Processes 7.4",
             "Biological Hazards 7.5",
             "Biological Compatibility 7.6",
+            "Natural Recovery 7.7",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -105,6 +110,7 @@ namespace UnityIsekaiGame.Development
         private Text vitalProcessesText;
         private Text biologicalHazardsText;
         private Text biologicalCompatibilityText;
+        private Text biologicalRecoveryText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -286,6 +292,7 @@ namespace UnityIsekaiGame.Development
             Transform vitalProcessesSection = AddSection(content, "Vital Processes 7.4 Section");
             Transform biologicalHazardsSection = AddSection(content, "Biological Hazards 7.5 Section");
             Transform biologicalCompatibilitySection = AddSection(content, "Biological Compatibility 7.6 Section");
+            Transform biologicalRecoverySection = AddSection(content, "Natural Recovery 7.7 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -319,6 +326,7 @@ namespace UnityIsekaiGame.Development
             BuildVitalProcessesSection(vitalProcessesSection, font);
             BuildBiologicalHazardsSection(biologicalHazardsSection, font);
             BuildBiologicalCompatibilitySection(biologicalCompatibilitySection, font);
+            BuildBiologicalRecoverySection(biologicalRecoverySection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -551,6 +559,31 @@ namespace UnityIsekaiGame.Development
                 ("Poison", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Poison, BiologicalInteractionCategory.Poison, string.Empty)),
                 ("Polymorph", () => service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Polymorph, BiologicalInteractionCategory.Transformation, string.Empty)));
             biologicalCompatibilityText = AddText(parent, font, "Biological compatibility runtime not available.", 12, 760);
+        }
+
+        private void BuildBiologicalRecoverySection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Human", () => service.ResetBiologicalRecoveryHuman()),
+                ("Validate", () => service.ValidateBiologicalRecoveryIntegrity()),
+                ("Resting", () => service.SetBiologicalRecoveryRestContext(RecoveryRestType.Resting)),
+                ("No Rest", () => service.SetBiologicalRecoveryRestContext(RecoveryRestType.NotResting)));
+            AddButtonRow(parent, font,
+                ("Lacerate", () => service.ApplyRecoveryLaceration()),
+                ("Preview Wound", () => service.PreviewNaturalWoundClosureRecovery()),
+                ("Start Wound", () => service.StartNaturalWoundClosureRecovery()),
+                ("Preview Tick", () => service.PreviewBiologicalRecoveryTick(GetFloat(amountInput, 3600f))));
+            AddButtonRow(parent, font,
+                ("Tick", () => service.ApplyBiologicalRecoveryTick(GetFloat(amountInput, 3600f))),
+                ("Repeat Tick", () => service.ReapplyBiologicalRecoveryTick(GetFloat(amountInput, 3600f))),
+                ("Duplicate", () => service.ProveBiologicalRecoveryDuplicateTick()),
+                ("Save/Load", () => service.ValidateBiologicalRecoverySaveRestore()));
+            AddButtonRow(parent, font,
+                ("Drain Blood", () => service.DrainRecoveryBlood()),
+                ("Start Blood", () => service.StartNaturalBloodRecovery()),
+                ("Repair Station", () => service.SetBiologicalRecoveryRestContext(RecoveryRestType.RepairStation)),
+                ("Construct Repair", () => service.StartConstructRepairRecovery()));
+            biologicalRecoveryText = AddText(parent, font, "Biological recovery runtime not available.", 12, 720);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1132,6 +1165,9 @@ namespace UnityIsekaiGame.Development
                 case "Biological Compatibility 7.6":
                     SetValue(biologicalCompatibilityText, service.BuildBiologicalCompatibilitySummary());
                     break;
+                case "Natural Recovery 7.7":
+                    SetValue(biologicalRecoveryText, service.BuildBiologicalRecoverySummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1619,7 +1655,7 @@ namespace UnityIsekaiGame.Development
                 Group("Persistence Step 4", "Persistence", "Location", "World Entities"),
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
-                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6")
+                Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7")
             };
         }
 
@@ -1873,11 +1909,14 @@ namespace UnityIsekaiGame.Development
         {
             if (text != null)
             {
-                text.text = value;
                 if (dynamicTextBlocks.Contains(text))
                 {
+                    text.text = ClampDynamicReportText(value);
                     UpdateDynamicTextHeight(text);
+                    return;
                 }
+
+                text.text = value;
             }
         }
 
@@ -1895,9 +1934,78 @@ namespace UnityIsekaiGame.Development
             }
 
             float minimumHeight = Mathf.Max(80f, layout.minHeight);
-            Canvas.ForceUpdateCanvases();
-            float preferredHeight = Mathf.Ceil(text.preferredHeight) + 12f;
-            layout.preferredHeight = Mathf.Max(minimumHeight, preferredHeight);
+            int lineCount = CountLines(text.text);
+            float estimatedLineHeight = Mathf.Max(12f, text.fontSize * 1.35f);
+            float estimatedHeight = Mathf.Min(MaximumDynamicReportHeight, lineCount * estimatedLineHeight + 16f);
+            layout.preferredHeight = Mathf.Max(minimumHeight, estimatedHeight);
+        }
+
+        private static string ClampDynamicReportText(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = TrimToLastLines(value, MaximumDynamicReportLines);
+            if (trimmed.Length <= MaximumDynamicReportCharacters)
+            {
+                return trimmed;
+            }
+
+            int keep = Mathf.Max(0, MaximumDynamicReportCharacters - 96);
+            string tail = trimmed.Substring(trimmed.Length - keep);
+            int firstLineBreak = tail.IndexOf('\n');
+            if (firstLineBreak >= 0 && firstLineBreak + 1 < tail.Length)
+            {
+                tail = tail.Substring(firstLineBreak + 1);
+            }
+
+            return $"[Report display truncated to the newest {MaximumDynamicReportCharacters} characters. Full failure details are logged to the Console.]\n{tail}";
+        }
+
+        private static string TrimToLastLines(string value, int maximumLines)
+        {
+            if (maximumLines <= 0 || string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            int linesSeen = 1;
+            for (int i = value.Length - 1; i >= 0; i--)
+            {
+                if (value[i] != '\n')
+                {
+                    continue;
+                }
+
+                linesSeen++;
+                if (linesSeen > maximumLines)
+                {
+                    return $"[Report display truncated to the newest {maximumLines} lines. Full failure details are logged to the Console.]\n{value.Substring(i + 1)}";
+                }
+            }
+
+            return value;
+        }
+
+        private static int CountLines(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return 1;
+            }
+
+            int lines = 1;
+            for (int i = 0; i < value.Length; i++)
+            {
+                if (value[i] == '\n')
+                {
+                    lines++;
+                }
+            }
+
+            return lines;
         }
 
         private static GameObject CreateChild(string name, Transform parent, params Type[] components)

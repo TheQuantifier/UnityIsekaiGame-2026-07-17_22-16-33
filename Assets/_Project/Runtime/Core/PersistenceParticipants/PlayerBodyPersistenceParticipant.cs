@@ -60,7 +60,7 @@ namespace UnityIsekaiGame.Persistence
 
         public PersistenceParticipantPrepareResult PreparePayload(string payloadJson, int payloadSchemaVersion)
         {
-            if (payloadSchemaVersion != CurrentParticipantSchemaVersion)
+            if (payloadSchemaVersion < 1 || payloadSchemaVersion > CurrentParticipantSchemaVersion)
             {
                 return PersistenceParticipantPrepareResult.Failure($"Unsupported player body participant schema version {payloadSchemaVersion}.");
             }

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Hazards;
+using UnityIsekaiGame.Beings.Biology.Recovery;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Combat;
@@ -25,6 +26,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildVitalProcessesSuite());
             TryRegister(registry, BuildBiologicalHazardsSuite());
             TryRegister(registry, BuildBiologicalCompatibilitySuite());
+            TryRegister(registry, BuildNaturalRecoverySuite());
         }
 
         private static ITestLabAutomationSuite BuildBodySpeciesSuite()
@@ -353,6 +355,83 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("disease", "Evaluate Disease", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Disease, BiologicalInteractionCategory.Disease, string.Empty), context, "step7-compat-contract-disease")),
                     Step("poison", "Evaluate Poison", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Poison, BiologicalInteractionCategory.Poison, string.Empty), context, "step7-compat-contract-poison")),
                     Step("polymorph", "Evaluate Polymorph", context => Operation(context.Service.EvaluateBiologicalCompatibility(BiologicalInteractionIds.Polymorph, BiologicalInteractionCategory.Transformation, string.Empty), context, "step7-compat-contract-polymorph"))));
+        }
+
+        private static ITestLabAutomationSuite BuildNaturalRecoverySuite()
+        {
+            return Suite("feature.7.7.natural-recovery-repair", "Feature 7.7 Natural Recovery and Repair", "7.7", 770,
+                Required("ActorBodyRuntime", "BiologicalRecoveryRuntime", "RecoveryMethodDefinition", "BiologicalRecoveryProfileDefinition"),
+                Scenario("healthy-human-ready", "Human biological recovery runtime is ready", 10,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-reset")),
+                    Step("validate", "Validate recovery", context => Operation(context.Service.ValidateBiologicalRecoveryIntegrity(), context, "step7-recovery-validate"))),
+                Scenario("preview-mutates-nothing", "Recovery preview does not mutate body-owned state", 20,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-preview-reset")),
+                    Step("injury", "Apply laceration", context => Operation(context.Service.ApplyRecoveryLaceration(), context, "step7-recovery-preview-injury")),
+                    Step("start", "Start wound closure", context => Operation(context.Service.StartNaturalWoundClosureRecovery(), context, "step7-recovery-preview-start")),
+                    Step("preview", "Preview tick", context => Operation(context.Service.PreviewBiologicalRecoveryTick(3600f), context, "step7-recovery-preview-tick"))),
+                Scenario("wound-closure-restores-structure", "Natural wound closure restores structural integrity", 30,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-wound-reset")),
+                    Step("injury", "Apply laceration", context => Operation(context.Service.ApplyRecoveryLaceration(), context, "step7-recovery-wound-injury")),
+                    Step("start", "Start wound closure", context => Operation(context.Service.StartNaturalWoundClosureRecovery(), context, "step7-recovery-wound-start")),
+                    Step("tick", "Apply recovery tick", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-wound-tick"))),
+                Scenario("tissue-fracture-organ-methods", "Natural tissue, fracture, and organ recovery methods start and tick", 35,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-structural-reset")),
+                    Step("tissue", "Start tissue healing", context => Operation(context.Service.StartNaturalTissueRecovery(), context, "step7-recovery-tissue-start")),
+                    Step("fracture", "Start fracture healing", context => Operation(context.Service.StartNaturalFractureRecovery(), context, "step7-recovery-fracture-start")),
+                    Step("organ", "Start organ recovery", context => Operation(context.Service.StartNaturalOrganRecovery(), context, "step7-recovery-organ-start")),
+                    Step("tick", "Apply recovery tick", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-structural-tick"))),
+                Scenario("duplicate-tick-idempotent", "Duplicate recovery tick is idempotent", 40,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-duplicate-reset")),
+                    Step("duplicate", "Duplicate proof", context => Operation(context.Service.ProveBiologicalRecoveryDuplicateTick(), context, "step7-recovery-duplicate"))),
+                Scenario("natural-limit-enforced", "Natural recovery stops at authored limit", 45,
+                    Step("limit", "Prove natural recovery limit", context => Operation(context.Service.ProveNaturalRecoveryLimit(), context, "step7-recovery-limit"))),
+                Scenario("blood-restoration-uses-vital-runtime", "Natural blood restoration uses vital process mutation", 50,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-blood-reset")),
+                    Step("drain", "Drain Blood", context => Operation(context.Service.DrainRecoveryBlood(), context, "step7-recovery-blood-drain")),
+                    Step("start", "Start Blood restoration", context => Operation(context.Service.StartNaturalBloodRecovery(), context, "step7-recovery-blood-start")),
+                    Step("tick", "Apply recovery tick", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-blood-tick"))),
+                Scenario("breath-restoration-uses-vital-runtime", "Natural Breath restoration uses vital process mutation", 52,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-breath-reset")),
+                    Step("drain", "Drain Breath", context => Operation(context.Service.DrainRecoveryBreath(), context, "step7-recovery-breath-drain")),
+                    Step("start", "Start Breath restoration", context => Operation(context.Service.StartNaturalBreathRecovery(), context, "step7-recovery-breath-start")),
+                    Step("tick", "Apply recovery tick", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-breath-tick"))),
+                Scenario("nutrition-hydration-restore-through-vitals", "Nutrition and Hydration recovery use vital process mutation", 54,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-needs-reset")),
+                    Step("nutrition-drain", "Drain Nutrition", context => Operation(context.Service.DrainRecoveryNutrition(), context, "step7-recovery-nutrition-drain")),
+                    Step("nutrition-start", "Start Nutrition recovery", context => Operation(context.Service.StartNaturalNutritionRecovery(), context, "step7-recovery-nutrition-start")),
+                    Step("hydration-drain", "Drain Hydration", context => Operation(context.Service.DrainRecoveryHydration(), context, "step7-recovery-hydration-drain")),
+                    Step("hydration-start", "Start Hydration recovery", context => Operation(context.Service.StartNaturalHydrationRecovery(), context, "step7-recovery-hydration-start")),
+                    Step("tick", "Apply recovery tick", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-needs-tick"))),
+                Scenario("fatigue-sleep-require-rest", "Fatigue and Sleep Need are controlled by rest context", 56,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-rested-reset")),
+                    Step("fatigue", "Add Fatigue", context => Operation(context.Service.AddRecoveryFatigue(), context, "step7-recovery-fatigue-add")),
+                    Step("fatigue-blocked", "Fatigue blocked without rest", context => Operation(context.Service.StartNaturalFatigueRecovery(), context, "step7-recovery-fatigue-blocked", acceptFailure: true)),
+                    Step("rest", "Set resting", context => Operation(context.Service.SetBiologicalRecoveryRestContext(RecoveryRestType.Resting), context, "step7-recovery-fatigue-rest")),
+                    Step("fatigue-start", "Start Fatigue recovery", context => Operation(context.Service.StartNaturalFatigueRecovery(), context, "step7-recovery-fatigue-start")),
+                    Step("sleep-need", "Add Sleep Need", context => Operation(context.Service.AddRecoverySleepNeed(), context, "step7-recovery-sleep-add")),
+                    Step("sleep-blocked", "Sleep Need blocked until sleeping", context => Operation(context.Service.StartNaturalSleepNeedRecovery(), context, "step7-recovery-sleep-blocked", acceptFailure: true)),
+                    Step("sleep", "Set sleeping", context => Operation(context.Service.SetBiologicalRecoveryRestContext(RecoveryRestType.Sleeping), context, "step7-recovery-sleep-context")),
+                    Step("sleep-start", "Start Sleep Need recovery", context => Operation(context.Service.StartNaturalSleepNeedRecovery(), context, "step7-recovery-sleep-start")),
+                    Step("tick", "Apply recovery tick", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-rested-tick"))),
+                Scenario("construct-repair-requires-rest-context", "Construct repair uses repair-station rest context", 60,
+                    Step("construct", "Start construct repair", context => Operation(context.Service.StartConstructRepairRecovery(), context, "step7-recovery-construct-repair"))),
+                Scenario("construct-biological-healing-rejected", "Construct cannot use ordinary biological healing", 62,
+                    Step("construct", "Construct biological healing rejected", context => Operation(context.Service.StartConstructBiologicalHealingRecovery(), context, "step7-recovery-construct-biological", acceptFailure: true))),
+                Scenario("spirit-restoration-is-distinct", "Spirit restoration requires Spirit Sanctuary and starts separately", 64,
+                    Step("spirit", "Start Spirit Restoration", context => Operation(context.Service.StartSpiritRestorationRecovery(), context, "step7-recovery-spirit"))),
+                Scenario("rest-context-boundary", "Rest context can be changed and cleared", 70,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-rest-reset")),
+                    Step("rest", "Set resting", context => Operation(context.Service.SetBiologicalRecoveryRestContext(RecoveryRestType.Resting), context, "step7-recovery-rest-set")),
+                    Step("clear", "Clear rest", context => Operation(context.Service.SetBiologicalRecoveryRestContext(RecoveryRestType.NotResting), context, "step7-recovery-rest-clear"))),
+                Scenario("compatibility-interrupts-and-resumes", "Compatibility suppression pauses and removal resumes recovery", 75,
+                    Step("reset", "Reset Human recovery", context => Operation(context.Service.ResetBiologicalRecoveryHuman(), context, "step7-recovery-interrupt-reset")),
+                    Step("start", "Start wound closure", context => Operation(context.Service.StartNaturalWoundClosureRecovery(), context, "step7-recovery-interrupt-start")),
+                    Step("suppress", "Suppress natural recovery", context => Operation(context.Service.SuppressNaturalRecovery(), context, "step7-recovery-interrupt-suppress")),
+                    Step("blocked", "Tick suppressed recovery", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-interrupt-blocked", acceptFailure: true)),
+                    Step("clear", "Clear natural recovery suppression", context => Operation(context.Service.ClearNaturalRecoverySuppression(), context, "step7-recovery-interrupt-clear")),
+                    Step("resume", "Tick resumed recovery", context => Operation(context.Service.ApplyBiologicalRecoveryTick(3600f), context, "step7-recovery-interrupt-resume"))),
+                Scenario("save-restore-preserves-progress-silently", "Save and restore preserve recovery processes without events", 80,
+                    Step("restore", "Save restore recovery", context => Operation(context.Service.ValidateBiologicalRecoverySaveRestore(), context, "step7-recovery-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

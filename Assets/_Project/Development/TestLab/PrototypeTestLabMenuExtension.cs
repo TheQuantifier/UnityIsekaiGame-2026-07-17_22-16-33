@@ -152,20 +152,20 @@ namespace UnityIsekaiGame.Development
                 ? menuController.Inventory == null ? null : menuController.Inventory.transform
                 : menuController.ItemUser.transform;
             Transform enemyTransform = enemyHealth == null ? null : enemyHealth.transform;
-            CombatStateService combatState = playerTransform == null ? Object.FindAnyObjectByType<CombatStateService>() : playerTransform.GetComponentInParent<CombatStateService>();
-            if (combatState == null && playerTransform != null)
+            CombatStateService combatState = playerTransform == null ? Object.FindAnyObjectByType<CombatStateService>() : playerTransform.GetComponentInParent<CombatStateService>(includeInactive: true);
+            if (combatState == null && playerTransform != null && playerTransform.gameObject.activeInHierarchy)
             {
                 combatState = playerTransform.gameObject.AddComponent<CombatStateService>();
             }
 
-            OngoingEffectService playerOngoingEffects = playerTransform == null ? null : playerTransform.GetComponentInParent<OngoingEffectService>();
-            if (playerOngoingEffects == null && playerTransform != null)
+            OngoingEffectService playerOngoingEffects = playerTransform == null ? null : playerTransform.GetComponent<OngoingEffectService>() ?? playerTransform.GetComponentInParent<OngoingEffectService>(includeInactive: true);
+            if (playerOngoingEffects == null && playerTransform != null && playerTransform.gameObject.activeInHierarchy)
             {
                 playerOngoingEffects = playerTransform.gameObject.AddComponent<OngoingEffectService>();
             }
 
-            OngoingEffectService enemyOngoingEffects = enemyTransform == null ? null : enemyTransform.GetComponent<OngoingEffectService>();
-            if (enemyOngoingEffects == null && enemyTransform != null)
+            OngoingEffectService enemyOngoingEffects = enemyTransform == null ? null : enemyTransform.GetComponent<OngoingEffectService>() ?? enemyTransform.GetComponentInParent<OngoingEffectService>(includeInactive: true);
+            if (enemyOngoingEffects == null && enemyTransform != null && enemyTransform.gameObject.activeInHierarchy)
             {
                 enemyOngoingEffects = enemyTransform.gameObject.AddComponent<OngoingEffectService>();
             }

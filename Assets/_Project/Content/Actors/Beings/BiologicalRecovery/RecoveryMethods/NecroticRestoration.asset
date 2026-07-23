@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a770000000000000000000000000001, type: 3}
+  m_Name: NecroticRestoration
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.Recovery.RecoveryMethodDefinition
+  methodId: recovery.magical.necrotic-restoration
+  displayName: Necrotic Restoration
+  description: Canonical alpha recovery method for Feature 7.7.
+  biologicalInteractionDefinitionId: interaction.recovery.necrotic-restoration
+  category: 13
+  supportedTargets:
+  - 1
+  - 3
+  - 4
+  baseProgressPerHour: 30
+  structuralIntegrityPerHour: 30
+  vitalResourcePerHour: 30
+  allocationPolicy: 0
+  recoveryLimit: 5
+  maximumRecoverableIntegrityPercent: 1
+  canRestoreDestroyedStructure: 0
+  canRestoreMissingStructure: 0
+  canRestoreSeveredStructure: 0
+  resolvesInjuryOnCompletion: 1
+  requiresRestContext: 0
+  allowedRestTypes: []
+  requiredRuntimeCapabilityKeys: []
+  blockingRuntimeCapabilityKeys: []
+  compatibleInjuryTypeIds: []
+  compatibleAnatomyTagIds: []
+  restoredResourceIds: []
+  permanentOutcome: 0
+  interruptionPolicy: 0
+  alphaExecutionEnabled: 1
+  tags: []
+  validationMetadata: Feature 7.7 canonical alpha recovery method.
