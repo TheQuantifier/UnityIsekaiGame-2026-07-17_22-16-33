@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73dc67e3f5c345ce9bcdcf1410b296b3, type: 3}
+  m_Name: Fact.Body.Replacement
+  m_EditorClassIdentifier: 
+  factId: fact.body.replacement
+  displayName: Body Replacement
+  description: A historical record that a Person changed or replaced Bodies.
+  domain: 10
+  propositionType: 14
+  subjectType: 1
+  objectType: 0
+  valueType: 2
+  defaultVisibility: 2
+  defaultDiscoverable: 1
+  certaintyThreshold: 700
+  requiredEvidenceCount: 1
+  contradictionPolicy: 0
+  stalenessPolicy: 7
+  forgettingPolicy: 2
+  shareable: 0
+  tags: []
+  validationMetadata: canonical.8.1

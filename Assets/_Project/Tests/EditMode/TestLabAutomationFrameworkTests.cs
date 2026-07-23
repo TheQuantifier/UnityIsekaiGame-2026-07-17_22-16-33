@@ -385,7 +385,7 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
-        public void DefaultPrototypeSuites_RegisterStep3ThroughStep7()
+        public void DefaultPrototypeSuites_RegisterStep3ThroughStep8()
         {
             TestLabAutomationRegistry registry = new TestLabAutomationRegistry();
 
@@ -394,6 +394,7 @@ namespace UnityIsekaiGame.Tests
             PrototypeStep5AutomationSuites.RegisterDefaults(registry);
             PrototypeStep6AutomationSuites.RegisterDefaults(registry);
             PrototypeStep7AutomationSuites.RegisterDefaults(registry);
+            PrototypeStep8AutomationSuites.RegisterDefaults(registry);
 
             TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(registry);
 
@@ -434,7 +435,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.7.7.natural-recovery-repair",
                 "feature.7.8.transformation-body-replacement",
                 "feature.7.9.diseases-biological-conditions",
-                "feature.7.10.biological-integration"
+                "feature.7.10.biological-integration",
+                "feature.8.1.knowledge-facts-beliefs"
             }));
         }
 

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.7.9-diseases-biological-conditions
+  contentVersion: 0.8.1-knowledge-facts-beliefs-discovery
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -498,3 +498,13 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 7a790000000000000000000000000122, type: 2}
   - {fileID: 11400000, guid: 7a790000000000000000000000000130, type: 2}
   - {fileID: 11400000, guid: 7a790000000000000000000000000131, type: 2}
+  - {fileID: 11400000, guid: 6dd61dba48f647e6a50575626567c23a, type: 2}
+  - {fileID: 11400000, guid: 25d833bc54e04254b52704a9081741e2, type: 2}
+  - {fileID: 11400000, guid: 6337e9b7bfa944efb52e3a4835544286, type: 2}
+  - {fileID: 11400000, guid: 0572406924c1444dab9edeae425308a9, type: 2}
+  - {fileID: 11400000, guid: 9194f1b3a47b40a99a572f3087ae8f34, type: 2}
+  - {fileID: 11400000, guid: 2145bcc8af63454aaa9e074c6927d94d, type: 2}
+  - {fileID: 11400000, guid: 481e3b9dc5bf4933ba9a0a35a1a518d9, type: 2}
+  - {fileID: 11400000, guid: 7c9c06cd4adb4f3c9c1159217733753b, type: 2}
+  - {fileID: 11400000, guid: 1a4cbd4bf5f243b48979fb5610edd73d, type: 2}
+  - {fileID: 11400000, guid: 5a1e8de59e424b9a8c2c0ba3c58b5755, type: 2}

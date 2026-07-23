@@ -33,6 +33,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
@@ -135,6 +136,8 @@ namespace UnityIsekaiGame.Development
             {
                 traits.Configure(registry, context.PlayerCalculatedStats, context.PlayerSkills, PersistenceService.LocalPlayerId);
             }
+
+            EnsureKnowledgeRuntime(out _);
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -3110,6 +3113,350 @@ namespace UnityIsekaiGame.Development
             PrototypeTestLabOperation result = ApplyBiologicalConditionExposure("Reject Construct Poison", "condition.biology.prototype-poison", BiologicalExposureRoute.Ingestion, 12f, string.Empty, preview: false);
             bool succeeded = !result.Succeeded && (string.Equals(result.Code, BiologicalConditionResultCode.Incompatible.ToString(), StringComparison.Ordinal) || string.Equals(result.Code, BiologicalConditionResultCode.Immune.ToString(), StringComparison.Ordinal));
             return Record(succeeded, "Reject Construct Ordinary Poison", succeeded ? "Success" : "UnexpectedCompatibility", result.Message);
+        }
+
+        public string BuildKnowledgeSummary()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return "Knowledge runtime is missing.";
+            }
+
+            KnowledgeSnapshot snapshot = knowledge.CreateSnapshot();
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine($"Person: {snapshot.PersonId} Actor: {EmptyAs(snapshot.CurrentActorId, "None")} Body: {EmptyAs(snapshot.CurrentBodyId, "None")}");
+            builder.AppendLine($"Readiness: {snapshot.Readiness} Revision: {snapshot.Revision}");
+            builder.AppendLine($"Beliefs: {snapshot.Beliefs.Count} Known: {snapshot.KnownFacts.Count} Suspicions: {snapshot.Suspicions.Count} Misconceptions: {snapshot.Misconceptions.Count} Disputed: {snapshot.DisputedBeliefs.Count} Stale: {snapshot.StaleBeliefs.Count} Evidence: {snapshot.Evidence.Count}");
+            foreach (KnowledgeBeliefRecord belief in snapshot.Beliefs.Take(14))
+            {
+                builder.AppendLine($"{belief.State}: {belief.Proposition.FactDefinitionId} subject={belief.Proposition.SubjectId} confidence={belief.Confidence} visibility={belief.Data.visibility} evidence={belief.SupportingEvidenceIds.Count}/{belief.OpposingEvidenceIds.Count} id={belief.BeliefId}");
+            }
+
+            foreach (string diagnostic in snapshot.Diagnostics.Take(6))
+            {
+                builder.AppendLine($"Diagnostic: {diagnostic}");
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeRuntime()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Validate Knowledge", "Knowledge runtime is missing.", KnowledgeResultCode.MissingPerson.ToString());
+            }
+
+            KnowledgeValidationResult result = knowledge.ValidateKnowledge();
+            string message = result.Succeeded ? $"Knowledge runtime valid. Person={knowledge.PersonId} Revision={knowledge.KnowledgeRevision}." : result.Message;
+            return Record(result.Succeeded, "Validate Knowledge", result.Succeeded ? "Success" : KnowledgeResultCode.ValidationFailed.ToString(), message);
+        }
+
+        public PrototypeTestLabOperation PreviewKnowledgeVisibleInjury()
+        {
+            return TryBuildVisibleInjuryObservation("knowledge.preview-visible-injury", out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure)
+                ? RecordKnowledgeResult("Preview Knowledge Observation", knowledge.PreviewObservation(request))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation RecordKnowledgeVisibleInjury()
+        {
+            return TryBuildVisibleInjuryObservation($"knowledge.visible-injury.{Guid.NewGuid():N}", out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure)
+                ? RecordKnowledgeResult("Record Knowledge Observation", knowledge.RecordObservation(request))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation ProveKnowledgeDuplicateObservation()
+        {
+            if (!TryBuildVisibleInjuryObservation("knowledge.duplicate-visible-injury", out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            KnowledgeOperationResult first = knowledge.RecordObservation(request);
+            KnowledgeOperationResult second = knowledge.RecordObservation(request);
+            bool succeeded = first.Succeeded && second.Succeeded && second.Duplicate && first.ResultingRevision == second.ResultingRevision;
+            return Record(succeeded, "Duplicate Knowledge Observation", succeeded ? "Success" : "DuplicateProofFailed", $"First={first.Code} Second={second.Code} Duplicate={second.Duplicate} Revision={first.ResultingRevision}->{second.ResultingRevision}.");
+        }
+
+        public PrototypeTestLabOperation AddWeakKnowledgeEvidence()
+        {
+            return TryBuildSpeciesCapabilityObservation($"knowledge.weak-evidence.{Guid.NewGuid():N}", 220, 450, out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure)
+                ? RecordKnowledgeResult("Add Weak Knowledge Evidence", knowledge.RecordObservation(request))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation AddStrongKnowledgeEvidence()
+        {
+            return TryBuildSpeciesCapabilityObservation($"knowledge.strong-evidence.{Guid.NewGuid():N}", 800, 850, out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure)
+                ? RecordKnowledgeResult("Add Strong Knowledge Evidence", knowledge.RecordObservation(request))
+                : failure;
+        }
+
+        public PrototypeTestLabOperation AddOpposingKnowledgeEvidence()
+        {
+            if (!TryBuildSpeciesCapabilityObservation($"knowledge.opposing-evidence.{Guid.NewGuid():N}", 600, 700, out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            request.Direction = KnowledgeEvidenceDirection.Opposes;
+            request.Provenance = KnowledgeProvenance.Testimony;
+            request.AcquisitionSource = KnowledgeAcquisitionSource.Testimony;
+            request.SourceId = "person.testimony.untrusted-rumor";
+            return RecordKnowledgeResult("Add Opposing Knowledge Evidence", knowledge.RecordObservation(request));
+        }
+
+        public PrototypeTestLabOperation CreateKnowledgeMisconception()
+        {
+            if (!TryBuildSpeciesCapabilityObservation($"knowledge.misconception.{Guid.NewGuid():N}", 900, 900, out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            request.Proposition.stableValueId = "capability.false-spirit-can-bleed";
+            request.SourceId = "person.rumor.false-species";
+            request.MarkAsMisconception = true;
+            request.TruthAuthorization = KnowledgeTruthAuthorization.CreateDevelopmentFixture("test-lab.knowledge.misconception");
+            return RecordKnowledgeResult("Create Knowledge Misconception", knowledge.RecordObservation(request));
+        }
+
+        public PrototypeTestLabOperation CorrectKnowledgeMisconception()
+        {
+            if (!TryBuildSpeciesCapabilityObservation($"knowledge.correction.{Guid.NewGuid():N}", 950, 950, out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            request.Direction = KnowledgeEvidenceDirection.Corrects;
+            request.Provenance = KnowledgeProvenance.AuthoritativeCorrection;
+            request.AcquisitionSource = KnowledgeAcquisitionSource.DevelopmentFixture;
+            request.TruthAuthorization = KnowledgeTruthAuthorization.CreateDevelopmentFixture("test-lab.knowledge.correction");
+            return RecordKnowledgeResult("Correct Knowledge Misconception", knowledge.RecordObservation(request));
+        }
+
+        public PrototypeTestLabOperation MarkFirstKnowledgeStale()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Mark Knowledge Stale", "Knowledge runtime is missing.", KnowledgeResultCode.MissingPerson.ToString());
+            }
+
+            KnowledgeBeliefRecord belief = knowledge.CreateSnapshot().Beliefs.FirstOrDefault();
+            return belief == null
+                ? RecordFailure("Mark Knowledge Stale", "No active Knowledge belief exists.", KnowledgeResultCode.MissingBelief.ToString())
+                : RecordKnowledgeResult("Mark Knowledge Stale", knowledge.MarkStale(belief.BeliefId, $"knowledge.stale.{Guid.NewGuid():N}", "Marked stale from Test Lab."));
+        }
+
+        public PrototypeTestLabOperation ForgetFirstKnowledgeBelief()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Forget Knowledge", "Knowledge runtime is missing.", KnowledgeResultCode.MissingPerson.ToString());
+            }
+
+            KnowledgeBeliefRecord belief = knowledge.CreateSnapshot().Beliefs.FirstOrDefault();
+            return belief == null
+                ? RecordFailure("Forget Knowledge", "No active Knowledge belief exists.", KnowledgeResultCode.MissingBelief.ToString())
+                : RecordKnowledgeResult("Forget Knowledge", knowledge.ForgetBelief(belief.BeliefId, $"knowledge.forget.{Guid.NewGuid():N}", 300));
+        }
+
+        public PrototypeTestLabOperation ShareFirstKnowledgeBelief()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Share Knowledge", "Knowledge runtime is missing.", KnowledgeResultCode.MissingPerson.ToString());
+            }
+
+            KnowledgeBeliefRecord belief = knowledge.CreateSnapshot().Beliefs.FirstOrDefault();
+            if (belief == null)
+            {
+                return RecordFailure("Share Knowledge", "No active Knowledge belief exists.", KnowledgeResultCode.MissingBelief.ToString());
+            }
+
+            GameObject listenerObject = new GameObject("Knowledge Test Listener");
+            try
+            {
+                PersonKnowledgeRuntime listener = listenerObject.AddComponent<PersonKnowledgeRuntime>();
+                listener.Configure(registry, "person.test-lab.listener");
+                KnowledgeOperationResult result = listener.ShareBelief(new KnowledgeShareRequest
+                {
+                    TransactionId = $"knowledge.share.{Guid.NewGuid():N}",
+                    SpeakerPersonId = knowledge.PersonId,
+                    ListenerPersonId = listener.PersonId,
+                    SpeakerBelief = belief,
+                    ListenerCredibility = 700,
+                    GameTimeSeconds = context?.Persistence?.PlayTime == null ? 0d : context.Persistence.PlayTime.CumulativeSeconds,
+                    PrivateAccessAuthorized = true
+                });
+                return RecordKnowledgeResult("Share Knowledge", result);
+            }
+            finally
+            {
+                DestroyTestObject(listenerObject);
+            }
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeSaveRestore()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Knowledge Save Restore", "Knowledge runtime is missing.", KnowledgeResultCode.MissingPerson.ToString());
+            }
+
+            PersonKnowledgeSaveData saveData = knowledge.CreateSaveData();
+            long before = knowledge.KnowledgeRevision;
+            int events = 0;
+            void CountEvent(PersonKnowledgeRuntime _, KnowledgeOperationResult __) => events++;
+            knowledge.KnowledgeChanged += CountEvent;
+            KnowledgeOperationResult result = knowledge.RestoreFromSaveData(saveData, registry, knowledge.PersonId, restoring: true);
+            knowledge.KnowledgeChanged -= CountEvent;
+            bool succeeded = result.Succeeded && events == 0 && knowledge.KnowledgeRevision == before;
+            return Record(succeeded, "Knowledge Save Restore", succeeded ? "Success" : result.Code.ToString(), $"{result.Message} Events={events} Revision={before}->{knowledge.KnowledgeRevision} Beliefs={knowledge.CreateSnapshot().Beliefs.Count}.");
+        }
+
+        public PrototypeTestLabOperation AttemptPrivateDiagnosticKnowledgeObservation()
+        {
+            if (!TryBuildSpeciesCapabilityObservation($"knowledge.private-blocked.{Guid.NewGuid():N}", 600, 600, out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            request.Visibility = KnowledgeVisibility.DiagnosticOnly;
+            KnowledgeOperationResult result = knowledge.RecordObservation(request);
+            bool succeeded = !result.Succeeded && result.Code == KnowledgeResultCode.DiagnosticFactBlocked;
+            return Record(succeeded, "Private Knowledge Blocked", succeeded ? "Success" : result.Code.ToString(), result.Message);
+        }
+
+        public PrototypeTestLabOperation ResetKnowledgeFixture()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Reset Knowledge Fixture", "Knowledge runtime is missing.", KnowledgeResultCode.MissingPerson.ToString());
+            }
+
+            PersonKnowledgeSaveData empty = new PersonKnowledgeSaveData
+            {
+                personId = knowledge.PersonId,
+                currentActorId = knowledge.CurrentActorId,
+                currentBodyId = knowledge.CurrentBodyId,
+                knowledgeRevision = knowledge.KnowledgeRevision + 1,
+                beliefs = Array.Empty<KnowledgeBeliefRecordData>(),
+                evidence = Array.Empty<KnowledgeEvidenceRecordData>(),
+                processedTransactions = Array.Empty<KnowledgeProcessedTransactionData>()
+            };
+            KnowledgeOperationResult result = knowledge.RestoreFromSaveData(empty, registry, knowledge.PersonId, restoring: true);
+            return Record(result.Succeeded, "Reset Knowledge Fixture", result.Code.ToString(), result.Message);
+        }
+
+        private bool EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge)
+        {
+            knowledge = context?.PlayerKnowledge;
+            if (knowledge == null && context?.PlayerTransform != null)
+            {
+                knowledge = context.PlayerTransform.GetComponentInParent<PersonKnowledgeRuntime>();
+            }
+
+            if (knowledge == null && context?.PlayerTransform != null && context.PlayerTransform.gameObject.activeInHierarchy)
+            {
+                knowledge = context.PlayerTransform.gameObject.AddComponent<PersonKnowledgeRuntime>();
+                context.PlayerKnowledge = knowledge;
+            }
+
+            if (knowledge == null)
+            {
+                return false;
+            }
+
+            string person = context?.IdentityProgression == null ? knowledge.PersonId : context.IdentityProgression.PersonId;
+            string actor = ResolveActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject);
+            string body = context?.PlayerTransform == null ? string.Empty : context.PlayerTransform.GetComponentInParent<ActorBodyRuntime>()?.ActorBodyId ?? string.Empty;
+            knowledge.Configure(registry, person, actor, body);
+            return knowledge.IsReady;
+        }
+
+        private bool TryBuildVisibleInjuryObservation(string transactionId, out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure)
+        {
+            request = null;
+            if (!EnsureKnowledgeRuntime(out knowledge))
+            {
+                failure = RecordFailure("Knowledge Observation", "Knowledge runtime is missing or not ready.", KnowledgeResultCode.MissingPerson.ToString());
+                return false;
+            }
+
+            if (!EnsureBodyRuntime(out ActorBodyRuntime body))
+            {
+                failure = RecordFailure("Knowledge Observation", "Body runtime is missing for visible injury observation.", KnowledgeResultCode.InvalidRequest.ToString());
+                return false;
+            }
+
+            BodyBiologySnapshot snapshot = new BodyBiologyFacade(body).CaptureSnapshot();
+            request = KnowledgeObservationProjection.VisibleInjury(
+                snapshot,
+                knowledge.PersonId,
+                transactionId,
+                "injury.blunt-trauma",
+                context?.Persistence?.PlayTime == null ? 0d : context.Persistence.PlayTime.CumulativeSeconds,
+                KnowledgeObservationAccess.OrdinaryObservation);
+            failure = default;
+            return request != null;
+        }
+
+        private bool TryBuildSpeciesCapabilityObservation(string transactionId, int strength, int credibility, out PersonKnowledgeRuntime knowledge, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure)
+        {
+            request = null;
+            if (!EnsureKnowledgeRuntime(out knowledge))
+            {
+                failure = RecordFailure("Knowledge Evidence", "Knowledge runtime is missing or not ready.", KnowledgeResultCode.MissingPerson.ToString());
+                return false;
+            }
+
+            request = new KnowledgeObservationRequest
+            {
+                PersonId = knowledge.PersonId,
+                TransactionId = transactionId,
+                Proposition = new KnowledgePropositionData
+                {
+                    factDefinitionId = BuiltInKnowledgeFacts.SpeciesCapability,
+                    subjectType = KnowledgeSubjectType.Species,
+                    subjectId = "species.basic-spirit",
+                    valueType = KnowledgeValueType.StableId,
+                    stableValueId = "capability.can.bleed",
+                    sourceContextId = "test-lab.knowledge.species-capability"
+                },
+                AcquisitionSource = KnowledgeAcquisitionSource.Testimony,
+                Provenance = KnowledgeProvenance.Testimony,
+                Direction = KnowledgeEvidenceDirection.Supports,
+                Strength = strength,
+                Credibility = credibility,
+                GameTimeSeconds = context?.Persistence?.PlayTime == null ? 0d : context.Persistence.PlayTime.CumulativeSeconds,
+                SourceId = "person.test-lab.source",
+                Visibility = KnowledgeVisibility.Public
+            };
+            failure = default;
+            return true;
+        }
+
+        private PrototypeTestLabOperation RecordKnowledgeResult(string operationName, KnowledgeOperationResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Knowledge operation returned no result.", KnowledgeResultCode.InvalidRequest.ToString());
+            }
+
+            string belief = result.ResultingBelief == null
+                ? "Belief=None"
+                : $"Belief={result.ResultingBelief.BeliefId} State={result.ResultingBelief.State} Confidence={result.ResultingBelief.Confidence} Fact={result.ResultingBelief.Proposition.FactDefinitionId}";
+            string evidence = result.Evidence == null
+                ? "Evidence=None"
+                : $"Evidence={result.Evidence.EvidenceId} Direction={result.Evidence.Direction} Provenance={result.Evidence.Provenance}";
+            string discovery = result.Discovery == null
+                ? "Discovery=None"
+                : $"Discovery={result.Discovery.Category} Delta={result.Discovery.ConfidenceDelta}";
+            string message = $"{result.Message} Tx={result.TransactionId} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code} Revision={result.PriorRevision}->{result.ResultingRevision}. {belief}. {evidence}. {discovery}.";
+            return result.Succeeded
+                ? Record(true, operationName, result.Code.ToString(), message)
+                : RecordFailure(operationName, message, result.Code.ToString());
         }
 
         private PrototypeTestLabOperation ApplyBiologicalConditionExposure(string operationName, string conditionDefinitionId, BiologicalExposureRoute route, float dose, string targetNodeId, bool preview, string transactionId = "")
@@ -7958,6 +8305,7 @@ namespace UnityIsekaiGame.Development
                 PrototypeStep5AutomationSuites.RegisterDefaults(automationRegistry);
                 PrototypeStep6AutomationSuites.RegisterDefaults(automationRegistry);
                 PrototypeStep7AutomationSuites.RegisterDefaults(automationRegistry);
+                PrototypeStep8AutomationSuites.RegisterDefaults(automationRegistry);
             }
 
             if (automationRunner == null)
