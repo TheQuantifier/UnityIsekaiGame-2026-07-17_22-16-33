@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.7.8-transformation-body-replacement-species-change
+  contentVersion: 0.7.9-diseases-biological-conditions
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -482,3 +482,19 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 7a780000000000000000000000000121, type: 2}
   - {fileID: 11400000, guid: 7a780000000000000000000000000122, type: 2}
   - {fileID: 11400000, guid: 7a780000000000000000000000000123, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000110, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000111, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000112, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000113, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000114, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000115, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000116, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000117, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000118, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000119, type: 2}
+  - {fileID: 11400000, guid: 7a79000000000000000000000000011a, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000120, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000121, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000122, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000130, type: 2}
+  - {fileID: 11400000, guid: 7a790000000000000000000000000131, type: 2}

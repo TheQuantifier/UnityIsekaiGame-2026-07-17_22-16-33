@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a790000000000000000000000000002, type: 3}
+  m_Name: PrototypeParasite
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalConditions.BiologicalConditionDefinition
+  conditionId: condition.biology.prototype-parasite
+  displayName: Prototype Parasite
+  description: Fictional parasite load fixture.
+  family: 5
+  strainId: strain.prototype.parasite-alpha
+  biologicalInteractionDefinitionId: interaction.condition.parasite
+  allowedRoutes: [3, 6]
+  targetAnatomyTagIds: []
+  requiredAnatomyNodeId: 
+  requiresActiveInjury: 0
+  stackingPolicy: 0
+  establishmentThreshold: 14
+  baseProgressionRate: 0.8
+  baseRegressionRate: 0.1
+  immuneClearanceRate: 0.02
+  symptomThreshold: 14
+  vitalResourceId: resource.biology.nutrition
+  vitalPressurePerTick: 1
+  hazardDefinitionId: 
+  hazardRateMultiplier: 1
+  damageType: {fileID: 0}
+  step6DamagePerTick: 0
+  recoveryRateMultiplier: 0.7
+  grantsImmunityMemoryOnClear: 0
+  transmissionMode: 5
+  transmissionDose: 2
+  transformationPolicy: 1
+  bodyReplacementPolicy: 0
+  stageRules:
+  - stage: 1
+    minimumLoad: 0
+    severity: 0
+    terminal: 0
+  - stage: 4
+    minimumLoad: 14
+    severity: 2
+    terminal: 0
+  - stage: 11
+    minimumLoad: 40
+    severity: 3
+    terminal: 0
+  symptoms:
+  - symptomId: symptom.prototype-nutrient-drain
+    displayName: Nutrient Drain
+    minimumStage: 4
+    minimumSeverity: 2
+    sourceContributionId: 
+  tags: []
+  alphaEnabled: 1
+  validationMetadata: Feature 7.9 canonical alpha condition.

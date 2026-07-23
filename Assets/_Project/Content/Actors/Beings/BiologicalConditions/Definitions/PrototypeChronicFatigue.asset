@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a790000000000000000000000000002, type: 3}
+  m_Name: PrototypeChronicFatigue
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalConditions.BiologicalConditionDefinition
+  conditionId: condition.biology.prototype-chronic-fatigue
+  displayName: Prototype Chronic Fatigue
+  description: Fictional chronic-condition fixture.
+  family: 17
+  strainId: strain.prototype.chronic-alpha
+  biologicalInteractionDefinitionId: interaction.condition.disease
+  allowedRoutes: [11]
+  targetAnatomyTagIds: []
+  requiredAnatomyNodeId: 
+  requiresActiveInjury: 0
+  stackingPolicy: 4
+  establishmentThreshold: 5
+  baseProgressionRate: 0.2
+  baseRegressionRate: 0.05
+  immuneClearanceRate: 0
+  symptomThreshold: 5
+  vitalResourceId: resource.biology.fatigue
+  vitalPressurePerTick: 0.75
+  hazardDefinitionId: 
+  hazardRateMultiplier: 1
+  damageType: {fileID: 0}
+  step6DamagePerTick: 0
+  recoveryRateMultiplier: 0.65
+  grantsImmunityMemoryOnClear: 0
+  transmissionMode: 0
+  transmissionDose: 0
+  transformationPolicy: 1
+  bodyReplacementPolicy: 0
+  stageRules:
+  - stage: 10
+    minimumLoad: 0
+    severity: 1
+    terminal: 0
+  - stage: 10
+    minimumLoad: 20
+    severity: 3
+    terminal: 0
+  symptoms:
+  - symptomId: symptom.prototype-chronic-fatigue
+    displayName: Chronic Fatigue
+    minimumStage: 10
+    minimumSeverity: 1
+    sourceContributionId: 
+  tags: []
+  alphaEnabled: 1
+  validationMetadata: Feature 7.9 canonical alpha condition.

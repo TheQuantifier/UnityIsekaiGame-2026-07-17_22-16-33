@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a790000000000000000000000000003, type: 3}
+  m_Name: PrototypeMedicine
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalConditions.BiologicalConditionTreatmentDefinition
+  treatmentId: treatment.biology.prototype-medicine
+  displayName: Prototype Medicine
+  description: Fictional general treatment fixture.
+  treatmentKind: 0
+  biologicalInteractionDefinitionId: interaction.condition.disease
+  compatibleConditionIds: []
+  compatibleFamilies: [1, 2, 3, 4, 6, 13, 14, 17, 18]
+  loadReduction: 8
+  progressionMultiplier: 0.75
+  canClearCondition: 1
+  grantsImmunityMemory: 1
+  tags: []
+  alphaEnabled: 1
+  validationMetadata: Feature 7.9 canonical alpha treatment.

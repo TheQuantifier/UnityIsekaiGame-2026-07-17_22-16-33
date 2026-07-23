@@ -92,7 +92,7 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
 
     public sealed class BiologicalRecoverySnapshot
     {
-        public BiologicalRecoverySnapshot(string actorBodyId, string personId, string speciesId, string profileId, RecoveryReadinessState readiness, long bodyRevision, long conditionRevision, long vitalRevision, long hazardRevision, long compatibilityRevision, long recoveryRevision, RecoveryRestContextSnapshot restContext, IReadOnlyList<RecoveryProcessSnapshot> processes, bool dirty, bool coherent, IReadOnlyList<string> diagnostics)
+        public BiologicalRecoverySnapshot(string actorBodyId, string personId, string speciesId, string profileId, RecoveryReadinessState readiness, long bodyRevision, long conditionRevision, long vitalRevision, long hazardRevision, long compatibilityRevision, long recoveryRevision, RecoveryRestContextSnapshot restContext, IReadOnlyList<RecoveryProcessSnapshot> processes, IReadOnlyList<RecoveryRateModifierSnapshot> rateModifiers, bool dirty, bool coherent, IReadOnlyList<string> diagnostics)
         {
             ActorBodyId = actorBodyId ?? string.Empty;
             PersonId = personId ?? string.Empty;
@@ -108,6 +108,7 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
             RestContext = restContext;
             Processes = processes == null ? Array.Empty<RecoveryProcessSnapshot>() : processes.OrderBy(process => process.ProcessId, StringComparer.Ordinal).ToArray();
             ActiveProcesses = Processes.Where(process => process.State == RecoveryProcessState.Active || process.State == RecoveryProcessState.Eligible).ToArray();
+            RateModifiers = rateModifiers == null ? Array.Empty<RecoveryRateModifierSnapshot>() : rateModifiers.OrderBy(modifier => modifier.SourceId, StringComparer.Ordinal).ToArray();
             Dirty = dirty;
             Coherent = coherent;
             Diagnostics = diagnostics == null ? Array.Empty<string>() : diagnostics.ToArray();
@@ -127,8 +128,25 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
         public RecoveryRestContextSnapshot RestContext { get; }
         public IReadOnlyList<RecoveryProcessSnapshot> Processes { get; }
         public IReadOnlyList<RecoveryProcessSnapshot> ActiveProcesses { get; }
+        public IReadOnlyList<RecoveryRateModifierSnapshot> RateModifiers { get; }
         public bool Dirty { get; }
         public bool Coherent { get; }
         public IReadOnlyList<string> Diagnostics { get; }
+    }
+
+    public sealed class RecoveryRateModifierSnapshot
+    {
+        public RecoveryRateModifierSnapshot(string sourceId, float rateMultiplier, string reason, long revision)
+        {
+            SourceId = sourceId ?? string.Empty;
+            RateMultiplier = Math.Max(0f, rateMultiplier);
+            Reason = reason ?? string.Empty;
+            Revision = revision;
+        }
+
+        public string SourceId { get; }
+        public float RateMultiplier { get; }
+        public string Reason { get; }
+        public long Revision { get; }
     }
 }

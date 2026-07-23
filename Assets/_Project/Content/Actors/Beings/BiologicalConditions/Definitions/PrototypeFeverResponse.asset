@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a790000000000000000000000000002, type: 3}
+  m_Name: PrototypeFeverResponse
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalConditions.BiologicalConditionDefinition
+  conditionId: condition.biology.prototype-fever-response
+  displayName: Prototype Fever Response
+  description: Fictional systemic fever response fixture.
+  family: 13
+  strainId: strain.prototype.fever-alpha
+  biologicalInteractionDefinitionId: interaction.condition.disease
+  allowedRoutes: [11]
+  targetAnatomyTagIds: []
+  requiredAnatomyNodeId: 
+  requiresActiveInjury: 0
+  stackingPolicy: 0
+  establishmentThreshold: 3
+  baseProgressionRate: 0.8
+  baseRegressionRate: 0.5
+  immuneClearanceRate: 0.2
+  symptomThreshold: 3
+  vitalResourceId: resource.biology.temperature
+  vitalPressurePerTick: 0.75
+  hazardDefinitionId: hazard.biology.overheating
+  hazardRateMultiplier: 0.75
+  damageType: {fileID: 0}
+  step6DamagePerTick: 0
+  recoveryRateMultiplier: 0.8
+  grantsImmunityMemoryOnClear: 0
+  transmissionMode: 0
+  transmissionDose: 0
+  transformationPolicy: 1
+  bodyReplacementPolicy: 0
+  stageRules:
+  - stage: 1
+    minimumLoad: 0
+    severity: 0
+    terminal: 0
+  - stage: 4
+    minimumLoad: 3
+    severity: 1
+    terminal: 0
+  - stage: 6
+    minimumLoad: 15
+    severity: 4
+    terminal: 0
+  symptoms:
+  - symptomId: symptom.prototype-fever
+    displayName: Fever
+    minimumStage: 4
+    minimumSeverity: 1
+    sourceContributionId: 
+  tags: []
+  alphaEnabled: 1
+  validationMetadata: Feature 7.9 canonical alpha condition.

@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a790000000000000000000000000002, type: 3}
+  m_Name: PrototypeAlcoholIntoxication
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalConditions.BiologicalConditionDefinition
+  conditionId: condition.biology.prototype-alcohol-intoxication
+  displayName: Prototype Alcohol Intoxication
+  description: Fictional intoxication fixture for alcohol foundations.
+  family: 11
+  strainId: strain.prototype.alcohol-alpha
+  biologicalInteractionDefinitionId: interaction.condition.alcohol
+  allowedRoutes: [3]
+  targetAnatomyTagIds: []
+  requiredAnatomyNodeId: 
+  requiresActiveInjury: 0
+  stackingPolicy: 0
+  establishmentThreshold: 4
+  baseProgressionRate: 0.3
+  baseRegressionRate: 1.2
+  immuneClearanceRate: 0.1
+  symptomThreshold: 4
+  vitalResourceId: resource.biology.fatigue
+  vitalPressurePerTick: 0.5
+  hazardDefinitionId: 
+  hazardRateMultiplier: 1
+  damageType: {fileID: 0}
+  step6DamagePerTick: 0
+  recoveryRateMultiplier: 0.9
+  grantsImmunityMemoryOnClear: 0
+  transmissionMode: 0
+  transmissionDose: 0
+  transformationPolicy: 1
+  bodyReplacementPolicy: 0
+  stageRules:
+  - stage: 1
+    minimumLoad: 0
+    severity: 0
+    terminal: 0
+  - stage: 4
+    minimumLoad: 4
+    severity: 1
+    terminal: 0
+  - stage: 6
+    minimumLoad: 18
+    severity: 3
+    terminal: 0
+  symptoms:
+  - symptomId: symptom.prototype-intoxication
+    displayName: Intoxication
+    minimumStage: 4
+    minimumSeverity: 1
+    sourceContributionId: 
+  tags: []
+  alphaEnabled: 1
+  validationMetadata: Feature 7.9 canonical alpha condition.

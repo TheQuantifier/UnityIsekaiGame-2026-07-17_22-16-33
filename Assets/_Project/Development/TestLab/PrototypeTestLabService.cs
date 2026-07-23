@@ -6,6 +6,7 @@ using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.Beings.Biology.Anatomy;
+using UnityIsekaiGame.Beings.Biology.BiologicalConditions;
 using UnityIsekaiGame.Beings.Biology.Compatibility;
 using UnityIsekaiGame.Beings.Biology.Condition;
 using UnityIsekaiGame.Beings.Biology.Hazards;
@@ -2750,6 +2751,414 @@ namespace UnityIsekaiGame.Development
             BodyTransformationResult result = body.Transformation.Preview(BuildTransformationRequest(body, "transformation.polymorph.temporary", "species.basic-construct", string.Empty, string.Empty, $"test-lab.transformation.suppressed.{Guid.NewGuid():N}", preview: true));
             body.BiologicalCompatibility.RemoveContribution("test-lab.transformation", "test-lab.transformation.suppression");
             return Record(!result.Succeeded && result.Code == TransformationResultCode.Suppressed, "Test Transformation Suppression", !result.Succeeded ? result.Code.ToString() : "SuppressionBypassed", FormatTransformationResult(result));
+        }
+
+        public string BuildBiologicalConditionSummary()
+        {
+            if (!EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out _))
+            {
+                return "Biological Condition runtime is missing.";
+            }
+
+            BiologicalConditionRuntimeSnapshot snapshot = body.BiologicalConditions.CreateSnapshot();
+            List<string> lines = new List<string>
+            {
+                "Feature 7.9 Diseases and Biological Conditions",
+                $"Body: {snapshot.ActorBodyId}",
+                $"Readiness: {snapshot.Readiness}",
+                $"Revision: {snapshot.BiologicalConditionRevision}",
+                $"Active Instances: {snapshot.ActiveInstances.Count}",
+                $"Immunity Memory: {snapshot.ImmunityMemory.Count}",
+                $"Processed Transactions: {snapshot.ProcessedTransactionIds.Count}",
+                $"Coherent: {snapshot.Coherent}",
+                $"Definitions: {registry.DefinitionsById.Values.OfType<BiologicalConditionDefinition>().Count()}",
+                $"Treatments: {registry.DefinitionsById.Values.OfType<BiologicalConditionTreatmentDefinition>().Count()}",
+                $"Transmission Profiles: {registry.DefinitionsById.Values.OfType<BiologicalTransmissionProfileDefinition>().Count()}"
+            };
+
+            foreach (BiologicalConditionInstanceSnapshot instance in snapshot.ActiveInstances)
+            {
+                lines.Add($"{instance.ConditionDefinitionId} ({instance.InstanceId}) Stage={instance.Stage} Severity={instance.Severity} Load={instance.Load:0.##} Dose={instance.AccumulatedDose:0.##} Route={instance.ExposureRoute} Node={instance.TargetAnatomyNodeId} Symptoms={string.Join(",", instance.Symptoms.Select(symptom => symptom.SymptomId))}");
+                if (instance.ConsequencePlan != null)
+                {
+                    lines.Add($"  Consequences={instance.ConsequencePlan.Flags} Vital={instance.ConsequencePlan.VitalResourceId}:{instance.ConsequencePlan.VitalPressureAmount:0.##} Hazard={instance.ConsequencePlan.HazardDefinitionId} Damage={instance.ConsequencePlan.DamageTypeId}:{instance.ConsequencePlan.Step6DamageAmount:0.##} RecoveryRate={instance.ConsequencePlan.RecoveryRateMultiplier:0.##}");
+                }
+            }
+
+            foreach (BiologicalConditionImmunityMemorySnapshot memory in snapshot.ImmunityMemory)
+            {
+                lines.Add($"Memory {memory.ConditionDefinitionId}/{memory.StrainId} Strength={memory.Strength:0.##} Source={memory.SourceInstanceId}");
+            }
+
+            if (snapshot.Diagnostics.Count > 0)
+            {
+                lines.AddRange(snapshot.Diagnostics.Select(diagnostic => $"Diagnostic: {diagnostic}"));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public PrototypeTestLabOperation ValidateBiologicalConditionIntegrity()
+        {
+            if (!EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalConditionRuntimeSnapshot snapshot = body.BiologicalConditions.CreateSnapshot();
+            bool registered = registry.TryGet("condition.biology.prototype-viral-malaise", out BiologicalConditionDefinition viral)
+                && viral != null
+                && registry.TryGet("treatment.biology.prototype-antidote", out BiologicalConditionTreatmentDefinition antidote)
+                && antidote != null
+                && registry.TryGet("transmission.biology.prototype-viral-airborne", out BiologicalTransmissionProfileDefinition transmission)
+                && transmission != null;
+            bool succeeded = snapshot.Readiness == BiologicalConditionReadinessState.Ready && snapshot.Coherent && registered;
+            return Record(succeeded, "Validate Biological Conditions", succeeded ? "Success" : "InvalidBiologicalConditionRuntime", $"Readiness={snapshot.Readiness} Coherent={snapshot.Coherent} CanonicalRegistered={registered} Revision={snapshot.BiologicalConditionRevision}.");
+        }
+
+        public PrototypeTestLabOperation PreviewViralExposure()
+        {
+            return ApplyBiologicalConditionExposure("Preview Viral Exposure", "condition.biology.prototype-viral-malaise", BiologicalExposureRoute.Inhalation, 16f, string.Empty, preview: true);
+        }
+
+        public PrototypeTestLabOperation ApplySubthresholdViralExposure()
+        {
+            return ApplyBiologicalConditionExposure("Apply Subthreshold Viral Exposure", "condition.biology.prototype-viral-malaise", BiologicalExposureRoute.Inhalation, 4f, string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation ApplyViralExposure()
+        {
+            return ApplyBiologicalConditionExposure("Apply Viral Exposure", "condition.biology.prototype-viral-malaise", BiologicalExposureRoute.Inhalation, 16f, string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation ApplyWoundInfection()
+        {
+            if (!EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            if (!body.Condition.CreateSnapshot().ActiveInjuries.Any(injury => string.Equals(injury.TargetNodeId, "part.hand.left", StringComparison.Ordinal)))
+            {
+                PrototypeTestLabOperation wound = ApplyLocalizedStructuralDamageWithTransaction("injury.laceration", "part.hand.left", 20, $"test-lab.biological-condition.wound.{Guid.NewGuid():N}");
+                if (!wound.Succeeded)
+                {
+                    return wound;
+                }
+            }
+
+            return ApplyBiologicalConditionExposure("Apply Wound Infection", "condition.biology.prototype-bacterial-wound-infection", BiologicalExposureRoute.Wound, 12f, "part.hand.left", preview: false);
+        }
+
+        public PrototypeTestLabOperation RejectWoundInfectionWithoutWound()
+        {
+            PrototypeTestLabOperation reset = AssignBodySpecies("species.human");
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            PrototypeTestLabOperation result = ApplyBiologicalConditionExposure("Reject Wound Infection", "condition.biology.prototype-bacterial-wound-infection", BiologicalExposureRoute.Wound, 12f, "part.hand.left", preview: false);
+            bool succeeded = !result.Succeeded && string.Equals(result.Code, BiologicalConditionResultCode.MissingRequiredInjury.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Reject Wound Infection Without Wound", succeeded ? "Success" : "UnexpectedWoundInfection", result.Message);
+        }
+
+        public PrototypeTestLabOperation ApplyPoison()
+        {
+            return ApplyBiologicalConditionExposure("Apply Poison", "condition.biology.prototype-poison", BiologicalExposureRoute.Ingestion, 12f, string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation RejectVenomInvalidRoute()
+        {
+            PrototypeTestLabOperation result = ApplyBiologicalConditionExposure("Reject Venom Invalid Route", "condition.biology.prototype-venom", BiologicalExposureRoute.Ingestion, 10f, string.Empty, preview: false);
+            bool succeeded = !result.Succeeded && string.Equals(result.Code, BiologicalConditionResultCode.InvalidRoute.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Reject Venom Invalid Route", succeeded ? "Success" : "UnexpectedVenomRoute", result.Message);
+        }
+
+        public PrototypeTestLabOperation ApplyVenom()
+        {
+            return ApplyBiologicalConditionExposure("Apply Venom", "condition.biology.prototype-venom", BiologicalExposureRoute.Bite, 10f, string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation ApplyFever()
+        {
+            return ApplyBiologicalConditionExposure("Apply Fever", "condition.biology.prototype-fever-response", BiologicalExposureRoute.Scripted, 8f, string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation ApplyIntoxication()
+        {
+            return ApplyBiologicalConditionExposure("Apply Intoxication", "condition.biology.prototype-alcohol-intoxication", BiologicalExposureRoute.Ingestion, 8f, string.Empty, preview: false);
+        }
+
+        public PrototypeTestLabOperation ApplyBiologicalConditionTick(float elapsedGameSeconds)
+        {
+            return ApplyBiologicalConditionTickWithId(elapsedGameSeconds, $"test-lab.biological-condition.tick.{Guid.NewGuid():N}");
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalConditionDuplicateExposure()
+        {
+            string tx = $"test-lab.biological-condition.duplicate.{Guid.NewGuid():N}";
+            PrototypeTestLabOperation first = ApplyBiologicalConditionExposure("Duplicate Biological Condition Exposure", "condition.biology.prototype-viral-malaise", BiologicalExposureRoute.Inhalation, 16f, string.Empty, preview: false, transactionId: tx);
+            PrototypeTestLabOperation second = ApplyBiologicalConditionExposure("Duplicate Biological Condition Exposure", "condition.biology.prototype-viral-malaise", BiologicalExposureRoute.Inhalation, 16f, string.Empty, preview: false, transactionId: tx);
+            bool succeeded = first.Succeeded && second.Succeeded && string.Equals(second.Code, BiologicalConditionResultCode.Duplicate.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Prove Biological Condition Duplicate Exposure", succeeded ? "Success" : "DuplicateProofFailed", $"First={first.Code} Second={second.Code}. Duplicate exposure did not add another dose.");
+        }
+
+        public PrototypeTestLabOperation ProveBiologicalConditionDuplicateTick()
+        {
+            PrototypeTestLabOperation exposure = ApplyViralExposure();
+            if (!exposure.Succeeded)
+            {
+                return exposure;
+            }
+
+            string tx = $"test-lab.biological-condition.tick.duplicate.{Guid.NewGuid():N}";
+            PrototypeTestLabOperation first = ApplyBiologicalConditionTickWithId(600f, tx);
+            PrototypeTestLabOperation second = ApplyBiologicalConditionTickWithId(600f, tx);
+            bool succeeded = first.Succeeded && second.Succeeded && string.Equals(second.Code, BiologicalConditionResultCode.Duplicate.ToString(), StringComparison.Ordinal);
+            return Record(succeeded, "Prove Biological Condition Duplicate Tick", succeeded ? "Success" : "DuplicateTickFailed", $"First={first.Code} Second={second.Code}. Duplicate tick did not progress twice.");
+        }
+
+        public PrototypeTestLabOperation ApplyPrototypeMedicine()
+        {
+            return ApplyBiologicalConditionTreatment("Apply Prototype Medicine", "treatment.biology.prototype-medicine");
+        }
+
+        public PrototypeTestLabOperation ApplyPrototypeAntidote()
+        {
+            return ApplyBiologicalConditionTreatment("Apply Prototype Antidote", "treatment.biology.prototype-antidote");
+        }
+
+        public PrototypeTestLabOperation PreviewConditionTransmission()
+        {
+            if (!EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalConditionInstanceSnapshot instance = body.BiologicalConditions.CreateSnapshot().ActiveInstances.FirstOrDefault(candidate => candidate.ConditionDefinitionId == "condition.biology.prototype-viral-malaise");
+            if (instance == null)
+            {
+                PrototypeTestLabOperation exposure = ApplyViralExposure();
+                if (!exposure.Succeeded)
+                {
+                    return exposure;
+                }
+
+                instance = body.BiologicalConditions.CreateSnapshot().ActiveInstances.FirstOrDefault(candidate => candidate.ConditionDefinitionId == "condition.biology.prototype-viral-malaise");
+            }
+
+            BiologicalConditionTransmissionPlan plan = body.BiologicalConditions.PreviewTransmission(new BiologicalConditionTransmissionRequest(body.ActorBodyId, "actor.runtime.test-lab.target-body", instance?.InstanceId ?? string.Empty, "transmission.biology.prototype-viral-airborne", $"test-lab.biological-condition.transmission.{Guid.NewGuid():N}", preview: true));
+            bool succeeded = plan.ExposureRequest != null && string.Equals(plan.ExposureRequest.ConditionDefinitionId, "condition.biology.prototype-viral-malaise", StringComparison.Ordinal);
+            return Record(succeeded, "Preview Biological Condition Transmission", succeeded ? "Success" : "TransmissionPlanMissing", $"Profile={plan.TransmissionProfileId} Source={plan.SourceActorBodyId} Target={plan.TargetActorBodyId} Dose={plan.ExposureRequest?.Dose ?? 0f} Route={plan.ExposureRequest?.Route.ToString() ?? string.Empty}. {plan.Message}");
+        }
+
+        public PrototypeTestLabOperation ValidateBiologicalConditionSaveRestore()
+        {
+            PrototypeTestLabOperation reset = AssignBodySpecies("species.human");
+            if (!reset.Succeeded)
+            {
+                return reset;
+            }
+
+            PrototypeTestLabOperation exposure = ApplyViralExposure();
+            if (!exposure.Succeeded)
+            {
+                return exposure;
+            }
+
+            if (!EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalConditionRuntimeSnapshot before = body.BiologicalConditions.CreateSnapshot();
+            BodySaveData saveData = body.CreateSaveData();
+            BodyOperationResult restore = body.RestoreFromSaveData(saveData, registry, body.ActorBodyId, body.PersonId, restoring: true);
+            BiologicalConditionRuntimeSnapshot after = body.BiologicalConditions.CreateSnapshot();
+            bool succeeded = restore.Succeeded
+                && after.ActiveInstances.Count == before.ActiveInstances.Count
+                && after.ActiveInstances.Select(instance => instance.InstanceId).SequenceEqual(before.ActiveInstances.Select(instance => instance.InstanceId))
+                && after.ActiveInstances.FirstOrDefault()?.Load == before.ActiveInstances.FirstOrDefault()?.Load;
+            return Record(succeeded, "Validate Biological Condition Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} Count={before.ActiveInstances.Count}->{after.ActiveInstances.Count} Revision={before.BiologicalConditionRevision}->{after.BiologicalConditionRevision}.");
+        }
+
+        public PrototypeTestLabOperation RejectSpiritOrdinaryDisease()
+        {
+            PrototypeTestLabOperation spirit = AssignBodySpecies("species.basic-spirit");
+            if (!spirit.Succeeded)
+            {
+                return spirit;
+            }
+
+            PrototypeTestLabOperation result = ApplyBiologicalConditionExposure("Reject Spirit Disease", "condition.biology.prototype-viral-malaise", BiologicalExposureRoute.Inhalation, 16f, string.Empty, preview: false);
+            bool succeeded = !result.Succeeded && (string.Equals(result.Code, BiologicalConditionResultCode.Incompatible.ToString(), StringComparison.Ordinal) || string.Equals(result.Code, BiologicalConditionResultCode.Immune.ToString(), StringComparison.Ordinal));
+            return Record(succeeded, "Reject Spirit Ordinary Disease", succeeded ? "Success" : "UnexpectedCompatibility", result.Message);
+        }
+
+        public PrototypeTestLabOperation RejectConstructOrdinaryPoison()
+        {
+            PrototypeTestLabOperation construct = AssignBodySpecies("species.basic-construct");
+            if (!construct.Succeeded)
+            {
+                return construct;
+            }
+
+            PrototypeTestLabOperation result = ApplyBiologicalConditionExposure("Reject Construct Poison", "condition.biology.prototype-poison", BiologicalExposureRoute.Ingestion, 12f, string.Empty, preview: false);
+            bool succeeded = !result.Succeeded && (string.Equals(result.Code, BiologicalConditionResultCode.Incompatible.ToString(), StringComparison.Ordinal) || string.Equals(result.Code, BiologicalConditionResultCode.Immune.ToString(), StringComparison.Ordinal));
+            return Record(succeeded, "Reject Construct Ordinary Poison", succeeded ? "Success" : "UnexpectedCompatibility", result.Message);
+        }
+
+        private PrototypeTestLabOperation ApplyBiologicalConditionExposure(string operationName, string conditionDefinitionId, BiologicalExposureRoute route, float dose, string targetNodeId, bool preview, string transactionId = "")
+        {
+            if (!EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BodySnapshot snapshot = body.CreateSnapshot();
+            BiologicalConditionExposureRequest request = new BiologicalConditionExposureRequest(
+                body.ActorBodyId,
+                conditionDefinitionId,
+                string.IsNullOrWhiteSpace(transactionId) ? $"test-lab.biological-condition.exposure.{Guid.NewGuid():N}" : transactionId,
+                route,
+                dose,
+                sourceId: "test-lab.biological-condition",
+                sourceBodyId: body.ActorBodyId,
+                sourceEventId: operationName,
+                sourceCategory: BiologicalConditionSourceCategory.Development,
+                targetAnatomyNodeId: targetNodeId,
+                intensity: 1f,
+                durationSeconds: 0f,
+                preview: preview,
+                authority: "Prototype Test Lab",
+                expectedBodyRevision: snapshot.BodyRevision,
+                expectedAnatomyRevision: snapshot.Anatomy?.AnatomyRevision ?? 0L,
+                expectedConditionRevision: snapshot.Condition?.ConditionRevision ?? 0L,
+                expectedVitalRevision: snapshot.VitalProcesses?.VitalRevision ?? 0L,
+                expectedHazardRevision: snapshot.BiologicalHazards?.HazardRevision ?? 0L,
+                expectedCompatibilityRevision: snapshot.BiologicalCompatibility?.CompatibilityRevision ?? 0L);
+            BiologicalConditionResult result = preview
+                ? body.BiologicalConditions.PreviewExposure(request, snapshot, body.BiologicalCompatibility)
+                : body.BiologicalConditions.ApplyExposure(request, snapshot, body.BiologicalCompatibility);
+            return RecordBiologicalConditionResult(operationName, result);
+        }
+
+        private PrototypeTestLabOperation ApplyBiologicalConditionTickWithId(float elapsedGameSeconds, string tickId)
+        {
+            if (!EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalConditionTickRequest request = new BiologicalConditionTickRequest(body.ActorBodyId, elapsedGameSeconds, tickId, preview: false, "Prototype Test Lab biological condition tick");
+            EnsureBiologicalRecoveryReady(body);
+            GameObject target = context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject;
+            BiologicalConditionConsequenceExecutionResult result = body.BiologicalConditions.ApplyTickConsequences(new BiologicalConditionConsequenceExecutionRequest(
+                request,
+                body.CreateSnapshot(),
+                body.BiologicalCompatibility,
+                body.VitalProcesses,
+                body.BiologicalHazards,
+                body.BiologicalRecovery,
+                damageHealingService,
+                target,
+                target,
+                body.ActorBodyId,
+                body.ActorBodyId));
+            return Record(result.Succeeded, "Apply Biological Condition Tick", result.Code.ToString(), FormatBiologicalConditionConsequenceExecutionResult(result));
+        }
+
+        private PrototypeTestLabOperation ApplyBiologicalConditionTreatment(string operationName, string treatmentId)
+        {
+            if (!EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            BiologicalConditionInstanceSnapshot instance = body.BiologicalConditions.CreateSnapshot().ActiveInstances.FirstOrDefault();
+            if (instance == null)
+            {
+                PrototypeTestLabOperation exposure = treatmentId.Contains("antidote") ? ApplyPoison() : ApplyViralExposure();
+                if (!exposure.Succeeded)
+                {
+                    return exposure;
+                }
+
+                instance = body.BiologicalConditions.CreateSnapshot().ActiveInstances.FirstOrDefault();
+            }
+
+            BiologicalConditionTreatmentRequest request = new BiologicalConditionTreatmentRequest(body.ActorBodyId, instance?.InstanceId ?? string.Empty, treatmentId, $"test-lab.biological-condition.treatment.{Guid.NewGuid():N}", dose: 1f, preview: false, sourceId: "test-lab.biological-condition");
+            return RecordBiologicalConditionResult(operationName, body.BiologicalConditions.ApplyTreatment(request, body.CreateSnapshot(), body.BiologicalCompatibility));
+        }
+
+        private bool EnsureBiologicalConditionRuntime(out ActorBodyRuntime body, out PrototypeTestLabOperation failure)
+        {
+            body = null;
+            failure = default;
+            if (!EnsureBodyRuntime(out body))
+            {
+                failure = RecordFailure("Biological Condition Operation", "Body runtime is missing.", BiologicalConditionResultCode.MissingBody.ToString());
+                return false;
+            }
+
+            body.BiologicalConditions.BuildForBody(body.CreateSnapshot(), registry, restoring: false, preserveRevision: true);
+            if (body.BiologicalConditions.Readiness != BiologicalConditionReadinessState.Ready)
+            {
+                failure = RecordFailure("Biological Condition Operation", $"Biological Condition runtime is not ready: {body.BiologicalConditions.Readiness}.", body.BiologicalConditions.Readiness.ToString());
+                return false;
+            }
+
+            return true;
+        }
+
+        private PrototypeTestLabOperation RecordBiologicalConditionResult(string operationName, BiologicalConditionResult result)
+        {
+            if (result == null)
+            {
+                return RecordFailure(operationName, "Biological Condition operation returned no result.", BiologicalConditionResultCode.InvalidRequest.ToString());
+            }
+
+            return Record(result.Succeeded, operationName, result.Duplicate ? BiologicalConditionResultCode.Duplicate.ToString() : result.Code.ToString(), FormatBiologicalConditionResult(result));
+        }
+
+        private static string FormatBiologicalConditionResult(BiologicalConditionResult result)
+        {
+            if (result == null)
+            {
+                return "No Biological Condition result.";
+            }
+
+            BiologicalConditionInstanceSnapshot instance = string.IsNullOrWhiteSpace(result.InstanceId)
+                ? null
+                : result.Snapshot?.Instances.FirstOrDefault(candidate => string.Equals(candidate.InstanceId, result.InstanceId, StringComparison.Ordinal));
+            return $"Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code} Instance={result.InstanceId} EffectiveDose={result.EffectiveDose:0.##} Stage={instance?.Stage.ToString() ?? string.Empty} Severity={instance?.Severity.ToString() ?? string.Empty} Load={instance?.Load ?? 0f:0.##} CompatibilityRev={result.Compatibility?.CompatibilityRevision ?? 0}. {result.Message}";
+        }
+
+        private static string FormatBiologicalConditionTickResult(BiologicalConditionTickResult result)
+        {
+            if (result == null)
+            {
+                return "No Biological Condition tick result.";
+            }
+
+            string consequences = string.Join("; ", result.Consequences.Select(consequence => $"{consequence.Flags} Vital={consequence.VitalResourceId}:{consequence.VitalPressureAmount:0.##} Hazard={consequence.HazardDefinitionId} Damage={consequence.DamageTypeId}:{consequence.Step6DamageAmount:0.##}"));
+            return $"Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code} Elapsed={result.Request.ElapsedGameSeconds:0.##} Active={result.Snapshot?.ActiveInstances.Count ?? 0} Consequences=[{consequences}]. {result.Message}";
+        }
+
+        private static string FormatBiologicalConditionConsequenceExecutionResult(BiologicalConditionConsequenceExecutionResult result)
+        {
+            if (result == null)
+            {
+                return "No Biological Condition consequence execution result.";
+            }
+
+            string tick = FormatBiologicalConditionTickResult(result.ConditionTick);
+            string vitals = string.Join("; ", result.VitalResults.Select(vital => $"{vital.Request.ResourceId} {vital.Code} {vital.PreviousValue:0.##}->{vital.NewValue:0.##} Applied={vital.AppliedAmount:0.##} Duplicate={vital.Duplicate}"));
+            string hazards = string.Join("; ", result.HazardResults.Select(hazard => $"{hazard.Code} Duplicate={hazard.Duplicate} {hazard.Message}"));
+            string recovery = string.Join("; ", result.RecoveryResults.Select(entry => $"{entry.Code} Duplicate={entry.Duplicate} {entry.Message}"));
+            string damage = string.Join("; ", result.DamageResults.Select(entry => $"{entry.Code} Damage={entry.FinalDamageAmount:0.##} Health={entry.OldHealth:0.##}->{entry.NewHealth:0.##} Duplicate={entry.Duplicate}"));
+            return $"Success={result.Succeeded} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code}. Tick=({tick}) Vitals=[{vitals}] Hazards=[{hazards}] Recovery=[{recovery}] Damage=[{damage}]. {result.Message}";
         }
 
         private PrototypeTestLabOperation StartRecoveryProcess(string methodId, RecoveryTargetCategory targetCategory, string nodeId, string resourceId, bool preview, bool ensureTarget, string injuryDefinitionId = "injury.laceration")

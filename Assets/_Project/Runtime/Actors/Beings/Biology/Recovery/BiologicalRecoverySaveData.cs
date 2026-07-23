@@ -19,8 +19,18 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
         public long recoveryRevision;
         public RecoveryRestContextSaveData restContext;
         public RecoveryProcessSaveData[] processes = Array.Empty<RecoveryProcessSaveData>();
+        public RecoveryRateModifierSaveData[] rateModifiers = Array.Empty<RecoveryRateModifierSaveData>();
         public string[] committedTransactionIds = Array.Empty<string>();
         public string[] committedTickIds = Array.Empty<string>();
+    }
+
+    [Serializable]
+    public sealed class RecoveryRateModifierSaveData
+    {
+        public string sourceId;
+        public float rateMultiplier;
+        public string reason;
+        public long revision;
     }
 
     [Serializable]

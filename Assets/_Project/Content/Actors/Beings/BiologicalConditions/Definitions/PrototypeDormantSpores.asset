@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a790000000000000000000000000002, type: 3}
+  m_Name: PrototypeDormantSpores
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Beings.Biology.BiologicalConditions.BiologicalConditionDefinition
+  conditionId: condition.biology.prototype-dormant-spores
+  displayName: Prototype Dormant Spores
+  description: Fictional dormant-condition fixture for relapse and carrier foundations.
+  family: 18
+  strainId: strain.prototype.dormant-alpha
+  biologicalInteractionDefinitionId: interaction.condition.infection
+  allowedRoutes: [2, 9]
+  targetAnatomyTagIds: []
+  requiredAnatomyNodeId: 
+  requiresActiveInjury: 0
+  stackingPolicy: 0
+  establishmentThreshold: 9
+  baseProgressionRate: 0.25
+  baseRegressionRate: 0.05
+  immuneClearanceRate: 0.01
+  symptomThreshold: 30
+  vitalResourceId: 
+  vitalPressurePerTick: 0
+  hazardDefinitionId: 
+  hazardRateMultiplier: 1
+  damageType: {fileID: 0}
+  step6DamagePerTick: 0
+  recoveryRateMultiplier: 1
+  grantsImmunityMemoryOnClear: 0
+  transmissionMode: 2
+  transmissionDose: 2
+  transformationPolicy: 1
+  bodyReplacementPolicy: 0
+  stageRules:
+  - stage: 9
+    minimumLoad: 0
+    severity: 0
+    terminal: 0
+  - stage: 4
+    minimumLoad: 30
+    severity: 2
+    terminal: 0
+  symptoms:
+  - symptomId: symptom.prototype-relapse
+    displayName: Relapse
+    minimumStage: 4
+    minimumSeverity: 2
+    sourceContributionId: 
+  tags: []
+  alphaEnabled: 1
+  validationMetadata: Feature 7.9 canonical alpha condition.

@@ -166,6 +166,48 @@ MonoBehaviour:
     requiredNodeId: 
     explanation: Spirits are incompatible with ordinary biological healing.
     alphaEnabled: 1
+  - entryId: profile.spirit.disease-incompatible
+    sourceKind: 1
+    sourceId:
+    interactionDefinitionId: interaction.condition.disease
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId:
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories:
+    requiredNodeId:
+    explanation: Spirits are incompatible with ordinary biological disease.
+    alphaEnabled: 1
+  - entryId: profile.spirit.poison-incompatible
+    sourceKind: 1
+    sourceId:
+    interactionDefinitionId: interaction.condition.poison
+    category: 0
+    ruleKind: 0
+    compatibilityState: 1
+    rateMultiplier: 1
+    severityMultiplier: 1
+    consequenceMultiplier: 1
+    minimumEffectFloor: 0
+    maximumSeverity: 999
+    priority: 0
+    convertedInteractionDefinitionId:
+    requiredRuntimeCapabilityKeys: []
+    blockingRuntimeCapabilityKeys: []
+    requiredAnatomyTagIds: []
+    requiredNodeCategories:
+    requiredNodeId:
+    explanation: Spirits are incompatible with ordinary poison.
+    alphaEnabled: 1
   - entryId: profile.spirit.restoration-affinity
     sourceKind: 1
     sourceId: 

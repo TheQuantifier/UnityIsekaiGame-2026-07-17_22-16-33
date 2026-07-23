@@ -79,4 +79,22 @@ namespace UnityIsekaiGame.Beings.Biology.Recovery
         public float Quality { get; set; } = 1f;
         public string[] Tags { get; set; } = Array.Empty<string>();
     }
+
+    public readonly struct RecoveryRateModifierRequest
+    {
+        public RecoveryRateModifierRequest(string actorBodyId, string sourceId, float rateMultiplier, string transactionId, string reason = "")
+        {
+            ActorBodyId = actorBodyId ?? string.Empty;
+            SourceId = sourceId ?? string.Empty;
+            RateMultiplier = rateMultiplier;
+            TransactionId = transactionId ?? string.Empty;
+            Reason = reason ?? string.Empty;
+        }
+
+        public string ActorBodyId { get; }
+        public string SourceId { get; }
+        public float RateMultiplier { get; }
+        public string TransactionId { get; }
+        public string Reason { get; }
+    }
 }
