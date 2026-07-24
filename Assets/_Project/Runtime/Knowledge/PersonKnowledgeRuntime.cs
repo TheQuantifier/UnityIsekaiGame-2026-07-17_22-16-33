@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Knowledge.Access;
 
 namespace UnityIsekaiGame.Knowledge
 {
@@ -180,6 +181,46 @@ namespace UnityIsekaiGame.Knowledge
                 beliefs,
                 evidenceById.Values.Select(data => new KnowledgeEvidenceRecord(data)).OrderBy(record => record.EvidenceId, StringComparer.Ordinal).ToArray(),
                 diagnostics);
+        }
+
+        public InformationAccessProjection<KnowledgeBeliefRecord> GetKnowledgeProjection(KnowledgePropositionData proposition, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, string policyId = "", bool recordAudit = false)
+        {
+            if (!TryGetBelief(proposition, out KnowledgeBeliefRecord belief))
+            {
+                return new InformationAccessProjection<KnowledgeBeliefRecord>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, "Knowledge belief was not found.");
+            }
+
+            string[] detailIds = KnowledgeDetailIds(belief);
+            InformationAccessContext context = InformationAccessProjectionUtility.BuildContext(
+                accessContext,
+                BuildKnowledgeSubject(belief),
+                InformationAccessMode.Query,
+                InformationAccessPurpose.Codex,
+                detailIds,
+                policyId);
+            RedactedInformationProjection projection = accessRuntime?.Project(context, detailIds);
+            if (projection == null)
+            {
+                return new InformationAccessProjection<KnowledgeBeliefRecord>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, "Information access runtime is missing.");
+            }
+
+            if (recordAudit)
+            {
+                accessRuntime.RecordAudit(projection.Decision, context, gameplayAudit: false);
+            }
+
+            KnowledgeBeliefRecord projected = projection.Decision.Denied ? null : MaterializeKnowledgeBelief(belief, projection.Details);
+            string visibleSubjectId = projected == null || !InformationAccessProjectionUtility.IsVisible(projection.Details, "detail.belief") ? string.Empty : projected.BeliefId;
+            return new InformationAccessProjection<KnowledgeBeliefRecord>(projected, projection.Decision, projection.Details, visibleSubjectId, projection.Decision.VisibleReason);
+        }
+
+        public IReadOnlyList<InformationAccessProjection<KnowledgeBeliefRecord>> QueryKnowledgeProjections(InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, KnowledgeDomain? domain = null, string subjectId = null, string policyId = "")
+        {
+            return CreateSnapshot(domain, subjectId).Beliefs
+                .Select(record => GetKnowledgeProjection(record.Data.proposition, accessRuntime, accessContext, policyId, recordAudit: false))
+                .Where(projection => projection.Succeeded)
+                .OrderBy(projection => projection.Record == null ? string.Empty : projection.Record.BeliefId, StringComparer.Ordinal)
+                .ToArray();
         }
 
         public bool TryGetBelief(KnowledgePropositionData proposition, out KnowledgeBeliefRecord belief)
@@ -659,6 +700,73 @@ namespace UnityIsekaiGame.Knowledge
         {
             TryResolveFact(data?.proposition?.factDefinitionId, out KnowledgeFactDefinition definition);
             return data == null ? null : new KnowledgeBeliefRecord(data, definition);
+        }
+
+        private static InformationSubjectReferenceData BuildKnowledgeSubject(KnowledgeBeliefRecord belief)
+        {
+            return new InformationSubjectReferenceData
+            {
+                subjectType = InformationSubjectType.Belief,
+                subjectId = belief?.BeliefId ?? string.Empty,
+                parentSubjectId = KnowledgeProposition.BuildIdentity(belief?.Data.proposition),
+                ownerPersonId = belief?.PersonId ?? string.Empty,
+                tags = new[] { "knowledge", belief?.Proposition.FactDefinitionId ?? string.Empty }.Where(value => !string.IsNullOrWhiteSpace(value)).ToArray()
+            };
+        }
+
+        private static string[] KnowledgeDetailIds(KnowledgeBeliefRecord belief)
+        {
+            return new[]
+            {
+                "detail.summary",
+                "detail.belief",
+                "detail.proposition",
+                "detail.fact",
+                "detail.subject",
+                "detail.object",
+                "detail.value",
+                "detail.confidence",
+                "detail.evidence",
+                "detail.sources",
+                "detail.truth",
+                "detail.context"
+            };
+        }
+
+        private KnowledgeBeliefRecord MaterializeKnowledgeBelief(KnowledgeBeliefRecord belief, IReadOnlyDictionary<string, InformationRedactionState> details)
+        {
+            if (belief == null)
+            {
+                return null;
+            }
+
+            if (details.Values.All(state => state == InformationRedactionState.Visible))
+            {
+                return belief;
+            }
+
+            KnowledgeBeliefRecordData data = belief.Data.Clone();
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.belief")) data.beliefId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.confidence")) data.confidence = 0;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.evidence")) { data.supportingEvidenceIds = Array.Empty<string>(); data.opposingEvidenceIds = Array.Empty<string>(); }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.sources")) data.sourceIds = Array.Empty<string>();
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.truth")) data.truthState = KnowledgeTruthState.NotCompared;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.proposition"))
+            {
+                data.proposition = new KnowledgePropositionData();
+            }
+            else if (data.proposition != null)
+            {
+                KnowledgePropositionData proposition = data.proposition.Clone();
+                if (!InformationAccessProjectionUtility.IsVisible(details, "detail.fact")) proposition.factDefinitionId = string.Empty;
+                if (!InformationAccessProjectionUtility.IsVisible(details, "detail.subject")) { proposition.subjectId = string.Empty; proposition.subjectType = KnowledgeSubjectType.Unknown; }
+                if (!InformationAccessProjectionUtility.IsVisible(details, "detail.object")) { proposition.objectId = string.Empty; proposition.objectType = KnowledgeSubjectType.Unknown; }
+                if (!InformationAccessProjectionUtility.IsVisible(details, "detail.value")) { proposition.stableValueId = string.Empty; proposition.qualitativeValue = string.Empty; proposition.numericValue = 0; proposition.booleanValue = false; }
+                if (!InformationAccessProjectionUtility.IsVisible(details, "detail.context")) { proposition.locationContextId = string.Empty; proposition.bodyContextId = string.Empty; proposition.sourceContextId = string.Empty; }
+                data.proposition = proposition;
+            }
+
+            return WrapBelief(data);
         }
 
         private bool TryResolveFact(string factId, out KnowledgeFactDefinition definition)

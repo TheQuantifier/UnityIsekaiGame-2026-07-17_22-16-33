@@ -11,6 +11,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
@@ -40,6 +41,7 @@ namespace UnityIsekaiGame.Development
         public CharacterSkillCollection PlayerSkills;
         public CharacterTraitCollection PlayerTraits;
         public PersonKnowledgeRuntime PlayerKnowledge;
+        public InformationAccessRuntime InformationAccess;
         public CharacterSystemCoordinator CharacterSystem;
         public StatusEffectController PlayerStatuses;
         public PlayerIdentityProgression IdentityProgression;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Sources;
 
@@ -243,6 +244,13 @@ namespace UnityIsekaiGame.Knowledge.Sharing
         public string RetractionOfTransferId { get; set; }
         public bool DeliberateFalsehoodAuthorized { get; set; }
         public bool PrivilegedAccess { get; set; }
+        public InformationAccessRuntime AccessRuntime { get; set; }
+        public string AccessPolicyId { get; set; }
+        public InformationSubjectReferenceData AccessSubject { get; set; }
+        public string[] SenderAuthorizationIds { get; set; } = Array.Empty<string>();
+        public string[] SenderOrganizationIds { get; set; } = Array.Empty<string>();
+        public string[] SenderRoleIds { get; set; } = Array.Empty<string>();
+        public string[] SenderNeedToKnowTags { get; set; } = Array.Empty<string>();
         public PersonKnowledgeRuntime SenderKnowledge { get; set; }
         public PersonMemoryRuntime SenderMemory { get; set; }
         public InformationSourceRuntime SourceRuntime { get; set; }

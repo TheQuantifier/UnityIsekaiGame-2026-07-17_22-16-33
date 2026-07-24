@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Knowledge.Access;
 
 namespace UnityIsekaiGame.Knowledge.Sources
 {
@@ -323,6 +324,77 @@ namespace UnityIsekaiGame.Knowledge.Sources
 
             record = new InformationSourceRecord(data);
             return true;
+        }
+
+        public InformationAccessProjection<InformationSourceRecord> GetSourceProjection(string sourceInstanceId, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, string policyId = "", bool recordAudit = false)
+        {
+            if (!TryGetSource(sourceInstanceId, out InformationSourceRecord source))
+            {
+                return new InformationAccessProjection<InformationSourceRecord>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, $"Source '{sourceInstanceId}' was not found.");
+            }
+
+            string[] detailIds = SourceDetailIds(source);
+            InformationAccessContext context = InformationAccessProjectionUtility.BuildContext(
+                accessContext,
+                BuildSourceSubject(source, InformationSubjectType.Source),
+                InformationAccessMode.RevealProvenance,
+                InformationAccessPurpose.Codex,
+                detailIds,
+                policyId);
+            RedactedInformationProjection projection = accessRuntime?.Project(context, detailIds);
+            if (projection == null)
+            {
+                return new InformationAccessProjection<InformationSourceRecord>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, "Information access runtime is missing.");
+            }
+
+            if (recordAudit)
+            {
+                accessRuntime.RecordAudit(projection.Decision, context, gameplayAudit: false);
+            }
+
+            InformationSourceRecord projected = projection.Decision.Denied ? null : MaterializeSource(source, projection.Decision, projection.Details);
+            string visibleSubjectId = projected == null || !InformationAccessProjectionUtility.IsVisible(projection.Details, "detail.source") ? string.Empty : projected.SourceInstanceId;
+            return new InformationAccessProjection<InformationSourceRecord>(projected, projection.Decision, projection.Details, visibleSubjectId, projection.Decision.VisibleReason);
+        }
+
+        public InformationAccessProjection<SourceChainSnapshot> GetSourceChainProjection(string sourceInstanceId, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, string policyId = "", bool recordAudit = false)
+        {
+            if (!TryGetSource(sourceInstanceId, out InformationSourceRecord source))
+            {
+                return new InformationAccessProjection<SourceChainSnapshot>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, $"Source '{sourceInstanceId}' was not found.");
+            }
+
+            string[] detailIds = SourceChainDetailIds(source);
+            InformationAccessContext context = InformationAccessProjectionUtility.BuildContext(
+                accessContext,
+                BuildSourceSubject(source, InformationSubjectType.SourceChain),
+                InformationAccessMode.RevealProvenance,
+                InformationAccessPurpose.Codex,
+                detailIds,
+                policyId);
+            RedactedInformationProjection projection = accessRuntime?.Project(context, detailIds);
+            if (projection == null)
+            {
+                return new InformationAccessProjection<SourceChainSnapshot>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, "Information access runtime is missing.");
+            }
+
+            if (recordAudit)
+            {
+                accessRuntime.RecordAudit(projection.Decision, context, gameplayAudit: false);
+            }
+
+            SourceChainSnapshot chain = null;
+            if (!projection.Decision.Denied)
+            {
+                SourceChainSnapshot raw = TraceSourceChain(sourceInstanceId, privilegedAccess: projection.Decision.FullAccess || projection.Decision.SourceVisible);
+                chain = new SourceChainSnapshot(
+                    raw.Chain.Select(item => MaterializeSource(item, projection.Decision, projection.Details)).Where(item => item != null).ToArray(),
+                    InformationAccessProjectionUtility.IsVisible(projection.Details, "detail.transformations") ? raw.Transformations : Array.Empty<SourceTransformationData>(),
+                    raw.OriginalHidden || !projection.Decision.SourceVisible);
+            }
+
+            string visibleSubjectId = chain == null || chain.Chain.Count == 0 || !InformationAccessProjectionUtility.IsVisible(projection.Details, "detail.source") ? string.Empty : chain.ImmediateSourceId;
+            return new InformationAccessProjection<SourceChainSnapshot>(chain, projection.Decision, projection.Details, visibleSubjectId, projection.Decision.VisibleReason);
         }
 
         public InformationSourceSnapshot CreateSnapshot()
@@ -648,6 +720,87 @@ namespace UnityIsekaiGame.Knowledge.Sources
         private SourceReliabilityResult ReliabilityFailure(InformationSourceResultCode code, string message, SourceReliabilityRequest request)
         {
             return new SourceReliabilityResult(false, code, message, request, ReliabilityProfileData.Default(), 0, 0, null, null, Array.Empty<string>());
+        }
+
+        private static InformationSubjectReferenceData BuildSourceSubject(InformationSourceRecord source, InformationSubjectType subjectType)
+        {
+            return new InformationSubjectReferenceData
+            {
+                subjectType = subjectType,
+                subjectId = source?.SourceInstanceId ?? string.Empty,
+                parentSubjectId = source?.OriginalSourceId ?? string.Empty,
+                ownerPersonId = source?.Data.holderPersonId ?? string.Empty,
+                controllingEntityId = source?.Data.authorityClassification ?? string.Empty,
+                tags = source?.Data.tags == null ? Array.Empty<string>() : source.Data.tags.ToArray()
+            };
+        }
+
+        private static string[] SourceDetailIds(InformationSourceRecord source)
+        {
+            return new[]
+            {
+                "detail.summary",
+                "detail.source",
+                "detail.source-identity",
+                "detail.original-source",
+                "detail.creator",
+                "detail.observer",
+                "detail.holder",
+                "detail.transmitter",
+                "detail.subject",
+                "detail.method",
+                "detail.privacy",
+                "detail.reliability",
+                "detail.provenance"
+            };
+        }
+
+        private static string[] SourceChainDetailIds(InformationSourceRecord source)
+        {
+            return SourceDetailIds(source)
+                .Concat(new[] { "detail.chain", "detail.transformations", "detail.chain-depth" })
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        private static InformationSourceRecord MaterializeSource(InformationSourceRecord source, InformationAccessDecision decision, IReadOnlyDictionary<string, InformationRedactionState> details)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            if (details.Values.All(state => state == InformationRedactionState.Visible) && decision.SourceVisible)
+            {
+                return source;
+            }
+
+            InformationSourceInstanceData data = source.Data.Clone();
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.source")) data.sourceInstanceId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.source-identity") || !decision.SourceVisible)
+            {
+                data.referencedId = string.Empty;
+                data.sourceDefinitionId = string.Empty;
+            }
+
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.original-source") || !decision.SourceVisible)
+            {
+                data.originalSourceId = string.Empty;
+                data.parentSourceId = string.Empty;
+                data.hidesOriginal = true;
+            }
+
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.creator") || !decision.SourceVisible) data.originalCreatorPersonId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.observer") || !decision.SourceVisible) data.observerPersonId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.holder")) data.holderPersonId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.transmitter") || !decision.SourceVisible) data.transmitterPersonId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.subject")) { data.domain = KnowledgeDomain.Unknown; data.subjectId = string.Empty; }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.method")) data.methodId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.privacy")) data.authorityClassification = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.reliability")) { data.errorRisk = 0; data.deceptionRisk = 0; data.biasRisk = 0; data.biasProfileId = string.Empty; }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.provenance")) { data.supersedesSourceId = string.Empty; data.correctedBySourceId = string.Empty; }
+            return new InformationSourceRecord(data);
         }
 
         private void RememberTransaction(string transactionId, InformationSourceResultCode code, string sourceId, string assessmentId)

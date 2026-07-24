@@ -12,6 +12,7 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
@@ -70,6 +71,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerKnowledge = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
+        [SerializeField] private bool registerPlayerInformationAccess = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerCombatExecution = true;
@@ -96,6 +98,7 @@ namespace UnityIsekaiGame.Gameplay
         private PersonKnowledgePersistenceParticipant playerKnowledgeParticipant;
         private InformationSourcePersistenceParticipant playerInformationSourceParticipant;
         private InformationTransferPersistenceParticipant playerInformationTransferParticipant;
+        private InformationAccessPersistenceParticipant playerInformationAccessParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
@@ -108,6 +111,7 @@ namespace UnityIsekaiGame.Gameplay
         private CombatExecutionService combatExecutionService;
         private InformationSourceRuntime playerInformationSources;
         private InformationTransferRuntime playerInformationTransfers;
+        private InformationAccessRuntime playerInformationAccess;
         private bool dirtyEventsSubscribed;
 
         public PersistenceService Service => service;
@@ -122,6 +126,7 @@ namespace UnityIsekaiGame.Gameplay
         public CombatExecutionService CombatExecution => combatExecutionService ??= new CombatExecutionService();
         public InformationSourceRuntime InformationSources => playerInformationSources ??= new InformationSourceRuntime();
         public InformationTransferRuntime InformationTransfers => playerInformationTransfers ??= new InformationTransferRuntime();
+        public InformationAccessRuntime InformationAccess => playerInformationAccess ??= new InformationAccessRuntime();
 
         private void Awake()
         {
@@ -289,6 +294,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerKnowledgeParticipant();
             EnsurePlayerInformationSourceParticipant();
             EnsurePlayerInformationTransferParticipant();
+            EnsurePlayerInformationAccessParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -926,6 +932,40 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerInformationTransferParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerInformationAccessParticipant()
+        {
+            if (!registerPlayerInformationAccess || playerInformationAccessParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerIdentityProgression == null)
+            {
+                Debug.LogWarning("Information Access persistence participant was not registered because the prototype Person identity/progression component is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Information Access persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            InformationAccess.Configure(GetDefinitionRegistry(), playerIdentityProgression.PersonId);
+            playerInformationAccessParticipant = new InformationAccessPersistenceParticipant(
+                InformationAccess,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerInformationAccessParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerInformationAccessParticipant = null;
             }
         }
 
