@@ -12,6 +12,7 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Places;
@@ -66,6 +67,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerTraits = true;
         [SerializeField] private bool registerPlayerBody = true;
         [SerializeField] private bool registerPlayerKnowledge = true;
+        [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerCombatExecution = true;
@@ -90,6 +92,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerTraitsPersistenceParticipant playerTraitsParticipant;
         private PlayerBodyPersistenceParticipant playerBodyParticipant;
         private PersonKnowledgePersistenceParticipant playerKnowledgeParticipant;
+        private InformationSourcePersistenceParticipant playerInformationSourceParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
@@ -100,6 +103,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerLocationPersistenceParticipant playerLocationParticipant;
         private DefinitionRegistry definitionRegistry;
         private CombatExecutionService combatExecutionService;
+        private InformationSourceRuntime playerInformationSources;
         private bool dirtyEventsSubscribed;
 
         public PersistenceService Service => service;
@@ -112,6 +116,7 @@ namespace UnityIsekaiGame.Gameplay
         public AutosaveCoordinator Autosave => autosaveCoordinator;
         public DefinitionCatalog DefinitionCatalog => definitionCatalog;
         public CombatExecutionService CombatExecution => combatExecutionService ??= new CombatExecutionService();
+        public InformationSourceRuntime InformationSources => playerInformationSources ??= new InformationSourceRuntime();
 
         private void Awake()
         {
@@ -277,6 +282,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerTraitsParticipant();
             EnsurePlayerBodyParticipant();
             EnsurePlayerKnowledgeParticipant();
+            EnsurePlayerInformationSourceParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -296,11 +302,11 @@ namespace UnityIsekaiGame.Gameplay
             return result;
         }
 
-        public PersistenceLoadResult LoadPrototypeSlot()
+        public PersistenceLoadResult LoadPrototypeSlot(bool expectedFailureAsInfo = false)
         {
             EnsureInitialized();
             PersistenceLoadResult result = service.Load(PrototypeSlotId);
-            Report(result.Succeeded, result.Message);
+            Report(result.Succeeded, result.Message, expectedFailureAsInfo);
             return result;
         }
 
@@ -530,9 +536,9 @@ namespace UnityIsekaiGame.Gameplay
             Report(true, $"Next persistence fault: {point}");
         }
 
-        private static void Report(bool succeeded, string message)
+        private static void Report(bool succeeded, string message, bool failureAsInfo = false)
         {
-            if (succeeded)
+            if (succeeded || failureAsInfo)
             {
                 Debug.Log(message);
             }
@@ -846,6 +852,40 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerKnowledgeParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerInformationSourceParticipant()
+        {
+            if (!registerPlayerInformationSources || playerInformationSourceParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerIdentityProgression == null)
+            {
+                Debug.LogWarning("Information Source persistence participant was not registered because the prototype Person identity/progression component is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Information Source persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            InformationSources.Configure(GetDefinitionRegistry(), playerIdentityProgression.PersonId);
+            playerInformationSourceParticipant = new InformationSourcePersistenceParticipant(
+                InformationSources,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerInformationSourceParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerInformationSourceParticipant = null;
             }
         }
 

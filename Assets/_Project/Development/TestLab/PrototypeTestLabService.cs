@@ -36,6 +36,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Observation;
+using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
@@ -112,6 +113,7 @@ namespace UnityIsekaiGame.Development
         private readonly Dictionary<string, GameObject> combatStateTestActors = new Dictionary<string, GameObject>(StringComparer.Ordinal);
         private readonly AuthoritativeHistoryRuntime authoritativeHistory = new AuthoritativeHistoryRuntime();
         private readonly PersonMemoryRuntime playerMemory = new PersonMemoryRuntime();
+        private InformationSourceRuntime informationSources = new InformationSourceRuntime();
         private AuthoritativeHistorySaveData lastHistorySaveData;
         private PersonMemorySaveData lastMemorySaveData;
 
@@ -145,6 +147,8 @@ namespace UnityIsekaiGame.Development
 
             EnsureKnowledgeRuntime(out _);
             EnsureHistoryRuntime(out _, out _);
+            informationSources = context?.Persistence?.InformationSources ?? informationSources ?? new InformationSourceRuntime();
+            informationSources.Configure(registry, GetPrototypePersonId());
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -4509,6 +4513,486 @@ namespace UnityIsekaiGame.Development
             ObservationResult result = service.Observe(knowledge, context, privateProjection, preview: false);
             bool succeeded = !result.Succeeded && result.Code == ObservationOutcomeCode.AccessDenied;
             return Record(succeeded, "Reject 8.2 Private Observation", succeeded ? "Success" : result.Code.ToString(), FormatObservationResult(result));
+        }
+
+        public string BuildInformationSourceSummary()
+        {
+            informationSources.Configure(registry, GetPrototypePersonId());
+            InformationSourceSnapshot snapshot = informationSources.CreateSnapshot();
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 8.6 Information Sources and Reliability");
+            builder.AppendLine($"Owner: {snapshot.OwnerId} Revision: {snapshot.Revision} Sources: {snapshot.Sources.Count} Assessments: {snapshot.Assessments.Count} Transformations: {snapshot.Transformations.Count}");
+            foreach (InformationSourceRecord source in snapshot.Sources.Take(12))
+            {
+                builder.AppendLine($"{source.Category}: {source.SourceInstanceId} ref={source.Data.referenceType}:{source.Data.referencedId} original={source.OriginalSourceId} privacy={source.Privacy} gen={source.Data.generation}");
+            }
+
+            foreach (PersonSourceAssessmentRecord assessment in snapshot.Assessments.Take(8))
+            {
+                builder.AppendLine($"Assessment: {assessment.AssessingPersonId} source={assessment.SourceInstanceId} overall={assessment.Data.reliability.DeriveOverall()} authority={assessment.Data.authority} bias={assessment.Data.biasRisk} error={assessment.Data.errorRisk} deception={assessment.Data.deceptionRisk}");
+            }
+
+            PrototypeTestLabOperation last = history.Count == 0 ? default : history[0];
+            if (!string.IsNullOrWhiteSpace(last.OperationName) && last.OperationName.Contains("8.6", StringComparison.Ordinal))
+            {
+                builder.AppendLine($"Last 8.6: {last.OperationName} Code={last.Code} Success={last.Succeeded}");
+                builder.AppendLine(last.Message);
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateInformationSourceDefinitions()
+        {
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            Dictionary<string, IGameDefinition> definitions = new Dictionary<string, IGameDefinition>(StringComparer.Ordinal);
+            foreach (InformationSourceDefinition definition in CreatePrototypeSourceDefinitions())
+            {
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                definitions[definition.Id] = definition;
+                definition.ValidateCatalogDefinition(definitions, report);
+            }
+
+            bool succeeded = report.ErrorCount == 0 && report.WarningCount == 0;
+            return Record(succeeded, "Validate 8.6 Source Definitions", succeeded ? "Success" : "ValidationFailed", report.GetSummary());
+        }
+
+        public PrototypeTestLabOperation RegisterDirectObservationSource() => RegisterPrototypeSource("Register 8.6 Direct Observation Source", GetPrototypeDirectObservationSourceId(), InformationSourceCategory.DirectObservation, InformationSourceReferenceType.Body, GetPrototypeBodyId(), KnowledgeDomain.Medical, "observation-method.ordinary-visual");
+        public PrototypeTestLabOperation RegisterExpertSource() => RegisterPrototypeSource("Register 8.6 Expert Source", "information-source.prototype.expert", InformationSourceCategory.ExpertTestimony, InformationSourceReferenceType.Person, "person.prototype.expert-healer", KnowledgeDomain.Medical, "examination-method.medical", authority: "licensed-healer");
+        public PrototypeTestLabOperation RegisterTestimonySource() => RegisterPrototypeSource("Register 8.6 Testimony Source", "information-source.prototype.testimony", InformationSourceCategory.PersonalTestimony, InformationSourceReferenceType.Person, "person.prototype.npc", KnowledgeDomain.Historical, string.Empty);
+        public PrototypeTestLabOperation RegisterAnonymousSource() => RegisterPrototypeSource("Register 8.6 Anonymous Source", "information-source.prototype.anonymous", InformationSourceCategory.AnonymousTestimony, InformationSourceReferenceType.None, string.Empty, KnowledgeDomain.Social, string.Empty, privacy: SourcePrivacyLevel.Shared);
+        public PrototypeTestLabOperation RegisterOfficialRecordSource() => RegisterPrototypeSource("Register 8.6 Official Record", "information-source.prototype.official-record", InformationSourceCategory.OfficialRecord, InformationSourceReferenceType.Document, "document.prototype.guild-notice", KnowledgeDomain.Faction, string.Empty, authority: "guild-record");
+
+        public PrototypeTestLabOperation CopySource() => TransformPrototypeSource("Copy 8.6 Source", "information-source.prototype.copy", InformationSourceTransformationType.Copy, 820, hidesOriginal: false);
+        public PrototypeTestLabOperation TranslateSource() => TransformPrototypeSource("Translate 8.6 Source", "information-source.prototype.translation", InformationSourceTransformationType.Translation, 760, hidesOriginal: false);
+        public PrototypeTestLabOperation SummarizeSource() => TransformPrototypeSource("Summarize 8.6 Source", "information-source.prototype.summary", InformationSourceTransformationType.Summary, 680, hidesOriginal: false);
+
+        public PrototypeTestLabOperation EvaluateReliability()
+        {
+            EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
+            SourceReliabilityResult result = informationSources.EvaluateReliability(new SourceReliabilityRequest
+            {
+                EvaluatingPersonId = GetPrototypePersonId(),
+                SourceInstanceId = "information-source.prototype.expert",
+                Domain = KnowledgeDomain.Medical,
+                SubjectId = GetPrototypeBodyId(),
+                MethodId = "examination-method.medical",
+                WorldTimeSeconds = GetPrototypeWorldTime()
+            });
+            return RecordReliability("Evaluate 8.6 Reliability", result);
+        }
+
+        public PrototypeTestLabOperation CompareTwoPersonsSourceAssessments()
+        {
+            EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
+            AssessPrototypeSource("source-assessment.prototype.player.trust", GetPrototypePersonId(), "information-source.prototype.expert", 850, 150, 80, 120);
+            AssessPrototypeSource("source-assessment.prototype.rival.distrust", "person.prototype.rival", "information-source.prototype.expert", 320, 650, 600, 520);
+            SourceReliabilityResult player = EvaluateFor(GetPrototypePersonId(), "information-source.prototype.expert");
+            SourceReliabilityResult rival = EvaluateFor("person.prototype.rival", "information-source.prototype.expert");
+            bool succeeded = player.Succeeded && rival.Succeeded && player.DerivedOverall > rival.DerivedOverall;
+            return Record(succeeded, "Compare 8.6 Person Assessments", succeeded ? "Success" : "AssessmentComparisonFailed", $"Player={player.DerivedOverall} Rival={rival.DerivedOverall}. Same source has person-relative reliability.");
+        }
+
+        public PrototypeTestLabOperation MarkSourceTrusted()
+        {
+            EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
+            InformationSourceOperationResult result = AssessPrototypeSource($"source-assessment.prototype.trusted.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.expert", 900, 80, 50, 80);
+            return RecordSourceOperation("Mark 8.6 Source Trusted", result);
+        }
+
+        public PrototypeTestLabOperation MarkSourceUntrusted()
+        {
+            EnsurePrototypeSource("information-source.prototype.testimony", InformationSourceCategory.PersonalTestimony);
+            InformationSourceOperationResult result = AssessPrototypeSource($"source-assessment.prototype.untrusted.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.testimony", 250, 700, 650, 600);
+            return RecordSourceOperation("Mark 8.6 Source Untrusted", result);
+        }
+
+        public PrototypeTestLabOperation AddSourceDomainAuthority()
+        {
+            EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
+            InformationSourceOperationResult result = AssessPrototypeSource($"source-assessment.prototype.authority.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.expert", 820, 120, 100, 120, authority: 930);
+            return RecordSourceOperation("Add 8.6 Domain Authority", result);
+        }
+
+        public PrototypeTestLabOperation AddSourceBias()
+        {
+            EnsurePrototypeSource("information-source.prototype.testimony", InformationSourceCategory.PersonalTestimony);
+            InformationSourceOperationResult result = AssessPrototypeSource($"source-assessment.prototype.bias.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.testimony", 520, 220, 180, 820);
+            return RecordSourceOperation("Add 8.6 Bias", result);
+        }
+
+        public PrototypeTestLabOperation AddSourceErrorRisk()
+        {
+            EnsurePrototypeSource("information-source.prototype.testimony", InformationSourceCategory.PersonalTestimony);
+            InformationSourceOperationResult result = AssessPrototypeSource($"source-assessment.prototype.error.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.testimony", 520, 820, 180, 180);
+            return RecordSourceOperation("Add 8.6 Error Risk", result);
+        }
+
+        public PrototypeTestLabOperation AddSourceDeceptionRisk()
+        {
+            EnsurePrototypeSource("information-source.prototype.anonymous", InformationSourceCategory.AnonymousTestimony);
+            InformationSourceOperationResult result = AssessPrototypeSource($"source-assessment.prototype.deception.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.anonymous", 320, 400, 900, 350);
+            return RecordSourceOperation("Add 8.6 Deception Risk", result);
+        }
+
+        public PrototypeTestLabOperation AgeSource()
+        {
+            string sourceId = $"information-source.prototype.aged-record.{Guid.NewGuid():N}";
+            RegisterPrototypeSource("Age 8.6 Source Setup", sourceId, InformationSourceCategory.HistoricalRecord, InformationSourceReferenceType.Document, "document.prototype.old-map", KnowledgeDomain.Historical, string.Empty, creationTime: 0d);
+            SourceReliabilityResult now = informationSources.EvaluateReliability(new SourceReliabilityRequest { EvaluatingPersonId = GetPrototypePersonId(), SourceInstanceId = sourceId, Domain = KnowledgeDomain.Historical, WorldTimeSeconds = 0d });
+            SourceReliabilityResult later = informationSources.EvaluateReliability(new SourceReliabilityRequest { EvaluatingPersonId = GetPrototypePersonId(), SourceInstanceId = sourceId, Domain = KnowledgeDomain.Historical, WorldTimeSeconds = 5000d });
+            bool succeeded = now.Succeeded && later.Succeeded && later.FinalDimensions.recency <= now.FinalDimensions.recency;
+            return Record(succeeded, "Age 8.6 Source", succeeded ? "Success" : "AgeCheckFailed", $"Recency {now.FinalDimensions.recency}->{later.FinalDimensions.recency} Overall {now.DerivedOverall}->{later.DerivedOverall}.");
+        }
+
+        public PrototypeTestLabOperation EvaluateSourceStaleness() => AgeSource();
+
+        public PrototypeTestLabOperation TraceSourceChain()
+        {
+            EnsureTransformedSource("information-source.prototype.translation", InformationSourceTransformationType.Translation);
+            SourceChainSnapshot chain = informationSources.TraceSourceChain("information-source.prototype.translation", privilegedAccess: true);
+            bool succeeded = chain.Chain.Count >= 2 && chain.TransmissionDepth >= 1;
+            return Record(succeeded, "Trace 8.6 Source Chain", succeeded ? "Success" : "ChainFailed", $"Immediate={chain.ImmediateSourceId} Original={chain.OriginalSourceId} Depth={chain.TransmissionDepth} Hidden={chain.OriginalHidden}.");
+        }
+
+        public PrototypeTestLabOperation CompareImmediateAndOriginalSource()
+        {
+            EnsureTransformedSource("information-source.prototype.summary", InformationSourceTransformationType.Summary);
+            SourceChainSnapshot chain = informationSources.TraceSourceChain("information-source.prototype.summary", privilegedAccess: true);
+            bool succeeded = !string.Equals(chain.ImmediateSourceId, chain.OriginalSourceId, StringComparison.Ordinal);
+            return Record(succeeded, "Compare 8.6 Immediate Original", succeeded ? "Success" : "SameSource", $"Immediate={chain.ImmediateSourceId} Original={chain.OriginalSourceId} Depth={chain.TransmissionDepth}.");
+        }
+
+        public PrototypeTestLabOperation TestDependentReports()
+        {
+            EnsureTransformedSource("information-source.prototype.copy", InformationSourceTransformationType.Copy);
+            SourceIndependenceState state = informationSources.CompareIndependence("information-source.prototype.official-record", "information-source.prototype.copy");
+            bool succeeded = state == SourceIndependenceState.Dependent;
+            return Record(succeeded, "Test 8.6 Dependent Reports", succeeded ? "Success" : state.ToString(), $"Independence={state}.");
+        }
+
+        public PrototypeTestLabOperation TestIndependentCorroboration()
+        {
+            string directSourceId = GetPrototypeDirectObservationSourceId();
+            EnsurePrototypeSource(directSourceId, InformationSourceCategory.DirectObservation);
+            EnsurePrototypeSource("information-source.prototype.official-record", InformationSourceCategory.OfficialRecord);
+            SourceIndependenceState state = informationSources.CompareIndependence(directSourceId, "information-source.prototype.official-record");
+            bool succeeded = state == SourceIndependenceState.Independent || state == SourceIndependenceState.PartiallyIndependent;
+            return Record(succeeded, "Test 8.6 Independent Corroboration", succeeded ? "Success" : state.ToString(), $"Independence={state}.");
+        }
+
+        public PrototypeTestLabOperation CorrectSourceAssessment()
+        {
+            EnsurePrototypeSource("information-source.prototype.testimony", InformationSourceCategory.PersonalTestimony);
+            AssessPrototypeSource("source-assessment.prototype.corrected", GetPrototypePersonId(), "information-source.prototype.testimony", 250, 700, 650, 600);
+            InformationSourceOperationResult correction = AssessPrototypeSource("source-assessment.prototype.corrected", GetPrototypePersonId(), "information-source.prototype.testimony", 760, 180, 140, 200);
+            bool succeeded = correction.Succeeded && correction.Assessment?.Data.revision >= 2;
+            return Record(succeeded, "Correct 8.6 Source Assessment", succeeded ? "Success" : correction.Code.ToString(), $"Revision={correction.Assessment?.Data.revision ?? 0} Supersedes={correction.Assessment?.Data.supersedesAssessmentId}.");
+        }
+
+        public PrototypeTestLabOperation HideOriginalSource()
+        {
+            EnsurePrototypeSource("information-source.prototype.official-record", InformationSourceCategory.OfficialRecord);
+            InformationSourceOperationResult transformed = informationSources.TransformSource(new SourceTransformationRequest
+            {
+                TransactionId = $"source.hide-original.{Guid.NewGuid():N}",
+                ParentSourceId = "information-source.prototype.official-record",
+                SourceInstanceId = "information-source.prototype.hidden-summary",
+                TransformationType = InformationSourceTransformationType.Summary,
+                ActorPersonId = GetPrototypePersonId(),
+                WorldTimeSeconds = GetPrototypeWorldTime(),
+                HidesOriginal = true,
+                Quality = 700
+            });
+            SourceChainSnapshot publicChain = informationSources.TraceSourceChain("information-source.prototype.hidden-summary", privilegedAccess: false);
+            SourceChainSnapshot privateChain = informationSources.TraceSourceChain("information-source.prototype.hidden-summary", privilegedAccess: true);
+            bool succeeded = transformed.Succeeded && publicChain.OriginalHidden && privateChain.TransmissionDepth >= 1;
+            return Record(succeeded, "Hide 8.6 Original Source", succeeded ? "Success" : transformed.Code.ToString(), $"PublicHidden={publicChain.OriginalHidden} PrivateDepth={privateChain.TransmissionDepth}.");
+        }
+
+        public PrototypeTestLabOperation CompareRawAndEffectiveEvidenceStrength()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Compare 8.6 Raw Effective Evidence", "Knowledge runtime is missing.", KnowledgeResultCode.MissingPerson.ToString());
+            }
+
+            EnsurePrototypeSource("information-source.prototype.testimony", InformationSourceCategory.PersonalTestimony);
+            AssessPrototypeSource($"source-assessment.prototype.evidence.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.testimony", 500, 700, 650, 620);
+            SourceReliabilityResult reliability = EvaluateFor(GetPrototypePersonId(), "information-source.prototype.testimony");
+            int raw = 800;
+            int effective = informationSources.CalculateEffectiveEvidenceStrength(raw, reliability);
+            KnowledgeObservationRequest request = BuildPrototypeSourceEvidenceRequest(knowledge, $"knowledge.source-effective.{Guid.NewGuid():N}", "information-source.prototype.testimony", raw, effective, reliability);
+            KnowledgeOperationResult result = knowledge.RecordObservation(request);
+            bool succeeded = result.Succeeded && result.Evidence.RawStrength == raw && result.Evidence.EffectiveStrength == effective && effective < raw;
+            return Record(succeeded, "Compare 8.6 Raw Effective Evidence", succeeded ? "Success" : result.Code.ToString(), $"Raw={raw} Effective={effective} BeliefConfidence={result.ResultingBelief?.Confidence ?? 0} SourceReliability={reliability.DerivedOverall}.");
+        }
+
+        public PrototypeTestLabOperation ValidateInformationSourceSaveRestore()
+        {
+            EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
+            AssessPrototypeSource($"source-assessment.prototype.save.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.expert", 850, 100, 80, 100);
+            InformationSourceSaveData saveData = informationSources.CreateSaveData();
+            long before = informationSources.SourceRevision;
+            int events = 0;
+            void CountEvent(InformationSourceRuntime _, InformationSourceOperationResult __) => events++;
+            informationSources.SourcesChanged += CountEvent;
+            InformationSourceOperationResult result = informationSources.RestoreFromSaveData(saveData, registry, informationSources.OwnerId, restoring: true);
+            informationSources.SourcesChanged -= CountEvent;
+            bool succeeded = result.Succeeded && events == 0 && informationSources.SourceRevision == before;
+            return Record(succeeded, "Information Source Save Restore", succeeded ? "Success" : result.Code.ToString(), $"{result.Message} Events={events} Revision={before}->{informationSources.SourceRevision} Sources={informationSources.CreateSnapshot().Sources.Count}.");
+        }
+
+        private PrototypeTestLabOperation RegisterPrototypeSource(string operationName, string sourceId, InformationSourceCategory category, InformationSourceReferenceType referenceType, string referencedId, KnowledgeDomain domain, string methodId, string authority = "", SourcePrivacyLevel privacy = SourcePrivacyLevel.Public, double? creationTime = null)
+        {
+            informationSources.Configure(registry, GetPrototypePersonId());
+            InformationSourceOperationResult result = informationSources.RegisterSource(new InformationSourceRegistrationRequest
+            {
+                TransactionId = $"source.register.{SanitizeForTransaction(sourceId)}.{Guid.NewGuid():N}",
+                SourceInstanceId = sourceId,
+                Category = category,
+                ReferenceType = referenceType,
+                ReferencedId = referencedId ?? string.Empty,
+                OriginalCreatorPersonId = category == InformationSourceCategory.DirectObservation ? GetPrototypePersonId() : "person.prototype.source-origin",
+                ObserverPersonId = category == InformationSourceCategory.DirectObservation ? GetPrototypePersonId() : string.Empty,
+                HolderPersonId = GetPrototypePersonId(),
+                TransmitterPersonId = category == InformationSourceCategory.DirectObservation ? string.Empty : "person.prototype.transmitter",
+                CreationWorldTimeSeconds = Math.Max(0d, creationTime ?? GetPrototypeWorldTime()),
+                ObservationWorldTimeSeconds = GetPrototypeWorldTime(),
+                TransmissionWorldTimeSeconds = GetPrototypeWorldTime(),
+                Domain = domain,
+                SubjectId = string.IsNullOrWhiteSpace(referencedId) ? GetPrototypePersonId() : referencedId,
+                MethodId = methodId ?? string.Empty,
+                AuthorityClassification = authority ?? string.Empty,
+                ErrorRisk = category == InformationSourceCategory.Hearsay || category == InformationSourceCategory.AnonymousTestimony ? 550 : 180,
+                DeceptionRisk = category == InformationSourceCategory.AnonymousTestimony ? 600 : 120,
+                BiasRisk = category == InformationSourceCategory.PersonalTestimony ? 320 : 140,
+                Privacy = privacy,
+                Tags = new[] { "feature.8.6", category.ToString() }
+            });
+            return RecordSourceOperation(operationName, result);
+        }
+
+        private InformationSourceOperationResult EnsurePrototypeSource(string sourceId, InformationSourceCategory category)
+        {
+            if (informationSources.TryGetSource(sourceId, out _))
+            {
+                return InformationSourceOperationResult.Success("Source already exists.", string.Empty, null, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: true);
+            }
+
+            InformationSourceReferenceType referenceType = category switch
+            {
+                InformationSourceCategory.DirectObservation => InformationSourceReferenceType.Body,
+                InformationSourceCategory.ExpertTestimony => InformationSourceReferenceType.Person,
+                InformationSourceCategory.OfficialRecord => InformationSourceReferenceType.Document,
+                InformationSourceCategory.HistoricalRecord => InformationSourceReferenceType.Document,
+                InformationSourceCategory.AnonymousTestimony => InformationSourceReferenceType.None,
+                _ => InformationSourceReferenceType.Person
+            };
+            string referenced = sourceId == "information-source.prototype.expert" ? "person.prototype.expert-healer"
+                : sourceId == "information-source.prototype.testimony" ? "person.prototype.npc"
+                : sourceId == "information-source.prototype.official-record" ? "document.prototype.guild-notice"
+                : referenceType == InformationSourceReferenceType.Body ? GetPrototypeBodyId()
+                : referenceType == InformationSourceReferenceType.Document ? $"document.prototype.{SanitizeForTransaction(sourceId)}"
+                : referenceType == InformationSourceReferenceType.None ? string.Empty
+                : "person.prototype.source";
+            RegisterPrototypeSource($"Ensure 8.6 {category}", sourceId, category, referenceType, referenced, KnowledgeDomain.Medical, category == InformationSourceCategory.DirectObservation ? "observation-method.ordinary-visual" : string.Empty);
+            informationSources.TryGetSource(sourceId, out InformationSourceRecord record);
+            return InformationSourceOperationResult.Success("Source ensured.", string.Empty, record, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: record != null);
+        }
+
+        private PrototypeTestLabOperation TransformPrototypeSource(string operationName, string newSourceId, InformationSourceTransformationType transformationType, int quality, bool hidesOriginal)
+        {
+            EnsurePrototypeSource("information-source.prototype.official-record", InformationSourceCategory.OfficialRecord);
+            InformationSourceOperationResult result = informationSources.TransformSource(new SourceTransformationRequest
+            {
+                TransactionId = $"source.transform.{SanitizeForTransaction(newSourceId)}.{Guid.NewGuid():N}",
+                ParentSourceId = "information-source.prototype.official-record",
+                SourceInstanceId = newSourceId,
+                TransformationType = transformationType,
+                ActorPersonId = GetPrototypePersonId(),
+                WorldTimeSeconds = GetPrototypeWorldTime(),
+                Quality = quality,
+                HidesOriginal = hidesOriginal,
+                Note = operationName
+            });
+            return RecordSourceOperation(operationName, result);
+        }
+
+        private InformationSourceOperationResult EnsureTransformedSource(string sourceId, InformationSourceTransformationType transformationType)
+        {
+            if (informationSources.TryGetSource(sourceId, out InformationSourceRecord record))
+            {
+                return InformationSourceOperationResult.Success("Transformed source already exists.", string.Empty, record, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: true);
+            }
+
+            TransformPrototypeSource($"Ensure 8.6 {transformationType}", sourceId, transformationType, 760, hidesOriginal: false);
+            informationSources.TryGetSource(sourceId, out record);
+            return InformationSourceOperationResult.Success("Transformed source ensured.", string.Empty, record, null, informationSources.SourceRevision, informationSources.SourceRevision);
+        }
+
+        private InformationSourceOperationResult AssessPrototypeSource(string assessmentId, string personId, string sourceId, int dependability, int errorRisk, int deceptionRisk, int biasRisk, int authority = 600)
+        {
+            ReliabilityProfileData reliability = ReliabilityProfileData.Default();
+            reliability.generalDependability = dependability;
+            reliability.domainExpertise = authority;
+            reliability.methodQuality = dependability;
+            reliability.authenticity = Math.Max(200, dependability - deceptionRisk / 3);
+            reliability.identityCertainty = Math.Max(200, dependability - deceptionRisk / 4);
+            reliability.observationQuality = dependability;
+            reliability.recordIntegrity = Math.Max(200, dependability - errorRisk / 4);
+            reliability.errorRisk = errorRisk;
+            reliability.deceptionRisk = deceptionRisk;
+            reliability.biasRisk = biasRisk;
+            reliability.completeness = dependability;
+            reliability.precision = dependability;
+            reliability.contextFit = dependability;
+
+            return informationSources.AssessSource(new SourceAssessmentRequest
+            {
+                TransactionId = $"source.assess.{SanitizeForTransaction(assessmentId)}.{Guid.NewGuid():N}",
+                AssessmentId = assessmentId,
+                AssessingPersonId = personId,
+                SourceInstanceId = sourceId,
+                Domain = KnowledgeDomain.Medical,
+                SubjectId = GetPrototypeBodyId(),
+                MethodId = "examination-method.medical",
+                WorldTimeSeconds = GetPrototypeWorldTime(),
+                Reliability = reliability,
+                Authority = authority,
+                ErrorRisk = errorRisk,
+                DeceptionRisk = deceptionRisk,
+                BiasRisk = biasRisk,
+                Familiarity = 500,
+                ConfidenceInAssessment = 800,
+                SupportingEvidenceIds = Array.Empty<string>(),
+                PriorExperienceIds = Array.Empty<string>()
+            });
+        }
+
+        private SourceReliabilityResult EvaluateFor(string personId, string sourceId)
+        {
+            return informationSources.EvaluateReliability(new SourceReliabilityRequest
+            {
+                EvaluatingPersonId = personId,
+                SourceInstanceId = sourceId,
+                Domain = KnowledgeDomain.Medical,
+                SubjectId = GetPrototypeBodyId(),
+                MethodId = "examination-method.medical",
+                WorldTimeSeconds = GetPrototypeWorldTime(),
+                PrivilegedAccess = true
+            });
+        }
+
+        private KnowledgeObservationRequest BuildPrototypeSourceEvidenceRequest(PersonKnowledgeRuntime knowledge, string transactionId, string sourceId, int rawStrength, int effectiveStrength, SourceReliabilityResult reliability)
+        {
+            return new KnowledgeObservationRequest
+            {
+                PersonId = knowledge.PersonId,
+                TransactionId = transactionId,
+                Proposition = new KnowledgePropositionData
+                {
+                    factDefinitionId = BuiltInKnowledgeFacts.SpeciesCapability,
+                    subjectType = KnowledgeSubjectType.Species,
+                    subjectId = "species.basic-spirit",
+                    valueType = KnowledgeValueType.StableId,
+                    stableValueId = "capability.can.bleed",
+                    sourceContextId = "information-source.prototype.testimony"
+                },
+                AcquisitionSource = KnowledgeAcquisitionSource.Testimony,
+                Provenance = KnowledgeProvenance.Testimony,
+                Direction = KnowledgeEvidenceDirection.Supports,
+                Strength = rawStrength,
+                EffectiveStrengthOverride = effectiveStrength,
+                InformationSourceId = sourceId,
+                ReliabilityPolicyId = reliability?.Request?.PolicyId,
+                ReliabilityEvaluationId = $"source-reliability.{transactionId}",
+                Credibility = reliability?.DerivedOverall ?? 500,
+                GameTimeSeconds = GetPrototypeWorldTime(),
+                SourceId = sourceId,
+                Visibility = KnowledgeVisibility.Public
+            };
+        }
+
+        private IReadOnlyList<InformationSourceDefinition> CreatePrototypeSourceDefinitions()
+        {
+            return new[]
+            {
+                CreatePrototypeSourceDefinition("information-source.direct-observation", "Direct Observation", InformationSourceCategory.DirectObservation, 850),
+                CreatePrototypeSourceDefinition("information-source.expert-testimony", "Expert Testimony", InformationSourceCategory.ExpertTestimony, 760),
+                CreatePrototypeSourceDefinition("information-source.official-record", "Official Record", InformationSourceCategory.OfficialRecord, 820),
+                CreatePrototypeSourceDefinition("information-source.anonymous-testimony", "Anonymous Testimony", InformationSourceCategory.AnonymousTestimony, 360, identityVerification: false),
+                CreatePrototypeSourceDefinition("information-source.historical-record", "Historical Record", InformationSourceCategory.HistoricalRecord, 700, KnowledgeStalenessPolicy.TimeLimited, 1000d)
+            };
+        }
+
+        private static InformationSourceDefinition CreatePrototypeSourceDefinition(string id, string displayName, InformationSourceCategory category, int dependability, KnowledgeStalenessPolicy policy = KnowledgeStalenessPolicy.NeverStale, double halfLife = 0d, bool identityVerification = false)
+        {
+            InformationSourceDefinition definition = ScriptableObject.CreateInstance<InformationSourceDefinition>();
+            ReliabilityProfileData reliability = ReliabilityProfileData.Default();
+            reliability.generalDependability = dependability;
+            reliability.domainExpertise = dependability;
+            reliability.firsthandProximity = category == InformationSourceCategory.DirectObservation ? 900 : 500;
+            reliability.methodQuality = dependability;
+            reliability.authenticity = dependability;
+            reliability.identityCertainty = dependability;
+            reliability.observationQuality = dependability;
+            reliability.recordIntegrity = dependability;
+            reliability.recency = 900;
+            reliability.transmissionIntegrity = 900;
+            reliability.independence = 600;
+            reliability.corroboration = 500;
+            reliability.internalConsistency = dependability;
+            reliability.errorRisk = Math.Max(0, 1000 - dependability);
+            reliability.deceptionRisk = category == InformationSourceCategory.AnonymousTestimony ? 600 : 150;
+            reliability.biasRisk = category == InformationSourceCategory.PersonalTestimony ? 320 : 150;
+            reliability.completeness = dependability;
+            reliability.precision = dependability;
+            reliability.contextFit = dependability;
+            definition.DevelopmentConfigure(id, displayName, category, reliability, policy, halfLife, 80, identityVerification);
+            return definition;
+        }
+
+        private PrototypeTestLabOperation RecordSourceOperation(string operationName, InformationSourceOperationResult result)
+        {
+            bool succeeded = result != null && result.Succeeded;
+            string message = result == null
+                ? "No Information Source result was produced."
+                : $"{result.Message} Source={result.Source?.SourceInstanceId ?? "None"} Assessment={result.Assessment?.AssessmentId ?? "None"} Preview={result.Preview} Duplicate={result.Duplicate} Revision={result.PriorRevision}->{result.ResultingRevision}.";
+            return Record(succeeded, operationName, succeeded ? result.Code.ToString() : result?.Code.ToString() ?? InformationSourceResultCode.InvalidRequest.ToString(), message);
+        }
+
+        private PrototypeTestLabOperation RecordReliability(string operationName, SourceReliabilityResult result)
+        {
+            bool succeeded = result != null && result.Succeeded;
+            string message = result == null
+                ? "No reliability result was produced."
+                : $"Source={result.Request?.SourceInstanceId} Evaluator={result.Request?.EvaluatingPersonId} Overall={result.DerivedOverall} Confidence={result.Confidence} Error={result.FinalDimensions.errorRisk} Deception={result.FinalDimensions.deceptionRisk} Bias={result.FinalDimensions.biasRisk} Depth={result.Chain.TransmissionDepth}. {result.Message} Diagnostics={string.Join(" | ", result.Diagnostics)}";
+            return Record(succeeded, operationName, succeeded ? result.Code.ToString() : result?.Code.ToString() ?? InformationSourceResultCode.InvalidRequest.ToString(), message);
+        }
+
+        private double GetPrototypeWorldTime()
+        {
+            return context?.Persistence?.PlayTime == null ? 0d : context.Persistence.PlayTime.CumulativeSeconds;
+        }
+
+        private string GetPrototypeDirectObservationSourceId()
+        {
+            return $"information-source.prototype.direct-observation.{SanitizeForTransaction(GetPrototypeBodyId())}";
+        }
+
+        private static string SanitizeForTransaction(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "none";
+            }
+
+            return new string(value.Trim().ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray()).Trim('-');
         }
 
         private bool EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge)
@@ -9419,7 +9903,7 @@ namespace UnityIsekaiGame.Development
                 return RecordFailure("Load Prototype Slot", "Persistence service is missing.", "MissingPersistence");
             }
 
-            PersistenceLoadResult result = persistence.LoadPrototypeSlot();
+            PersistenceLoadResult result = persistence.LoadPrototypeSlot(suppressExpectedAutomationWarnings);
             return Record(result.Succeeded, "Load Prototype Slot", result.Status.ToString(), result.Message);
         }
 

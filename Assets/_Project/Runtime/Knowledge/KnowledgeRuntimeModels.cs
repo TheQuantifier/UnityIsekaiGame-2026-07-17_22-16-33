@@ -14,6 +14,11 @@ namespace UnityIsekaiGame.Knowledge
         public KnowledgeProvenance provenance;
         public KnowledgeEvidenceDirection direction;
         public KnowledgePropositionData proposition;
+        public string informationSourceId;
+        public int rawStrength;
+        public int effectiveStrength;
+        public string reliabilityPolicyId;
+        public string reliabilityEvaluationId;
         public int strength;
         public int credibility;
         public double gameTimeSeconds;
@@ -34,6 +39,11 @@ namespace UnityIsekaiGame.Knowledge
                 provenance = provenance,
                 direction = direction,
                 proposition = proposition?.Clone(),
+                informationSourceId = informationSourceId,
+                rawStrength = rawStrength,
+                effectiveStrength = effectiveStrength,
+                reliabilityPolicyId = reliabilityPolicyId,
+                reliabilityEvaluationId = reliabilityEvaluationId,
                 strength = strength,
                 credibility = credibility,
                 gameTimeSeconds = gameTimeSeconds,
@@ -131,7 +141,10 @@ namespace UnityIsekaiGame.Knowledge
         public KnowledgeEvidenceDirection Direction => Data.direction;
         public KnowledgeProvenance Provenance => Data.provenance;
         public int Strength => KnowledgeConfidence.Clamp(Data.strength);
+        public int RawStrength => Data.rawStrength <= 0 ? Strength : KnowledgeConfidence.Clamp(Data.rawStrength);
+        public int EffectiveStrength => Data.effectiveStrength <= 0 ? Strength : KnowledgeConfidence.Clamp(Data.effectiveStrength);
         public int Credibility => KnowledgeConfidence.Clamp(Data.credibility);
+        public string InformationSourceId => Data.informationSourceId ?? string.Empty;
         public KnowledgeVisibility Visibility => Data.visibility;
     }
 
@@ -329,6 +342,10 @@ namespace UnityIsekaiGame.Knowledge
         public KnowledgeProvenance Provenance { get; set; } = KnowledgeProvenance.DirectObservation;
         public KnowledgeEvidenceDirection Direction { get; set; } = KnowledgeEvidenceDirection.Supports;
         public int Strength { get; set; } = KnowledgeConfidence.DefaultObservation;
+        public int? EffectiveStrengthOverride { get; set; }
+        public string InformationSourceId { get; set; }
+        public string ReliabilityPolicyId { get; set; }
+        public string ReliabilityEvaluationId { get; set; }
         public int Credibility { get; set; } = KnowledgeConfidence.DefaultObservation;
         public double GameTimeSeconds { get; set; }
         public string SourceId { get; set; }
