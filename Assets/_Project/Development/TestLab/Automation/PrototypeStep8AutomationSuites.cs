@@ -19,6 +19,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildMemorySuite());
             TryRegister(registry, BuildLifeEventsSuite());
             TryRegister(registry, BuildInformationSourcesSuite());
+            TryRegister(registry, BuildInformationSharingSuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -335,6 +336,44 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("raw-effective", "Compare raw and effective evidence", context => Operation(context.Service.CompareRawAndEffectiveEvidenceStrength(), context, "step8-sources-raw-effective"))),
                 Scenario("save-restore-round-trip", "Information Sources save and restore silently", 90,
                     Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateInformationSourceSaveRestore(), context, "step8-sources-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildInformationSharingSuite()
+        {
+            return Suite("feature.8.7.information-sharing-teaching", "Feature 8.7 Information Sharing and Teaching", "8.7", 870,
+                Required("InformationTransferRuntime", "InformationTransferDefinition", "PersonKnowledgeRuntime", "PersonMemoryRuntime", "InformationSourceRuntime"),
+                Scenario("foundation-validates", "Information Transfer definitions validate", 10,
+                    Step("validate", "Validate transfer definitions", context => Operation(context.Service.ValidateInformationTransferDefinitions(), context, "step8-sharing-validate"))),
+                Scenario("true-fact-transfer", "Known true fact transfers as testimony evidence", 20,
+                    Step("share", "Share true fact", context => Operation(context.Service.ShareKnownTrueFact(), context, "step8-sharing-true"))),
+                Scenario("false-belief-transfer", "False belief transfer requires explicit authorization", 30,
+                    Step("share", "Share sincere false belief", context => Operation(context.Service.ShareSincereFalseBelief(), context, "step8-sharing-false"))),
+                Scenario("recall-boundaries", "Recall-required sharing respects memory accessibility", 40,
+                    Step("partial", "Share partially recalled event", context => Operation(context.Service.SharePartiallyRecalledEvent(), context, "step8-sharing-recall")),
+                    Step("suppressed", "Reject suppressed memory", context => Operation(context.Service.AttemptSuppressedMemoryTransfer(), context, "step8-sharing-suppressed"))),
+                Scenario("source-lineage-confidence", "Source lineage and inherited confidence affect recipient evidence", 50,
+                    Step("direct", "Share direct observation", context => Operation(context.Service.ShareDirectObservation(), context, "step8-sharing-direct")),
+                    Step("expert", "Share expert diagnosis", context => Operation(context.Service.ShareExpertDiagnosis(), context, "step8-sharing-expert")),
+                    Step("confidence", "Compare inherited confidence", context => Operation(context.Service.CompareInheritedConfidenceByDomain(), context, "step8-sharing-confidence")),
+                    Step("lineage", "Trace transfer lineage", context => Operation(context.Service.TraceTransferSourceLineage(), context, "step8-sharing-lineage"))),
+                Scenario("teaching-and-demonstration", "Teaching creates knowledge and memory without granting skills", 60,
+                    Step("concept", "Teach concept", context => Operation(context.Service.TeachSemanticConcept(), context, "step8-sharing-teach-concept")),
+                    Step("procedure", "Teach procedure", context => Operation(context.Service.TeachProcedureReference(), context, "step8-sharing-teach-procedure")),
+                    Step("demo", "Demonstrate procedure", context => Operation(context.Service.DemonstrateProcedure(), context, "step8-sharing-demo")),
+                    Step("no-prereq", "Teach without prerequisites", context => Operation(context.Service.TeachWithoutPrerequisites(), context, "step8-sharing-no-prereq"))),
+                Scenario("clarification-reshare-correction", "Clarification, resharing, distortion, omission, and correction stay linked", 70,
+                    Step("clarify", "Clarify transfer", context => Operation(context.Service.ClarifyTransfer(), context, "step8-sharing-clarify")),
+                    Step("reshare", "Reshare transfer", context => Operation(context.Service.ReshareTransfer(), context, "step8-sharing-reshare")),
+                    Step("distort", "Reshare distorted version", context => Operation(context.Service.ReshareDistortedVersion(), context, "step8-sharing-distort")),
+                    Step("omit", "Deliberately omit detail", context => Operation(context.Service.DeliberatelyOmitDetail(), context, "step8-sharing-omit")),
+                    Step("correct", "Correct prior transfer", context => Operation(context.Service.CorrectPriorTransfer(), context, "step8-sharing-correct"))),
+                Scenario("privacy-and-records", "Public, private, anonymous, and official transfers are represented", 80,
+                    Step("anonymous", "Share anonymous information", context => Operation(context.Service.ShareAnonymousInformation(), context, "step8-sharing-anonymous")),
+                    Step("official", "Read official record", context => Operation(context.Service.ReadOfficialRecord(), context, "step8-sharing-official")),
+                    Step("summarize", "Copy and summarize", context => Operation(context.Service.CopyAndSummarizeTransferSource(), context, "step8-sharing-summary")),
+                    Step("privacy", "Create scoped transfers", context => Operation(context.Service.CreatePublicPrivateRestrictedTransfers(), context, "step8-sharing-privacy"))),
+                Scenario("save-restore-round-trip", "Information Transfer audit state saves and restores silently", 90,
+                    Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateInformationTransferSaveRestore(), context, "step8-sharing-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

@@ -176,7 +176,9 @@ namespace UnityIsekaiGame.Magic
         private SpellCastResult TryCastAbilitySpell(SpellDefinition spell)
         {
             Vector3 sourcePosition = castOrigin == null ? transform.position : castOrigin.position;
-            Vector3 direction = castOrigin == null ? transform.forward : GetCastDirection(sourcePosition, spell);
+            Vector3 directionOrigin = GetAbilityDirectionOrigin(spell, sourcePosition);
+            float aimDistance = GetAbilityAimDistance(spell);
+            Vector3 direction = castOrigin == null ? transform.forward : GetCastDirection(directionOrigin, aimDistance);
             AbilityExecutionContext context = new AbilityExecutionContext(
                 spell.Ability,
                 gameObject,
@@ -202,6 +204,34 @@ namespace UnityIsekaiGame.Magic
             return castResult;
         }
 
+        private Vector3 GetAbilityDirectionOrigin(SpellDefinition spell, Vector3 fallbackPosition)
+        {
+            if (castOrigin == null ||
+                spell == null ||
+                spell.Ability == null ||
+                spell.Ability.DeliveryMode != AbilityDeliveryMode.Projectile ||
+                spell.Ability.ProjectileDelivery == null)
+            {
+                return fallbackPosition;
+            }
+
+            return castOrigin.TransformPoint(spell.Ability.ProjectileDelivery.CastPointOffset);
+        }
+
+        private static float GetAbilityAimDistance(SpellDefinition spell)
+        {
+            if (spell == null ||
+                spell.Ability == null ||
+                spell.Ability.DeliveryMode != AbilityDeliveryMode.Projectile ||
+                spell.Ability.ProjectileDelivery == null)
+            {
+                return 1f;
+            }
+
+            AbilityProjectileDelivery delivery = spell.Ability.ProjectileDelivery;
+            return Mathf.Max(1f, delivery.ProjectileSpeed * delivery.MaximumLifetime);
+        }
+
         private void RegisterProjectile(SpellProjectile projectile)
         {
             if (projectile == null)
@@ -215,7 +245,12 @@ namespace UnityIsekaiGame.Magic
 
         private Vector3 GetCastDirection(Vector3 spawnPosition, SpellDefinition spell)
         {
-            Vector3 aimPoint = castOrigin.position + castOrigin.forward * (spell.ProjectileSpeed * spell.MaximumLifetime);
+            return GetCastDirection(spawnPosition, spell.ProjectileSpeed * spell.MaximumLifetime);
+        }
+
+        private Vector3 GetCastDirection(Vector3 spawnPosition, float maxDistance)
+        {
+            Vector3 aimPoint = castOrigin.position + castOrigin.forward * Mathf.Max(1f, maxDistance);
             RaycastHit[] hits = Physics.RaycastAll(castOrigin.position, castOrigin.forward, Vector3.Distance(castOrigin.position, aimPoint), aimMask, aimTriggerInteraction);
             foreach (RaycastHit hit in hits.OrderBy(candidate => candidate.distance))
             {

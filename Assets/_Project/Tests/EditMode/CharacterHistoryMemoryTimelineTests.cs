@@ -81,6 +81,22 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void ReconfiguringMemoryRuntimeForDifferentPersonClearsPriorOwnerState()
+        {
+            TestFixture fixture = CreateFixture("person.history.first", "body.history.actor", extraPersons: new[] { "person.history.second" });
+            fixture.History.RecordEvent(Event("tx.history.owner-reset", "event.history.owner-reset", "history-event.person-participation", 1, "person.history.first"));
+            fixture.Memory.FormMemory(Memory("tx.memory.owner-reset", "memory.owner-reset", "person.history.first", "event.history.owner-reset", 2));
+
+            Assert.That(fixture.Memory.CreateSnapshot().Memories.Count, Is.EqualTo(1));
+
+            fixture.Memory.Configure("person.history.second", fixture.Registry, fixture.History, new[] { "person.history.first", "person.history.second" });
+
+            Assert.That(fixture.Memory.PersonId, Is.EqualTo("person.history.second"));
+            Assert.That(fixture.Memory.MemoryRevision, Is.EqualTo(0));
+            Assert.That(fixture.Memory.CreateSnapshot().Memories.Count, Is.EqualTo(0));
+        }
+
+        [Test]
         public void MemoryRecallForgetAndCorrectionDoNotMutateAuthoritativeHistory()
         {
             TestFixture fixture = CreateFixture("person.history.actor", "body.history.actor");

@@ -137,7 +137,7 @@ namespace UnityIsekaiGame.Magic
             }
 
             payloadExecuted = true;
-            GameObject target = hit.collider == null ? null : hit.collider.gameObject;
+            GameObject target = ResolveAbilityTarget(hit.collider);
             EffectExecutionContext context = new EffectExecutionContext(
                 ability,
                 caster,
@@ -147,6 +147,17 @@ namespace UnityIsekaiGame.Magic
                 direction);
             AbilityExecutionResult result = AbilityExecutor.ExecuteEffects(in context, ability.Effects);
             Debug.Log(result.Succeeded ? result.Message : result.Message);
+        }
+
+        private static GameObject ResolveAbilityTarget(Collider hitCollider)
+        {
+            if (hitCollider == null)
+            {
+                return null;
+            }
+
+            IDamageable damageable = hitCollider.GetComponentInParent<IDamageable>();
+            return damageable is Component damageableComponent ? damageableComponent.gameObject : hitCollider.gameObject;
         }
 
         private void IgnoreCasterColliders()

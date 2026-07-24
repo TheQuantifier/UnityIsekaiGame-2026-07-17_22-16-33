@@ -104,11 +104,15 @@ namespace UnityIsekaiGame.Abilities
                 amount,
                 DisplayName);
             DamageApplicationResult damageResult = service.ApplyDamage(request);
+            string targetName = context.Target == null ? "Target" : context.Target.name;
+            string damageMessage = damageResult.Succeeded && damageResult.HealthChanged
+                ? $"{targetName} took {damageResult.FinalDamageAmount:0.#} {typedDamageType.DisplayName} damage. Health: {damageResult.NewHealth:0.#} / {damageResult.HealthMaximum:0.#}."
+                : damageResult.Message;
             result = damageResult.Succeeded && damageResult.HealthChanged
-                ? EffectExecutionResult.Success(damageResult.Message, damageResult.FinalDamageAmount)
+                ? EffectExecutionResult.Success(damageMessage, damageResult.FinalDamageAmount)
                 : damageResult.Succeeded
-                    ? EffectExecutionResult.Failure(EffectExecutionStatus.BlockedOrImmune, damageResult.Message)
-                    : EffectExecutionResult.Failure(EffectExecutionStatus.UnsupportedTarget, damageResult.Message);
+                    ? EffectExecutionResult.Failure(EffectExecutionStatus.BlockedOrImmune, damageMessage)
+                    : EffectExecutionResult.Failure(EffectExecutionStatus.UnsupportedTarget, damageMessage);
             return true;
         }
 
