@@ -64,6 +64,7 @@ namespace UnityIsekaiGame.Development
             "Observation 8.2",
             "History 8.3",
             "Memory 8.4",
+            "Life Events 8.5",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -127,6 +128,7 @@ namespace UnityIsekaiGame.Development
         private Text observationText;
         private Text characterHistoryText;
         private Text memoryRecallText;
+        private Text lifeEventsText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -317,6 +319,7 @@ namespace UnityIsekaiGame.Development
             Transform observationSection = AddSection(content, "Observation 8.2 Section");
             Transform characterHistorySection = AddSection(content, "History 8.3 Section");
             Transform memoryRecallSection = AddSection(content, "Memory 8.4 Section");
+            Transform lifeEventsSection = AddSection(content, "Life Events 8.5 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -358,6 +361,7 @@ namespace UnityIsekaiGame.Development
             BuildObservationSection(observationSection, font);
             BuildCharacterHistorySection(characterHistorySection, font);
             BuildMemoryRecallSection(memoryRecallSection, font);
+            BuildLifeEventsSection(lifeEventsSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -800,6 +804,45 @@ namespace UnityIsekaiGame.Development
                 ("Compare", () => service.CompareMemoryBeliefHistory()),
                 ("Save/Restore", () => service.ValidateMemory84SaveRestore()));
             memoryRecallText = AddText(parent, font, "Memory runtime not available.", 12, 980);
+        }
+
+        private void BuildLifeEventsSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Validate", () => service.ValidateLifeEventDefinitions()),
+                ("Birth", () => service.RecordLifeEventBirthOrCreation()),
+                ("Discovery", () => service.RecordLifeEventDiscovery()),
+                ("Role", () => service.RecordLifeEventRoleAppointment()));
+            AddButtonRow(parent, font,
+                ("Title", () => service.RecordLifeEventTitleGrant()),
+                ("Affiliation", () => service.RecordLifeEventAffiliationChange()),
+                ("Battle", () => service.RecordLifeEventBattleParticipation()),
+                ("Injury", () => service.RecordLifeEventMajorInjury()));
+            AddButtonRow(parent, font,
+                ("Diagnosis", () => service.RecordLifeEventDiagnosis()),
+                ("Recovery", () => service.RecordLifeEventRecovery()),
+                ("Crime", () => service.RecordLifeEventCrimeOrAccusation()),
+                ("Ownership", () => service.RecordLifeEventOwnershipTransfer()));
+            AddButtonRow(parent, font,
+                ("Death", () => service.RecordLifeEventDeath()),
+                ("Presumed", () => service.RecordLifeEventPresumedDeath()),
+                ("Return", () => service.RecordLifeEventReturn()),
+                ("Body Tx", () => service.RecordLifeEventBodyTransition()));
+            AddButtonRow(parent, font,
+                ("Sequence", () => service.CreateLifeEventSequence()),
+                ("Link Cause", () => service.LinkLifeEventCauseAndConsequence()),
+                ("Correct", () => service.CorrectLifeEventPresumedDeath()),
+                ("Save/Restore", () => service.ValidateLifeEventSaveRestore()));
+            AddButtonRow(parent, font,
+                ("Timeline", () => service.ShowLifeEventPersonTimeline()),
+                ("Public Bio", () => service.ShowLifeEventPublicBiography()),
+                ("Auth Bio", () => service.ShowLifeEventAuthoritativeBiography()),
+                ("Known Bio", () => service.ShowLifeEventPersonKnownBiography()));
+            AddButtonRow(parent, font,
+                ("Memory Bio", () => service.ShowLifeEventPersonRememberedBiography()),
+                ("Milestones", () => service.ShowLifeEventMajorMilestones()),
+                ("Run 8.5 Auto", () => service.RunAutomationSuite("feature.8.5.character-history-life-events", automationStopOnFirstFailure)));
+            lifeEventsText = AddText(parent, font, "Life event runtime not available.", 12, 980);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1405,6 +1448,9 @@ namespace UnityIsekaiGame.Development
                 case "Memory 8.4":
                     SetValue(memoryRecallText, service.BuildMemoryRecallSummary());
                     break;
+                case "Life Events 8.5":
+                    SetValue(lifeEventsText, service.BuildLifeEventSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1923,7 +1969,7 @@ namespace UnityIsekaiGame.Development
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
                 Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8", "Biological Conditions 7.9", "Biology Integration 7.10"),
-                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3", "Memory 8.4")
+                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3", "Memory 8.4", "Life Events 8.5")
             };
         }
 

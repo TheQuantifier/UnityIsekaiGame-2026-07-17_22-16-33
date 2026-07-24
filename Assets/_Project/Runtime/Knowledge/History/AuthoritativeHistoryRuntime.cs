@@ -16,6 +16,7 @@ namespace UnityIsekaiGame.Knowledge.History
         private readonly Dictionary<string, List<string>> eventIdsByTag = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         private readonly Dictionary<string, BodyOccupationRecordData> occupationsById = new Dictionary<string, BodyOccupationRecordData>(StringComparer.Ordinal);
         private readonly Dictionary<string, List<string>> occupationIdsByPerson = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        private readonly Dictionary<string, LifeEventSequenceData> lifeEventSequencesById = new Dictionary<string, LifeEventSequenceData>(StringComparer.Ordinal);
         private readonly HashSet<string> processedTransactions = new HashSet<string>(StringComparer.Ordinal);
         private HashSet<string> knownPersonIds = new HashSet<string>(StringComparer.Ordinal);
         private HashSet<string> knownBodyIds = new HashSet<string>(StringComparer.Ordinal);
@@ -126,6 +127,114 @@ namespace UnityIsekaiGame.Knowledge.History
             return result;
         }
 
+        public HistoryOperationResult PreviewRecordLifeEvent(RecordLifeEventRequest request)
+        {
+            return RecordLifeEvent(request, preview: true, restoring: false);
+        }
+
+        public HistoryOperationResult RecordLifeEvent(RecordLifeEventRequest request, bool preview = false, bool restoring = false)
+        {
+            if (!ValidateLifeEventRequest(request, out HistoricalEventDefinition definition, out string failure, out HistoryResultCode code))
+            {
+                return HistoryOperationResult.Failure(code, failure, request?.TransactionId, preview, HistoryRevision);
+            }
+
+            RecordHistoricalEventRequest eventRequest = BuildHistoricalEventRequest(request, definition);
+            HistoryOperationResult result = RecordEvent(eventRequest, preview, restoring);
+            if (!result.Succeeded || preview)
+            {
+                return result;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.SequenceId))
+            {
+                AddOrUpdateLifeEventSequence(request, result.Event);
+            }
+
+            return result;
+        }
+
+        public HistoryOperationResult RecordBirthOrCreation(string transactionId, string eventId, string personId, string bodyId, double worldTime, string methodId, bool preview = false)
+        {
+            return RecordLifeEvent(new RecordLifeEventRequest
+            {
+                TransactionId = transactionId,
+                EventId = eventId,
+                EventDefinitionId = "history-event.life.birth",
+                Category = LifeEventCategory.BirthOrCreation,
+                PayloadKind = LifeEventPayloadKind.BirthOrCreation,
+                OccurredAtWorldTime = worldTime,
+                RecordedAtWorldTime = worldTime,
+                PrimaryPersonId = personId,
+                BodyIds = new[] { bodyId },
+                Participants = new[] { Participant(personId, LifeEventParticipantRole.Subject, bodyId) },
+                Visibility = KnowledgeVisibility.Private,
+                Significance = LifeEventSignificance.LifeDefining,
+                BiographyRelevance = LifeEventBiographyRelevance.IdentityDefining,
+                PublicRecordRelevance = LifeEventPublicRecordRelevance.PersonalOnly,
+                Outcome = LifeEventOutcome.Confirmed,
+                SourceSystem = "LifeEvent",
+                Provenance = "Birth or creation recorded.",
+                LifeEventPayload = new LifeEventPayloadData { kind = LifeEventPayloadKind.BirthOrCreation, createdPersonId = personId, subjectPersonId = personId, methodId = methodId },
+                HistoricalPayload = new HistoricalEventPayloadData { kind = HistoricalEventPayloadKind.Generic, note = methodId },
+                Tags = new[] { "life-event", "birth-or-creation" }
+            }, preview);
+        }
+
+        public HistoryOperationResult RecordDeathOrDisappearance(string transactionId, string eventId, string personId, string bodyId, double worldTime, bool presumed, string causeId, bool preview = false)
+        {
+            return RecordLifeEvent(new RecordLifeEventRequest
+            {
+                TransactionId = transactionId,
+                EventId = eventId,
+                EventDefinitionId = presumed ? "history-event.life.presumed-death" : "history-event.life.death",
+                Category = presumed ? LifeEventCategory.Disappearance : LifeEventCategory.Death,
+                PayloadKind = LifeEventPayloadKind.DeathOrDisappearance,
+                OccurredAtWorldTime = worldTime,
+                RecordedAtWorldTime = worldTime,
+                PrimaryPersonId = personId,
+                BodyIds = new[] { bodyId },
+                Participants = new[] { Participant(personId, LifeEventParticipantRole.Subject, bodyId) },
+                Visibility = KnowledgeVisibility.Private,
+                Significance = LifeEventSignificance.LifeDefining,
+                BiographyRelevance = presumed ? LifeEventBiographyRelevance.RestrictedBiographyEvent : LifeEventBiographyRelevance.MajorBiographyEvent,
+                PublicRecordRelevance = presumed ? LifeEventPublicRecordRelevance.OrganizationRecord : LifeEventPublicRecordRelevance.PublicRecord,
+                Outcome = presumed ? LifeEventOutcome.Presumed : LifeEventOutcome.Confirmed,
+                SourceSystem = "LifeEvent",
+                Provenance = presumed ? "Presumed death or disappearance recorded." : "Death recorded.",
+                LifeEventPayload = new LifeEventPayloadData { kind = LifeEventPayloadKind.DeathOrDisappearance, subjectPersonId = personId, causeId = causeId },
+                HistoricalPayload = new HistoricalEventPayloadData { kind = HistoricalEventPayloadKind.Generic, note = causeId },
+                Tags = new[] { "life-event", presumed ? "presumed-death" : "death" }
+            }, preview);
+        }
+
+        public HistoryOperationResult RecordDiscoveryLifeEvent(string transactionId, string eventId, string discovererPersonId, string subjectId, double worldTime, string evidenceId, bool publicRecord, bool preview = false)
+        {
+            return RecordLifeEvent(new RecordLifeEventRequest
+            {
+                TransactionId = transactionId,
+                EventId = eventId,
+                EventDefinitionId = "history-event.life.discovery",
+                Category = LifeEventCategory.Discovery,
+                PayloadKind = LifeEventPayloadKind.Discovery,
+                OccurredAtWorldTime = worldTime,
+                RecordedAtWorldTime = worldTime,
+                PrimaryPersonId = discovererPersonId,
+                Participants = new[] { Participant(discovererPersonId, LifeEventParticipantRole.Discoverer) },
+                RelatedEntityIds = new[] { subjectId, evidenceId },
+                Visibility = publicRecord ? KnowledgeVisibility.Public : KnowledgeVisibility.Private,
+                Significance = LifeEventSignificance.Notable,
+                BiographyRelevance = publicRecord ? LifeEventBiographyRelevance.PublicBiographyEvent : LifeEventBiographyRelevance.Optional,
+                PublicRecordRelevance = publicRecord ? LifeEventPublicRecordRelevance.PublicRecord : LifeEventPublicRecordRelevance.PersonalOnly,
+                Outcome = LifeEventOutcome.Confirmed,
+                SourceSystem = "LifeEvent",
+                Provenance = "Discovery recorded.",
+                LifeEventPayload = new LifeEventPayloadData { kind = LifeEventPayloadKind.Discovery, subjectPersonId = discovererPersonId, evidenceId = evidenceId, methodId = "observation" },
+                HistoricalPayload = new HistoricalEventPayloadData { kind = HistoricalEventPayloadKind.Discovery, claimValueId = subjectId, note = evidenceId },
+                Tags = new[] { "life-event", "discovery" }
+            }, preview);
+        }
+
         public bool TryGetEvent(string eventId, out HistoricalEventRecord record)
         {
             if (eventsById.TryGetValue(eventId ?? string.Empty, out HistoricalEventRecordData data))
@@ -219,6 +328,152 @@ namespace UnityIsekaiGame.Knowledge.History
                 .ToArray();
         }
 
+        public IReadOnlyList<LifeEventRecord> QueryLifeEventsForPerson(string personId, PersonMemoryRuntime memoryRuntime = null, bool privileged = true)
+        {
+            IEnumerable<HistoricalEventRecord> source = privileged
+                ? QueryByPerson(personId)
+                : QueryPersonAccessible(personId, memoryRuntime, privileged: false);
+            return source
+                .Where(record => record.IsLifeEvent)
+                .Select(record => new LifeEventRecord(record))
+                .OrderBy(record => HistoryOrdering.Key(record.Event))
+                .ToArray();
+        }
+
+        public IReadOnlyList<LifeEventRecord> QueryLifeEventsByRole(string personId, LifeEventParticipantRole role)
+        {
+            return QueryLifeEventsForPerson(personId)
+                .Where(record => record.Participants.Any(participant => string.Equals(participant.personId, personId, StringComparison.Ordinal) && participant.role == role))
+                .ToArray();
+        }
+
+        public IReadOnlyList<LifeEventRecord> QueryLifeEventsByCategory(LifeEventCategory category)
+        {
+            return eventsById.Values
+                .Where(data => data.isLifeEvent && data.lifeEventCategory == category)
+                .Select(data => new LifeEventRecord(Wrap(data)))
+                .OrderBy(record => HistoryOrdering.Key(record.Event))
+                .ToArray();
+        }
+
+        public IReadOnlyList<LifeEventRecord> QueryLifeEventsByDefinition(string definitionId)
+        {
+            return eventsById.Values
+                .Where(data => data.isLifeEvent && string.Equals(data.eventDefinitionId, definitionId, StringComparison.Ordinal))
+                .Select(data => new LifeEventRecord(Wrap(data)))
+                .OrderBy(record => HistoryOrdering.Key(record.Event))
+                .ToArray();
+        }
+
+        public IReadOnlyList<LifeEventRecord> QueryLifeEventsBySignificance(LifeEventSignificance minimumSignificance)
+        {
+            return eventsById.Values
+                .Where(data => data.isLifeEvent && data.significance >= minimumSignificance)
+                .Select(data => new LifeEventRecord(Wrap(data)))
+                .OrderBy(record => HistoryOrdering.Key(record.Event))
+                .ToArray();
+        }
+
+        public IReadOnlyList<LifeEventRecord> QueryLifeEventsByBiographyRelevance(LifeEventBiographyRelevance minimumRelevance)
+        {
+            return eventsById.Values
+                .Where(data => data.isLifeEvent && data.biographyRelevance >= minimumRelevance)
+                .Select(data => new LifeEventRecord(Wrap(data)))
+                .OrderBy(record => HistoryOrdering.Key(record.Event))
+                .ToArray();
+        }
+
+        public IReadOnlyList<LifeEventRecord> QueryLifeEventsByRelatedId(string relatedId)
+        {
+            if (string.IsNullOrWhiteSpace(relatedId))
+            {
+                return Array.Empty<LifeEventRecord>();
+            }
+
+            return eventsById.Values
+                .Where(data => data.isLifeEvent && LifeEventReferences(data, relatedId))
+                .Select(data => new LifeEventRecord(Wrap(data)))
+                .OrderBy(record => HistoryOrdering.Key(record.Event))
+                .ToArray();
+        }
+
+        public IReadOnlyList<LifeEventRecord> QueryRelatedLifeEvents(string eventId, LifeEventRelationshipType? relationshipType = null)
+        {
+            if (!eventsById.TryGetValue(eventId ?? string.Empty, out HistoricalEventRecordData data))
+            {
+                return Array.Empty<LifeEventRecord>();
+            }
+
+            return (data.lifeEventRelationships ?? Array.Empty<LifeEventRelationshipData>())
+                .Where(relationship => !relationshipType.HasValue || relationship.relationshipType == relationshipType.Value)
+                .Where(relationship => eventsById.ContainsKey(relationship.targetEventId ?? string.Empty))
+                .Select(relationship => new LifeEventRecord(Wrap(eventsById[relationship.targetEventId])))
+                .OrderBy(record => HistoryOrdering.Key(record.Event))
+                .ToArray();
+        }
+
+        public LifeEventRecord QueryEarliestLifeEvent(string personId, LifeEventCategory category)
+        {
+            return QueryLifeEventsForPerson(personId).FirstOrDefault(record => record.Category == category);
+        }
+
+        public LifeEventRecord QueryMostRecentLifeEvent(string personId, LifeEventCategory category)
+        {
+            return QueryLifeEventsForPerson(personId).LastOrDefault(record => record.Category == category);
+        }
+
+        public IReadOnlyList<BiographyTimelineEntry> QueryBiography(string personId, PersonMemoryRuntime memoryRuntime = null, bool publicOnly = false, bool personKnown = false, bool personRemembered = false, bool privileged = false)
+        {
+            HashSet<string> remembered = new HashSet<string>((memoryRuntime?.CreateSnapshot().AccessibleMemories ?? Array.Empty<HistoryMemoryRecord>()).Select(memory => memory.HistoricalEventId), StringComparer.Ordinal);
+            IEnumerable<LifeEventRecord> source = privileged
+                ? QueryLifeEventsForPerson(personId)
+                : QueryLifeEventsForPerson(personId, memoryRuntime, privileged: false);
+            if (publicOnly)
+            {
+                source = source.Where(record => record.Visibility == KnowledgeVisibility.Public || record.PublicRecordRelevance >= LifeEventPublicRecordRelevance.PublicRecord);
+            }
+
+            if (personKnown)
+            {
+                source = source.Where(record => IsVisibleToPerson(record.Event.Data, personId, remembered));
+            }
+
+            if (personRemembered)
+            {
+                source = source.Where(record => remembered.Contains(record.EventId));
+            }
+
+            return source
+                .Where(record => record.BiographyRelevance != LifeEventBiographyRelevance.NotRelevant)
+                .Select(record => new BiographyTimelineEntry(record, RoleFor(record, personId), known: IsVisibleToPerson(record.Event.Data, personId, remembered), remembered: remembered.Contains(record.EventId)))
+                .OrderBy(entry => HistoryOrdering.Key(entry.LifeEvent.Event))
+                .ToArray();
+        }
+
+        public IReadOnlyList<LifeEventRecord> QueryMajorLifeMilestones(string personId)
+        {
+            return QueryLifeEventsForPerson(personId)
+                .Where(record => record.Significance >= LifeEventSignificance.Major || record.BiographyRelevance >= LifeEventBiographyRelevance.MajorBiographyEvent)
+                .ToArray();
+        }
+
+        public bool TryGetLifeEventSequence(string sequenceId, out LifeEventSequenceRecord sequence)
+        {
+            RebuildMissingLifeEventSequencesFromEvents();
+            sequence = null;
+            if (!lifeEventSequencesById.TryGetValue(sequenceId ?? string.Empty, out LifeEventSequenceData data))
+            {
+                return false;
+            }
+
+            IReadOnlyList<LifeEventRecord> events = (data.eventIds ?? Array.Empty<string>())
+                .Where(id => eventsById.ContainsKey(id))
+                .Select(id => new LifeEventRecord(Wrap(eventsById[id])))
+                .ToArray();
+            sequence = new LifeEventSequenceRecord(data, events);
+            return true;
+        }
+
         public IReadOnlyList<BodyOccupationRecord> QueryBodyOccupations(string personId)
         {
             return OccupationsFromIndex(personId);
@@ -231,6 +486,7 @@ namespace UnityIsekaiGame.Knowledge.History
 
         public AuthoritativeHistorySaveData CreateSaveData()
         {
+            RebuildMissingLifeEventSequencesFromEvents();
             return new AuthoritativeHistorySaveData
             {
                 schemaVersion = AuthoritativeHistorySaveData.CurrentSchemaVersion,
@@ -239,6 +495,7 @@ namespace UnityIsekaiGame.Knowledge.History
                 historyRevision = HistoryRevision,
                 events = eventsById.Values.OrderBy(data => data.occurredAtWorldTime).ThenBy(data => data.sequence).ThenBy(data => data.eventId, StringComparer.Ordinal).Select(data => data.Clone()).ToArray(),
                 bodyOccupations = occupationsById.Values.OrderBy(data => data.startedAtWorldTime).ThenBy(data => data.occupationId, StringComparer.Ordinal).Select(data => data.Clone()).ToArray(),
+                lifeEventSequences = lifeEventSequencesById.Values.OrderBy(data => data.sequenceId, StringComparer.Ordinal).Select(data => data.Clone()).ToArray(),
                 processedTransactions = processedTransactions.OrderBy(value => value, StringComparer.Ordinal).ToArray()
             };
         }
@@ -259,6 +516,7 @@ namespace UnityIsekaiGame.Knowledge.History
                 ClearIndexes();
                 occupationsById.Clear();
                 occupationIdsByPerson.Clear();
+                lifeEventSequencesById.Clear();
                 processedTransactions.Clear();
 
                 foreach (HistoricalEventRecordData data in saveData.events ?? Array.Empty<HistoricalEventRecordData>())
@@ -272,6 +530,13 @@ namespace UnityIsekaiGame.Knowledge.History
                 {
                     AddOccupation(data.Clone());
                 }
+
+                foreach (LifeEventSequenceData data in saveData.lifeEventSequences ?? Array.Empty<LifeEventSequenceData>())
+                {
+                    lifeEventSequencesById[data.sequenceId] = data.Clone();
+                }
+
+                RebuildMissingLifeEventSequencesFromEvents();
 
                 foreach (string transaction in saveData.processedTransactions ?? Array.Empty<string>())
                 {
@@ -331,9 +596,24 @@ namespace UnityIsekaiGame.Knowledge.History
                 validator.eventsById[eventData.eventId] = eventData.Clone();
             }
 
+            foreach (LifeEventSequenceData sequenceData in saveData.lifeEventSequences ?? Array.Empty<LifeEventSequenceData>())
+            {
+                if (!string.IsNullOrWhiteSpace(sequenceData?.sequenceId))
+                {
+                    validator.lifeEventSequencesById[sequenceData.sequenceId] = sequenceData.Clone();
+                }
+            }
+
+            validator.RebuildMissingLifeEventSequencesFromEvents();
+
             foreach (HistoricalEventRecordData eventData in saveData.events ?? Array.Empty<HistoricalEventRecordData>())
             {
                 if (!validator.ValidateSavedCorrectionLink(eventData, out failureReason))
+                {
+                    return false;
+                }
+
+                if (!validator.ValidateSavedLifeEvent(eventData, out failureReason))
                 {
                     return false;
                 }
@@ -345,6 +625,16 @@ namespace UnityIsekaiGame.Knowledge.History
                 if (!ValidateOccupation(occupation, validator.knownPersonIds, validator.knownBodyIds, out failureReason) || !occupationIds.Add(occupation.occupationId ?? string.Empty))
                 {
                     failureReason = string.IsNullOrWhiteSpace(failureReason) ? $"Missing or duplicate body occupation ID '{occupation?.occupationId}'." : failureReason;
+                    return false;
+                }
+            }
+
+            HashSet<string> sequenceIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (LifeEventSequenceData sequence in saveData.lifeEventSequences ?? Array.Empty<LifeEventSequenceData>())
+            {
+                if (!ValidateLifeEventSequence(sequence, validator.eventsById, validator.knownPersonIds, out failureReason) || !sequenceIds.Add(sequence.sequenceId ?? string.Empty))
+                {
+                    failureReason = string.IsNullOrWhiteSpace(failureReason) ? $"Missing or duplicate life-event sequence ID '{sequence?.sequenceId}'." : failureReason;
                     return false;
                 }
             }
@@ -524,7 +814,7 @@ namespace UnityIsekaiGame.Knowledge.History
             HistoricalEventCategory category = request.Category ?? definition.Category;
             KnowledgeVisibility visibility = request.Visibility ?? definition.DefaultVisibility;
             long sequence = request.Sequence ?? NextSequence++;
-            return new HistoricalEventRecordData
+            HistoricalEventRecordData data = new HistoricalEventRecordData
             {
                 eventId = request.EventId,
                 eventDefinitionId = definition.Id,
@@ -547,6 +837,491 @@ namespace UnityIsekaiGame.Knowledge.History
                 tags = Distinct((request.Tags ?? Array.Empty<string>()).Concat(definition.Tags)).ToArray(),
                 payload = request.Payload?.Clone() ?? new HistoricalEventPayloadData { kind = definition.PayloadKind }
             };
+
+            if (request is LifeEventHistoricalEventRequest lifeRequest)
+            {
+                data.isLifeEvent = true;
+                data.lifeEventCategory = lifeRequest.LifeEventCategory;
+                data.significance = lifeRequest.Significance;
+                data.biographyRelevance = lifeRequest.BiographyRelevance;
+                data.publicRecordRelevance = lifeRequest.PublicRecordRelevance;
+                data.lifeEventOutcome = lifeRequest.LifeEventOutcome;
+                data.lifeEventParticipants = lifeRequest.LifeEventParticipants == null ? Array.Empty<LifeEventParticipantData>() : lifeRequest.LifeEventParticipants.Select(participant => participant?.Clone()).Where(participant => participant != null).ToArray();
+                data.lifeEventRelationships = lifeRequest.LifeEventRelationships == null ? Array.Empty<LifeEventRelationshipData>() : lifeRequest.LifeEventRelationships.Select(relationship => relationship?.Clone()).Where(relationship => relationship != null).ToArray();
+                data.lifeEventSequenceId = lifeRequest.LifeEventSequenceId;
+                data.lifeEventSequenceOrder = lifeRequest.LifeEventSequenceOrder;
+                data.relatedRoleId = lifeRequest.RelatedRoleId;
+                data.relatedTitleId = lifeRequest.RelatedTitleId;
+                data.relatedSocialStatusId = lifeRequest.RelatedSocialStatusId;
+                data.relatedConditionId = lifeRequest.RelatedConditionId;
+                data.relatedInjuryId = lifeRequest.RelatedInjuryId;
+                data.relatedDiseaseId = lifeRequest.RelatedDiseaseId;
+                data.relatedTreatmentId = lifeRequest.RelatedTreatmentId;
+                data.relatedCombatEncounterId = lifeRequest.RelatedCombatEncounterId;
+                data.relatedQuestId = lifeRequest.RelatedQuestId;
+                data.relatedLegalRecordId = lifeRequest.RelatedLegalRecordId;
+                data.relatedRelationshipId = lifeRequest.RelatedRelationshipId;
+                data.lifeEventPayload = lifeRequest.LifeEventPayload?.Clone() ?? new LifeEventPayloadData { kind = definition.LifeEventPayloadKind };
+            }
+
+            return data;
+        }
+
+        private bool ValidateLifeEventRequest(RecordLifeEventRequest request, out HistoricalEventDefinition definition, out string failure, out HistoryResultCode code)
+        {
+            definition = null;
+            failure = string.Empty;
+            code = HistoryResultCode.InvalidLifeEvent;
+            if (request == null)
+            {
+                failure = "Life-event request is missing.";
+                return false;
+            }
+
+            if (registry == null || !registry.TryGet(request.EventDefinitionId, out definition))
+            {
+                code = HistoryResultCode.MissingDefinition;
+                failure = $"Life-event definition '{request.EventDefinitionId}' is missing.";
+                return false;
+            }
+
+            LifeEventCategory category = request.Category ?? definition.LifeEventCategory;
+            if (category == LifeEventCategory.None || !Enum.IsDefined(typeof(LifeEventCategory), category))
+            {
+                failure = $"Life event '{request.EventId}' has an invalid category.";
+                return false;
+            }
+
+            if (!definition.IsLifeEventDefinition && request.Category == null)
+            {
+                failure = $"Historical event definition '{definition.Id}' is not marked as a life-event definition.";
+                return false;
+            }
+
+            if (!ValidateLifeEventVisibility(request.Visibility ?? definition.DefaultVisibility, definition, out failure))
+            {
+                return false;
+            }
+
+            LifeEventParticipantData[] participants = NormalizeLifeEventParticipants(request);
+            if (participants.Length == 0)
+            {
+                failure = $"Life event '{request.EventId}' must declare at least one participant role.";
+                return false;
+            }
+
+            foreach (LifeEventParticipantData participant in participants)
+            {
+                if (participant.role == LifeEventParticipantRole.Unknown || !Enum.IsDefined(typeof(LifeEventParticipantRole), participant.role))
+                {
+                    code = HistoryResultCode.InvalidParticipantRole;
+                    failure = $"Life event '{request.EventId}' has an invalid participant role.";
+                    return false;
+                }
+
+                if (!ValidateKnownPerson(participant.personId, required: true, out failure))
+                {
+                    code = HistoryResultCode.MissingPerson;
+                    return false;
+                }
+
+                if (!ValidateKnownBody(participant.bodyId, out failure))
+                {
+                    code = HistoryResultCode.MissingBody;
+                    return false;
+                }
+            }
+
+            foreach (LifeEventParticipantRole role in definition.RequiredParticipantRoles)
+            {
+                if (!participants.Any(participant => participant.role == role))
+                {
+                    code = HistoryResultCode.InvalidParticipantRole;
+                    failure = $"Life event '{request.EventId}' is missing required role '{role}' for definition '{definition.Id}'.";
+                    return false;
+                }
+            }
+
+            if (participants.Count(participant => participant.role == LifeEventParticipantRole.Subject) > 1)
+            {
+                code = HistoryResultCode.InvalidParticipantRole;
+                failure = $"Life event '{request.EventId}' has more than one primary Subject role.";
+                return false;
+            }
+
+            foreach (LifeEventRelationshipData relationship in request.Relationships ?? Array.Empty<LifeEventRelationshipData>())
+            {
+                if (!ValidateLifeEventRelationship(request.EventId, relationship, out failure))
+                {
+                    code = HistoryResultCode.InvalidRelationship;
+                    return false;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.SequenceId) && !ValidateLifeEventSequenceMembership(request, out failure))
+            {
+                code = HistoryResultCode.InvalidSequence;
+                return false;
+            }
+
+            RecordHistoricalEventRequest eventRequest = BuildHistoricalEventRequest(request, definition);
+            return ValidateRecordRequest(eventRequest, out _, out failure, out code);
+        }
+
+        private LifeEventHistoricalEventRequest BuildHistoricalEventRequest(RecordLifeEventRequest request, HistoricalEventDefinition definition)
+        {
+            LifeEventParticipantData[] participants = NormalizeLifeEventParticipants(request);
+            return new LifeEventHistoricalEventRequest
+            {
+                TransactionId = request.TransactionId,
+                EventId = request.EventId,
+                EventDefinitionId = request.EventDefinitionId,
+                OccurredAtWorldTime = request.OccurredAtWorldTime,
+                RecordedAtWorldTime = request.RecordedAtWorldTime,
+                Sequence = request.Sequence,
+                PrimaryPersonId = string.IsNullOrWhiteSpace(request.PrimaryPersonId) ? participants.FirstOrDefault(participant => participant.role == LifeEventParticipantRole.Subject)?.personId : request.PrimaryPersonId,
+                ParticipantPersonIds = participants.Select(participant => participant.personId).ToArray(),
+                BodyIds = Distinct((request.BodyIds ?? Array.Empty<string>()).Concat(participants.Select(participant => participant.bodyId))).ToArray(),
+                LocationId = request.LocationId,
+                OrganizationId = request.OrganizationId,
+                RelatedEntityIds = request.RelatedEntityIds,
+                Category = MapLifeEventCategory(request.Category ?? definition.LifeEventCategory),
+                Visibility = request.Visibility,
+                SourceSystem = request.SourceSystem,
+                Provenance = request.Provenance,
+                SupersedesEventId = request.SupersedesEventId,
+                CorrelationId = request.CorrelationId,
+                Tags = Distinct((request.Tags ?? Array.Empty<string>()).Concat(new[] { "life-event", (request.Category ?? definition.LifeEventCategory).ToString() })).ToArray(),
+                Payload = request.HistoricalPayload ?? new HistoricalEventPayloadData { kind = definition.PayloadKind, note = request.LifeEventPayload?.note },
+                LifeEventCategory = request.Category ?? definition.LifeEventCategory,
+                Significance = request.Significance ?? definition.DefaultSignificance,
+                BiographyRelevance = request.BiographyRelevance ?? definition.DefaultBiographyRelevance,
+                PublicRecordRelevance = request.PublicRecordRelevance ?? definition.DefaultPublicRecordRelevance,
+                LifeEventOutcome = request.Outcome,
+                LifeEventParticipants = participants,
+                LifeEventRelationships = request.Relationships,
+                LifeEventSequenceId = request.SequenceId,
+                LifeEventSequenceOrder = request.SequenceOrder,
+                RelatedRoleId = request.RelatedRoleId,
+                RelatedTitleId = request.RelatedTitleId,
+                RelatedSocialStatusId = request.RelatedSocialStatusId,
+                RelatedConditionId = request.RelatedConditionId,
+                RelatedInjuryId = request.RelatedInjuryId,
+                RelatedDiseaseId = request.RelatedDiseaseId,
+                RelatedTreatmentId = request.RelatedTreatmentId,
+                RelatedCombatEncounterId = request.RelatedCombatEncounterId,
+                RelatedQuestId = request.RelatedQuestId,
+                RelatedLegalRecordId = request.RelatedLegalRecordId,
+                RelatedRelationshipId = request.RelatedRelationshipId,
+                LifeEventPayload = request.LifeEventPayload ?? new LifeEventPayloadData { kind = request.PayloadKind ?? definition.LifeEventPayloadKind }
+            };
+        }
+
+        private LifeEventParticipantData[] NormalizeLifeEventParticipants(RecordLifeEventRequest request)
+        {
+            List<LifeEventParticipantData> participants = (request.Participants ?? Array.Empty<LifeEventParticipantData>())
+                .Where(participant => participant != null && !string.IsNullOrWhiteSpace(participant.personId))
+                .Select(participant => participant.Clone())
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(request.PrimaryPersonId) && !participants.Any(participant => string.Equals(participant.personId, request.PrimaryPersonId, StringComparison.Ordinal) && participant.role == LifeEventParticipantRole.Subject))
+            {
+                participants.Add(Participant(request.PrimaryPersonId, LifeEventParticipantRole.Subject));
+            }
+
+            return participants
+                .OrderBy(participant => participant.role)
+                .ThenBy(participant => participant.personId, StringComparer.Ordinal)
+                .ThenBy(participant => participant.bodyId, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        private bool ValidateLifeEventVisibility(KnowledgeVisibility visibility, HistoricalEventDefinition definition, out string failure)
+        {
+            failure = string.Empty;
+            if (!Enum.IsDefined(typeof(KnowledgeVisibility), visibility))
+            {
+                failure = $"Life-event definition '{definition?.Id}' has invalid visibility.";
+                return false;
+            }
+
+            if (definition == null)
+            {
+                return true;
+            }
+
+            if (!definition.MayBePrivate && (visibility == KnowledgeVisibility.Private || visibility == KnowledgeVisibility.Confidential || visibility == KnowledgeVisibility.DiagnosticOnly))
+            {
+                failure = $"Life-event definition '{definition.Id}' does not allow private events.";
+                return false;
+            }
+
+            if (!definition.MayBeSecret && (visibility == KnowledgeVisibility.Hidden || visibility == KnowledgeVisibility.Secret || visibility == KnowledgeVisibility.DevelopmentOnly))
+            {
+                failure = $"Life-event definition '{definition.Id}' does not allow hidden or secret events.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool ValidateSavedLifeEvent(HistoricalEventRecordData eventData, out string failure)
+        {
+            failure = string.Empty;
+            if (eventData == null || !eventData.isLifeEvent)
+            {
+                return true;
+            }
+
+            if (eventData.lifeEventCategory == LifeEventCategory.None || !Enum.IsDefined(typeof(LifeEventCategory), eventData.lifeEventCategory))
+            {
+                failure = $"Life event '{eventData?.eventId}' has an invalid life-event category.";
+                return false;
+            }
+
+            foreach (LifeEventParticipantData participant in eventData.lifeEventParticipants ?? Array.Empty<LifeEventParticipantData>())
+            {
+                if (participant == null || string.IsNullOrWhiteSpace(participant.personId) || participant.role == LifeEventParticipantRole.Unknown || !Enum.IsDefined(typeof(LifeEventParticipantRole), participant.role))
+                {
+                    failure = $"Life event '{eventData.eventId}' has an invalid participant role.";
+                    return false;
+                }
+            }
+
+            foreach (LifeEventRelationshipData relationship in eventData.lifeEventRelationships ?? Array.Empty<LifeEventRelationshipData>())
+            {
+                if (!ValidateLifeEventRelationship(eventData.eventId, relationship, out failure))
+                {
+                    return false;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(eventData.lifeEventSequenceId) && !lifeEventSequencesById.ContainsKey(eventData.lifeEventSequenceId))
+            {
+                failure = $"Life event '{eventData.eventId}' references missing sequence '{eventData.lifeEventSequenceId}'.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool ValidateLifeEventRelationship(string eventId, LifeEventRelationshipData relationship, out string failure)
+        {
+            failure = string.Empty;
+            if (relationship == null || string.IsNullOrWhiteSpace(relationship.targetEventId))
+            {
+                failure = $"Life event '{eventId}' has a malformed relationship.";
+                return false;
+            }
+
+            if (string.Equals(eventId, relationship.targetEventId, StringComparison.Ordinal))
+            {
+                failure = $"Life event '{eventId}' cannot relate to itself.";
+                return false;
+            }
+
+            if (!eventsById.ContainsKey(relationship.targetEventId))
+            {
+                failure = $"Life event '{eventId}' references missing related event '{relationship.targetEventId}'.";
+                return false;
+            }
+
+            if (relationship.requiresAcyclic && WouldCreateRelationshipCycle(eventId, relationship.targetEventId, relationship.relationshipType))
+            {
+                failure = $"Life event relationship from '{eventId}' to '{relationship.targetEventId}' would create a cycle.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool ValidateLifeEventSequenceMembership(RecordLifeEventRequest request, out string failure)
+        {
+            failure = string.Empty;
+            if (request.SequenceOrder < 0)
+            {
+                failure = $"Life event '{request.EventId}' has an invalid sequence order.";
+                return false;
+            }
+
+            if (lifeEventSequencesById.TryGetValue(request.SequenceId, out LifeEventSequenceData sequence))
+            {
+                if (!string.IsNullOrWhiteSpace(sequence.primaryPersonId) && !string.Equals(sequence.primaryPersonId, request.PrimaryPersonId, StringComparison.Ordinal))
+                {
+                    failure = $"Life event '{request.EventId}' sequence '{request.SequenceId}' belongs to Person '{sequence.primaryPersonId}'.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool ValidateLifeEventSequence(LifeEventSequenceData sequence, Dictionary<string, HistoricalEventRecordData> eventsById, HashSet<string> knownPersons, out string failure)
+        {
+            failure = string.Empty;
+            if (sequence == null || string.IsNullOrWhiteSpace(sequence.sequenceId))
+            {
+                failure = "Life-event sequence is missing a stable sequence ID.";
+                return false;
+            }
+
+            if (knownPersons.Count > 0 && !string.IsNullOrWhiteSpace(sequence.primaryPersonId) && !knownPersons.Contains(sequence.primaryPersonId))
+            {
+                failure = $"Life-event sequence '{sequence.sequenceId}' references unknown Person '{sequence.primaryPersonId}'.";
+                return false;
+            }
+
+            if (sequence.endedAtWorldTime >= 0d && sequence.endedAtWorldTime < sequence.startedAtWorldTime)
+            {
+                failure = $"Life-event sequence '{sequence.sequenceId}' has invalid time order.";
+                return false;
+            }
+
+            foreach (string eventId in sequence.eventIds ?? Array.Empty<string>())
+            {
+                if (!eventsById.ContainsKey(eventId ?? string.Empty))
+                {
+                    failure = $"Life-event sequence '{sequence.sequenceId}' references missing event '{eventId}'.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool WouldCreateRelationshipCycle(string sourceEventId, string targetEventId, LifeEventRelationshipType relationshipType)
+        {
+            HashSet<string> visited = new HashSet<string>(StringComparer.Ordinal) { sourceEventId };
+            string current = targetEventId;
+            while (!string.IsNullOrWhiteSpace(current) && eventsById.TryGetValue(current, out HistoricalEventRecordData data))
+            {
+                if (!visited.Add(current))
+                {
+                    return true;
+                }
+
+                LifeEventRelationshipData next = (data.lifeEventRelationships ?? Array.Empty<LifeEventRelationshipData>())
+                    .FirstOrDefault(relationship => relationship.relationshipType == relationshipType && relationship.requiresAcyclic);
+                current = next?.targetEventId;
+            }
+
+            return false;
+        }
+
+        private void AddOrUpdateLifeEventSequence(RecordLifeEventRequest request, HistoricalEventRecord eventRecord)
+        {
+            if (!lifeEventSequencesById.TryGetValue(request.SequenceId, out LifeEventSequenceData sequence))
+            {
+                sequence = new LifeEventSequenceData
+                {
+                    sequenceId = request.SequenceId,
+                    sequenceTypeId = request.SequenceTypeId,
+                    primaryPersonId = request.PrimaryPersonId,
+                    status = request.SequenceStatus,
+                    startedAtWorldTime = eventRecord.OccurredAtWorldTime,
+                    endedAtWorldTime = -1d,
+                    correlationId = request.CorrelationId,
+                    eventIds = Array.Empty<string>()
+                };
+                lifeEventSequencesById[request.SequenceId] = sequence;
+            }
+
+            sequence.status = request.SequenceStatus;
+            sequence.eventIds = Distinct((sequence.eventIds ?? Array.Empty<string>()).Concat(new[] { eventRecord.EventId })).ToArray();
+            sequence.startedAtWorldTime = Math.Min(sequence.startedAtWorldTime, eventRecord.OccurredAtWorldTime);
+            if (request.SequenceStatus == LifeEventSequenceStatus.Completed)
+            {
+                sequence.endedAtWorldTime = Math.Max(sequence.endedAtWorldTime, eventRecord.OccurredAtWorldTime);
+            }
+        }
+
+        private void RebuildMissingLifeEventSequencesFromEvents()
+        {
+            foreach (HistoricalEventRecordData eventData in eventsById.Values
+                .Where(data => data != null && data.isLifeEvent && !string.IsNullOrWhiteSpace(data.lifeEventSequenceId))
+                .OrderBy(data => data.lifeEventSequenceId, StringComparer.Ordinal)
+                .ThenBy(data => data.lifeEventSequenceOrder)
+                .ThenBy(data => data.occurredAtWorldTime)
+                .ThenBy(data => data.sequence)
+                .ThenBy(data => data.eventId, StringComparer.Ordinal))
+            {
+                if (!lifeEventSequencesById.TryGetValue(eventData.lifeEventSequenceId, out LifeEventSequenceData sequence))
+                {
+                    sequence = new LifeEventSequenceData
+                    {
+                        sequenceId = eventData.lifeEventSequenceId,
+                        sequenceTypeId = $"{eventData.lifeEventSequenceId}.type",
+                        primaryPersonId = eventData.primaryPersonId,
+                        status = LifeEventSequenceStatus.Active,
+                        startedAtWorldTime = eventData.occurredAtWorldTime,
+                        endedAtWorldTime = -1d,
+                        correlationId = eventData.correlationId,
+                        eventIds = Array.Empty<string>()
+                    };
+                    lifeEventSequencesById[eventData.lifeEventSequenceId] = sequence;
+                }
+
+                if (string.IsNullOrWhiteSpace(sequence.primaryPersonId))
+                {
+                    sequence.primaryPersonId = eventData.primaryPersonId;
+                }
+
+                if (string.IsNullOrWhiteSpace(sequence.sequenceTypeId))
+                {
+                    sequence.sequenceTypeId = $"{sequence.sequenceId}.type";
+                }
+
+                if (string.IsNullOrWhiteSpace(sequence.correlationId))
+                {
+                    sequence.correlationId = eventData.correlationId;
+                }
+
+                sequence.eventIds = Distinct((sequence.eventIds ?? Array.Empty<string>()).Concat(new[] { eventData.eventId })).ToArray();
+                sequence.eventIds = sequence.eventIds
+                    .Where(id => eventsById.ContainsKey(id))
+                    .OrderBy(id => eventsById[id].lifeEventSequenceOrder)
+                    .ThenBy(id => eventsById[id].occurredAtWorldTime)
+                    .ThenBy(id => eventsById[id].sequence)
+                    .ThenBy(id => id, StringComparer.Ordinal)
+                    .ToArray();
+                sequence.startedAtWorldTime = sequence.eventIds.Length == 0 ? eventData.occurredAtWorldTime : sequence.eventIds.Min(id => eventsById[id].occurredAtWorldTime);
+                if (sequence.status == LifeEventSequenceStatus.Completed)
+                {
+                    sequence.endedAtWorldTime = sequence.eventIds.Length == 0 ? eventData.occurredAtWorldTime : sequence.eventIds.Max(id => eventsById[id].occurredAtWorldTime);
+                }
+            }
+        }
+
+        private static HistoricalEventCategory MapLifeEventCategory(LifeEventCategory category)
+        {
+            return category switch
+            {
+                LifeEventCategory.BirthOrCreation => HistoricalEventCategory.BirthOrCreation,
+                LifeEventCategory.BodyTransition => HistoricalEventCategory.BodyTransition,
+                LifeEventCategory.Travel or LifeEventCategory.Migration => HistoricalEventCategory.Travel,
+                LifeEventCategory.RelationshipMilestone => HistoricalEventCategory.Relationship,
+                LifeEventCategory.Affiliation => HistoricalEventCategory.Affiliation,
+                LifeEventCategory.Employment or LifeEventCategory.Role or LifeEventCategory.Title => HistoricalEventCategory.EmploymentOrRole,
+                LifeEventCategory.Combat => HistoricalEventCategory.Combat,
+                LifeEventCategory.Injury => HistoricalEventCategory.Injury,
+                LifeEventCategory.Recovery => HistoricalEventCategory.Recovery,
+                LifeEventCategory.Disease => HistoricalEventCategory.Disease,
+                LifeEventCategory.Diagnosis => HistoricalEventCategory.Diagnosis,
+                LifeEventCategory.Treatment => HistoricalEventCategory.Treatment,
+                LifeEventCategory.Crime => HistoricalEventCategory.Crime,
+                LifeEventCategory.Discovery => HistoricalEventCategory.Discovery,
+                LifeEventCategory.Ownership or LifeEventCategory.Property => HistoricalEventCategory.Ownership,
+                LifeEventCategory.Political => HistoricalEventCategory.Political,
+                LifeEventCategory.SocialStatus => HistoricalEventCategory.Social,
+                LifeEventCategory.Death or LifeEventCategory.Disappearance or LifeEventCategory.ReturnOrResurrection => HistoricalEventCategory.DeathOrDisappearance,
+                LifeEventCategory.QuestRelated => HistoricalEventCategory.QuestRelevant,
+                _ => HistoricalEventCategory.CustomWorldEvent
+            };
+        }
+
+        private static LifeEventParticipantData Participant(string personId, LifeEventParticipantRole role, string bodyId = "")
+        {
+            return new LifeEventParticipantData { personId = personId, role = role, bodyId = bodyId };
         }
 
         private bool CanSupersede(string eventId, string targetEventId, out string failure)
@@ -786,6 +1561,56 @@ namespace UnityIsekaiGame.Knowledge.History
         private static string TransactionKey(string transactionId)
         {
             return transactionId ?? string.Empty;
+        }
+
+        private static bool LifeEventReferences(HistoricalEventRecordData data, string relatedId)
+        {
+            return (data.relatedEntityIds ?? Array.Empty<string>()).Contains(relatedId, StringComparer.Ordinal)
+                || string.Equals(data.locationId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.organizationId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedRoleId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedTitleId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedSocialStatusId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedConditionId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedInjuryId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedDiseaseId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedTreatmentId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedCombatEncounterId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedQuestId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedLegalRecordId, relatedId, StringComparison.Ordinal)
+                || string.Equals(data.relatedRelationshipId, relatedId, StringComparison.Ordinal)
+                || (data.lifeEventParticipants ?? Array.Empty<LifeEventParticipantData>()).Any(participant => string.Equals(participant.relatedEntityId, relatedId, StringComparison.Ordinal))
+                || (data.lifeEventRelationships ?? Array.Empty<LifeEventRelationshipData>()).Any(relationship => string.Equals(relationship.targetEventId, relatedId, StringComparison.Ordinal));
+        }
+
+        private static LifeEventParticipantRole RoleFor(LifeEventRecord record, string personId)
+        {
+            return record?.Participants.FirstOrDefault(participant => string.Equals(participant.personId, personId, StringComparison.Ordinal))?.role ?? LifeEventParticipantRole.Unknown;
+        }
+
+        private sealed class LifeEventHistoricalEventRequest : RecordHistoricalEventRequest
+        {
+            public LifeEventCategory LifeEventCategory { get; set; }
+            public LifeEventSignificance Significance { get; set; }
+            public LifeEventBiographyRelevance BiographyRelevance { get; set; }
+            public LifeEventPublicRecordRelevance PublicRecordRelevance { get; set; }
+            public LifeEventOutcome LifeEventOutcome { get; set; }
+            public LifeEventParticipantData[] LifeEventParticipants { get; set; }
+            public LifeEventRelationshipData[] LifeEventRelationships { get; set; }
+            public string LifeEventSequenceId { get; set; }
+            public int LifeEventSequenceOrder { get; set; }
+            public string RelatedRoleId { get; set; }
+            public string RelatedTitleId { get; set; }
+            public string RelatedSocialStatusId { get; set; }
+            public string RelatedConditionId { get; set; }
+            public string RelatedInjuryId { get; set; }
+            public string RelatedDiseaseId { get; set; }
+            public string RelatedTreatmentId { get; set; }
+            public string RelatedCombatEncounterId { get; set; }
+            public string RelatedQuestId { get; set; }
+            public string RelatedLegalRecordId { get; set; }
+            public string RelatedRelationshipId { get; set; }
+            public LifeEventPayloadData LifeEventPayload { get; set; }
         }
     }
 

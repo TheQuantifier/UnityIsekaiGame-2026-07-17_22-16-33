@@ -94,6 +94,8 @@ Runtime and save validation reject missing definitions, unknown Persons or bodie
 
 The Test Lab adds `History 8.3` under `Knowledge Step 8`.
 
+Feature 8.5 extends this same authoritative history runtime with typed life-event projections. Life events remain canonical historical events; the extra metadata only supports biography, participant-role, relationship, and sequence queries. Recording a life event does not mutate current character state unless a separate state-owning system explicitly performs that change.
+
 Controls demonstrate:
 
 - authoritative event recording;

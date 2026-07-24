@@ -17,6 +17,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildObservationSuite());
             TryRegister(registry, BuildHistorySuite());
             TryRegister(registry, BuildMemorySuite());
+            TryRegister(registry, BuildLifeEventsSuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -254,6 +255,43 @@ namespace UnityIsekaiGame.Development.Automation
                 Scenario("compare-and-save-restore", "Memory, belief, history, and persistence stay separated", 110,
                     Step("compare", "Compare views", context => Operation(context.Service.CompareMemoryBeliefHistory(), context, "step8-memory-compare")),
                     Step("save-restore", "Save restore", context => Operation(context.Service.ValidateMemory84SaveRestore(), context, "step8-memory-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildLifeEventsSuite()
+        {
+            return Suite("feature.8.5.character-history-life-events", "Feature 8.5 Character History and Life Events", "8.5", 850,
+                Required("AuthoritativeHistoryRuntime", "PersonMemoryRuntime", "HistoricalEventDefinition", "PersonKnowledgeRuntime"),
+                Scenario("foundation-validates", "Life Event definitions and runtimes are ready", 10,
+                    Step("validate", "Validate Life Events", context => Operation(context.Service.ValidateLifeEventDefinitions(), context, "step8-life-events-foundation"))),
+                Scenario("birth-discovery-title", "Birth, discovery, role, and title events record as canonical history", 20,
+                    Step("birth", "Record birth", context => Operation(context.Service.RecordLifeEventBirthOrCreation(), context, "step8-life-birth")),
+                    Step("discovery", "Record discovery", context => Operation(context.Service.RecordLifeEventDiscovery(), context, "step8-life-discovery")),
+                    Step("role", "Record role", context => Operation(context.Service.RecordLifeEventRoleAppointment(), context, "step8-life-role")),
+                    Step("title", "Record title", context => Operation(context.Service.RecordLifeEventTitleGrant(), context, "step8-life-title"))),
+                Scenario("affiliation-battle-injury-sequence", "Affiliation, battle, injury, recovery, and sequence links are queryable", 30,
+                    Step("affiliation", "Record affiliation", context => Operation(context.Service.RecordLifeEventAffiliationChange(), context, "step8-life-affiliation")),
+                    Step("battle", "Record battle", context => Operation(context.Service.RecordLifeEventBattleParticipation(), context, "step8-life-battle")),
+                    Step("injury", "Record injury", context => Operation(context.Service.RecordLifeEventMajorInjury(), context, "step8-life-injury")),
+                    Step("recovery", "Record recovery", context => Operation(context.Service.RecordLifeEventRecovery(), context, "step8-life-recovery")),
+                    Step("sequence", "Create sequence", context => Operation(context.Service.CreateLifeEventSequence(), context, "step8-life-sequence")),
+                    Step("link", "Link cause and consequence", context => Operation(context.Service.LinkLifeEventCauseAndConsequence(), context, "step8-life-link"))),
+                Scenario("privacy-biography-views", "Public, authoritative, known, and remembered biography views remain distinct", 40,
+                    Step("crime", "Record hidden crime", context => Operation(context.Service.RecordLifeEventCrimeOrAccusation(), context, "step8-life-crime")),
+                    Step("public", "Show public biography", context => Operation(context.Service.ShowLifeEventPublicBiography(), context, "step8-life-public")),
+                    Step("authoritative", "Show authoritative biography", context => Operation(context.Service.ShowLifeEventAuthoritativeBiography(), context, "step8-life-authoritative")),
+                    Step("known", "Show known biography", context => Operation(context.Service.ShowLifeEventPersonKnownBiography(), context, "step8-life-known")),
+                    Step("remembered", "Show remembered biography", context => Operation(context.Service.ShowLifeEventPersonRememberedBiography(), context, "step8-life-remembered"))),
+                Scenario("death-return-correction-body-transition", "Death, presumed death, return, correction, and body transition stay linked", 50,
+                    Step("death", "Record death", context => Operation(context.Service.RecordLifeEventDeath(), context, "step8-life-death")),
+                    Step("presumed", "Record presumed death", context => Operation(context.Service.RecordLifeEventPresumedDeath(), context, "step8-life-presumed")),
+                    Step("return", "Record return", context => Operation(context.Service.RecordLifeEventReturn(), context, "step8-life-return")),
+                    Step("correct", "Correct presumed death", context => Operation(context.Service.CorrectLifeEventPresumedDeath(), context, "step8-life-correct")),
+                    Step("body", "Record body transition", context => Operation(context.Service.RecordLifeEventBodyTransition(), context, "step8-life-body"))),
+                Scenario("save-restore-round-trip", "Life events persist and restore without replaying current state", 60,
+                    Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateLifeEventSaveRestore(), context, "step8-life-save-restore"))),
+                Scenario("timeline-and-milestones", "Timeline and major milestone queries are available", 70,
+                    Step("timeline", "Show timeline", context => Operation(context.Service.ShowLifeEventPersonTimeline(), context, "step8-life-timeline")),
+                    Step("milestones", "Show milestones", context => Operation(context.Service.ShowLifeEventMajorMilestones(), context, "step8-life-milestones"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

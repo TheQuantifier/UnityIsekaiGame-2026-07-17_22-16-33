@@ -40,6 +40,174 @@ namespace UnityIsekaiGame.Knowledge.History
         Correction
     }
 
+    public enum LifeEventCategory
+    {
+        None,
+        BirthOrCreation,
+        Death,
+        Disappearance,
+        ReturnOrResurrection,
+        Identity,
+        BodyTransition,
+        FamilyOrLineage,
+        Discovery,
+        Education,
+        Training,
+        SkillMilestone,
+        Role,
+        Title,
+        SocialStatus,
+        Affiliation,
+        Employment,
+        RelationshipMilestone,
+        Combat,
+        Injury,
+        Recovery,
+        Disease,
+        Diagnosis,
+        Treatment,
+        Crime,
+        Arrest,
+        Trial,
+        Conviction,
+        Punishment,
+        Ownership,
+        Property,
+        Travel,
+        Migration,
+        Citizenship,
+        Political,
+        Religious,
+        Economic,
+        QuestRelated,
+        PublicAchievement,
+        PublicFailure,
+        PersonalAchievement,
+        PersonalFailure,
+        Custom
+    }
+
+    public enum LifeEventParticipantRole
+    {
+        Unknown,
+        Subject,
+        Participant,
+        Witness,
+        Instigator,
+        Victim,
+        Beneficiary,
+        Authority,
+        Teacher,
+        Student,
+        Employer,
+        Employee,
+        Attacker,
+        Defender,
+        Healer,
+        Diagnostician,
+        Owner,
+        Recipient,
+        Discoverer,
+        Accused,
+        ConvictedPerson,
+        AppointingAuthority,
+        Custom
+    }
+
+    public enum LifeEventPayloadKind
+    {
+        None,
+        Generic,
+        BirthOrCreation,
+        DeathOrDisappearance,
+        RoleOrTitleTransition,
+        AffiliationTransition,
+        CombatParticipation,
+        InjuryDiagnosisRecovery,
+        Discovery,
+        OwnershipTransfer,
+        BodyTransition,
+        Legal,
+        TravelOrMigration,
+        Custom
+    }
+
+    public enum LifeEventSignificance
+    {
+        Trivial,
+        Routine,
+        Notable,
+        Major,
+        LifeDefining,
+        Historic
+    }
+
+    public enum LifeEventBiographyRelevance
+    {
+        NotRelevant,
+        Optional,
+        NormallyIncluded,
+        MajorBiographyEvent,
+        IdentityDefining,
+        PublicBiographyEvent,
+        PrivateBiographyEvent,
+        RestrictedBiographyEvent
+    }
+
+    public enum LifeEventPublicRecordRelevance
+    {
+        None,
+        PersonalOnly,
+        LocallyRecordable,
+        OrganizationRecord,
+        PublicRecord,
+        HistoricalArchive
+    }
+
+    public enum LifeEventOutcome
+    {
+        Unknown,
+        Started,
+        Completed,
+        Succeeded,
+        Failed,
+        Confirmed,
+        Presumed,
+        Disputed,
+        Corrected,
+        Resolved,
+        Ongoing
+    }
+
+    public enum LifeEventRelationshipType
+    {
+        Related,
+        Cause,
+        Consequence,
+        Continuation,
+        Escalation,
+        Resolution,
+        Correction,
+        Supersession,
+        PartOf,
+        MilestoneWithin,
+        TriggeredBy,
+        ResultedIn,
+        BeginningPair,
+        EndingPair
+    }
+
+    public enum LifeEventSequenceStatus
+    {
+        Unknown,
+        Planned,
+        Active,
+        Completed,
+        Interrupted,
+        Cancelled,
+        Superseded
+    }
+
     public enum HistoricalEventStatus
     {
         Active,
@@ -212,6 +380,10 @@ namespace UnityIsekaiGame.Knowledge.History
         NoMatch,
         InvalidSuppression,
         InvalidRevision,
-        CircularRevision
+        CircularRevision,
+        InvalidLifeEvent,
+        InvalidParticipantRole,
+        InvalidRelationship,
+        InvalidSequence
     }
 }

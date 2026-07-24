@@ -3417,6 +3417,119 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "Validate 8.3 History Foundation", succeeded ? "Success" : "MissingDefinitions", $"Definitions={definitions} World={historyRuntime?.WorldId ?? "None"} Person={memoryRuntime?.PersonId ?? "None"}.");
         }
 
+        public PrototypeTestLabOperation ValidateLifeEventDefinitions()
+        {
+            bool runtimeReady = EnsureHistoryRuntime(out _, out _);
+            int definitions = registry == null ? 0 : registry.DefinitionsById.Values.OfType<HistoricalEventDefinition>().Count(definition => definition.IsLifeEventDefinition);
+            bool succeeded = runtimeReady && definitions >= 10;
+            return Record(succeeded, "Validate 8.5 Life Event Definitions", succeeded ? "Success" : "MissingDefinitions", $"LifeEventDefinitions={definitions} RuntimeReady={runtimeReady}.");
+        }
+
+        public string BuildLifeEventSummary()
+        {
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime))
+            {
+                return "Life event runtime is missing.";
+            }
+
+            string personId = GetPrototypePersonId();
+            IReadOnlyList<LifeEventRecord> timeline = historyRuntime.QueryLifeEventsForPerson(personId);
+            IReadOnlyList<BiographyTimelineEntry> publicBiography = historyRuntime.QueryBiography(personId, memoryRuntime, publicOnly: true);
+            IReadOnlyList<BiographyTimelineEntry> authoritativeBiography = historyRuntime.QueryBiography(personId, memoryRuntime, privileged: true);
+            IReadOnlyList<LifeEventRecord> milestones = historyRuntime.QueryMajorLifeMilestones(personId);
+            int definitions = registry == null ? 0 : registry.DefinitionsById.Values.OfType<HistoricalEventDefinition>().Count(definition => definition.IsLifeEventDefinition);
+
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 8.5 Character History and Life Events");
+            builder.AppendLine($"Person={personId} Definitions={definitions} Timeline={timeline.Count} PublicBio={publicBiography.Count} AuthoritativeBio={authoritativeBiography.Count} Milestones={milestones.Count}");
+            builder.AppendLine("Recent Life Events:");
+            builder.AppendLine(FormatLifeEvents(timeline.Take(8).ToArray()));
+            builder.AppendLine("Public Biography:");
+            builder.AppendLine(FormatBiography(publicBiography.Take(6).ToArray()));
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation RecordLifeEventBirthOrCreation() => RecordPrototypeLifeEvent("Record 8.5 Birth or Creation", "history-event.life.birth", LifeEventCategory.BirthOrCreation, LifeEventPayloadKind.BirthOrCreation, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.IdentityDefining, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject);
+        public PrototypeTestLabOperation RecordLifeEventDiscovery() => RecordPrototypeLifeEvent("Record 8.5 Discovery", "history-event.life.discovery", LifeEventCategory.Discovery, LifeEventPayloadKind.Discovery, LifeEventSignificance.Notable, LifeEventBiographyRelevance.Optional, KnowledgeVisibility.Public, LifeEventParticipantRole.Discoverer);
+        public PrototypeTestLabOperation RecordLifeEventRoleAppointment() => RecordPrototypeLifeEvent("Record 8.5 Role Appointment", "history-event.life.role-appointment", LifeEventCategory.Role, LifeEventPayloadKind.RoleOrTitleTransition, LifeEventSignificance.Major, LifeEventBiographyRelevance.MajorBiographyEvent, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject, relatedRoleId: "role.prototype.adventurer");
+        public PrototypeTestLabOperation RecordLifeEventTitleGrant() => RecordPrototypeLifeEvent("Record 8.5 Title Grant", "history-event.life.title-grant", LifeEventCategory.Title, LifeEventPayloadKind.RoleOrTitleTransition, LifeEventSignificance.Major, LifeEventBiographyRelevance.PublicBiographyEvent, KnowledgeVisibility.Public, LifeEventParticipantRole.Subject, relatedTitleId: "title.prototype-hero");
+        public PrototypeTestLabOperation RecordLifeEventAffiliationChange() => RecordPrototypeLifeEvent("Record 8.5 Affiliation Change", "history-event.life.affiliation", LifeEventCategory.Affiliation, LifeEventPayloadKind.AffiliationTransition, LifeEventSignificance.Notable, LifeEventBiographyRelevance.NormallyIncluded, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject, organizationId: "faction.prototype.guild");
+        public PrototypeTestLabOperation RecordLifeEventBattleParticipation() => RecordPrototypeLifeEvent("Record 8.5 Battle Participation", "history-event.life.battle", LifeEventCategory.Combat, LifeEventPayloadKind.CombatParticipation, LifeEventSignificance.Major, LifeEventBiographyRelevance.MajorBiographyEvent, KnowledgeVisibility.Public, LifeEventParticipantRole.Participant, relatedCombatEncounterId: "encounter.prototype.training-battle", sequenceId: "sequence.prototype.battle-recovery", sequenceOrder: 0);
+        public PrototypeTestLabOperation RecordLifeEventMajorInjury() => RecordPrototypeLifeEvent("Record 8.5 Major Injury", "history-event.life.injury", LifeEventCategory.Injury, LifeEventPayloadKind.InjuryDiagnosisRecovery, LifeEventSignificance.Major, LifeEventBiographyRelevance.PrivateBiographyEvent, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject, relatedInjuryId: "injury.prototype-major", sequenceId: "sequence.prototype.battle-recovery", sequenceOrder: 1, relationshipTarget: EnsureLifeEvent("event.prototype.life.battle", () => RecordLifeEventBattleParticipation()));
+        public PrototypeTestLabOperation RecordLifeEventDiagnosis() => RecordPrototypeLifeEvent("Record 8.5 Diagnosis", "history-event.diagnosis", LifeEventCategory.Diagnosis, LifeEventPayloadKind.InjuryDiagnosisRecovery, LifeEventSignificance.Notable, LifeEventBiographyRelevance.PrivateBiographyEvent, KnowledgeVisibility.DiagnosticOnly, LifeEventParticipantRole.Subject, relatedConditionId: "condition.biology.prototype-infection", sequenceId: "sequence.prototype.medical", sequenceOrder: 0);
+        public PrototypeTestLabOperation RecordLifeEventRecovery() => RecordPrototypeLifeEvent("Record 8.5 Recovery", "history-event.life.recovery", LifeEventCategory.Recovery, LifeEventPayloadKind.InjuryDiagnosisRecovery, LifeEventSignificance.Notable, LifeEventBiographyRelevance.NormallyIncluded, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject, relatedTreatmentId: "treatment.prototype-rest", sequenceId: "sequence.prototype.medical", sequenceOrder: 1, sequenceStatus: LifeEventSequenceStatus.Completed, relationshipTarget: EnsureLifeEvent("event.prototype.life.diagnosis", () => RecordLifeEventDiagnosis()));
+        public PrototypeTestLabOperation RecordLifeEventCrimeOrAccusation() => RecordPrototypeLifeEvent("Record 8.5 Hidden Crime", "history-event.life.crime", LifeEventCategory.Crime, LifeEventPayloadKind.Legal, LifeEventSignificance.Major, LifeEventBiographyRelevance.RestrictedBiographyEvent, KnowledgeVisibility.Hidden, LifeEventParticipantRole.Accused, relatedLegalRecordId: "legal.prototype.accusation");
+        public PrototypeTestLabOperation RecordLifeEventOwnershipTransfer() => RecordPrototypeLifeEvent("Record 8.5 Ownership Transfer", "history-event.life.discovery", LifeEventCategory.Ownership, LifeEventPayloadKind.OwnershipTransfer, LifeEventSignificance.Notable, LifeEventBiographyRelevance.Optional, KnowledgeVisibility.Private, LifeEventParticipantRole.Owner, relatedItemId: "item.prototype-sword");
+        public PrototypeTestLabOperation RecordLifeEventDeath() => RecordPrototypeLifeEvent("Record 8.5 Death", "history-event.life.death", LifeEventCategory.Death, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.MajorBiographyEvent, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject);
+        public PrototypeTestLabOperation RecordLifeEventPresumedDeath() => RecordPrototypeLifeEvent("Record 8.5 Presumed Death", "history-event.life.presumed-death", LifeEventCategory.Disappearance, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.Major, LifeEventBiographyRelevance.RestrictedBiographyEvent, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject);
+        public PrototypeTestLabOperation RecordLifeEventReturn() => RecordPrototypeLifeEvent("Record 8.5 Return", "history-event.life.return", LifeEventCategory.ReturnOrResurrection, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.MajorBiographyEvent, KnowledgeVisibility.Public, LifeEventParticipantRole.Subject);
+        public PrototypeTestLabOperation RecordLifeEventBodyTransition() => RecordPrototypeLifeEvent("Record 8.5 Body Transition", "history-event.body-transition", LifeEventCategory.BodyTransition, LifeEventPayloadKind.BodyTransition, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.IdentityDefining, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject);
+
+        public PrototypeTestLabOperation CreateLifeEventSequence()
+        {
+            RecordLifeEventBattleParticipation();
+            RecordLifeEventMajorInjury();
+            RecordLifeEventRecovery();
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
+            bool succeeded = historyRuntime.TryGetLifeEventSequence("sequence.prototype.battle-recovery", out LifeEventSequenceRecord sequence) && sequence.Events.Count >= 2;
+            return Record(succeeded, "Create 8.5 Life Event Sequence", succeeded ? "Success" : "MissingSequence", succeeded ? FormatLifeEventSequence(sequence) : "Sequence was not created.");
+        }
+
+        public PrototypeTestLabOperation LinkLifeEventCauseAndConsequence()
+        {
+            RecordLifeEventBattleParticipation();
+            PrototypeTestLabOperation injury = RecordLifeEventMajorInjury();
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
+            bool succeeded = injury.Succeeded && historyRuntime.QueryRelatedLifeEvents("event.prototype.life.injury", LifeEventRelationshipType.Cause).Any(record => record.EventId == "event.prototype.life.battle");
+            return Record(succeeded, "Link 8.5 Cause and Consequence", succeeded ? "Success" : "MissingRelationship", $"BattleToInjuryLinked={succeeded}.");
+        }
+
+        public PrototypeTestLabOperation CorrectLifeEventPresumedDeath()
+        {
+            RecordLifeEventPresumedDeath();
+            RecordLifeEventReturn();
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
+            if (historyRuntime.TryGetEvent("event.prototype.life.return.corrected", out HistoricalEventRecord existingCorrection))
+            {
+                HistoryOperationResult duplicate = HistoryOperationResult.Success("Presumed-death correction already exists.", "history.8.5.correct-presumed-death", existingCorrection, null, null, historyRuntime.HistoryRevision, historyRuntime.HistoryRevision, duplicate: true);
+                return RecordHistoryResult("Correct 8.5 Presumed Death", duplicate);
+            }
+
+            RecordLifeEventRequest request = BuildPrototypeLifeEventRequest("event.prototype.life.return.corrected", "history-event.life.return", LifeEventCategory.ReturnOrResurrection, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.MajorBiographyEvent, KnowledgeVisibility.Public, LifeEventParticipantRole.Subject);
+            request.TransactionId = "history.8.5.correct-presumed-death";
+            request.SupersedesEventId = "event.prototype.life.presumed-death";
+            HistoryOperationResult result = historyRuntime.RecordLifeEvent(request);
+            return RecordHistoryResult("Correct 8.5 Presumed Death", result);
+        }
+
+        public PrototypeTestLabOperation ShowLifeEventPersonTimeline() => RecordLifeEventView("Show 8.5 Person Timeline", history => FormatLifeEvents(history.QueryLifeEventsForPerson(GetPrototypePersonId())));
+        public PrototypeTestLabOperation ShowLifeEventPublicBiography() => RecordLifeEventView("Show 8.5 Public Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), playerMemory, publicOnly: true)));
+        public PrototypeTestLabOperation ShowLifeEventAuthoritativeBiography() => RecordLifeEventView("Show 8.5 Authoritative Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), playerMemory, privileged: true)));
+        public PrototypeTestLabOperation ShowLifeEventPersonKnownBiography() => RecordLifeEventView("Show 8.5 Person Known Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), playerMemory, personKnown: true)));
+        public PrototypeTestLabOperation ShowLifeEventPersonRememberedBiography() => RecordLifeEventView("Show 8.5 Person Remembered Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), playerMemory, personRemembered: true)));
+        public PrototypeTestLabOperation ShowLifeEventMajorMilestones() => RecordLifeEventView("Show 8.5 Major Milestones", history => FormatLifeEvents(history.QueryMajorLifeMilestones(GetPrototypePersonId())));
+
+        public PrototypeTestLabOperation ValidateLifeEventSaveRestore()
+        {
+            RecordLifeEventBirthOrCreation();
+            RecordLifeEventBattleParticipation();
+            RecordLifeEventMajorInjury();
+            CorrectLifeEventPresumedDeath();
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            AuthoritativeHistorySaveData historySave = historyRuntime.CreateSaveData();
+            PersonMemorySaveData memorySave = memoryRuntime.CreateSaveData();
+            AuthoritativeHistoryRuntime restoredHistory = new AuthoritativeHistoryRuntime();
+            restoredHistory.Configure(registry, PersistenceService.LocalWorldId, GetKnownPrototypePersons(), GetKnownPrototypeBodies());
+            PersonMemoryRuntime restoredMemory = new PersonMemoryRuntime();
+            restoredMemory.Configure(GetPrototypePersonId(), registry, restoredHistory, GetKnownPrototypePersons());
+            HistoryOperationResult historyRestore = restoredHistory.RestoreFromSaveData(historySave, registry, GetKnownPrototypePersons(), GetKnownPrototypeBodies(), restoring: true);
+            HistoryOperationResult memoryRestore = restoredMemory.RestoreFromSaveData(memorySave, registry, restoredHistory, GetKnownPrototypePersons(), restoring: true);
+            HistoricalEventRecord accepted = null;
+            bool acceptedResolved = restoredHistory.TryGetAcceptedEvent("event.prototype.life.presumed-death", out accepted);
+            bool succeeded = historyRestore.Succeeded && memoryRestore.Succeeded && restoredHistory.QueryLifeEventsForPerson(GetPrototypePersonId()).Count >= 3 && acceptedResolved && accepted.EventId == "event.prototype.life.return.corrected";
+            return Record(succeeded, "Validate 8.5 Save Restore", succeeded ? "Success" : "RestoreFailed", $"History={historyRestore.Code} '{historyRestore.Message}' Memory={memoryRestore.Code} '{memoryRestore.Message}' Events={restoredHistory.QueryLifeEventsForPerson(GetPrototypePersonId()).Count} AcceptedPresumedDeath={(accepted == null ? "None" : accepted.EventId)}.");
+        }
+
         public PrototypeTestLabOperation RecordAuthoritativeHistoryEvent()
         {
             if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
@@ -3652,7 +3765,7 @@ namespace UnityIsekaiGame.Development
             historyRuntime.HistoryChanged -= CountHistory;
             memoryRuntime.MemoryChanged -= CountMemory;
             bool succeeded = historyRestore.Succeeded && memoryRestore.Succeeded && historyEvents == 0 && memoryEvents == 0;
-            return Record(succeeded, "Validate 8.3 History Save Restore", succeeded ? "Success" : "RestoreFailed", $"History={historyRestore.Code} Memory={memoryRestore.Code} Events={historyEvents}/{memoryEvents} Ordering={string.Join(",", historyRuntime.CreateSnapshot().Events.Select(record => record.EventId).Take(6))}.");
+            return Record(succeeded, "Validate 8.3 History Save Restore", succeeded ? "Success" : "RestoreFailed", $"History={historyRestore.Code} '{historyRestore.Message}' Memory={memoryRestore.Code} '{memoryRestore.Message}' Events={historyEvents}/{memoryEvents} Ordering={string.Join(",", historyRuntime.CreateSnapshot().Events.Select(record => record.EventId).Take(6))}.");
         }
 
         public string BuildMemoryRecallSummary()
@@ -4629,6 +4742,150 @@ namespace UnityIsekaiGame.Development
             };
         }
 
+        private RecordLifeEventRequest BuildPrototypeLifeEventRequest(string eventId, string definitionId, LifeEventCategory category, LifeEventPayloadKind payloadKind, LifeEventSignificance significance, LifeEventBiographyRelevance biographyRelevance, KnowledgeVisibility visibility, LifeEventParticipantRole role, string organizationId = "", string relatedRoleId = "", string relatedTitleId = "", string relatedInjuryId = "", string relatedConditionId = "", string relatedTreatmentId = "", string relatedCombatEncounterId = "", string relatedLegalRecordId = "", string relatedItemId = "", string sequenceId = "", int sequenceOrder = 0, LifeEventSequenceStatus sequenceStatus = LifeEventSequenceStatus.Active, string relationshipTarget = "")
+        {
+            double now = GetGameTimeSeconds();
+            string personId = GetPrototypePersonId();
+            string bodyId = GetPrototypeBodyId();
+            List<string> related = new List<string>();
+            if (!string.IsNullOrWhiteSpace(relatedItemId))
+            {
+                related.Add(relatedItemId);
+            }
+
+            LifeEventRelationshipData[] relationships = string.IsNullOrWhiteSpace(relationshipTarget)
+                ? Array.Empty<LifeEventRelationshipData>()
+                : new[]
+                {
+                    new LifeEventRelationshipData
+                    {
+                        relationshipId = $"relationship.{eventId}.cause",
+                        relationshipType = category == LifeEventCategory.Recovery ? LifeEventRelationshipType.Resolution : LifeEventRelationshipType.Cause,
+                        targetEventId = relationshipTarget,
+                        requiresAcyclic = true
+                    }
+                };
+
+            return new RecordLifeEventRequest
+            {
+                TransactionId = $"history.8.5.{category}.{Guid.NewGuid():N}",
+                EventId = eventId,
+                EventDefinitionId = definitionId,
+                Category = category,
+                PayloadKind = payloadKind,
+                OccurredAtWorldTime = now,
+                RecordedAtWorldTime = now,
+                PrimaryPersonId = personId,
+                Participants = new[]
+                {
+                    new LifeEventParticipantData
+                    {
+                        personId = personId,
+                        role = role,
+                        bodyId = bodyId,
+                        relatedEntityId = relatedItemId
+                    }
+                },
+                BodyIds = new[] { bodyId },
+                OrganizationId = organizationId,
+                RelatedEntityIds = related.ToArray(),
+                Visibility = visibility,
+                Significance = significance,
+                BiographyRelevance = biographyRelevance,
+                PublicRecordRelevance = visibility == KnowledgeVisibility.Public ? LifeEventPublicRecordRelevance.PublicRecord : LifeEventPublicRecordRelevance.PersonalOnly,
+                Outcome = LifeEventOutcome.Confirmed,
+                Relationships = relationships,
+                SequenceId = sequenceId,
+                SequenceOrder = sequenceOrder,
+                SequenceTypeId = string.IsNullOrWhiteSpace(sequenceId) ? string.Empty : $"{sequenceId}.type",
+                SequenceStatus = sequenceStatus,
+                RelatedRoleId = relatedRoleId,
+                RelatedTitleId = relatedTitleId,
+                RelatedInjuryId = relatedInjuryId,
+                RelatedConditionId = relatedConditionId,
+                RelatedTreatmentId = relatedTreatmentId,
+                RelatedCombatEncounterId = relatedCombatEncounterId,
+                RelatedLegalRecordId = relatedLegalRecordId,
+                SourceSystem = "PrototypeTestLab",
+                Provenance = "Development life-event fixture. Does not mutate current gameplay state.",
+                CorrelationId = string.IsNullOrWhiteSpace(sequenceId) ? $"correlation.{eventId}" : sequenceId,
+                HistoricalPayload = new HistoricalEventPayloadData
+                {
+                    kind = HistoricalEventPayloadKind.Generic,
+                    organizationId = organizationId,
+                    itemId = relatedItemId,
+                    conditionId = relatedConditionId,
+                    note = $"{category} life event"
+                },
+                LifeEventPayload = new LifeEventPayloadData
+                {
+                    kind = payloadKind,
+                    subjectPersonId = personId,
+                    methodId = "prototype-test-lab",
+                    severityId = significance.ToString(),
+                    encounterId = relatedCombatEncounterId,
+                    evidenceId = $"evidence.{eventId}",
+                    treatmentId = relatedTreatmentId,
+                    note = $"{category} life event"
+                },
+                Tags = new[] { "feature.8.5", "life-event", category.ToString() }
+            };
+        }
+
+        private PrototypeTestLabOperation RecordPrototypeLifeEvent(string operationName, string definitionId, LifeEventCategory category, LifeEventPayloadKind payloadKind, LifeEventSignificance significance, LifeEventBiographyRelevance biographyRelevance, KnowledgeVisibility visibility, LifeEventParticipantRole role, string organizationId = "", string relatedRoleId = "", string relatedTitleId = "", string relatedInjuryId = "", string relatedConditionId = "", string relatedTreatmentId = "", string relatedCombatEncounterId = "", string relatedLegalRecordId = "", string relatedItemId = "", string sequenceId = "", int sequenceOrder = 0, LifeEventSequenceStatus sequenceStatus = LifeEventSequenceStatus.Active, string relationshipTarget = "")
+        {
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
+            {
+                return RecordFailure(operationName, "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            string eventId = StablePrototypeLifeEventId(category);
+            RecordLifeEventRequest request = BuildPrototypeLifeEventRequest(eventId, definitionId, category, payloadKind, significance, biographyRelevance, visibility, role, organizationId, relatedRoleId, relatedTitleId, relatedInjuryId, relatedConditionId, relatedTreatmentId, relatedCombatEncounterId, relatedLegalRecordId, relatedItemId, sequenceId, sequenceOrder, sequenceStatus, relationshipTarget);
+            if (historyRuntime.TryGetEvent(eventId, out HistoricalEventRecord existing))
+            {
+                HistoryOperationResult duplicate = HistoryOperationResult.Success("Life event already exists.", request.TransactionId, existing, null, null, historyRuntime.HistoryRevision, historyRuntime.HistoryRevision, duplicate: true);
+                return RecordHistoryResult(operationName, duplicate);
+            }
+
+            HistoryOperationResult result = historyRuntime.RecordLifeEvent(request);
+            return RecordHistoryResult(operationName, result);
+        }
+
+        private string EnsureLifeEvent(string eventId, Func<PrototypeTestLabOperation> create)
+        {
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
+            if (historyRuntime.TryGetEvent(eventId, out _))
+            {
+                return eventId;
+            }
+
+            create?.Invoke();
+            return eventId;
+        }
+
+        private static string StablePrototypeLifeEventId(LifeEventCategory category)
+        {
+            return category switch
+            {
+                LifeEventCategory.BirthOrCreation => "event.prototype.life.birth",
+                LifeEventCategory.Discovery => "event.prototype.life.discovery",
+                LifeEventCategory.Role => "event.prototype.life.role",
+                LifeEventCategory.Title => "event.prototype.life.title",
+                LifeEventCategory.Affiliation => "event.prototype.life.affiliation",
+                LifeEventCategory.Combat => "event.prototype.life.battle",
+                LifeEventCategory.Injury => "event.prototype.life.injury",
+                LifeEventCategory.Diagnosis => "event.prototype.life.diagnosis",
+                LifeEventCategory.Recovery => "event.prototype.life.recovery",
+                LifeEventCategory.Crime => "event.prototype.life.crime",
+                LifeEventCategory.Ownership => "event.prototype.life.ownership",
+                LifeEventCategory.Death => "event.prototype.life.death",
+                LifeEventCategory.Disappearance => "event.prototype.life.presumed-death",
+                LifeEventCategory.ReturnOrResurrection => "event.prototype.life.return",
+                LifeEventCategory.BodyTransition => "event.prototype.life.body-transition",
+                _ => $"event.prototype.life.{category.ToString().ToLowerInvariant()}"
+            };
+        }
+
         private FormMemoryRequest BuildMemoryRequest(string transactionId, string memoryId, string eventId, HistoryMemorySource source, bool createKnowledge)
         {
             double now = GetGameTimeSeconds();
@@ -4883,6 +5140,50 @@ namespace UnityIsekaiGame.Development
             return $"Success={result.Succeeded} Code={result.Code} Preview={result.Preview} Duplicate={result.Duplicate} Event={eventId} Memory={memoryId} Knowledge={knowledge} Revision={result.PriorRevision}->{result.ResultingRevision}. {result.Message}";
         }
 
+        private PrototypeTestLabOperation RecordLifeEventView(string operationName, Func<AuthoritativeHistoryRuntime, string> formatter)
+        {
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
+            {
+                return RecordFailure(operationName, "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            string message = formatter == null ? string.Empty : formatter(historyRuntime);
+            bool succeeded = !string.IsNullOrWhiteSpace(message);
+            return Record(succeeded, operationName, succeeded ? "Success" : "Empty", message);
+        }
+
+        private static string FormatLifeEvents(IReadOnlyList<LifeEventRecord> events)
+        {
+            if (events == null || events.Count == 0)
+            {
+                return "No life events.";
+            }
+
+            return string.Join(Environment.NewLine, events.Take(12).Select(record =>
+                $"{record.EventId} Def={record.DefinitionId} Category={record.Category} Person={record.PrimaryPersonId} Role={string.Join(",", record.Participants.Select(participant => participant.role))} Time={record.OccurredAtWorldTime:0.##} Significance={record.Significance} Bio={record.BiographyRelevance} Visibility={record.Visibility} Sequence={record.SequenceId} Status={record.Status}"));
+        }
+
+        private static string FormatBiography(IReadOnlyList<BiographyTimelineEntry> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return "No biography entries.";
+            }
+
+            return string.Join(Environment.NewLine, entries.Take(12).Select(entry =>
+                $"{entry.EventId} Category={entry.Category} Role={entry.ParticipantRole} Time={entry.OccurredAtWorldTime:0.##} Significance={entry.Significance} Bio={entry.BiographyRelevance} Visibility={entry.Visibility} Known={entry.Known} Remembered={entry.Remembered}"));
+        }
+
+        private static string FormatLifeEventSequence(LifeEventSequenceRecord sequence)
+        {
+            if (sequence == null)
+            {
+                return "Sequence=None";
+            }
+
+            return $"Sequence={sequence.SequenceId} Type={sequence.SequenceTypeId} Status={sequence.Status} Person={sequence.PrimaryPersonId} Events=[{string.Join(",", sequence.Events.Select(record => record.EventId))}]";
+        }
+
         private static string FormatMemoryRecallResult(MemoryRecallResult result)
         {
             if (result == null)
@@ -4926,24 +5227,36 @@ namespace UnityIsekaiGame.Development
 
         private string[] GetKnownPrototypePersons()
         {
+            IEnumerable<string> historicalPersons = authoritativeHistory.CreateSnapshot().Events.SelectMany(record => (record.ParticipantPersonIds ?? Array.Empty<string>()).Concat(new[] { record.PrimaryPersonId }));
             return new[]
             {
                 GetPrototypePersonId(),
                 "person.prototype.listener",
                 "person.prototype.uninformed",
                 "person.prototype.witness"
-            }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
+            }
+                .Concat(historicalPersons)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
         }
 
         private string[] GetKnownPrototypeBodies()
         {
+            HistorySnapshot historySnapshot = authoritativeHistory.CreateSnapshot();
+            IEnumerable<string> historicalBodies = historySnapshot.Events.SelectMany(record => record.BodyIds ?? Array.Empty<string>())
+                .Concat(historySnapshot.BodyOccupations.Select(record => record.BodyId));
             return new[]
             {
                 GetPrototypeBodyId(),
                 "body.prototype.current",
                 "body.prototype.previous",
                 "body.prototype.future"
-            }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
+            }
+                .Concat(historicalBodies)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
         }
 
         private double GetGameTimeSeconds()
@@ -10585,17 +10898,69 @@ namespace UnityIsekaiGame.Development
 
         private DefinitionRegistry CreateRegistry(DefinitionCatalog catalog)
         {
+            DefinitionRegistry baseRegistry = null;
             if (catalog != null)
             {
-                return catalog.CreateRegistry();
+                baseRegistry = catalog.CreateRegistry();
+            }
+#if UNITY_EDITOR
+            if (baseRegistry == null)
+            {
+                DefinitionCatalog loaded = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(PrototypeCatalogPath);
+                baseRegistry = loaded == null ? null : loaded.CreateRegistry();
+            }
+#endif
+            return AddDevelopmentHistoryDefinitions(baseRegistry);
+        }
+
+        private static DefinitionRegistry AddDevelopmentHistoryDefinitions(DefinitionRegistry baseRegistry)
+        {
+            List<IGameDefinition> definitions = new List<IGameDefinition>();
+            if (baseRegistry != null)
+            {
+                definitions.AddRange(baseRegistry.DefinitionsById.Values);
             }
 
-#if UNITY_EDITOR
-            DefinitionCatalog loaded = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(PrototypeCatalogPath);
-            return loaded == null ? null : loaded.CreateRegistry();
-#else
-            return null;
-#endif
+            foreach (HistoricalEventDefinition definition in CreateDevelopmentLifeEventDefinitions())
+            {
+                if (!definitions.Any(existing => string.Equals(existing.Id, definition.Id, StringComparison.Ordinal)))
+                {
+                    definitions.Add(definition);
+                }
+            }
+
+            return new DefinitionRegistry(definitions);
+        }
+
+        private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()
+        {
+            return new[]
+            {
+                LifeEventDefinition("history-event.person-participation", "Person Participation", HistoricalEventCategory.CustomWorldEvent, KnowledgeVisibility.Public, HistoricalEventPayloadKind.Generic, false, LifeEventCategory.None, LifeEventPayloadKind.Generic, LifeEventSignificance.Routine, LifeEventBiographyRelevance.Optional, LifeEventPublicRecordRelevance.PersonalOnly, LifeEventParticipantRole.Participant),
+                LifeEventDefinition("history-event.hidden-witnessed-event", "Hidden Witnessed Event", HistoricalEventCategory.Discovery, KnowledgeVisibility.Hidden, HistoricalEventPayloadKind.Generic, false, LifeEventCategory.None, LifeEventPayloadKind.Generic, LifeEventSignificance.Notable, LifeEventBiographyRelevance.RestrictedBiographyEvent, LifeEventPublicRecordRelevance.PersonalOnly, LifeEventParticipantRole.Witness),
+                LifeEventDefinition("history-event.body-transition", "Body Transition", HistoricalEventCategory.BodyTransition, KnowledgeVisibility.Private, HistoricalEventPayloadKind.BodyTransition, true, LifeEventCategory.BodyTransition, LifeEventPayloadKind.BodyTransition, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.IdentityDefining, LifeEventPublicRecordRelevance.PersonalOnly, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.correction", "History Correction", HistoricalEventCategory.Discovery, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Correction, false, LifeEventCategory.None, LifeEventPayloadKind.Generic, LifeEventSignificance.Notable, LifeEventBiographyRelevance.Optional, LifeEventPublicRecordRelevance.PersonalOnly, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.diagnosis", "Diagnosis", HistoricalEventCategory.Diagnosis, KnowledgeVisibility.DiagnosticOnly, HistoricalEventPayloadKind.Condition, true, LifeEventCategory.Diagnosis, LifeEventPayloadKind.InjuryDiagnosisRecovery, LifeEventSignificance.Notable, LifeEventBiographyRelevance.PrivateBiographyEvent, LifeEventPublicRecordRelevance.PersonalOnly, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.birth", "Birth or Creation", HistoricalEventCategory.BirthOrCreation, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Generic, true, LifeEventCategory.BirthOrCreation, LifeEventPayloadKind.BirthOrCreation, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.IdentityDefining, LifeEventPublicRecordRelevance.PersonalOnly, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.discovery", "Discovery", HistoricalEventCategory.Discovery, KnowledgeVisibility.Public, HistoricalEventPayloadKind.Discovery, true, LifeEventCategory.Discovery, LifeEventPayloadKind.Discovery, LifeEventSignificance.Notable, LifeEventBiographyRelevance.Optional, LifeEventPublicRecordRelevance.PublicRecord, LifeEventParticipantRole.Discoverer),
+                LifeEventDefinition("history-event.life.role-appointment", "Role Appointment", HistoricalEventCategory.EmploymentOrRole, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Organization, true, LifeEventCategory.Role, LifeEventPayloadKind.RoleOrTitleTransition, LifeEventSignificance.Major, LifeEventBiographyRelevance.MajorBiographyEvent, LifeEventPublicRecordRelevance.OrganizationRecord, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.title-grant", "Title Grant", HistoricalEventCategory.EmploymentOrRole, KnowledgeVisibility.Public, HistoricalEventPayloadKind.Organization, true, LifeEventCategory.Title, LifeEventPayloadKind.RoleOrTitleTransition, LifeEventSignificance.Major, LifeEventBiographyRelevance.PublicBiographyEvent, LifeEventPublicRecordRelevance.PublicRecord, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.affiliation", "Affiliation Change", HistoricalEventCategory.Affiliation, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Organization, true, LifeEventCategory.Affiliation, LifeEventPayloadKind.AffiliationTransition, LifeEventSignificance.Notable, LifeEventBiographyRelevance.NormallyIncluded, LifeEventPublicRecordRelevance.OrganizationRecord, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.battle", "Battle Participation", HistoricalEventCategory.Combat, KnowledgeVisibility.Public, HistoricalEventPayloadKind.Generic, true, LifeEventCategory.Combat, LifeEventPayloadKind.CombatParticipation, LifeEventSignificance.Major, LifeEventBiographyRelevance.MajorBiographyEvent, LifeEventPublicRecordRelevance.HistoricalArchive, LifeEventParticipantRole.Participant),
+                LifeEventDefinition("history-event.life.injury", "Major Injury", HistoricalEventCategory.Injury, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Condition, true, LifeEventCategory.Injury, LifeEventPayloadKind.InjuryDiagnosisRecovery, LifeEventSignificance.Major, LifeEventBiographyRelevance.PrivateBiographyEvent, LifeEventPublicRecordRelevance.PersonalOnly, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.recovery", "Recovery", HistoricalEventCategory.Recovery, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Condition, true, LifeEventCategory.Recovery, LifeEventPayloadKind.InjuryDiagnosisRecovery, LifeEventSignificance.Notable, LifeEventBiographyRelevance.NormallyIncluded, LifeEventPublicRecordRelevance.PersonalOnly, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.crime", "Crime or Accusation", HistoricalEventCategory.Crime, KnowledgeVisibility.Hidden, HistoricalEventPayloadKind.Generic, true, LifeEventCategory.Crime, LifeEventPayloadKind.Legal, LifeEventSignificance.Major, LifeEventBiographyRelevance.RestrictedBiographyEvent, LifeEventPublicRecordRelevance.OrganizationRecord, LifeEventParticipantRole.Accused),
+                LifeEventDefinition("history-event.life.death", "Death", HistoricalEventCategory.DeathOrDisappearance, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Generic, true, LifeEventCategory.Death, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.MajorBiographyEvent, LifeEventPublicRecordRelevance.PublicRecord, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.presumed-death", "Presumed Death", HistoricalEventCategory.DeathOrDisappearance, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Generic, true, LifeEventCategory.Disappearance, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.Major, LifeEventBiographyRelevance.RestrictedBiographyEvent, LifeEventPublicRecordRelevance.OrganizationRecord, LifeEventParticipantRole.Subject),
+                LifeEventDefinition("history-event.life.return", "Return", HistoricalEventCategory.DeathOrDisappearance, KnowledgeVisibility.Public, HistoricalEventPayloadKind.Generic, true, LifeEventCategory.ReturnOrResurrection, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.MajorBiographyEvent, LifeEventPublicRecordRelevance.PublicRecord, LifeEventParticipantRole.Subject)
+            };
+        }
+
+        private static HistoricalEventDefinition LifeEventDefinition(string id, string displayName, HistoricalEventCategory historicalCategory, KnowledgeVisibility visibility, HistoricalEventPayloadKind historicalPayloadKind, bool isLifeEvent, LifeEventCategory lifeCategory, LifeEventPayloadKind lifePayloadKind, LifeEventSignificance significance, LifeEventBiographyRelevance biography, LifeEventPublicRecordRelevance publicRecord, LifeEventParticipantRole requiredRole)
+        {
+            HistoricalEventDefinition definition = ScriptableObject.CreateInstance<HistoricalEventDefinition>();
+            definition.DevelopmentConfigure(id, displayName, historicalCategory, visibility, historicalPayloadKind, isLifeEvent, lifeCategory, lifePayloadKind, significance, biography, publicRecord, new[] { requiredRole }, new[] { LifeEventParticipantRole.Witness }, new[] { "prototype", "step8" });
+            return definition;
         }
 
         private string FormatHealth()
