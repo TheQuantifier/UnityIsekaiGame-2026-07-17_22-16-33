@@ -34,6 +34,7 @@ A body can produce evidence, but the body does not own general personal knowledg
 - `fact.species.capability`
 - `fact.body.injury`
 - `fact.body.symptom`
+- `fact.body.condition`
 - `fact.body.transformation`
 - `fact.body.previous-body`
 - `fact.body.replacement`
@@ -195,7 +196,7 @@ Feature 8.2 can call the production request boundaries for:
 
 ## Feature 8.3 Contracts
 
-Feature 8.3 can build on:
+Feature 8.3 builds on:
 
 - first learned, last updated, and last verified game-time fields;
 - discovery categories;
@@ -204,6 +205,8 @@ Feature 8.3 can build on:
 - forgetting policies;
 - stale beliefs;
 - retained summaries.
+
+Authoritative historical records are owned by `AuthoritativeHistoryRuntime`; Person-owned memories are owned by `PersonMemoryRuntime`. Knowledge remains the owner of evidence and belief revision.
 
 ## Deferred
 

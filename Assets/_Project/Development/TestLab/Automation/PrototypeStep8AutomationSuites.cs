@@ -15,6 +15,7 @@ namespace UnityIsekaiGame.Development.Automation
 
             TryRegister(registry, BuildKnowledgeSuite());
             TryRegister(registry, BuildObservationSuite());
+            TryRegister(registry, BuildHistorySuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -183,6 +184,35 @@ namespace UnityIsekaiGame.Development.Automation
                 Scenario("private-medical-without-access-rejected", "Private medical observation requires access", 150,
                     Step("reset", "Reset Knowledge", context => Operation(context.Service.ResetKnowledgeFixture(), context, "step8-observation-private-reset")),
                     Step("reject", "Reject private observation", context => Operation(context.Service.RejectPrivateMedicalObservationWithoutAccess(), context, "step8-observation-private"))));
+        }
+
+        private static ITestLabAutomationSuite BuildHistorySuite()
+        {
+            return Suite("feature.8.3.character-history-memory-timelines", "Feature 8.3 Character History, Memory, and Timelines", "8.3", 830,
+                Required("AuthoritativeHistoryRuntime", "PersonMemoryRuntime", "HistoricalEventDefinition", "PersonKnowledgeRuntime"),
+                Scenario("foundation-validates", "History definitions and runtimes are ready", 10,
+                    Step("validate", "Validate History", context => Operation(context.Service.ValidateHistoryFoundation(), context, "step8-history-foundation"))),
+                Scenario("authoritative-event-records", "Authoritative history records a Person event", 20,
+                    Step("record", "Record authoritative event", context => Operation(context.Service.RecordAuthoritativeHistoryEvent(), context, "step8-history-record"))),
+                Scenario("hidden-history-privacy", "Hidden history does not leak to uninformed Person", 30,
+                    Step("hidden", "Record hidden event", context => Operation(context.Service.RecordHiddenHistoryEvent(), context, "step8-history-hidden")),
+                    Step("privacy", "Verify privacy", context => Operation(context.Service.ProveUninformedPersonCannotQueryHiddenHistory(), context, "step8-history-privacy"))),
+                Scenario("memory-and-testimony", "Witness memory and testimony create Person-owned records", 40,
+                    Step("memory", "Form witness memory", context => Operation(context.Service.FormWitnessHistoryMemory(), context, "step8-history-memory")),
+                    Step("testimony", "Share testimony", context => Operation(context.Service.ShareHistoricalTestimony(), context, "step8-history-testimony"))),
+                Scenario("correction-belief-revision", "Correction preserves authoritative history and revises belief by evidence", 50,
+                    Step("false-belief", "Create false belief", context => Operation(context.Service.CreateIncorrectHistoricalBelief(), context, "step8-history-false-belief")),
+                    Step("correct-event", "Correct authoritative event", context => Operation(context.Service.CorrectAuthoritativeHistoryEvent(), context, "step8-history-correct-event")),
+                    Step("revise-belief", "Revise historical belief", context => Operation(context.Service.ReviseHistoricalBeliefWithEvidence(), context, "step8-history-revise-belief"))),
+                Scenario("memory-forgetting-preserves-history", "Forgetting memory preserves authoritative history", 60,
+                    Step("memory", "Form witness memory", context => Operation(context.Service.FormWitnessHistoryMemory(), context, "step8-history-forget-memory")),
+                    Step("forget", "Forget memory", context => Operation(context.Service.ForgetFirstHistoryMemory(), context, "step8-history-forget"))),
+                Scenario("body-continuity", "Persistent Person history spans bodies", 70,
+                    Step("transition", "Record body transition", context => Operation(context.Service.RecordBodyTransitionHistory(), context, "step8-history-body-transition"))),
+                Scenario("compare-authoritative-known-remembered", "Compare authoritative, known, and remembered views", 80,
+                    Step("compare", "Compare views", context => Operation(context.Service.CompareHistoryKnowledgeMemoryViews(), context, "step8-history-compare"))),
+                Scenario("save-restore-round-trip", "History and memory save/restore preserves state silently", 90,
+                    Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateHistorySaveRestore(), context, "step8-history-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

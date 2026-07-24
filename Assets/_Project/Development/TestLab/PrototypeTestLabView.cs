@@ -62,6 +62,7 @@ namespace UnityIsekaiGame.Development
             "Biology Integration 7.10",
             "Knowledge 8.1",
             "Observation 8.2",
+            "History 8.3",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -123,6 +124,7 @@ namespace UnityIsekaiGame.Development
         private Text bodyBiologyIntegrationText;
         private Text knowledgeText;
         private Text observationText;
+        private Text characterHistoryText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -310,6 +312,7 @@ namespace UnityIsekaiGame.Development
             Transform bodyBiologyIntegrationSection = AddSection(content, "Biology Integration 7.10 Section");
             Transform knowledgeSection = AddSection(content, "Knowledge 8.1 Section");
             Transform observationSection = AddSection(content, "Observation 8.2 Section");
+            Transform characterHistorySection = AddSection(content, "History 8.3 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -349,6 +352,7 @@ namespace UnityIsekaiGame.Development
             BuildBodyBiologyIntegrationSection(bodyBiologyIntegrationSection, font);
             BuildKnowledgeSection(knowledgeSection, font);
             BuildObservationSection(observationSection, font);
+            BuildCharacterHistorySection(characterHistorySection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -727,6 +731,28 @@ namespace UnityIsekaiGame.Development
                 ("Private Reject", () => service.RejectPrivateMedicalObservationWithoutAccess()),
                 ("Inactive Reject", () => service.RejectInactiveFoundationObservationMethod()));
             observationText = AddText(parent, font, "Observation runtime not available.", 12, 820);
+        }
+
+        private void BuildCharacterHistorySection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Validate", () => service.ValidateHistoryFoundation()),
+                ("Record Event", () => service.RecordAuthoritativeHistoryEvent()),
+                ("Hidden Event", () => service.RecordHiddenHistoryEvent()),
+                ("Privacy Check", () => service.ProveUninformedPersonCannotQueryHiddenHistory()));
+            AddButtonRow(parent, font,
+                ("Witness Memory", () => service.FormWitnessHistoryMemory()),
+                ("Testimony", () => service.ShareHistoricalTestimony()),
+                ("False Belief", () => service.CreateIncorrectHistoricalBelief()),
+                ("Correct Event", () => service.CorrectAuthoritativeHistoryEvent()));
+            AddButtonRow(parent, font,
+                ("Revise Belief", () => service.ReviseHistoricalBeliefWithEvidence()),
+                ("Forget Memory", () => service.ForgetFirstHistoryMemory()),
+                ("Body Transition", () => service.RecordBodyTransitionHistory()),
+                ("Compare Views", () => service.CompareHistoryKnowledgeMemoryViews()));
+            AddButtonRow(parent, font,
+                ("Save/Restore", () => service.ValidateHistorySaveRestore()));
+            characterHistoryText = AddText(parent, font, "History runtime not available.", 12, 900);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1326,6 +1352,9 @@ namespace UnityIsekaiGame.Development
                 case "Observation 8.2":
                     SetValue(observationText, service.BuildObservationSummary());
                     break;
+                case "History 8.3":
+                    SetValue(characterHistoryText, service.BuildHistorySummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1814,7 +1843,7 @@ namespace UnityIsekaiGame.Development
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
                 Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8", "Biological Conditions 7.9", "Biology Integration 7.10"),
-                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2")
+                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3")
             };
         }
 
