@@ -87,6 +87,7 @@ namespace UnityIsekaiGame.Abilities
                 return AbilityExecutionResult.Failure(AbilityExecutionStatus.NoEffects, "Ability has no effects.");
             }
 
+            string lastEffectMessage = string.Empty;
             for (int i = 0; i < effects.Count; i++)
             {
                 EffectDefinition effect = effects[i];
@@ -101,9 +102,14 @@ namespace UnityIsekaiGame.Abilities
                 {
                     return AbilityExecutionResult.Failure(AbilityExecutionStatus.EffectExecutionFailure, result.Message, i, result);
                 }
+
+                if (!string.IsNullOrWhiteSpace(result.Message))
+                {
+                    lastEffectMessage = result.Message;
+                }
             }
 
-            return AbilityExecutionResult.Success("Ability effects executed.");
+            return AbilityExecutionResult.Success(string.IsNullOrWhiteSpace(lastEffectMessage) ? "Ability effects executed." : lastEffectMessage);
         }
 
         private static AbilityExecutionResult ValidateConfiguration(in AbilityExecutionContext context)

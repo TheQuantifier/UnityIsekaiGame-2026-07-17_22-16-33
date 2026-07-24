@@ -23,7 +23,16 @@ namespace UnityIsekaiGame.Knowledge.History
 
         public void Configure(string personId, DefinitionRegistry definitionRegistry, AuthoritativeHistoryRuntime authoritativeHistory, IEnumerable<string> knownPersons = null)
         {
-            PersonId = personId ?? string.Empty;
+            string normalizedPersonId = personId ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(PersonId) && !string.Equals(PersonId, normalizedPersonId, StringComparison.Ordinal))
+            {
+                memoriesById.Clear();
+                memoryIdsByEvent.Clear();
+                processedTransactions.Clear();
+                MemoryRevision = 0L;
+            }
+
+            PersonId = normalizedPersonId;
             registry = definitionRegistry ?? registry;
             historyRuntime = authoritativeHistory ?? historyRuntime;
             knownPersonIds = new HashSet<string>((knownPersons ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)), StringComparer.Ordinal);
@@ -206,7 +215,7 @@ namespace UnityIsekaiGame.Knowledge.History
 
             MemoryRecallOutcome aggregate = ResolveAggregateOutcome(entries);
             HistoryResultCode resultCode = anySuccess ? HistoryResultCode.Success : FailureCodeFor(aggregate);
-            return anySuccess || preview
+            return anySuccess
                 ? MemoryRecallResult.Success(aggregate, request.TransactionId, preview ? "Memory recall preview succeeded." : "Memory recall evaluated.", entries, priorRevision, MemoryRevision, preview)
                 : MemoryRecallResult.Failure(resultCode, aggregate, request.TransactionId, entries.FirstOrDefault()?.Reason ?? "Recall failed.", MemoryRevision);
         }

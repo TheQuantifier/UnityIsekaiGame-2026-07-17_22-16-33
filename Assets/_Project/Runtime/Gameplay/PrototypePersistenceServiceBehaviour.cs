@@ -12,6 +12,7 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Persistence;
@@ -68,6 +69,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerBody = true;
         [SerializeField] private bool registerPlayerKnowledge = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
+        [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerCombatExecution = true;
@@ -93,6 +95,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerBodyPersistenceParticipant playerBodyParticipant;
         private PersonKnowledgePersistenceParticipant playerKnowledgeParticipant;
         private InformationSourcePersistenceParticipant playerInformationSourceParticipant;
+        private InformationTransferPersistenceParticipant playerInformationTransferParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
@@ -104,6 +107,7 @@ namespace UnityIsekaiGame.Gameplay
         private DefinitionRegistry definitionRegistry;
         private CombatExecutionService combatExecutionService;
         private InformationSourceRuntime playerInformationSources;
+        private InformationTransferRuntime playerInformationTransfers;
         private bool dirtyEventsSubscribed;
 
         public PersistenceService Service => service;
@@ -117,6 +121,7 @@ namespace UnityIsekaiGame.Gameplay
         public DefinitionCatalog DefinitionCatalog => definitionCatalog;
         public CombatExecutionService CombatExecution => combatExecutionService ??= new CombatExecutionService();
         public InformationSourceRuntime InformationSources => playerInformationSources ??= new InformationSourceRuntime();
+        public InformationTransferRuntime InformationTransfers => playerInformationTransfers ??= new InformationTransferRuntime();
 
         private void Awake()
         {
@@ -283,6 +288,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerBodyParticipant();
             EnsurePlayerKnowledgeParticipant();
             EnsurePlayerInformationSourceParticipant();
+            EnsurePlayerInformationTransferParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -886,6 +892,40 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerInformationSourceParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerInformationTransferParticipant()
+        {
+            if (!registerPlayerInformationTransfers || playerInformationTransferParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerIdentityProgression == null)
+            {
+                Debug.LogWarning("Information Transfer persistence participant was not registered because the prototype Person identity/progression component is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Information Transfer persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            InformationTransfers.Configure(GetDefinitionRegistry(), playerIdentityProgression.PersonId);
+            playerInformationTransferParticipant = new InformationTransferPersistenceParticipant(
+                InformationTransfers,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerInformationTransferParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerInformationTransferParticipant = null;
             }
         }
 

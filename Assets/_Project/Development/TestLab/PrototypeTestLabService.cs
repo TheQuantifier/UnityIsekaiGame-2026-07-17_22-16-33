@@ -36,6 +36,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Observation;
+using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
@@ -114,6 +115,7 @@ namespace UnityIsekaiGame.Development
         private readonly AuthoritativeHistoryRuntime authoritativeHistory = new AuthoritativeHistoryRuntime();
         private readonly PersonMemoryRuntime playerMemory = new PersonMemoryRuntime();
         private InformationSourceRuntime informationSources = new InformationSourceRuntime();
+        private InformationTransferRuntime informationTransfers = new InformationTransferRuntime();
         private AuthoritativeHistorySaveData lastHistorySaveData;
         private PersonMemorySaveData lastMemorySaveData;
 
@@ -149,6 +151,8 @@ namespace UnityIsekaiGame.Development
             EnsureHistoryRuntime(out _, out _);
             informationSources = context?.Persistence?.InformationSources ?? informationSources ?? new InformationSourceRuntime();
             informationSources.Configure(registry, GetPrototypePersonId());
+            informationTransfers = context?.Persistence?.InformationTransfers ?? informationTransfers ?? new InformationTransferRuntime();
+            informationTransfers.Configure(registry, GetPrototypePersonId());
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -4515,6 +4519,236 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "Reject 8.2 Private Observation", succeeded ? "Success" : result.Code.ToString(), FormatObservationResult(result));
         }
 
+        public string BuildInformationTransferSummary()
+        {
+            informationTransfers.Configure(registry, GetPrototypePersonId());
+            InformationTransferSnapshot snapshot = informationTransfers.CreateSnapshot();
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 8.7 Information Sharing and Teaching");
+            builder.AppendLine($"Owner: {snapshot.OwnerId} Revision: {snapshot.Revision} Transfers: {snapshot.Transfers.Count} Sources: {informationSources.CreateSnapshot().Sources.Count}");
+            foreach (InformationTransferRecord transfer in snapshot.Transfers.OrderByDescending(record => record.Data.revision).Take(10))
+            {
+                TransferRecipientResult first = transfer.RecipientResults.FirstOrDefault();
+                builder.AppendLine($"{transfer.Data.mode}: {transfer.TransferId} sender={transfer.SenderPersonId} recipients={transfer.RecipientPersonIds.Count} understanding={first?.Understanding.ToString() ?? "None"} confidence={first?.InheritedConfidence ?? 0} source={transfer.Data.createdSourceId}");
+            }
+
+            PrototypeTestLabOperation last = history.Count == 0 ? default : history[0];
+            if (!string.IsNullOrWhiteSpace(last.OperationName) && last.OperationName.Contains("8.7", StringComparison.Ordinal))
+            {
+                builder.AppendLine($"Last 8.7: {last.OperationName} Code={last.Code} Success={last.Succeeded}");
+                builder.AppendLine(last.Message);
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateInformationTransferDefinitions()
+        {
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            Dictionary<string, IGameDefinition> definitions = new Dictionary<string, IGameDefinition>(StringComparer.Ordinal);
+            foreach (InformationTransferDefinition definition in CreatePrototypeTransferDefinitions())
+            {
+                definitions[definition.Id] = definition;
+                definition.ValidateCatalogDefinition(definitions, report);
+            }
+
+            bool succeeded = report.ErrorCount == 0 && report.WarningCount == 0;
+            return Record(succeeded, "Validate 8.7 Transfer Definitions", succeeded ? "Success" : "ValidationFailed", report.GetSummary());
+        }
+
+        public PrototypeTestLabOperation ShareKnownTrueFact()
+        {
+            return ExecutePrototypeTransfer("Share 8.7 Known True Fact", InformationTransferMode.DirectTestimony, InformationTransferContentType.BeliefStatement, false, false, false, false);
+        }
+
+        public PrototypeTestLabOperation ShareSincereFalseBelief()
+        {
+            return ExecutePrototypeTransfer("Share 8.7 Sincere False Belief", InformationTransferMode.RumorRetelling, InformationTransferContentType.BeliefStatement, false, false, true, true);
+        }
+
+        public PrototypeTestLabOperation SharePartiallyRecalledEvent()
+        {
+            return ExecutePrototypeTransfer("Share 8.7 Partially Recalled Event", InformationTransferMode.ConversationStatement, InformationTransferContentType.MemoryStatement, true, false, false, false, summarization: true);
+        }
+
+        public PrototypeTestLabOperation AttemptSuppressedMemoryTransfer()
+        {
+            if (!EnsureTransferPrerequisites(out PersonKnowledgeRuntime senderKnowledge, out PersonMemoryRuntime senderMemory, out string memoryId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            double now = GetMemoryWorldTime(senderMemory, memoryId);
+            HistoryOperationResult suppression = senderMemory.AddSuppression(new MemorySuppressionRequest
+            {
+                TransactionId = $"transfer.suppression.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                SuppressionId = $"suppression.transfer.{Guid.NewGuid():N}",
+                SourceId = "test-lab.transfer.suppression",
+                StartedAtWorldTime = now,
+                AllowsCueBypass = false,
+                Provenance = "Prototype 8.7 recall boundary."
+            });
+            if (!suppression.Succeeded)
+            {
+                return RecordHistoryResult("Prepare 8.7 Suppressed Memory Transfer", suppression);
+            }
+
+            InformationTransferResult result = ExecutePrototypeTransferRaw("transfer-suppressed", InformationTransferMode.ConversationStatement, new[] { BuildTransferContent("content.memory", InformationTransferContentType.MemoryStatement, true, memoryId) }, senderKnowledge, senderMemory, null, true, false, false, false, false, out _, out _, worldTimeSeconds: now);
+            bool succeeded = !result.Succeeded && result.Status == InformationTransferStatus.RecallFailed;
+            return Record(succeeded, "Reject 8.7 Suppressed Memory Transfer", succeeded ? "Success" : result.Status.ToString(), FormatTransferResult(result));
+        }
+
+        public PrototypeTestLabOperation ShareDirectObservation()
+        {
+            EnsurePrototypeSource(GetPrototypeDirectObservationSourceId(), InformationSourceCategory.DirectObservation);
+            return ExecutePrototypeTransfer("Share 8.7 Direct Observation", InformationTransferMode.DirectTestimony, InformationTransferContentType.EvidenceReference, false, false, false, false, sourceId: GetPrototypeDirectObservationSourceId());
+        }
+
+        public PrototypeTestLabOperation ShareExpertDiagnosis()
+        {
+            EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
+            AssessPrototypeSource($"source-assessment.transfer.expert.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.expert", 900, 80, 40, 60, authority: 950);
+            return ExecutePrototypeTransfer("Share 8.7 Expert Diagnosis", InformationTransferMode.FormalLesson, InformationTransferContentType.ConditionOrDiagnosis, false, true, false, false, sourceId: "information-source.prototype.expert");
+        }
+
+        public PrototypeTestLabOperation CompareInheritedConfidenceByDomain()
+        {
+            EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
+            AssessPrototypeSource($"source-assessment.transfer.high.{Guid.NewGuid():N}", "person.prototype.listener", "information-source.prototype.expert", 900, 60, 40, 70, authority: 950);
+            InformationTransferResult high = ExecutePrototypeTransferRaw("transfer-confidence-high", InformationTransferMode.DirectTestimony, new[] { BuildTransferContent("content.high", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, "information-source.prototype.expert", false, false, false, false, false, out GameObject highObject, out _);
+            DestroyTestObject(highObject);
+
+            EnsurePrototypeSource("information-source.prototype.anonymous", InformationSourceCategory.AnonymousTestimony);
+            AssessPrototypeSource($"source-assessment.transfer.low.{Guid.NewGuid():N}", "person.prototype.listener", "information-source.prototype.anonymous", 250, 800, 850, 720);
+            InformationTransferResult low = ExecutePrototypeTransferRaw("transfer-confidence-low", InformationTransferMode.RumorRetelling, new[] { BuildTransferContent("content.low", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, "information-source.prototype.anonymous", false, false, false, false, false, out GameObject lowObject, out _);
+            DestroyTestObject(lowObject);
+
+            int highConfidence = high.RecipientResults.FirstOrDefault()?.InheritedConfidence ?? 0;
+            int lowConfidence = low.RecipientResults.FirstOrDefault()?.InheritedConfidence ?? 0;
+            bool succeeded = high.Succeeded && low.Succeeded && highConfidence > lowConfidence;
+            return Record(succeeded, "Compare 8.7 Inherited Confidence", succeeded ? "Success" : "ConfidenceMismatch", $"High={highConfidence} Low={lowConfidence}. High={FormatTransferResult(high)} Low={FormatTransferResult(low)}");
+        }
+
+        public PrototypeTestLabOperation ShareAnonymousInformation()
+        {
+            EnsurePrototypeSource("information-source.prototype.anonymous", InformationSourceCategory.AnonymousTestimony);
+            return ExecutePrototypeTransfer("Share 8.7 Anonymous Information", InformationTransferMode.RumorRetelling, InformationTransferContentType.BeliefStatement, false, false, false, false, sourceId: "information-source.prototype.anonymous", privacy: TransferPrivacyScope.HiddenSource);
+        }
+
+        public PrototypeTestLabOperation ReadOfficialRecord()
+        {
+            EnsurePrototypeSource("information-source.prototype.official-record", InformationSourceCategory.OfficialRecord);
+            return ExecutePrototypeTransfer("Read 8.7 Official Record", InformationTransferMode.Report, InformationTransferContentType.HistoricalEventReference, false, false, false, false, sourceId: "information-source.prototype.official-record");
+        }
+
+        public PrototypeTestLabOperation CopyAndSummarizeTransferSource()
+        {
+            EnsurePrototypeSource("information-source.prototype.official-record", InformationSourceCategory.OfficialRecord);
+            return ExecutePrototypeTransfer("Copy/Summarize 8.7 Transfer Source", InformationTransferMode.Summary, InformationTransferContentType.HistoricalEventReference, false, false, false, false, sourceId: "information-source.prototype.official-record", summarization: true);
+        }
+
+        public PrototypeTestLabOperation TraceTransferSourceLineage()
+        {
+            InformationTransferResult result = ExecutePrototypeTransferRaw("transfer-lineage", InformationTransferMode.Summary, new[] { BuildTransferContent("content.lineage", InformationTransferContentType.HistoricalEventReference, false, string.Empty) }, null, null, "information-source.prototype.official-record", false, false, false, false, true, out GameObject listener, out _);
+            DestroyTestObject(listener);
+            SourceChainSnapshot chain = informationSources.TraceSourceChain(result.Record?.Data.createdSourceId, privilegedAccess: true);
+            bool succeeded = result.Succeeded && chain.TransmissionDepth >= 1;
+            return Record(succeeded, "Trace 8.7 Transfer Source Lineage", succeeded ? "Success" : "LineageMissing", $"{FormatTransferResult(result)} Immediate={chain.ImmediateSourceId} Original={chain.OriginalSourceId} Depth={chain.TransmissionDepth}.");
+        }
+
+        public PrototypeTestLabOperation CompareTransferRecipientAssessments() => CompareInheritedConfidenceByDomain();
+
+        public PrototypeTestLabOperation TeachSemanticConcept()
+        {
+            return ExecutePrototypeTransfer("Teach 8.7 Semantic Concept", InformationTransferMode.FormalLesson, InformationTransferContentType.InstructionalConcept, false, true, false, false);
+        }
+
+        public PrototypeTestLabOperation TeachProcedureReference()
+        {
+            return ExecutePrototypeTransfer("Teach 8.7 Procedure Reference", InformationTransferMode.Instruction, InformationTransferContentType.ProcedureReference, false, true, false, false);
+        }
+
+        public PrototypeTestLabOperation DemonstrateProcedure()
+        {
+            return ExecutePrototypeTransfer("Demonstrate 8.7 Procedure", InformationTransferMode.Demonstration, InformationTransferContentType.ProcedureReference, false, true, false, false);
+        }
+
+        public PrototypeTestLabOperation TeachWithoutPrerequisites()
+        {
+            InformationTransferResult result = ExecutePrototypeTransferRaw("transfer-teach-no-prereq", InformationTransferMode.FormalLesson, new[] { BuildTransferContent("content.no-prereq", InformationTransferContentType.ProcedureReference, false, string.Empty) }, null, null, null, false, true, false, false, false, out GameObject listener, out PersonMemoryRuntime recipientMemory, forceLowFidelity: true);
+            DestroyTestObject(listener);
+            bool succeeded = result.Succeeded && result.RecipientResults.FirstOrDefault()?.Understanding != TransferUnderstandingState.Complete;
+            return Record(succeeded, "Teach 8.7 Without Prerequisites", succeeded ? "Success" : result.Status.ToString(), $"{FormatTransferResult(result)} No capabilities or skill ranks are granted by transfer.");
+        }
+
+        public PrototypeTestLabOperation CorrectMisconceptionThroughTeaching()
+        {
+            return ExecutePrototypeTransfer("Correct 8.7 Misconception Teaching", InformationTransferMode.FormalLesson, InformationTransferContentType.BeliefStatement, false, true, false, false, correction: true);
+        }
+
+        public PrototypeTestLabOperation ClarifyTransfer()
+        {
+            InformationTransferResult original = ExecutePrototypeTransferRaw("transfer-clarify-original", InformationTransferMode.Summary, new[] { BuildTransferContent("content.clarify", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, null, false, false, false, false, true, out GameObject originalListener, out _);
+            DestroyTestObject(originalListener);
+            InformationTransferResult clarification = ExecutePrototypeTransferRaw("transfer-clarify-followup", InformationTransferMode.Explanation, new[] { BuildTransferContent("content.clarification", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, original.Record?.Data.createdSourceId, false, false, false, false, false, out GameObject listener, out _, parentTransferId: original.Record?.TransferId);
+            DestroyTestObject(listener);
+            bool succeeded = original.Succeeded && clarification.Succeeded && string.Equals(clarification.Record?.Data.parentTransferId, original.Record?.TransferId, StringComparison.Ordinal);
+            return Record(succeeded, "Clarify 8.7 Transfer", succeeded ? "Success" : clarification.Status.ToString(), $"{FormatTransferResult(clarification)} Parent={clarification.Record?.Data.parentTransferId}.");
+        }
+
+        public PrototypeTestLabOperation ReshareTransfer()
+        {
+            InformationTransferResult original = ExecutePrototypeTransferRaw("transfer-reshare-original", InformationTransferMode.DirectTestimony, new[] { BuildTransferContent("content.reshare", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, null, false, false, false, false, false, out GameObject originalListener, out _);
+            DestroyTestObject(originalListener);
+            InformationTransferResult reshare = ExecutePrototypeTransferRaw("transfer-reshare", InformationTransferMode.RumorRetelling, new[] { BuildTransferContent("content.reshare.copy", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, original.Record?.Data.createdSourceId, false, false, false, false, false, out GameObject listener, out _, parentTransferId: original.Record?.TransferId);
+            DestroyTestObject(listener);
+            bool succeeded = original.Succeeded && reshare.Succeeded;
+            return Record(succeeded, "Reshare 8.7 Transfer", succeeded ? "Success" : reshare.Status.ToString(), FormatTransferResult(reshare));
+        }
+
+        public PrototypeTestLabOperation ReshareDistortedVersion()
+        {
+            return ExecutePrototypeTransfer("Reshare 8.7 Distorted Version", InformationTransferMode.RumorRetelling, InformationTransferContentType.BeliefStatement, false, false, false, false, distortion: true);
+        }
+
+        public PrototypeTestLabOperation DeliberatelyOmitDetail()
+        {
+            return ExecutePrototypeTransfer("Deliberately Omit 8.7 Detail", InformationTransferMode.Summary, InformationTransferContentType.MemoryStatement, true, false, false, false, summarization: true, omission: true);
+        }
+
+        public PrototypeTestLabOperation CorrectPriorTransfer()
+        {
+            InformationTransferResult original = ExecutePrototypeTransferRaw("transfer-correct-original", InformationTransferMode.RumorRetelling, new[] { BuildTransferContent("content.correct-original", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, null, false, false, true, true, false, out GameObject originalListener, out _);
+            DestroyTestObject(originalListener);
+            InformationTransferResult correction = ExecutePrototypeTransferRaw("transfer-correct-followup", InformationTransferMode.Explanation, new[] { BuildTransferContent("content.corrected", InformationTransferContentType.BeliefStatement, false, string.Empty, InformationTransferAssertionType.Correction) }, null, null, original.Record?.Data.createdSourceId, false, true, false, false, false, out GameObject listener, out _, correctionOfTransferId: original.Record?.TransferId);
+            DestroyTestObject(listener);
+            bool succeeded = original.Succeeded && correction.Succeeded && string.Equals(correction.Record?.Data.correctionOfTransferId, original.Record?.TransferId, StringComparison.Ordinal);
+            return Record(succeeded, "Correct 8.7 Prior Transfer", succeeded ? "Success" : correction.Status.ToString(), $"{FormatTransferResult(correction)} CorrectionOf={correction.Record?.Data.correctionOfTransferId}.");
+        }
+
+        public PrototypeTestLabOperation CreatePublicPrivateRestrictedTransfers()
+        {
+            InformationTransferResult publicTransfer = ExecutePrototypeTransferRaw("transfer-public", InformationTransferMode.PublicAnnouncement, new[] { BuildTransferContent("content.public", InformationTransferContentType.Warning, false, string.Empty) }, null, null, null, false, false, false, false, false, out GameObject publicListener, out _, privacy: TransferPrivacyScope.Public);
+            DestroyTestObject(publicListener);
+            InformationTransferResult privateTransfer = ExecutePrototypeTransferRaw("transfer-private", InformationTransferMode.PrivateMessage, new[] { BuildTransferContent("content.private", InformationTransferContentType.BeliefStatement, false, string.Empty, privacy: KnowledgeVisibility.Private) }, null, null, null, false, true, false, false, false, out GameObject privateListener, out _, privacy: TransferPrivacyScope.RecipientOnly);
+            DestroyTestObject(privateListener);
+            bool succeeded = publicTransfer.Succeeded && privateTransfer.Succeeded && publicTransfer.Record?.Data.privacyScope == TransferPrivacyScope.Public && privateTransfer.Record?.Data.privacyScope == TransferPrivacyScope.RecipientOnly;
+            return Record(succeeded, "Create 8.7 Public Private Transfers", succeeded ? "Success" : "PrivacyMismatch", $"Public={FormatTransferResult(publicTransfer)} Private={FormatTransferResult(privateTransfer)}");
+        }
+
+        public PrototypeTestLabOperation ValidateInformationTransferSaveRestore()
+        {
+            ExecutePrototypeTransferRaw("transfer-save-restore", InformationTransferMode.DirectTestimony, new[] { BuildTransferContent("content.save", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, null, false, false, false, false, false, out GameObject listener, out _);
+            DestroyTestObject(listener);
+            InformationTransferSaveData saveData = informationTransfers.CreateSaveData();
+            long before = informationTransfers.TransferRevision;
+            InformationTransferResult restore = informationTransfers.RestoreFromSaveData(saveData, registry, informationTransfers.OwnerId, restoring: true);
+            bool succeeded = restore.Succeeded && informationTransfers.TransferRevision == before;
+            return Record(succeeded, "Information Transfer Save Restore", succeeded ? "Success" : restore.Status.ToString(), $"{restore.Message} Revision={before}->{informationTransfers.TransferRevision} Transfers={informationTransfers.CreateSnapshot().Transfers.Count}.");
+        }
+
         public string BuildInformationSourceSummary()
         {
             informationSources.Configure(registry, GetPrototypePersonId());
@@ -4750,6 +4984,16 @@ namespace UnityIsekaiGame.Development
         private PrototypeTestLabOperation RegisterPrototypeSource(string operationName, string sourceId, InformationSourceCategory category, InformationSourceReferenceType referenceType, string referencedId, KnowledgeDomain domain, string methodId, string authority = "", SourcePrivacyLevel privacy = SourcePrivacyLevel.Public, double? creationTime = null)
         {
             informationSources.Configure(registry, GetPrototypePersonId());
+            if (informationSources.TryGetSource(sourceId, out InformationSourceRecord existing))
+            {
+                if (existing.Category != category)
+                {
+                    return RecordFailure(operationName, $"Source instance '{sourceId}' already exists as {existing.Category}, not {category}.", InformationSourceResultCode.InvalidRequest.ToString());
+                }
+
+                return RecordSourceOperation(operationName, InformationSourceOperationResult.Success("Prototype source already registered.", string.Empty, existing, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: true));
+            }
+
             InformationSourceOperationResult result = informationSources.RegisterSource(new InformationSourceRegistrationRequest
             {
                 TransactionId = $"source.register.{SanitizeForTransaction(sourceId)}.{Guid.NewGuid():N}",
@@ -4955,6 +5199,244 @@ namespace UnityIsekaiGame.Development
             reliability.contextFit = dependability;
             definition.DevelopmentConfigure(id, displayName, category, reliability, policy, halfLife, 80, identityVerification);
             return definition;
+        }
+
+        private PrototypeTestLabOperation ExecutePrototypeTransfer(string operationName, InformationTransferMode mode, InformationTransferContentType contentType, bool recallRequired, bool teaching, bool deliberateFalsehood, bool authorizeFalsehood, string sourceId = null, bool summarization = false, bool omission = false, bool distortion = false, bool correction = false, TransferPrivacyScope privacy = TransferPrivacyScope.RecipientOnly)
+        {
+            TransferContentItemData content = BuildTransferContent($"content.{SanitizeForTransaction(operationName)}", contentType, recallRequired, string.Empty, correction ? InformationTransferAssertionType.Correction : teaching ? InformationTransferAssertionType.Instruction : InformationTransferAssertionType.Fact, privacy == TransferPrivacyScope.Public ? KnowledgeVisibility.Public : KnowledgeVisibility.Private);
+            InformationTransferResult result = ExecutePrototypeTransferRaw(SanitizeForTransaction(operationName), mode, new[] { content }, null, null, sourceId, recallRequired, teaching, deliberateFalsehood, authorizeFalsehood, summarization, out GameObject listener, out _, omission: omission, distortion: distortion, privacy: privacy);
+            DestroyTestObject(listener);
+            return RecordTransferOperation(operationName, result);
+        }
+
+        private InformationTransferResult ExecutePrototypeTransferRaw(
+            string transactionSlug,
+            InformationTransferMode mode,
+            TransferContentItemData[] content,
+            PersonKnowledgeRuntime senderKnowledgeOverride,
+            PersonMemoryRuntime senderMemoryOverride,
+            string sourceId,
+            bool recallRequired,
+            bool teaching,
+            bool deliberateFalsehood,
+            bool authorizeFalsehood,
+            bool summarization,
+            out GameObject listenerObject,
+            out PersonMemoryRuntime recipientMemory,
+            bool omission = false,
+            bool distortion = false,
+            TransferPrivacyScope privacy = TransferPrivacyScope.RecipientOnly,
+            string parentTransferId = "",
+            string correctionOfTransferId = "",
+            bool forceLowFidelity = false,
+            double? worldTimeSeconds = null)
+        {
+            listenerObject = null;
+            recipientMemory = null;
+            if (!EnsureTransferPrerequisites(out PersonKnowledgeRuntime senderKnowledge, out PersonMemoryRuntime senderMemory, out string memoryId, out _))
+            {
+                return InformationTransferResult.Failure(InformationTransferStatus.MissingSender, "Prototype transfer prerequisites are missing.", $"transfer.{transactionSlug}");
+            }
+
+            if (senderKnowledgeOverride != null)
+            {
+                senderKnowledge = senderKnowledgeOverride;
+            }
+
+            if (senderMemoryOverride != null)
+            {
+                senderMemory = senderMemoryOverride;
+            }
+
+            EnsurePrototypeSource(string.IsNullOrWhiteSpace(sourceId) ? "information-source.prototype.testimony" : sourceId, string.IsNullOrWhiteSpace(sourceId) ? InformationSourceCategory.PersonalTestimony : InformationSourceCategory.ExpertTestimony);
+            CreateTransferRecipientKnowledge(out listenerObject, out PersonKnowledgeRuntime recipientKnowledge);
+            recipientMemory = CreateTransferRecipientMemory(recipientKnowledge.PersonId);
+            string transferId = $"transfer.prototype.{SanitizeForTransaction(transactionSlug)}.{Guid.NewGuid():N}";
+            string effectiveSourceId = string.IsNullOrWhiteSpace(sourceId) ? "information-source.prototype.testimony" : sourceId;
+            foreach (TransferContentItemData item in content ?? Array.Empty<TransferContentItemData>())
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                item.senderMemoryId = recallRequired && string.IsNullOrWhiteSpace(item.senderMemoryId) ? memoryId : item.senderMemoryId;
+                item.immediateSourceId = effectiveSourceId;
+                item.originalSourceId = effectiveSourceId;
+                item.deliberateFalsehood = deliberateFalsehood || item.deliberateFalsehood;
+                item.deliberateOmission = omission || item.deliberateOmission;
+                item.deliberateDistortion = distortion || item.deliberateDistortion;
+                if (item.rawEvidenceStrength <= 0)
+                {
+                    item.rawEvidenceStrength = teaching ? 780 : 700;
+                }
+            }
+
+            if (forceLowFidelity)
+            {
+                summarization = true;
+            }
+
+            informationTransfers.Configure(registry, GetPrototypePersonId());
+            return informationTransfers.ExecuteTransfer(new InformationTransferRequest
+            {
+                TransactionId = $"transfer.8.7.{SanitizeForTransaction(transactionSlug)}.{Guid.NewGuid():N}",
+                TransferId = transferId,
+                SenderPersonId = GetPrototypePersonId(),
+                RecipientPersonIds = new[] { recipientKnowledge.PersonId },
+                TransferDefinitionId = string.Empty,
+                Mode = mode,
+                ContentItems = content == null ? Array.Empty<TransferContentItemData>() : content.Select(item => item?.Clone()).Where(item => item != null).ToArray(),
+                ImmediateSourceId = effectiveSourceId,
+                OriginalSourceId = effectiveSourceId,
+                WorldTimeSeconds = worldTimeSeconds ?? GetPrototypeWorldTime(),
+                LocationContextId = "place.prototype.test-lab",
+                PrivacyScope = privacy,
+                SenderRecallRequired = recallRequired,
+                SummarizationRequested = summarization,
+                OmissionRequested = omission,
+                DistortionRequested = distortion,
+                TeachingRequested = teaching,
+                ParentTransferId = parentTransferId,
+                CorrectionOfTransferId = correctionOfTransferId,
+                DeliberateFalsehoodAuthorized = authorizeFalsehood,
+                PrivilegedAccess = privacy != TransferPrivacyScope.Public,
+                SenderKnowledge = senderKnowledge,
+                SenderMemory = senderMemory,
+                SourceRuntime = informationSources,
+                RecipientKnowledgeRuntimes = new Dictionary<string, PersonKnowledgeRuntime> { [recipientKnowledge.PersonId] = recipientKnowledge },
+                RecipientMemoryRuntimes = new Dictionary<string, PersonMemoryRuntime> { [recipientKnowledge.PersonId] = recipientMemory }
+            });
+        }
+
+        private bool EnsureTransferPrerequisites(out PersonKnowledgeRuntime senderKnowledge, out PersonMemoryRuntime senderMemory, out string memoryId, out PrototypeTestLabOperation failure)
+        {
+            senderKnowledge = null;
+            senderMemory = null;
+            memoryId = string.Empty;
+            failure = default;
+            if (!EnsureKnowledgeRuntime(out senderKnowledge))
+            {
+                failure = RecordFailure("Information Transfer Setup", "Sender Knowledge runtime is missing.", InformationTransferStatus.MissingSender.ToString());
+                return false;
+            }
+
+            if (!EnsureHistoryRuntime(out _, out senderMemory))
+            {
+                failure = RecordFailure("Information Transfer Setup", "Sender Memory runtime is missing.", InformationTransferStatus.RecallFailed.ToString());
+                return false;
+            }
+
+            KnowledgeOperationResult known = senderKnowledge.RecordObservation(new KnowledgeObservationRequest
+            {
+                PersonId = senderKnowledge.PersonId,
+                TransactionId = $"transfer.sender.knowledge.{Guid.NewGuid():N}",
+                Proposition = SpeciesCapabilityTransferProposition(),
+                AcquisitionSource = KnowledgeAcquisitionSource.DevelopmentFixture,
+                Provenance = KnowledgeProvenance.DevelopmentFixture,
+                Direction = KnowledgeEvidenceDirection.Supports,
+                Strength = 850,
+                Credibility = 850,
+                GameTimeSeconds = GetPrototypeWorldTime(),
+                SourceId = "test-lab.transfer.sender",
+                InformationSourceId = "information-source.prototype.testimony",
+                Visibility = KnowledgeVisibility.Public
+            });
+            if (!known.Succeeded && known.Code != KnowledgeResultCode.Duplicate)
+            {
+                failure = RecordFailure("Information Transfer Setup", known.Message, known.Code.ToString());
+                return false;
+            }
+
+            memoryId = GetPrototypeMemoryId();
+            return true;
+        }
+
+        private TransferContentItemData BuildTransferContent(string contentId, InformationTransferContentType contentType, bool recallRequired, string memoryId, InformationTransferAssertionType assertionType = InformationTransferAssertionType.Fact, KnowledgeVisibility privacy = KnowledgeVisibility.Public)
+        {
+            return new TransferContentItemData
+            {
+                contentItemId = contentId,
+                contentType = contentType,
+                domain = contentType == InformationTransferContentType.HistoricalEventReference || contentType == InformationTransferContentType.MemoryStatement ? KnowledgeDomain.Historical : KnowledgeDomain.Species,
+                proposition = SpeciesCapabilityTransferProposition(),
+                senderMemoryId = memoryId,
+                historicalEventId = contentType == InformationTransferContentType.HistoricalEventReference || contentType == InformationTransferContentType.MemoryStatement ? "event.prototype.hidden.secret" : string.Empty,
+                senderConfidence = 850,
+                senderBeliefState = KnowledgeBeliefState.Known,
+                includedDetailIds = recallRequired ? new[] { "detail.participant", "detail.location" } : Array.Empty<string>(),
+                omittedDetailIds = Array.Empty<string>(),
+                claimedCertainty = 780,
+                privacyClassification = privacy,
+                assertionType = assertionType,
+                typedPayloadId = contentType == InformationTransferContentType.ProcedureReference ? "procedure.prototype.first-aid" : string.Empty,
+                debugDescription = $"Prototype transfer content {contentType}.",
+                intendedUnderstanding = TransferUnderstandingState.Complete,
+                rawEvidenceStrength = 760
+            };
+        }
+
+        private static KnowledgePropositionData SpeciesCapabilityTransferProposition()
+        {
+            return new KnowledgePropositionData
+            {
+                factDefinitionId = BuiltInKnowledgeFacts.SpeciesCapability,
+                subjectType = KnowledgeSubjectType.Species,
+                subjectId = "species.basic-spirit",
+                valueType = KnowledgeValueType.StableId,
+                stableValueId = "capability.can.bleed",
+                sourceContextId = "information-transfer.prototype"
+            };
+        }
+
+        private void CreateTransferRecipientKnowledge(out GameObject listenerObject, out PersonKnowledgeRuntime recipientKnowledge)
+        {
+            listenerObject = new GameObject("Information Transfer Test Listener");
+            recipientKnowledge = listenerObject.AddComponent<PersonKnowledgeRuntime>();
+            recipientKnowledge.Configure(registry, $"person.prototype.listener.{Guid.NewGuid():N}");
+        }
+
+        private PersonMemoryRuntime CreateTransferRecipientMemory(string recipientId)
+        {
+            PersonMemoryRuntime runtime = new PersonMemoryRuntime();
+            runtime.Configure(recipientId, registry, authoritativeHistory, GetKnownPrototypePersons().Concat(new[] { recipientId }));
+            return runtime;
+        }
+
+        private IReadOnlyList<InformationTransferDefinition> CreatePrototypeTransferDefinitions()
+        {
+            return new[]
+            {
+                CreatePrototypeTransferDefinition("information-transfer.direct-testimony", "Direct Testimony", InformationTransferMode.DirectTestimony, new[] { KnowledgeDomain.Species, KnowledgeDomain.Medical }, new[] { InformationSourceCategory.PersonalTestimony, InformationSourceCategory.DirectObservation }, false, false, false, false, 850, 850, TransferMemoryPolicy.FormCommunicationMemory, TransferEvidencePolicy.CreateRecipientEvidence),
+                CreatePrototypeTransferDefinition("information-transfer.formal-lesson", "Formal Lesson", InformationTransferMode.FormalLesson, new[] { KnowledgeDomain.Species, KnowledgeDomain.Medical }, new[] { InformationSourceCategory.ExpertTestimony, InformationSourceCategory.PersonalTestimony }, false, false, false, false, 860, 820, TransferMemoryPolicy.FormCommunicationMemory, TransferEvidencePolicy.CreateRecipientEvidence),
+                CreatePrototypeTransferDefinition("information-transfer.demonstration", "Demonstration", InformationTransferMode.Demonstration, new[] { KnowledgeDomain.Species, KnowledgeDomain.Medical }, new[] { InformationSourceCategory.DirectParticipation, InformationSourceCategory.ExpertTestimony }, false, false, false, true, 880, 780, TransferMemoryPolicy.FormCommunicationMemory, TransferEvidencePolicy.CreateRecipientEvidence),
+                CreatePrototypeTransferDefinition("information-transfer.summary", "Summary", InformationTransferMode.Summary, new[] { KnowledgeDomain.Historical, KnowledgeDomain.Social }, new[] { InformationSourceCategory.OfficialRecord, InformationSourceCategory.Hearsay }, true, true, false, false, 740, 580, TransferMemoryPolicy.FormCommunicationMemory, TransferEvidencePolicy.CreateRecipientEvidence),
+                CreatePrototypeTransferDefinition("information-transfer.private-message", "Private Message", InformationTransferMode.PrivateMessage, new[] { KnowledgeDomain.Social, KnowledgeDomain.Historical }, new[] { InformationSourceCategory.PersonalTestimony, InformationSourceCategory.Letter }, false, false, false, false, 820, 820, TransferMemoryPolicy.FormCommunicationMemory, TransferEvidencePolicy.CreateRecipientEvidence)
+            };
+        }
+
+        private static InformationTransferDefinition CreatePrototypeTransferDefinition(string id, string displayName, InformationTransferMode mode, KnowledgeDomain[] domains, InformationSourceCategory[] sourceCategories, bool recallRequired, bool allowsSummary, bool allowsTranslation, bool allowsDemonstration, int fidelity, int completeness, TransferMemoryPolicy memoryPolicy, TransferEvidencePolicy evidencePolicy)
+        {
+            InformationTransferDefinition definition = ScriptableObject.CreateInstance<InformationTransferDefinition>();
+            definition.DevelopmentConfigure(id, displayName, mode, domains, sourceCategories, recallRequired, allowsSummary, allowsTranslation, allowsDemonstration, fidelity, completeness, memoryPolicy, evidencePolicy);
+            return definition;
+        }
+
+        private PrototypeTestLabOperation RecordTransferOperation(string operationName, InformationTransferResult result)
+        {
+            bool succeeded = result != null && result.Succeeded;
+            return Record(succeeded, operationName, succeeded ? result.Status.ToString() : result?.Status.ToString() ?? InformationTransferStatus.InvalidRequest.ToString(), FormatTransferResult(result));
+        }
+
+        private static string FormatTransferResult(InformationTransferResult result)
+        {
+            if (result == null)
+            {
+                return "No Information Transfer result was produced.";
+            }
+
+            TransferRecipientResult first = result.RecipientResults.FirstOrDefault();
+            return $"Success={result.Succeeded} Status={result.Status} Preview={result.Preview} Duplicate={result.Duplicate} Transfer={result.Record?.TransferId ?? "None"} Recipients={result.RecipientResults.Count} Understanding={first?.Understanding.ToString() ?? "None"} Confidence={first?.InheritedConfidence ?? 0} Evidence={first?.CreatedEvidenceIds.Count ?? 0} Memories={first?.FormedMemoryIds.Count ?? 0} Source={first?.Data.transferSourceId ?? result.Record?.Data.createdSourceId ?? "None"} Revision={result.PriorRevision}->{result.ResultingRevision}. {result.Message}";
         }
 
         private PrototypeTestLabOperation RecordSourceOperation(string operationName, InformationSourceOperationResult result)
@@ -8709,6 +9191,7 @@ namespace UnityIsekaiGame.Development
                 }
 
                 resources.Configure(registry, stats, PersistenceService.LocalPlayerId);
+                actor.GetComponentInParent<EnemyHealth>()?.RefreshResourceRuntime();
             }
         }
 
