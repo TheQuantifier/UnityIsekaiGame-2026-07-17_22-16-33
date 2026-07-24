@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.Access;
 
 namespace UnityIsekaiGame.Knowledge.History
 {
@@ -486,6 +487,73 @@ namespace UnityIsekaiGame.Knowledge.History
             }
 
             return ids.Where(id => memoriesById.ContainsKey(id)).Select(id => new HistoryMemoryRecord(memoriesById[id])).OrderBy(record => record.MemoryId, StringComparer.Ordinal).ToArray();
+        }
+
+        public InformationAccessProjection<HistoryMemoryRecord> GetMemoryProjection(string memoryId, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, string policyId = "", bool recordAudit = false)
+        {
+            if (!TryGetMemory(memoryId, out HistoryMemoryRecord memory))
+            {
+                return new InformationAccessProjection<HistoryMemoryRecord>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, $"Memory '{memoryId}' was not found.");
+            }
+
+            string[] detailIds = MemoryDetailIds(memory);
+            InformationAccessContext context = InformationAccessProjectionUtility.BuildContext(
+                accessContext,
+                BuildMemorySubject(memory),
+                InformationAccessMode.Inspect,
+                InformationAccessPurpose.Journal,
+                detailIds,
+                policyId);
+            RedactedInformationProjection projection = accessRuntime?.Project(context, detailIds);
+            if (projection == null)
+            {
+                return new InformationAccessProjection<HistoryMemoryRecord>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, "Information access runtime is missing.");
+            }
+
+            if (recordAudit)
+            {
+                accessRuntime.RecordAudit(projection.Decision, context, gameplayAudit: false);
+            }
+
+            HistoryMemoryRecord projected = projection.Decision.Denied ? null : MaterializeMemory(memory, projection.Details);
+            string visibleSubjectId = projected == null || !InformationAccessProjectionUtility.IsVisible(projection.Details, "detail.memory") ? string.Empty : projected.MemoryId;
+            return new InformationAccessProjection<HistoryMemoryRecord>(projected, projection.Decision, projection.Details, visibleSubjectId, projection.Decision.VisibleReason);
+        }
+
+        public InformationAccessProjection<MemoryRecallResult> GetRecallProjection(MemoryRecallRequest request, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, string policyId = "", bool recordAudit = false)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.MemoryId))
+            {
+                return new InformationAccessProjection<MemoryRecallResult>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, "Recall projection requires a memory ID.");
+            }
+
+            InformationAccessProjection<HistoryMemoryRecord> memoryProjection = GetMemoryProjection(request.MemoryId, accessRuntime, accessContext, policyId, recordAudit);
+            if (memoryProjection.Denied)
+            {
+                return new InformationAccessProjection<MemoryRecallResult>(null, memoryProjection.Decision, memoryProjection.DetailStates, memoryProjection.VisibleSubjectId, memoryProjection.Message);
+            }
+
+            MemoryRecallRequest previewRequest = new MemoryRecallRequest
+            {
+                TransactionId = request.TransactionId,
+                RequestingPersonId = request.RequestingPersonId,
+                MemoryId = request.MemoryId,
+                HistoricalEventId = request.HistoricalEventId,
+                SubjectId = request.SubjectId,
+                BodyId = request.BodyId,
+                LocationId = request.LocationId,
+                OrganizationId = request.OrganizationId,
+                Tags = request.Tags == null ? Array.Empty<string>() : request.Tags.ToArray(),
+                WorldTime = request.WorldTime,
+                AttemptDifficult = request.AttemptDifficult,
+                AllowCueRecovery = request.AllowCueRecovery,
+                ReinforceOnSuccess = false,
+                MutateMetadata = false,
+                Cues = request.Cues == null ? Array.Empty<MemoryRecallCue>() : request.Cues.ToArray(),
+                AccessContext = request.AccessContext
+            };
+            MemoryRecallResult result = Recall(previewRequest, preview: true, restoring: true);
+            return new InformationAccessProjection<MemoryRecallResult>(result, memoryProjection.Decision, memoryProjection.DetailStates, memoryProjection.VisibleSubjectId, memoryProjection.Message);
         }
 
         public PersonMemorySnapshot CreateSnapshot()
@@ -1339,6 +1407,71 @@ namespace UnityIsekaiGame.Knowledge.History
         private HistoryMemoryRecord TryWrap(string memoryId)
         {
             return memoriesById.TryGetValue(memoryId ?? string.Empty, out HistoryMemoryRecordData data) ? new HistoryMemoryRecord(data) : null;
+        }
+
+        private static InformationSubjectReferenceData BuildMemorySubject(HistoryMemoryRecord memory)
+        {
+            return new InformationSubjectReferenceData
+            {
+                subjectType = InformationSubjectType.Memory,
+                subjectId = memory?.MemoryId ?? string.Empty,
+                parentSubjectId = memory?.HistoricalEventId ?? string.Empty,
+                ownerPersonId = memory?.OwnerPersonId ?? string.Empty,
+                tags = memory?.Data.tags == null ? Array.Empty<string>() : memory.Data.tags.ToArray()
+            };
+        }
+
+        private static string[] MemoryDetailIds(HistoryMemoryRecord memory)
+        {
+            List<string> details = new List<string>
+            {
+                "detail.summary",
+                "detail.memory",
+                "detail.event",
+                "detail.belief",
+                "detail.evidence",
+                "detail.source",
+                "detail.time",
+                "detail.body",
+                "detail.details",
+                "detail.suppressions",
+                "detail.revisions"
+            };
+            details.AddRange(memory?.RememberedDetails.Select(detail => detail.detailId) ?? Array.Empty<string>());
+            return details.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray();
+        }
+
+        private static HistoryMemoryRecord MaterializeMemory(HistoryMemoryRecord memory, IReadOnlyDictionary<string, InformationRedactionState> details)
+        {
+            if (memory == null)
+            {
+                return null;
+            }
+
+            if (details.Values.All(state => state == InformationRedactionState.Visible))
+            {
+                return memory;
+            }
+
+            HistoryMemoryRecordData data = memory.Data.Clone();
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.memory")) data.memoryId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.event")) data.historicalEventId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.belief")) data.beliefId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.evidence")) data.evidenceIds = Array.Empty<string>();
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.source")) data.source = HistoryMemorySource.Unknown;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.time")) { data.formedAtWorldTime = 0d; data.rememberedOccurredAtWorldTime = 0d; data.lastRecalledWorldTime = -1d; data.lastRecallAttemptWorldTime = -1d; }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.body")) data.bodyAtTimeId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.suppressions")) data.suppressions = Array.Empty<MemorySuppressionData>();
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.revisions")) { data.revisions = Array.Empty<MemoryRevisionData>(); data.currentRevisionId = string.Empty; }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.details"))
+            {
+                data.rememberedDetails = (data.rememberedDetails ?? Array.Empty<MemoryDetailData>())
+                    .Where(detail => detail != null && InformationAccessProjectionUtility.IsVisible(details, detail.detailId))
+                    .Select(detail => detail.Clone())
+                    .ToArray();
+            }
+
+            return new HistoryMemoryRecord(data);
         }
 
         private void RaiseChanged(HistoryOperationResult result, bool restoring)

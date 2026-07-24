@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.Access;
 
 namespace UnityIsekaiGame.Knowledge.History
 {
@@ -447,6 +448,40 @@ namespace UnityIsekaiGame.Knowledge.History
                 .Where(record => record.BiographyRelevance != LifeEventBiographyRelevance.NotRelevant)
                 .Select(record => new BiographyTimelineEntry(record, RoleFor(record, personId), known: IsVisibleToPerson(record.Event.Data, personId, remembered), remembered: remembered.Contains(record.EventId)))
                 .OrderBy(entry => HistoryOrdering.Key(entry.LifeEvent.Event))
+                .ToArray();
+        }
+
+        public InformationAccessProjection<HistoricalEventRecord> GetHistoryProjection(string eventId, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, string policyId = "", bool recordAudit = false)
+        {
+            if (!TryGetEvent(eventId, out HistoricalEventRecord record))
+            {
+                return new InformationAccessProjection<HistoricalEventRecord>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, $"Historical event '{eventId}' was not found.");
+            }
+
+            return ProjectHistoricalEvent(record, accessRuntime, accessContext, policyId, recordAudit);
+        }
+
+        public IReadOnlyList<InformationAccessProjection<HistoricalEventRecord>> QueryHistoryProjectionsByPerson(string personId, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, PersonMemoryRuntime memoryRuntime = null, bool publicOnly = false, string policyId = "")
+        {
+            IEnumerable<HistoricalEventRecord> source = publicOnly
+                ? QueryPersonAccessible(personId, memoryRuntime, privileged: false)
+                : QueryByPerson(personId);
+            return source
+                .Select(record => ProjectHistoricalEvent(record, accessRuntime, accessContext, policyId, recordAudit: false))
+                .Where(projection => projection.Succeeded)
+                .OrderBy(projection => projection.Record == null ? double.MaxValue : projection.Record.OccurredAtWorldTime)
+                .ThenBy(projection => projection.Record == null ? long.MaxValue : projection.Record.Sequence)
+                .ThenBy(projection => projection.Record == null ? string.Empty : projection.Record.EventId, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        public IReadOnlyList<InformationAccessProjection<BiographyTimelineEntry>> GetBiographyProjection(string personId, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, PersonMemoryRuntime memoryRuntime = null, bool publicOnly = false, bool personKnown = false, bool personRemembered = false, string policyId = "")
+        {
+            return QueryBiography(personId, memoryRuntime, publicOnly, personKnown, personRemembered, privileged: true)
+                .Select(entry => ProjectBiographyEntry(entry, accessRuntime, accessContext, policyId))
+                .Where(projection => projection.Succeeded)
+                .OrderBy(projection => projection.Record == null ? double.MaxValue : projection.Record.LifeEvent.OccurredAtWorldTime)
+                .ThenBy(projection => projection.Record == null ? string.Empty : projection.Record.LifeEvent.EventId, StringComparer.Ordinal)
                 .ToArray();
         }
 
@@ -1527,6 +1562,115 @@ namespace UnityIsekaiGame.Knowledge.History
                 && !string.IsNullOrWhiteSpace(personId)
                 && (string.Equals(data.primaryPersonId, personId, StringComparison.Ordinal)
                     || (data.participantPersonIds ?? Array.Empty<string>()).Contains(personId, StringComparer.Ordinal));
+        }
+
+        private InformationAccessProjection<HistoricalEventRecord> ProjectHistoricalEvent(HistoricalEventRecord record, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, string policyId, bool recordAudit)
+        {
+            string[] detailIds = HistoricalEventDetailIds(record);
+            InformationAccessContext context = InformationAccessProjectionUtility.BuildContext(
+                accessContext,
+                BuildHistorySubject(record),
+                InformationAccessMode.Query,
+                InformationAccessPurpose.Journal,
+                detailIds,
+                policyId);
+            RedactedInformationProjection projection = accessRuntime?.Project(context, detailIds);
+            if (projection == null)
+            {
+                return new InformationAccessProjection<HistoricalEventRecord>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, "Information access runtime is missing.");
+            }
+
+            if (recordAudit)
+            {
+                accessRuntime.RecordAudit(projection.Decision, context, gameplayAudit: false);
+            }
+
+            HistoricalEventRecord projected = projection.Decision.Denied ? null : MaterializeHistoricalEvent(record, projection.Details);
+            string visibleSubjectId = projected == null || !InformationAccessProjectionUtility.IsVisible(projection.Details, "detail.event") ? string.Empty : projected.EventId;
+            return new InformationAccessProjection<HistoricalEventRecord>(projected, projection.Decision, projection.Details, visibleSubjectId, projection.Decision.VisibleReason);
+        }
+
+        private InformationAccessProjection<BiographyTimelineEntry> ProjectBiographyEntry(BiographyTimelineEntry entry, InformationAccessRuntime accessRuntime, InformationAccessContext accessContext, string policyId)
+        {
+            if (entry == null || entry.LifeEvent == null)
+            {
+                return new InformationAccessProjection<BiographyTimelineEntry>(null, null, new Dictionary<string, InformationRedactionState>(), string.Empty, "Biography entry is missing.");
+            }
+
+            InformationAccessProjection<HistoricalEventRecord> eventProjection = ProjectHistoricalEvent(entry.LifeEvent.Event, accessRuntime, accessContext, policyId, recordAudit: false);
+            if (eventProjection.Denied || eventProjection.Record == null)
+            {
+                return new InformationAccessProjection<BiographyTimelineEntry>(null, eventProjection.Decision, eventProjection.DetailStates, string.Empty, eventProjection.Message);
+            }
+
+            BiographyTimelineEntry projected = new BiographyTimelineEntry(new LifeEventRecord(eventProjection.Record), entry.ParticipantRole, entry.Known, entry.Remembered);
+            return new InformationAccessProjection<BiographyTimelineEntry>(projected, eventProjection.Decision, eventProjection.DetailStates, eventProjection.VisibleSubjectId, eventProjection.Message);
+        }
+
+        private static InformationSubjectReferenceData BuildHistorySubject(HistoricalEventRecord record)
+        {
+            return new InformationSubjectReferenceData
+            {
+                subjectType = record != null && record.IsLifeEvent ? InformationSubjectType.LifeEvent : InformationSubjectType.HistoricalEvent,
+                subjectId = record?.EventId ?? string.Empty,
+                ownerPersonId = record?.PrimaryPersonId ?? string.Empty,
+                controllingEntityId = record?.OrganizationId ?? string.Empty,
+                tags = record?.Tags.ToArray() ?? Array.Empty<string>()
+            };
+        }
+
+        private static string[] HistoricalEventDetailIds(HistoricalEventRecord record)
+        {
+            List<string> details = new List<string>
+            {
+                "detail.summary",
+                "detail.event",
+                "detail.definition",
+                "detail.time",
+                "detail.primary-person",
+                "detail.participants",
+                "detail.bodies",
+                "detail.location",
+                "detail.organization",
+                "detail.payload",
+                "detail.provenance",
+                "detail.source",
+                "detail.correction",
+                "detail.sequence",
+                "detail.relationships"
+            };
+            details.AddRange(record?.Tags.Select(tag => $"detail.tag.{tag}") ?? Array.Empty<string>());
+            return details.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray();
+        }
+
+        private HistoricalEventRecord MaterializeHistoricalEvent(HistoricalEventRecord record, IReadOnlyDictionary<string, InformationRedactionState> details)
+        {
+            if (record == null)
+            {
+                return null;
+            }
+
+            if (details.Values.All(state => state == InformationRedactionState.Visible))
+            {
+                return record;
+            }
+
+            HistoricalEventRecordData data = record.Data.Clone();
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.event")) data.eventId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.definition")) data.eventDefinitionId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.time")) { data.occurredAtWorldTime = 0d; data.recordedAtWorldTime = 0d; data.sequence = 0L; }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.primary-person")) data.primaryPersonId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.participants")) { data.participantPersonIds = Array.Empty<string>(); data.lifeEventParticipants = Array.Empty<LifeEventParticipantData>(); }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.bodies")) data.bodyIds = Array.Empty<string>();
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.location")) data.locationId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.organization")) data.organizationId = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.payload")) { data.payload = new HistoricalEventPayloadData(); data.lifeEventPayload = new LifeEventPayloadData(); data.relatedEntityIds = Array.Empty<string>(); }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.provenance")) data.provenance = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.source")) data.sourceSystem = string.Empty;
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.correction")) { data.supersedesEventId = string.Empty; data.correctedByEventId = string.Empty; }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.sequence")) { data.lifeEventSequenceId = string.Empty; data.lifeEventSequenceOrder = 0; data.correlationId = string.Empty; }
+            if (!InformationAccessProjectionUtility.IsVisible(details, "detail.relationships")) data.lifeEventRelationships = Array.Empty<LifeEventRelationshipData>();
+            return Wrap(data);
         }
 
         private HistoricalEventRecord Wrap(HistoricalEventRecordData data)

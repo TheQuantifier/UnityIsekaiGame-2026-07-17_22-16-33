@@ -20,6 +20,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildLifeEventsSuite());
             TryRegister(registry, BuildInformationSourcesSuite());
             TryRegister(registry, BuildInformationSharingSuite());
+            TryRegister(registry, BuildInformationAccessSuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -374,6 +375,34 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("privacy", "Create scoped transfers", context => Operation(context.Service.CreatePublicPrivateRestrictedTransfers(), context, "step8-sharing-privacy"))),
                 Scenario("save-restore-round-trip", "Information Transfer audit state saves and restores silently", 90,
                     Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateInformationTransferSaveRestore(), context, "step8-sharing-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildInformationAccessSuite()
+        {
+            return Suite("feature.8.8.secrets-visibility-information-access", "Feature 8.8 Secrets, Visibility, and Information Access", "8.8", 880,
+                Required("InformationAccessRuntime", "InformationAccessPolicyDefinition", "PersonKnowledgeRuntime", "InformationSourceRuntime", "InformationTransferRuntime"),
+                Scenario("foundation-validates", "Information Access definitions validate", 10,
+                    Step("validate", "Validate access definitions", context => Operation(context.Service.ValidateInformationAccessDefinitions(), context, "step8-access-validate"))),
+                Scenario("public-private-boundaries", "Public information is visible while private secrets require access", 20,
+                    Step("public", "Public access", context => Operation(context.Service.CreatePublicInformationAccess(), context, "step8-access-public")),
+                    Step("secret-deny", "Unauthorized secret denied", context => Operation(context.Service.CreatePrivateInformationAccess(), context, "step8-access-secret-deny"))),
+                Scenario("grants-and-resharing", "Explicit grants control inspection, sharing, and resharing", 30,
+                    Step("inspect", "Grant inspect access", context => Operation(context.Service.GrantInspectInformationAccess(), context, "step8-access-grant-inspect")),
+                    Step("share", "Grant share access", context => Operation(context.Service.GrantShareInformationAccess(), context, "step8-access-grant-share")),
+                    Step("no-reshare", "Limit resharing", context => Operation(context.Service.AttemptNoReshareInformationAccess(), context, "step8-access-no-reshare"))),
+                Scenario("source-protection-and-existence", "Source identity and secret existence are protected separately", 40,
+                    Step("hide-source", "Hide source identity", context => Operation(context.Service.ProtectInformationSourceIdentity(), context, "step8-access-hide-source")),
+                    Step("reveal-source", "Reveal source identity", context => Operation(context.Service.RevealInformationSourceIdentity(), context, "step8-access-reveal-source")),
+                    Step("hide-existence", "Hide existence", context => Operation(context.Service.HideSecretExistence(), context, "step8-access-hide-existence")),
+                    Step("reveal-existence", "Reveal existence boundary", context => Operation(context.Service.RevealSecretExistence(), context, "step8-access-reveal-existence"))),
+                Scenario("discovery-classification-audit", "Discovery, classification changes, and audit records are deterministic", 50,
+                    Step("discover", "Discover hidden information", context => Operation(context.Service.DiscoverHiddenInformationAccess(), context, "step8-access-discover")),
+                    Step("declassify", "Declassify information", context => Operation(context.Service.DeclassifyInformationAccess(), context, "step8-access-declassify")),
+                    Step("audit", "Audit unauthorized access", context => Operation(context.Service.AttemptUnauthorizedInformationAccess(), context, "step8-access-audit"))),
+                Scenario("projection-and-save-restore", "Redacted projections and persistence preserve access state", 60,
+                    Step("projection", "Compare projections", context => Operation(context.Service.CompareInformationAccessProjections(), context, "step8-access-projection")),
+                    Step("adapters", "Validate non-transfer projection adapters", context => Operation(context.Service.ValidateInformationAccessProjectionAdapters(), context, "step8-access-adapters")),
+                    Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateInformationAccessSaveRestore(), context, "step8-access-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

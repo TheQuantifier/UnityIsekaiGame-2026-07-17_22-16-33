@@ -443,7 +443,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.8.4.memory-recall-forgetting-alteration",
                 "feature.8.5.character-history-life-events",
                 "feature.8.6.information-sources-reliability",
-                "feature.8.7.information-sharing-teaching"
+                "feature.8.7.information-sharing-teaching",
+                "feature.8.8.secrets-visibility-information-access"
             }));
         }
 

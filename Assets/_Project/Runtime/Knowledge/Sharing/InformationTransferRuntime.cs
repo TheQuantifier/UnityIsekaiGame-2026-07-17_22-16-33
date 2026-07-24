@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Sources;
 
@@ -336,8 +337,14 @@ namespace UnityIsekaiGame.Knowledge.Sharing
             bool requiresRecall = RequiresRecall(request, definition);
             foreach (TransferContentItemData content in request.ContentItems.Where(item => item != null).OrderBy(item => item.contentItemId, StringComparer.Ordinal))
             {
+                if (!ValidateAccessPolicyForTransfer(request, content, out failure, out status))
+                {
+                    return false;
+                }
+
                 if (content.deliberateFalsehood && !request.DeliberateFalsehoodAuthorized)
                 {
+                    status = InformationTransferStatus.SenderAccessDenied;
                     failure = $"Content '{content.contentItemId}' is a deliberate falsehood but the request did not authorize deliberate falsehood.";
                     return false;
                 }
@@ -400,6 +407,93 @@ namespace UnityIsekaiGame.Knowledge.Sharing
             }
 
             return true;
+        }
+
+        private static bool ValidateAccessPolicyForTransfer(InformationTransferRequest request, TransferContentItemData content, out string failure, out InformationTransferStatus status)
+        {
+            failure = string.Empty;
+            status = InformationTransferStatus.PrivacyBlocked;
+            if (request.AccessRuntime == null || request.PrivilegedAccess)
+            {
+                return true;
+            }
+
+            string policyId = !string.IsNullOrWhiteSpace(request.AccessPolicyId)
+                ? request.AccessPolicyId
+                : !string.IsNullOrWhiteSpace(content.requiredRecipientAccessId)
+                    ? content.requiredRecipientAccessId
+                    : string.Empty;
+            if (string.IsNullOrWhiteSpace(policyId))
+            {
+                return true;
+            }
+
+            InformationSubjectReferenceData subject = request.AccessSubject?.Clone() ?? SubjectFromContent(content);
+            InformationAccessMode mode = string.IsNullOrWhiteSpace(request.ParentTransferId)
+                ? InformationAccessMode.Share
+                : InformationAccessMode.Reshare;
+            InformationAccessDecision decision = request.AccessRuntime.EvaluateAccess(new InformationAccessContext
+            {
+                RequestingPersonId = request.SenderPersonId,
+                ActingEntityId = request.SenderPersonId,
+                Subject = subject,
+                Purpose = InformationAccessPurpose.Transfer,
+                WorldTimeSeconds = Math.Max(0d, request.WorldTimeSeconds),
+                AccessMode = mode,
+                RequestedDetailIds = content.includedDetailIds ?? Array.Empty<string>(),
+                AuthorizationIds = request.SenderAuthorizationIds ?? Array.Empty<string>(),
+                OrganizationIds = request.SenderOrganizationIds ?? Array.Empty<string>(),
+                RoleIds = request.SenderRoleIds ?? Array.Empty<string>(),
+                NeedToKnowTags = request.SenderNeedToKnowTags ?? Array.Empty<string>(),
+                HasDiscoveredSubject = true,
+                RedactedAccessAcceptable = request.SummarizationRequested || request.OmissionRequested || request.PrivacyScope != TransferPrivacyScope.Public,
+                DeterministicPolicyId = policyId
+            });
+
+            if (decision.Denied)
+            {
+                failure = $"Access policy '{policyId}' denied {mode} for content '{content.contentItemId}': {decision.DenialCode}. {decision.DiagnosticReason}";
+                return false;
+            }
+
+            if (mode == InformationAccessMode.Reshare && decision.ResharingOutcome == InformationResharingPolicy.NoResharing)
+            {
+                failure = $"Access policy '{policyId}' does not allow resharing for content '{content.contentItemId}'.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static InformationSubjectReferenceData SubjectFromContent(TransferContentItemData content)
+        {
+            string subjectId = !string.IsNullOrWhiteSpace(content.senderMemoryId)
+                ? content.senderMemoryId
+                : !string.IsNullOrWhiteSpace(content.historicalEventId)
+                    ? content.historicalEventId
+                    : !string.IsNullOrWhiteSpace(content.lifeEventId)
+                        ? content.lifeEventId
+                        : !string.IsNullOrWhiteSpace(content.senderBeliefId)
+                            ? content.senderBeliefId
+                            : !string.IsNullOrWhiteSpace(content.senderEvidenceId)
+                                ? content.senderEvidenceId
+                                : content.contentItemId;
+
+            return new InformationSubjectReferenceData
+            {
+                subjectType = content.contentType switch
+                {
+                    InformationTransferContentType.MemoryStatement => InformationSubjectType.Memory,
+                    InformationTransferContentType.HistoricalEventReference => InformationSubjectType.HistoricalEvent,
+                    InformationTransferContentType.LifeEventReference => InformationSubjectType.LifeEvent,
+                    InformationTransferContentType.EvidenceReference => InformationSubjectType.Evidence,
+                    InformationTransferContentType.SourceIdentity => InformationSubjectType.SourceIdentity,
+                    InformationTransferContentType.ConditionOrDiagnosis => InformationSubjectType.Diagnosis,
+                    _ => InformationSubjectType.TransferContent
+                },
+                subjectId = subjectId ?? string.Empty,
+                tags = new[] { "transfer-content" }
+            };
         }
 
         private TransferRecipientResultData ProcessRecipient(InformationTransferRequest request, InformationTransferDefinition definition, string transferId, string recipientId, bool preview, out string failure, out InformationTransferStatus status)

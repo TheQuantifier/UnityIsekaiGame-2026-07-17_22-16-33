@@ -34,6 +34,7 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Observation;
 using UnityIsekaiGame.Knowledge.Sharing;
@@ -63,6 +64,14 @@ namespace UnityIsekaiGame.Development
         public const int DefaultHistoryLimit = 40;
         private const string PrototypeCatalogPath = "Assets/_Project/Prototype/Content/GameData/PrototypeDefinitionCatalog.asset";
         private const string DevelopmentStatusSource = "development.prototype-test-lab";
+        private const string PrototypePublicPolicyId = "information-access.prototype.public-rumor";
+        private const string PrototypeSecretPolicyId = "information-access.prototype.previous-body-secret";
+        private const string PrototypeDiscoveryPolicyId = "information-access.prototype.hidden-discovery";
+        private const string PrototypeConcealedPolicyId = "information-access.prototype.concealed-secret";
+        private const string PrototypePublicSubjectId = "fact.prototype.public-rumor";
+        private const string PrototypeSecretSubjectId = "memory.prototype.previous-body-secret";
+        private const string PrototypeDiscoverySubjectId = "event.prototype.hidden-discovery";
+        private const string PrototypeConcealedSubjectId = "memory.prototype.concealed-secret";
 
         private readonly List<PrototypeTestLabOperation> history = new List<PrototypeTestLabOperation>();
         private readonly HashSet<string> pendingConfirmations = new HashSet<string>(StringComparer.Ordinal);
@@ -116,6 +125,7 @@ namespace UnityIsekaiGame.Development
         private readonly PersonMemoryRuntime playerMemory = new PersonMemoryRuntime();
         private InformationSourceRuntime informationSources = new InformationSourceRuntime();
         private InformationTransferRuntime informationTransfers = new InformationTransferRuntime();
+        private InformationAccessRuntime informationAccess = new InformationAccessRuntime();
         private AuthoritativeHistorySaveData lastHistorySaveData;
         private PersonMemorySaveData lastMemorySaveData;
 
@@ -153,6 +163,8 @@ namespace UnityIsekaiGame.Development
             informationSources.Configure(registry, GetPrototypePersonId());
             informationTransfers = context?.Persistence?.InformationTransfers ?? informationTransfers ?? new InformationTransferRuntime();
             informationTransfers.Configure(registry, GetPrototypePersonId());
+            informationAccess = context?.InformationAccess ?? context?.Persistence?.InformationAccess ?? informationAccess ?? new InformationAccessRuntime();
+            informationAccess.Configure(registry, GetPrototypePersonId());
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -361,6 +373,7 @@ namespace UnityIsekaiGame.Development
             EnsureCombatReactionRuntime()?.ClearTransientStateForRestore();
             EnsureCombatReactionRuntime()?.ClearAllSources();
             EnsureCombatContributionRuntime()?.ClearTransientStateForRestore();
+            ResetInformationAutomationState();
             ongoingEffectClockSeconds = 0f;
             combatStateClockSeconds = 0f;
             combatExecutionClockSeconds = 0f;
@@ -378,6 +391,50 @@ namespace UnityIsekaiGame.Development
             lastContributionCreditTargetActorId = string.Empty;
             ResetEnemy();
             return RecordSuccess("Reset Automation Runtime", "Runtime automation baseline restored without expected optional-action warnings.");
+        }
+
+        private void ResetInformationAutomationState()
+        {
+            string personId = GetPrototypePersonId();
+            informationSources = context?.Persistence?.InformationSources ?? informationSources ?? new InformationSourceRuntime();
+            informationSources.Configure(registry, personId);
+            informationSources.RestoreFromSaveData(new InformationSourceSaveData
+            {
+                schemaVersion = InformationSourceSaveData.CurrentSchemaVersion,
+                ownerId = personId,
+                sourceRevision = 0,
+                sources = Array.Empty<InformationSourceInstanceData>(),
+                assessments = Array.Empty<PersonSourceAssessmentData>(),
+                transformations = Array.Empty<SourceTransformationData>(),
+                processedTransactions = Array.Empty<InformationSourceProcessedTransactionData>()
+            }, registry, personId, restoring: true);
+
+            informationTransfers = context?.Persistence?.InformationTransfers ?? informationTransfers ?? new InformationTransferRuntime();
+            informationTransfers.Configure(registry, personId);
+            informationTransfers.RestoreFromSaveData(new InformationTransferSaveData
+            {
+                schemaVersion = InformationTransferSaveData.CurrentSchemaVersion,
+                ownerId = personId,
+                transferRevision = 0,
+                transfers = Array.Empty<InformationTransferRecordData>(),
+                processedTransactions = Array.Empty<InformationTransferProcessedTransactionData>()
+            }, registry, personId, restoring: true);
+
+            informationAccess = context?.InformationAccess ?? context?.Persistence?.InformationAccess ?? informationAccess ?? new InformationAccessRuntime();
+            informationAccess.Configure(registry, personId);
+            informationAccess.RestoreFromSaveData(new InformationAccessSaveData
+            {
+                schemaVersion = InformationAccessSaveData.CurrentSchemaVersion,
+                ownerId = personId,
+                accessRevision = 0,
+                policies = Array.Empty<InformationAccessPolicyData>(),
+                grants = Array.Empty<InformationAccessGrantData>(),
+                denials = Array.Empty<InformationAccessDenialData>(),
+                concealments = Array.Empty<InformationConcealmentData>(),
+                classificationRevisions = Array.Empty<InformationClassificationRevisionData>(),
+                audits = Array.Empty<InformationAccessAuditData>(),
+                processedTransactions = Array.Empty<InformationAccessProcessedTransactionData>()
+            }, registry, personId, restoring: true);
         }
 
         private static void ResetLifecycleForAutomation(ActorLifecycleController lifecycle, string playerId)
@@ -4517,6 +4574,576 @@ namespace UnityIsekaiGame.Development
             ObservationResult result = service.Observe(knowledge, context, privateProjection, preview: false);
             bool succeeded = !result.Succeeded && result.Code == ObservationOutcomeCode.AccessDenied;
             return Record(succeeded, "Reject 8.2 Private Observation", succeeded ? "Success" : result.Code.ToString(), FormatObservationResult(result));
+        }
+
+        public string BuildInformationAccessSummary()
+        {
+            EnsureInformationAccessRuntime();
+            InformationAccessSnapshot snapshot = informationAccess.CreateSnapshot();
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 8.8 Secrets, Visibility, and Information Access");
+            builder.AppendLine($"Owner: {snapshot.OwnerId} Revision: {snapshot.Revision} Policies: {snapshot.Policies.Count} Grants: {snapshot.Grants.Count} Concealments: {snapshot.Concealments.Count} Audits: {snapshot.Audits.Count}");
+            foreach (InformationAccessPolicyRecord policy in snapshot.Policies.OrderBy(record => record.PolicyId, StringComparer.Ordinal).Take(10))
+            {
+                builder.AppendLine($"{policy.PolicyId}: {policy.Subject.SubjectType}/{policy.Subject.SubjectId} Classification={policy.Classification} Details={policy.DetailVisibilityPolicy} Source={policy.SourceVisibilityPolicy}");
+            }
+
+            PrototypeTestLabOperation last = history.Count == 0 ? default : history[0];
+            if (!string.IsNullOrWhiteSpace(last.OperationName) && last.OperationName.Contains("8.8", StringComparison.Ordinal))
+            {
+                builder.AppendLine($"Last 8.8: {last.OperationName} Code={last.Code} Success={last.Succeeded}");
+                builder.AppendLine(last.Message);
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateInformationAccessDefinitions()
+        {
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            Dictionary<string, IGameDefinition> definitions = new Dictionary<string, IGameDefinition>(StringComparer.Ordinal);
+            foreach (InformationAccessPolicyDefinition definition in CreatePrototypeAccessPolicyDefinitions())
+            {
+                definitions[definition.Id] = definition;
+            }
+
+            foreach (InformationAccessPolicyDefinition definition in CreatePrototypeAccessPolicyDefinitions())
+            {
+                definition.ValidateCatalogDefinition(definitions, report);
+            }
+
+            bool succeeded = report.ErrorCount == 0 && report.WarningCount == 0;
+            return Record(succeeded, "Validate 8.8 Access Definitions", succeeded ? "Success" : "ValidationFailed", report.GetSummary());
+        }
+
+        public PrototypeTestLabOperation CreatePublicInformationAccess()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypePublicPolicyId, PrototypePublicSubjectId, "person.prototype.visitor", InformationSubjectType.FactInstance, InformationAccessMode.Inspect, discovered: true);
+            bool succeeded = decision.FullAccess && decision.SourceVisible;
+            return Record(succeeded, "Create 8.8 Public Information Access", succeeded ? "Success" : decision.DenialCode.ToString(), FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation CreatePrivateInformationAccess()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.visitor", InformationSubjectType.Memory, InformationAccessMode.Inspect, discovered: true, revealDenial: true);
+            bool succeeded = decision.Denied && decision.DenialCode == InformationAccessDenialCode.MissingAuthorization;
+            return Record(succeeded, "Reject 8.8 Unauthorized Secret Access", succeeded ? "Success" : decision.Decision.ToString(), FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation GrantInspectInformationAccess()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessOperationResult grant = informationAccess.GrantAccess(BuildPrototypeAccessGrant("information-access.grant.prototype-listener.inspect", "person.prototype.listener", new[] { InformationAccessMode.Inspect, InformationAccessMode.RevealDetails }, permitsDisclosure: false, permitsResharing: false, sourceVisibility: InformationSourceVisibilityPolicy.PrivilegedOnly), $"access.8.8.grant.inspect.{Guid.NewGuid():N}");
+            if (!grant.Succeeded)
+            {
+                return RecordAccessOperation("Grant 8.8 Inspect Access", grant);
+            }
+
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.listener", InformationSubjectType.Memory, InformationAccessMode.Inspect, discovered: true);
+            bool succeeded = decision.RedactedAccess || decision.FullAccess || decision.PartialAccess;
+            return Record(succeeded, "Grant 8.8 Inspect Access", succeeded ? "Success" : decision.DenialCode.ToString(), FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation GrantShareInformationAccess()
+        {
+            EnsurePrototypeAccessPolicies();
+            RevokePrototypeAccessGrantIfPresent("information-access.grant.prototype-listener.no-reshare");
+            InformationAccessOperationResult grant = informationAccess.GrantAccess(BuildPrototypeAccessGrant("information-access.grant.prototype-listener.share", "person.prototype.listener", new[] { InformationAccessMode.Share }, permitsDisclosure: true, permitsResharing: true, sourceVisibility: InformationSourceVisibilityPolicy.Reveal), $"access.8.8.grant.share.{Guid.NewGuid():N}");
+            if (!grant.Succeeded)
+            {
+                return RecordAccessOperation("Grant 8.8 Share Access", grant);
+            }
+
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.listener", InformationSubjectType.Memory, InformationAccessMode.Share, discovered: true);
+            bool succeeded = !decision.Denied && decision.ResharingOutcome != InformationResharingPolicy.NoResharing;
+            return Record(succeeded, "Grant 8.8 Share Access", succeeded ? "Success" : decision.DenialCode.ToString(), FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation AttemptNoReshareInformationAccess()
+        {
+            EnsurePrototypeAccessPolicies();
+            RevokePrototypeAccessGrantIfPresent("information-access.grant.prototype-listener.share");
+            InformationAccessOperationResult grant = informationAccess.GrantAccess(BuildPrototypeAccessGrant("information-access.grant.prototype-listener.no-reshare", "person.prototype.listener", new[] { InformationAccessMode.Share }, permitsDisclosure: true, permitsResharing: false, sourceVisibility: InformationSourceVisibilityPolicy.PrivilegedOnly), $"access.8.8.grant.no-reshare.{Guid.NewGuid():N}");
+            if (!grant.Succeeded)
+            {
+                return RecordAccessOperation("Prepare 8.8 No-Reshare Access", grant);
+            }
+
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.listener", InformationSubjectType.Memory, InformationAccessMode.Share, discovered: true);
+            bool succeeded = !decision.Denied && decision.ResharingOutcome == InformationResharingPolicy.NoResharing;
+            return Record(succeeded, "Limit 8.8 Resharing", succeeded ? "Success" : decision.ResharingOutcome.ToString(), FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation ProtectInformationSourceIdentity()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessOperationResult grant = informationAccess.GrantAccess(BuildPrototypeAccessGrant("information-access.grant.prototype-listener.source-hidden", "person.prototype.listener", new[] { InformationAccessMode.Inspect }, permitsDisclosure: false, permitsResharing: false, sourceVisibility: InformationSourceVisibilityPolicy.PrivilegedOnly), $"access.8.8.grant.source-hidden.{Guid.NewGuid():N}");
+            if (!grant.Succeeded)
+            {
+                return RecordAccessOperation("Protect 8.8 Source Identity", grant);
+            }
+
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.listener", InformationSubjectType.Memory, InformationAccessMode.Inspect, discovered: true);
+            bool succeeded = !decision.Denied && !decision.SourceVisible;
+            return Record(succeeded, "Protect 8.8 Source Identity", succeeded ? "Success" : "SourceVisible", FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation RevealInformationSourceIdentity()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessOperationResult grant = informationAccess.GrantAccess(BuildPrototypeAccessGrant("information-access.grant.prototype-listener.source-visible", "person.prototype.listener", new[] { InformationAccessMode.RevealSource, InformationAccessMode.Inspect }, permitsDisclosure: true, permitsResharing: true, sourceVisibility: InformationSourceVisibilityPolicy.Reveal), $"access.8.8.grant.source-visible.{Guid.NewGuid():N}");
+            if (!grant.Succeeded)
+            {
+                return RecordAccessOperation("Reveal 8.8 Source Identity", grant);
+            }
+
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.listener", InformationSubjectType.Memory, InformationAccessMode.RevealSource, discovered: true);
+            bool succeeded = !decision.Denied && decision.SourceVisible;
+            return Record(succeeded, "Reveal 8.8 Source Identity", succeeded ? "Success" : "SourceHidden", FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation HideSecretExistence()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessOperationResult concealment = informationAccess.AddConcealment(new InformationConcealmentData
+            {
+                concealmentId = "information-access.concealment.prototype-secret-existence",
+                policyId = PrototypeConcealedPolicyId,
+                subject = BuildPrototypeSubject(InformationSubjectType.Memory, PrototypeConcealedSubjectId),
+                concealingEntityId = "person.prototype.secret-keeper",
+                concealmentKind = InformationConcealmentKind.Existence,
+                startTime = 0d,
+                strength = 800,
+                hiddenDetailIds = new[] { "detail.original-source", "detail.previous-body" },
+                authorizedExceptionIds = new[] { "access.authorization.prototype.secret-reveal" },
+                provenance = "Prototype Test Lab 8.8 concealment."
+            }, $"access.8.8.conceal.{Guid.NewGuid():N}");
+            if (!concealment.Succeeded)
+            {
+                return RecordAccessOperation("Hide 8.8 Secret Existence", concealment);
+            }
+
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeConcealedPolicyId, PrototypeConcealedSubjectId, "person.prototype.visitor", InformationSubjectType.Memory, InformationAccessMode.Inspect, discovered: true, revealDenial: true);
+            bool succeeded = decision.Denied && decision.DenialCode == InformationAccessDenialCode.Concealed && string.IsNullOrWhiteSpace(decision.VisibleReason);
+            return Record(succeeded, "Hide 8.8 Secret Existence", succeeded ? "Success" : decision.DenialCode.ToString(), FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation RevealSecretExistence()
+        {
+            EnsurePrototypeAccessPolicies();
+            HideSecretExistence();
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeConcealedPolicyId, PrototypeConcealedSubjectId, "person.prototype.visitor", InformationSubjectType.Memory, InformationAccessMode.Inspect, discovered: true, revealDenial: true, authorizationIds: new[] { "access.authorization.prototype.secret-reveal" });
+            bool succeeded = decision.Denied && decision.DenialCode == InformationAccessDenialCode.MissingAuthorization;
+            return Record(succeeded, "Reveal 8.8 Secret Existence Boundary", succeeded ? "Success" : decision.DenialCode.ToString(), FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation DiscoverHiddenInformationAccess()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessDecision undiscovered = EvaluatePrototypeAccess(PrototypeDiscoveryPolicyId, PrototypeDiscoverySubjectId, "person.prototype.visitor", InformationSubjectType.HistoricalEvent, InformationAccessMode.Query, discovered: false);
+            InformationAccessDecision discovered = EvaluatePrototypeAccess(PrototypeDiscoveryPolicyId, PrototypeDiscoverySubjectId, "person.prototype.visitor", InformationSubjectType.HistoricalEvent, InformationAccessMode.Query, discovered: true);
+            bool succeeded = undiscovered.Decision == InformationAccessDecisionKind.NotDiscovered && discovered.FullAccess;
+            return Record(succeeded, "Discover 8.8 Hidden Information", succeeded ? "Success" : discovered.DenialCode.ToString(), $"Before={FormatAccessDecision(undiscovered)} After={FormatAccessDecision(discovered)}");
+        }
+
+        public PrototypeTestLabOperation DeclassifyInformationAccess()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessOperationResult change = informationAccess.ChangeClassification(PrototypeSecretPolicyId, InformationVisibilityClassification.Public, GetPrototypePersonId(), $"access.8.8.declassify.{Guid.NewGuid():N}", 10d, "Prototype Test Lab declassification.");
+            if (!change.Succeeded)
+            {
+                return RecordAccessOperation("Declassify 8.8 Information", change);
+            }
+
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.visitor", InformationSubjectType.Memory, InformationAccessMode.Inspect, discovered: true);
+            bool succeeded = decision.FullAccess;
+            return Record(succeeded, "Declassify 8.8 Information", succeeded ? "Success" : decision.DenialCode.ToString(), FormatAccessDecision(decision));
+        }
+
+        public PrototypeTestLabOperation AttemptUnauthorizedInformationAccess()
+        {
+            EnsurePrototypeAccessPolicies();
+            InformationAccessDecision decision = EvaluatePrototypeAccess(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.visitor", InformationSubjectType.Memory, InformationAccessMode.Share, discovered: true, revealDenial: true);
+            InformationAccessOperationResult audit = informationAccess.RecordAudit(decision, BuildPrototypeAccessContext(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.visitor", InformationSubjectType.Memory, InformationAccessMode.Share, discovered: true, revealDenial: true));
+            bool succeeded = decision.Denied && audit.Succeeded && informationAccess.CreateSnapshot().Audits.Any(record => record.unauthorized && record.denialCode == decision.DenialCode);
+            return Record(succeeded, "Audit 8.8 Unauthorized Access", succeeded ? "Success" : decision.DenialCode.ToString(), $"{FormatAccessDecision(decision)} Audit={audit.Code} Revision={audit.PriorRevision}->{audit.ResultingRevision}.");
+        }
+
+        public PrototypeTestLabOperation CompareInformationAccessProjections()
+        {
+            EnsurePrototypeAccessPolicies();
+            string[] details = { "detail.summary", "detail.original-source", "detail.previous-body", "detail.location" };
+            RedactedInformationProjection unauthorized = informationAccess.Project(BuildPrototypeAccessContext(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.visitor", InformationSubjectType.Memory, InformationAccessMode.Inspect, discovered: true), details);
+            GrantInspectInformationAccess();
+            RedactedInformationProjection authorized = informationAccess.Project(BuildPrototypeAccessContext(PrototypeSecretPolicyId, PrototypeSecretSubjectId, "person.prototype.listener", InformationSubjectType.Memory, InformationAccessMode.Inspect, discovered: true), details);
+            bool succeeded = unauthorized.Decision.Denied && authorized.Details.TryGetValue("detail.summary", out InformationRedactionState visible) && visible == InformationRedactionState.Visible && authorized.Details.TryGetValue("detail.original-source", out InformationRedactionState redacted) && redacted == InformationRedactionState.Redacted;
+            return Record(succeeded, "Compare 8.8 Redacted Projections", succeeded ? "Success" : "ProjectionMismatch", $"Unauthorized={FormatProjection(unauthorized)} Authorized={FormatProjection(authorized)}");
+        }
+
+        public PrototypeTestLabOperation ValidateInformationAccessProjectionAdapters()
+        {
+            EnsurePrototypeAccessPolicies();
+            FormWitnessHistoryMemory();
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime) || !EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Validate 8.8 Projection Adapters", "History, Memory, or Knowledge runtime is missing.", InformationAccessResultCode.InvalidRequest.ToString());
+            }
+
+            const string eventId = "event.prototype.hidden.secret";
+            const string memoryId = "memory.prototype.hidden-witness";
+            string lifeEventId = $"event.prototype.access-adapter.life-injury.{Guid.NewGuid():N}";
+            if (!historyRuntime.TryGetEvent(eventId, out HistoricalEventRecord eventRecord) || !memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord memoryRecord))
+            {
+                return RecordFailure("Validate 8.8 Projection Adapters", "Required history or memory fixture was not created.", InformationAccessResultCode.InvalidRequest.ToString());
+            }
+
+            RecordLifeEventRequest lifeEventRequest = BuildPrototypeLifeEventRequest(lifeEventId, "history-event.life.injury", LifeEventCategory.Injury, LifeEventPayloadKind.InjuryDiagnosisRecovery, LifeEventSignificance.Major, LifeEventBiographyRelevance.PrivateBiographyEvent, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject, relatedInjuryId: "injury.prototype-major");
+            lifeEventRequest.TransactionId = $"history.8.8.adapter.life.{Guid.NewGuid():N}";
+            HistoryOperationResult lifeEventResult = historyRuntime.RecordLifeEvent(lifeEventRequest);
+            if (!lifeEventResult.Succeeded || lifeEventResult.Event == null)
+            {
+                return RecordFailure("Validate 8.8 Projection Adapters", $"Life-event fixture failed: {lifeEventResult.Code} {lifeEventResult.Message}", InformationAccessResultCode.InvalidRequest.ToString());
+            }
+
+            KnowledgeObservationRequest knowledgeRequest = BuildHistoricalKnowledgeRequest($"access.8.8.adapter.knowledge.{Guid.NewGuid():N}", eventId, KnowledgeEvidenceDirection.Supports, 780, 820);
+            KnowledgeOperationResult knowledgeResult = knowledge.RecordObservation(knowledgeRequest);
+            if (!knowledgeResult.Succeeded || knowledgeResult.ResultingBelief == null)
+            {
+                return RecordFailure("Validate 8.8 Projection Adapters", $"Knowledge fixture failed: {knowledgeResult.Code} {knowledgeResult.Message}", InformationAccessResultCode.InvalidRequest.ToString());
+            }
+
+            string sourceId = $"information-source.prototype.access-adapter.{Guid.NewGuid():N}";
+            informationSources.Configure(registry, GetPrototypePersonId());
+            InformationSourceOperationResult sourceResult = informationSources.RegisterSource(new InformationSourceRegistrationRequest
+            {
+                TransactionId = $"source.8.8.adapter.{Guid.NewGuid():N}",
+                SourceInstanceId = sourceId,
+                Category = InformationSourceCategory.DirectObservation,
+                ReferenceType = InformationSourceReferenceType.HistoricalEvent,
+                ReferencedId = eventId,
+                OriginalCreatorPersonId = GetPrototypePersonId(),
+                ObserverPersonId = GetPrototypePersonId(),
+                HolderPersonId = GetPrototypePersonId(),
+                CreationWorldTimeSeconds = GetPrototypeWorldTime(),
+                ObservationWorldTimeSeconds = GetPrototypeWorldTime(),
+                TransmissionWorldTimeSeconds = GetPrototypeWorldTime(),
+                Domain = KnowledgeDomain.Historical,
+                MethodId = "observation-method.ordinary-visual",
+                SubjectId = eventId,
+                Privacy = SourcePrivacyLevel.Private,
+                ErrorRisk = 120,
+                DeceptionRisk = 80,
+                BiasRisk = 100,
+                Tags = new[] { "feature.8.8", "projection-adapter" }
+            });
+            if (!sourceResult.Succeeded || sourceResult.Source == null)
+            {
+                return RecordFailure("Validate 8.8 Projection Adapters", $"Source fixture failed: {sourceResult.Code} {sourceResult.Message}", InformationAccessResultCode.InvalidRequest.ToString());
+            }
+
+            InformationAccessOperationResult[] policies =
+            {
+                RegisterProjectionPolicy("information-access.policy.adapter.history-hidden-event", InformationSubjectType.HistoricalEvent, eventRecord.EventId, GetPrototypePersonId()),
+                RegisterProjectionPolicy("information-access.policy.adapter.life-injury", InformationSubjectType.LifeEvent, lifeEventId, GetPrototypePersonId()),
+                RegisterProjectionPolicy("information-access.policy.adapter.life-injury-history", InformationSubjectType.HistoricalEvent, lifeEventId, GetPrototypePersonId()),
+                RegisterProjectionPolicy("information-access.policy.adapter.memory-hidden-witness", InformationSubjectType.Memory, memoryRecord.MemoryId, GetPrototypePersonId()),
+                RegisterProjectionPolicy("information-access.policy.adapter.knowledge-hidden-event", InformationSubjectType.Belief, knowledgeResult.ResultingBelief.BeliefId, GetPrototypePersonId()),
+                RegisterProjectionPolicy("information-access.policy.adapter.source-direct", InformationSubjectType.Source, sourceId, GetPrototypePersonId()),
+                RegisterProjectionPolicy("information-access.policy.adapter.source-chain-direct", InformationSubjectType.SourceChain, sourceId, GetPrototypePersonId())
+            };
+            InformationAccessOperationResult failedPolicy = policies.FirstOrDefault(result => result == null || !result.Succeeded);
+            if (failedPolicy != null)
+            {
+                return RecordAccessOperation("Validate 8.8 Projection Adapters", failedPolicy);
+            }
+
+            long historyRevision = historyRuntime.HistoryRevision;
+            long memoryRevision = memoryRuntime.MemoryRevision;
+            long knowledgeRevision = knowledge.KnowledgeRevision;
+            long sourceRevision = informationSources.SourceRevision;
+            long accessRevision = informationAccess.AccessRevision;
+            InformationAccessContext visitor = BuildProjectionAccessContext("person.prototype.visitor", InformationAccessMode.Inspect);
+            InformationAccessContext listener = BuildProjectionAccessContext("person.prototype.listener", InformationAccessMode.Inspect);
+
+            InformationAccessProjection<HistoricalEventRecord> deniedHistory = historyRuntime.GetHistoryProjection(eventId, informationAccess, visitor);
+            InformationAccessProjection<HistoricalEventRecord> allowedHistory = historyRuntime.GetHistoryProjection(eventId, informationAccess, listener);
+            IReadOnlyList<InformationAccessProjection<BiographyTimelineEntry>> deniedBiography = historyRuntime.GetBiographyProjection(GetPrototypePersonId(), informationAccess, visitor, memoryRuntime);
+            IReadOnlyList<InformationAccessProjection<BiographyTimelineEntry>> allowedBiography = historyRuntime.GetBiographyProjection(GetPrototypePersonId(), informationAccess, listener, memoryRuntime);
+            InformationAccessProjection<HistoryMemoryRecord> deniedMemory = memoryRuntime.GetMemoryProjection(memoryId, informationAccess, visitor);
+            InformationAccessProjection<HistoryMemoryRecord> allowedMemory = memoryRuntime.GetMemoryProjection(memoryId, informationAccess, listener);
+            InformationAccessProjection<KnowledgeBeliefRecord> deniedKnowledge = knowledge.GetKnowledgeProjection(knowledgeRequest.Proposition, informationAccess, visitor);
+            InformationAccessProjection<KnowledgeBeliefRecord> allowedKnowledge = knowledge.GetKnowledgeProjection(knowledgeRequest.Proposition, informationAccess, listener);
+            InformationAccessProjection<InformationSourceRecord> deniedSource = informationSources.GetSourceProjection(sourceId, informationAccess, visitor);
+            InformationAccessProjection<InformationSourceRecord> allowedSource = informationSources.GetSourceProjection(sourceId, informationAccess, listener);
+            InformationAccessProjection<SourceChainSnapshot> deniedChain = informationSources.GetSourceChainProjection(sourceId, informationAccess, visitor);
+            InformationAccessProjection<SourceChainSnapshot> allowedChain = informationSources.GetSourceChainProjection(sourceId, informationAccess, listener);
+
+            bool deniedHidden = deniedHistory.Record == null
+                && deniedBiography.All(projection => !ProjectionMatchesSubject(projection, lifeEventId))
+                && deniedMemory.Record == null
+                && deniedKnowledge.Record == null
+                && deniedSource.Record == null
+                && deniedChain.Record == null
+                && string.IsNullOrWhiteSpace(deniedHistory.VisibleSubjectId)
+                && string.IsNullOrWhiteSpace(deniedMemory.VisibleSubjectId)
+                && string.IsNullOrWhiteSpace(deniedKnowledge.VisibleSubjectId)
+                && string.IsNullOrWhiteSpace(deniedSource.VisibleSubjectId);
+            bool allowedProjected = allowedHistory.Succeeded
+                && allowedBiography.Any(projection => ProjectionMatchesSubject(projection, lifeEventId))
+                && allowedMemory.Succeeded
+                && allowedKnowledge.Succeeded
+                && allowedSource.Succeeded
+                && allowedChain.Succeeded;
+            bool redactedDetails = allowedHistory.Redacted
+                && allowedMemory.Redacted
+                && allowedKnowledge.Redacted
+                && allowedSource.Redacted
+                && allowedChain.Redacted;
+            bool noMutation = historyRuntime.HistoryRevision == historyRevision
+                && memoryRuntime.MemoryRevision == memoryRevision
+                && knowledge.KnowledgeRevision == knowledgeRevision
+                && informationSources.SourceRevision == sourceRevision
+                && informationAccess.AccessRevision == accessRevision;
+            bool succeeded = deniedHidden && allowedProjected && redactedDetails && noMutation;
+            string message = $"DeniedHidden={deniedHidden} Allowed={allowedProjected} Redacted={redactedDetails} NoMutation={noMutation} "
+                + $"History={FormatAccessProjection(allowedHistory)} Biography=[{string.Join(",", allowedBiography.Select(FormatBiographyAccessProjection))}] Memory={FormatAccessProjection(allowedMemory)} Knowledge={FormatAccessProjection(allowedKnowledge)} Source={FormatAccessProjection(allowedSource)} Chain={FormatAccessProjection(allowedChain)}.";
+            return Record(succeeded, "Validate 8.8 Projection Adapters", succeeded ? "Success" : "ProjectionAdapterMismatch", message);
+        }
+
+        public PrototypeTestLabOperation ValidateInformationAccessSaveRestore()
+        {
+            EnsurePrototypeAccessPolicies();
+            GrantInspectInformationAccess();
+            AttemptUnauthorizedInformationAccess();
+            InformationAccessSaveData saveData = informationAccess.CreateSaveData();
+            InformationAccessRuntime restored = new InformationAccessRuntime();
+            restored.Configure(registry, GetPrototypePersonId());
+            InformationAccessOperationResult restore = restored.RestoreFromSaveData(saveData, registry, GetPrototypePersonId(), restoring: true);
+            InformationAccessSnapshot before = informationAccess.CreateSnapshot();
+            InformationAccessSaveData corrupt = informationAccess.CreateSaveData();
+            corrupt.policies = corrupt.policies.Concat(corrupt.policies.Take(1).Select(policy => policy.Clone())).ToArray();
+            InformationAccessOperationResult rejected = informationAccess.RestoreFromSaveData(corrupt, registry, GetPrototypePersonId(), restoring: true);
+            InformationAccessSnapshot after = informationAccess.CreateSnapshot();
+            bool unchanged = before.Revision == after.Revision && before.Policies.Count == after.Policies.Count && before.Grants.Count == after.Grants.Count && before.Audits.Count == after.Audits.Count;
+            bool succeeded = restore.Succeeded && !rejected.Succeeded && unchanged && restored.CreateSnapshot().Policies.Count == saveData.policies.Length;
+            return Record(succeeded, "Validate 8.8 Access Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} Reject={rejected.Code} Unchanged={unchanged} Policies={saveData.policies.Length} Grants={saveData.grants.Length} Audits={saveData.audits.Length}. {rejected.Message}");
+        }
+
+        private InformationAccessRuntime EnsureInformationAccessRuntime()
+        {
+            informationAccess ??= context?.InformationAccess ?? context?.Persistence?.InformationAccess ?? new InformationAccessRuntime();
+            informationAccess.Configure(registry, GetPrototypePersonId());
+            return informationAccess;
+        }
+
+        private void EnsurePrototypeAccessPolicies()
+        {
+            EnsureInformationAccessRuntime();
+            foreach (InformationAccessPolicyDefinition definition in CreatePrototypeAccessPolicyDefinitions())
+            {
+                InformationSubjectReferenceData subject = definition.Id switch
+                {
+                    PrototypePublicPolicyId => BuildPrototypeSubject(InformationSubjectType.FactInstance, PrototypePublicSubjectId, owner: string.Empty),
+                    PrototypeDiscoveryPolicyId => BuildPrototypeSubject(InformationSubjectType.HistoricalEvent, PrototypeDiscoverySubjectId, owner: GetPrototypePersonId()),
+                    PrototypeConcealedPolicyId => BuildPrototypeSubject(InformationSubjectType.Memory, PrototypeConcealedSubjectId, owner: GetPrototypePersonId()),
+                    _ => BuildPrototypeSubject(InformationSubjectType.Memory, PrototypeSecretSubjectId, owner: GetPrototypePersonId())
+                };
+                InformationAccessPolicyData policy = definition.CreatePolicyData(subject, GetPrototypePersonId(), context?.PlayerTransform == null ? string.Empty : context.PlayerTransform.name);
+                if (definition.Id == PrototypeSecretPolicyId)
+                {
+                    policy.allowedPersonIds = new[] { GetPrototypePersonId() };
+                    policy.needToKnowTags = new[] { "need-to-know.prototype.secret" };
+                }
+
+                informationAccess.RegisterPolicy(policy, $"access.8.8.policy.{definition.Id}.{Guid.NewGuid():N}");
+            }
+        }
+
+        private InformationAccessDecision EvaluatePrototypeAccess(string policyId, string subjectId, string requesterId, InformationSubjectType subjectType, InformationAccessMode mode, bool discovered, bool revealDenial = false, string[] authorizationIds = null)
+        {
+            EnsureInformationAccessRuntime();
+            return informationAccess.EvaluateAccess(BuildPrototypeAccessContext(policyId, subjectId, requesterId, subjectType, mode, discovered, revealDenial, authorizationIds));
+        }
+
+        private InformationAccessContext BuildPrototypeAccessContext(string policyId, string subjectId, string requesterId, InformationSubjectType subjectType, InformationAccessMode mode, bool discovered, bool revealDenial = false, string[] authorizationIds = null)
+        {
+            return new InformationAccessContext
+            {
+                RequestingPersonId = requesterId ?? string.Empty,
+                ActingEntityId = requesterId ?? string.Empty,
+                Subject = BuildPrototypeSubject(subjectType, subjectId, subjectType == InformationSubjectType.FactInstance ? string.Empty : GetPrototypePersonId()),
+                Purpose = mode == InformationAccessMode.Share || mode == InformationAccessMode.Reshare ? InformationAccessPurpose.Transfer : InformationAccessPurpose.Gameplay,
+                WorldTimeSeconds = 12d,
+                AccessMode = mode,
+                RequestedDetailIds = new[] { "detail.summary", "detail.original-source", "detail.previous-body" },
+                AuthorizationIds = authorizationIds ?? Array.Empty<string>(),
+                OrganizationIds = Array.Empty<string>(),
+                RoleIds = Array.Empty<string>(),
+                NeedToKnowTags = Array.Empty<string>(),
+                HasDiscoveredSubject = discovered,
+                RevealDenialReasons = revealDenial,
+                DeterministicPolicyId = policyId
+            };
+        }
+
+        private InformationAccessContext BuildProjectionAccessContext(string requesterId, InformationAccessMode mode)
+        {
+            return new InformationAccessContext
+            {
+                RequestingPersonId = requesterId ?? string.Empty,
+                ActingEntityId = requesterId ?? string.Empty,
+                Purpose = InformationAccessPurpose.Gameplay,
+                WorldTimeSeconds = 12d,
+                AccessMode = mode,
+                HasDiscoveredSubject = true,
+                RedactedAccessAcceptable = true,
+                RevealDenialReasons = true,
+                ContextKind = InformationContextKind.Gameplay
+            };
+        }
+
+        private InformationAccessOperationResult RegisterProjectionPolicy(string policyId, InformationSubjectType subjectType, string subjectId, string ownerPersonId)
+        {
+            EnsureInformationAccessRuntime();
+            InformationAccessPolicyData policy = new InformationAccessPolicyData
+            {
+                policyId = policyId,
+                subject = BuildPrototypeSubject(subjectType, subjectId, ownerPersonId),
+                classification = InformationVisibilityClassification.Secret,
+                disclosurePolicy = InformationDisclosurePolicy.RedactedOnly,
+                resharingPolicy = InformationResharingPolicy.NoResharing,
+                sourceVisibilityPolicy = InformationSourceVisibilityPolicy.HideOriginal,
+                detailVisibilityPolicy = InformationDetailVisibilityPolicy.Selected,
+                auditPolicy = InformationAuditPolicy.AuditDenied,
+                allowedPersonIds = new[] { ownerPersonId, "person.prototype.listener" },
+                defaultVisibleDetails = new[] { "detail.event", "detail.life-event", "detail.memory", "detail.belief", "detail.source", "detail.summary", "detail.proposition", "detail.identity" },
+                defaultRedactedDetails = new[] { "detail.source", "detail.provenance", "detail.original-source", "detail.evidence" },
+                defaultHiddenDetails = new[] { "detail.payload", "detail.context", "detail.suppression", "detail.transformations" },
+                provenance = "Prototype Test Lab access projection adapter."
+            };
+            return informationAccess.RegisterPolicy(policy, $"access.8.8.projection-policy.{SanitizeForTransaction(policyId)}.{Guid.NewGuid():N}");
+        }
+
+        private void RevokePrototypeAccessGrantIfPresent(string grantId)
+        {
+            InformationAccessSnapshot snapshot = EnsureInformationAccessRuntime().CreateSnapshot();
+            if (snapshot.Grants.Any(record => string.Equals(record.GrantId, grantId, StringComparison.Ordinal) && !record.Revoked))
+            {
+                informationAccess.RevokeGrant(grantId, $"access.8.8.revoke.{SanitizeForTransaction(grantId)}.{Guid.NewGuid():N}", 12d);
+            }
+        }
+
+        private InformationAccessGrantData BuildPrototypeAccessGrant(string grantId, string personId, InformationAccessMode[] modes, bool permitsDisclosure, bool permitsResharing, InformationSourceVisibilityPolicy sourceVisibility)
+        {
+            return new InformationAccessGrantData
+            {
+                grantId = grantId,
+                policyId = PrototypeSecretPolicyId,
+                subject = BuildPrototypeSubject(InformationSubjectType.Memory, PrototypeSecretSubjectId, GetPrototypePersonId()),
+                granteeKind = InformationGranteeKind.Person,
+                granteeId = personId,
+                grantorId = GetPrototypePersonId(),
+                accessModes = modes ?? Array.Empty<InformationAccessMode>(),
+                detailIds = new[] { "detail.summary", "detail.location" },
+                sourceVisibility = sourceVisibility,
+                permitsDisclosure = permitsDisclosure,
+                permitsResharing = permitsResharing,
+                reason = "Prototype Test Lab 8.8 grant.",
+                provenance = "Prototype Test Lab"
+            };
+        }
+
+        private static InformationSubjectReferenceData BuildPrototypeSubject(InformationSubjectType subjectType, string subjectId, string owner = "")
+        {
+            return new InformationSubjectReferenceData
+            {
+                subjectType = subjectType,
+                subjectId = subjectId ?? string.Empty,
+                parentSubjectId = "step.8.prototype",
+                ownerPersonId = owner ?? string.Empty,
+                tags = new[] { "prototype", "step8", "access" }
+            };
+        }
+
+        private static IReadOnlyList<InformationAccessPolicyDefinition> CreatePrototypeAccessPolicyDefinitions()
+        {
+            return new[]
+            {
+                CreatePrototypeAccessPolicyDefinition(PrototypePublicPolicyId, "Prototype Public Rumor", InformationSubjectType.FactInstance, InformationVisibilityClassification.Public, InformationDisclosurePolicy.FreelyDisclose, InformationResharingPolicy.FreelyReshareable, InformationSourceVisibilityPolicy.Reveal, InformationDetailVisibilityPolicy.All, InformationAuditPolicy.None),
+                CreatePrototypeAccessPolicyDefinition(PrototypeSecretPolicyId, "Prototype Previous Body Secret", InformationSubjectType.Memory, InformationVisibilityClassification.Secret, InformationDisclosurePolicy.RedactedOnly, InformationResharingPolicy.NoResharing, InformationSourceVisibilityPolicy.HideOriginal, InformationDetailVisibilityPolicy.Selected, InformationAuditPolicy.AuditDeniedAndGranted, new[] { "detail.summary", "detail.location" }, new[] { "detail.original-source" }, new[] { "detail.previous-body" }, requiresDiscovery: false, allowRedactedAccess: true),
+                CreatePrototypeAccessPolicyDefinition(PrototypeDiscoveryPolicyId, "Prototype Hidden Discovery", InformationSubjectType.HistoricalEvent, InformationVisibilityClassification.Public, InformationDisclosurePolicy.SameAsAccess, InformationResharingPolicy.FreelyReshareable, InformationSourceVisibilityPolicy.Reveal, InformationDetailVisibilityPolicy.ExistenceOnly, InformationAuditPolicy.AuditDenied, new[] { "detail.summary" }, null, new[] { "detail.location" }, requiresDiscovery: true, allowRedactedAccess: true),
+                CreatePrototypeAccessPolicyDefinition(PrototypeConcealedPolicyId, "Prototype Concealed Secret", InformationSubjectType.Memory, InformationVisibilityClassification.Secret, InformationDisclosurePolicy.RedactedOnly, InformationResharingPolicy.NoResharing, InformationSourceVisibilityPolicy.HideFullProvenance, InformationDetailVisibilityPolicy.Selected, InformationAuditPolicy.AuditDenied, new[] { "detail.summary" }, new[] { "detail.original-source" }, new[] { "detail.previous-body" }, requiresDiscovery: false, allowRedactedAccess: true)
+            };
+        }
+
+        private static InformationAccessPolicyDefinition CreatePrototypeAccessPolicyDefinition(string id, string displayName, InformationSubjectType subjectType, InformationVisibilityClassification classification, InformationDisclosurePolicy disclosure, InformationResharingPolicy resharing, InformationSourceVisibilityPolicy sourceVisibility, InformationDetailVisibilityPolicy detailVisibility, InformationAuditPolicy audit, string[] visibleDetails = null, string[] redactedDetails = null, string[] hiddenDetails = null, bool requiresDiscovery = false, bool allowRedactedAccess = true)
+        {
+            InformationAccessPolicyDefinition definition = ScriptableObject.CreateInstance<InformationAccessPolicyDefinition>();
+            definition.DevelopmentConfigure(id, displayName, subjectType, classification, disclosure, resharing, sourceVisibility, detailVisibility, audit, visibleDetails, redactedDetails, hiddenDetails, requiresDiscovery, allowRedactedAccess);
+            return definition;
+        }
+
+        private PrototypeTestLabOperation RecordAccessOperation(string operationName, InformationAccessOperationResult result)
+        {
+            bool succeeded = result != null && result.Succeeded;
+            string message = result == null
+                ? "Information Access operation returned no result."
+                : $"{result.Message} Preview={result.Preview} Duplicate={result.Duplicate} Revision={result.PriorRevision}->{result.ResultingRevision}.";
+            return Record(succeeded, operationName, succeeded ? result.Code.ToString() : result?.Code.ToString() ?? InformationAccessResultCode.InvalidRequest.ToString(), message);
+        }
+
+        private static string FormatAccessDecision(InformationAccessDecision decision)
+        {
+            if (decision == null)
+            {
+                return "Decision=None";
+            }
+
+            return $"Decision={decision.Decision} Denial={decision.DenialCode} Subject={decision.Subject.SubjectType}/{decision.Subject.SubjectId} Requester={decision.RequesterPersonId} Mode={decision.Mode} SourceVisible={decision.SourceVisible} Reshare={decision.ResharingOutcome} Allowed=[{string.Join(",", decision.AllowedDetails)}] Redacted=[{string.Join(",", decision.RedactedDetails)}] Hidden=[{string.Join(",", decision.HiddenDetails)}] Audit={decision.AuditRequired} VisibleReason='{decision.VisibleReason}' Diagnostic='{decision.DiagnosticReason}'";
+        }
+
+        private static string FormatProjection(RedactedInformationProjection projection)
+        {
+            if (projection == null)
+            {
+                return "Projection=None";
+            }
+
+            string details = string.Join(",", projection.Details.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key}:{pair.Value}"));
+            return $"{projection.Decision.Decision}/{projection.Decision.DenialCode} Details=[{details}]";
+        }
+
+        private static string FormatAccessProjection<T>(InformationAccessProjection<T> projection)
+        {
+            if (projection == null)
+            {
+                return "Projection=None";
+            }
+
+            return $"Succeeded={projection.Succeeded} Decision={projection.Decision?.Decision.ToString() ?? "None"} Subject='{projection.VisibleSubjectId}' Redacted={projection.Redacted}";
+        }
+
+        private static string FormatBiographyAccessProjection(InformationAccessProjection<BiographyTimelineEntry> projection)
+        {
+            if (projection == null)
+            {
+                return "Projection=None";
+            }
+
+            return $"{projection.Record?.LifeEvent.EventId ?? "None"}:{FormatAccessProjection(projection)}";
+        }
+
+        private static bool ProjectionMatchesSubject(InformationAccessProjection<BiographyTimelineEntry> projection, string subjectId)
+        {
+            if (projection == null || string.IsNullOrWhiteSpace(subjectId))
+            {
+                return false;
+            }
+
+            return string.Equals(projection.VisibleSubjectId, subjectId, StringComparison.Ordinal)
+                || string.Equals(projection.Record?.LifeEvent.EventId, subjectId, StringComparison.Ordinal);
         }
 
         public string BuildInformationTransferSummary()
@@ -11889,6 +12516,14 @@ namespace UnityIsekaiGame.Development
             }
 
             foreach (HistoricalEventDefinition definition in CreateDevelopmentLifeEventDefinitions())
+            {
+                if (!definitions.Any(existing => string.Equals(existing.Id, definition.Id, StringComparison.Ordinal)))
+                {
+                    definitions.Add(definition);
+                }
+            }
+
+            foreach (InformationAccessPolicyDefinition definition in CreatePrototypeAccessPolicyDefinitions())
             {
                 if (!definitions.Any(existing => string.Equals(existing.Id, definition.Id, StringComparison.Ordinal)))
                 {
