@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PrototypeDefinitionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.GameData.DefinitionCatalog
   catalogId: catalog.prototype
-  contentVersion: 0.8.2-observation-examination-identification-diagnosis
+  contentVersion: 0.8.3-character-history-memory-timelines
   definitions:
   - {fileID: 11400000, guid: 5cf04cdc8a6943ff88a3e9829d0d619f, type: 2}
   - {fileID: 11400000, guid: 911382aaa3d3414a8bb7a890e37f1f31, type: 2}
@@ -503,6 +503,11 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 6337e9b7bfa944efb52e3a4835544286, type: 2}
   - {fileID: 11400000, guid: 0572406924c1444dab9edeae425308a9, type: 2}
   - {fileID: 11400000, guid: 727eb8d1ae4a4a34b32ddc3cb06134e5, type: 2}
+  - {fileID: 11400000, guid: 1c72e712a28b458381b63d5e1f636f9b, type: 2}
+  - {fileID: 11400000, guid: 642b47d86ef64d8db00f0f9dfefaaab1, type: 2}
+  - {fileID: 11400000, guid: a26d38cf5a6e42a8a8bd86270a842dbf, type: 2}
+  - {fileID: 11400000, guid: 99c5beec659d451e9f13b9ee0025df58, type: 2}
+  - {fileID: 11400000, guid: 19b98af96deb49788fc042cc3d39ab32, type: 2}
   - {fileID: 11400000, guid: 9194f1b3a47b40a99a572f3087ae8f34, type: 2}
   - {fileID: 11400000, guid: 2145bcc8af63454aaa9e074c6927d94d, type: 2}
   - {fileID: 11400000, guid: 481e3b9dc5bf4933ba9a0a35a1a518d9, type: 2}

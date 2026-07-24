@@ -34,6 +34,7 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Observation;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
@@ -109,6 +110,10 @@ namespace UnityIsekaiGame.Development
         private float combatExecutionClockSeconds;
         private float ongoingEffectClockSeconds;
         private readonly Dictionary<string, GameObject> combatStateTestActors = new Dictionary<string, GameObject>(StringComparer.Ordinal);
+        private readonly AuthoritativeHistoryRuntime authoritativeHistory = new AuthoritativeHistoryRuntime();
+        private readonly PersonMemoryRuntime playerMemory = new PersonMemoryRuntime();
+        private AuthoritativeHistorySaveData lastHistorySaveData;
+        private PersonMemorySaveData lastMemorySaveData;
 
         public event Action HistoryChanged;
 
@@ -139,6 +144,7 @@ namespace UnityIsekaiGame.Development
             }
 
             EnsureKnowledgeRuntime(out _);
+            EnsureHistoryRuntime(out _, out _);
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -3375,6 +3381,280 @@ namespace UnityIsekaiGame.Development
             return builder.ToString();
         }
 
+        public string BuildHistorySummary()
+        {
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime))
+            {
+                return "History runtime is missing.";
+            }
+
+            HistorySnapshot historySnapshot = historyRuntime.CreateSnapshot();
+            PersonMemorySnapshot memorySnapshot = memoryRuntime.CreateSnapshot();
+            string personId = GetPrototypePersonId();
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 8.3 Character History, Memory, and Historical Timelines");
+            builder.AppendLine($"World={historySnapshot.WorldId} HistoryRevision={historySnapshot.Revision} Events={historySnapshot.Events.Count} BodyOccupations={historySnapshot.BodyOccupations.Count}");
+            builder.AppendLine($"Person={personId} MemoryRevision={memorySnapshot.Revision} Memories={memorySnapshot.Memories.Count} Accessible={memorySnapshot.AccessibleMemories.Count}");
+            builder.AppendLine($"Person-known history={historyRuntime.QueryPersonAccessible(personId, memoryRuntime).Count} Authoritative-visible={historySnapshot.Events.Count}");
+            foreach (HistoricalEventRecord record in historySnapshot.Events.Take(10))
+            {
+                builder.AppendLine($"{record.EventId} {record.Category} {record.Status} t={record.OccurredAtWorldTime:0.##} seq={record.Sequence} visibility={record.Visibility} person={EmptyAs(record.PrimaryPersonId, "World")} supersedes={EmptyAs(record.SupersedesEventId, "None")}");
+            }
+
+            foreach (HistoryMemoryRecord memory in memorySnapshot.Memories.Take(8))
+            {
+                builder.AppendLine($"Memory {memory.MemoryId} event={EmptyAs(memory.HistoricalEventId, "None")} state={memory.State} clarity={memory.Clarity} body={EmptyAs(memory.BodyAtTimeId, "None")}");
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateHistoryFoundation()
+        {
+            bool runtimeReady = EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            int definitions = CountDefinitions<HistoricalEventDefinition>();
+            bool succeeded = runtimeReady && definitions >= 5;
+            return Record(succeeded, "Validate 8.3 History Foundation", succeeded ? "Success" : "MissingDefinitions", $"Definitions={definitions} World={historyRuntime?.WorldId ?? "None"} Person={memoryRuntime?.PersonId ?? "None"}.");
+        }
+
+        public PrototypeTestLabOperation RecordAuthoritativeHistoryEvent()
+        {
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
+            {
+                return RecordFailure("Record 8.3 Authoritative Event", "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            string personId = GetPrototypePersonId();
+            string bodyId = GetPrototypeBodyId();
+            RecordHistoricalEventRequest request = BuildHistoryEventRequest($"history.8.3.authoritative.{Guid.NewGuid():N}", $"event.prototype.participation.{Guid.NewGuid():N}", "history-event.person-participation", personId, KnowledgeVisibility.Public, "Prototype person participated in a representative event.");
+            request.BodyIds = new[] { bodyId };
+            HistoryOperationResult result = historyRuntime.RecordEvent(request);
+            return RecordHistoryResult("Record 8.3 Authoritative Event", result);
+        }
+
+        public PrototypeTestLabOperation RecordHiddenHistoryEvent()
+        {
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
+            {
+                return RecordFailure("Record 8.3 Hidden Event", "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            string personId = GetPrototypePersonId();
+            if (historyRuntime.TryGetEvent("event.prototype.hidden.secret", out HistoricalEventRecord existing))
+            {
+                HistoryOperationResult duplicate = HistoryOperationResult.Success("Hidden event already exists.", "history.8.3.hidden.fixed", existing, null, null, historyRuntime.HistoryRevision, historyRuntime.HistoryRevision, duplicate: true);
+                return RecordHistoryResult("Record 8.3 Hidden Event", duplicate);
+            }
+
+            RecordHistoricalEventRequest request = BuildHistoryEventRequest("history.8.3.hidden.fixed", "event.prototype.hidden.secret", "history-event.hidden-witnessed-event", personId, KnowledgeVisibility.Hidden, "Hidden event witnessed by the prototype Person.");
+            request.ParticipantPersonIds = new[] { personId };
+            HistoryOperationResult result = historyRuntime.RecordEvent(request);
+            return RecordHistoryResult("Record 8.3 Hidden Event", result);
+        }
+
+        public PrototypeTestLabOperation ProveUninformedPersonCannotQueryHiddenHistory()
+        {
+            RecordHiddenHistoryEvent();
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
+            IReadOnlyList<HistoricalEventRecord> known = historyRuntime.QueryPersonAccessible("person.prototype.uninformed");
+            IReadOnlyList<HistoricalEventRecord> privileged = historyRuntime.QueryPersonAccessible("person.prototype.uninformed", privileged: true);
+            bool succeeded = known.All(record => record.EventId != "event.prototype.hidden.secret") && privileged.Any(record => record.EventId == "event.prototype.hidden.secret");
+            return Record(succeeded, "Prove 8.3 Hidden History Privacy", succeeded ? "Success" : "PrivacyLeak", $"UninformedKnown={known.Count} Privileged={privileged.Count}.");
+        }
+
+        public PrototypeTestLabOperation FormWitnessHistoryMemory()
+        {
+            RecordHiddenHistoryEvent();
+            if (!EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime) || !EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Form 8.3 Witness Memory", "History, Memory, or Knowledge runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            if (memoryRuntime.TryGetMemory("memory.prototype.hidden-witness", out HistoryMemoryRecord existing))
+            {
+                HistoryOperationResult duplicate = HistoryOperationResult.Success("Witness memory already exists.", "history.8.3.memory.hidden", null, existing, null, memoryRuntime.MemoryRevision, memoryRuntime.MemoryRevision, duplicate: true);
+                return RecordHistoryResult("Form 8.3 Witness Memory", duplicate);
+            }
+
+            FormMemoryRequest request = BuildMemoryRequest("history.8.3.memory.hidden", "memory.prototype.hidden-witness", "event.prototype.hidden.secret", HistoryMemorySource.DirectObservation, createKnowledge: true);
+            HistoryOperationResult result = memoryRuntime.FormMemory(request, knowledge);
+            return RecordHistoryResult("Form 8.3 Witness Memory", result);
+        }
+
+        public PrototypeTestLabOperation ShareHistoricalTestimony()
+        {
+            FormWitnessHistoryMemory();
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
+            {
+                return RecordFailure("Share 8.3 Historical Testimony", "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            PersonMemoryRuntime listenerMemory = new PersonMemoryRuntime();
+            listenerMemory.Configure("person.prototype.listener", registry, historyRuntime, GetKnownPrototypePersons());
+            FormMemoryRequest request = new FormMemoryRequest
+            {
+                TransactionId = $"history.8.3.testimony.{Guid.NewGuid():N}",
+                MemoryId = $"memory.prototype.listener.testimony.{Guid.NewGuid():N}",
+                OwnerPersonId = "person.prototype.listener",
+                HistoricalEventId = "event.prototype.hidden.secret",
+                Source = HistoryMemorySource.WitnessTestimony,
+                FormedAtWorldTime = GetGameTimeSeconds() + 0.3d,
+                RememberedOccurredAtWorldTime = GetGameTimeSeconds(),
+                Confidence = 620,
+                Clarity = 520,
+                Salience = 450,
+                Visibility = KnowledgeVisibility.Private,
+                DebugDescription = "Listener learned a historical claim through testimony.",
+                Tags = new[] { "history", "testimony" }
+            };
+            HistoryOperationResult result = listenerMemory.FormMemory(request);
+            bool succeeded = result.Succeeded && historyRuntime.QueryPersonAccessible("person.prototype.listener", listenerMemory).Any(record => record.EventId == "event.prototype.hidden.secret");
+            return Record(succeeded, "Share 8.3 Historical Testimony", succeeded ? "Success" : result.Code.ToString(), $"{result.Message} ListenerMemories={listenerMemory.CreateSnapshot().Memories.Count}.");
+        }
+
+        public PrototypeTestLabOperation CreateIncorrectHistoricalBelief()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Create 8.3 Incorrect Historical Belief", "Knowledge runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            KnowledgeObservationRequest request = BuildHistoricalKnowledgeRequest($"history.8.3.false-belief.{Guid.NewGuid():N}", "event.prototype.false-death", KnowledgeEvidenceDirection.Supports, 800, 850);
+            request.MarkAsMisconception = true;
+            request.TruthAuthorization = KnowledgeTruthAuthorization.CreateDevelopmentFixture("test-lab.history.false-belief");
+            KnowledgeOperationResult result = knowledge.RecordObservation(request);
+            return RecordKnowledgeResult("Create 8.3 Incorrect Historical Belief", result);
+        }
+
+        public PrototypeTestLabOperation CorrectAuthoritativeHistoryEvent()
+        {
+            RecordAuthoritativeHistoryEvent();
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
+            {
+                return RecordFailure("Correct 8.3 Authoritative History", "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            HistoricalEventRecord target = historyRuntime.CreateSnapshot().Events.LastOrDefault(record => record.EventDefinitionId == "history-event.person-participation");
+            if (target == null)
+            {
+                return RecordFailure("Correct 8.3 Authoritative History", "No event exists to correct.", HistoryResultCode.MissingEvent.ToString());
+            }
+
+            RecordHistoricalEventRequest correction = BuildHistoryEventRequest($"history.8.3.correction.{Guid.NewGuid():N}", $"event.prototype.correction.{Guid.NewGuid():N}", "history-event.correction", GetPrototypePersonId(), KnowledgeVisibility.Private, "Corrected historical record.");
+            correction.SupersedesEventId = target.EventId;
+            HistoryOperationResult result = historyRuntime.RecordEvent(correction);
+            return RecordHistoryResult("Correct 8.3 Authoritative History", result);
+        }
+
+        public PrototypeTestLabOperation ReviseHistoricalBeliefWithEvidence()
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Revise 8.3 Historical Belief", "Knowledge runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            KnowledgeObservationRequest request = BuildHistoricalKnowledgeRequest($"history.8.3.belief-revision.{Guid.NewGuid():N}", "event.prototype.false-death", KnowledgeEvidenceDirection.Corrects, 950, 950);
+            request.Provenance = KnowledgeProvenance.AuthoritativeCorrection;
+            request.AcquisitionSource = KnowledgeAcquisitionSource.DevelopmentFixture;
+            request.TruthAuthorization = KnowledgeTruthAuthorization.CreateDevelopmentFixture("test-lab.history.belief-revision");
+            KnowledgeOperationResult result = knowledge.RecordObservation(request);
+            return RecordKnowledgeResult("Revise 8.3 Historical Belief", result);
+        }
+
+        public PrototypeTestLabOperation ForgetFirstHistoryMemory()
+        {
+            if (!EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime))
+            {
+                return RecordFailure("Forget 8.3 History Memory", "Memory runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            HistoryMemoryRecord memory = memoryRuntime.CreateSnapshot().Memories.FirstOrDefault();
+            if (memory == null)
+            {
+                FormWitnessHistoryMemory();
+                memory = memoryRuntime.CreateSnapshot().Memories.FirstOrDefault();
+            }
+
+            HistoryOperationResult result = memory == null
+                ? HistoryOperationResult.Failure(HistoryResultCode.MissingMemory, "No memory exists to forget.")
+                : memoryRuntime.ForgetMemory(memory.MemoryId, $"history.8.3.memory-forget.{Guid.NewGuid():N}");
+            return RecordHistoryResult("Forget 8.3 History Memory", result);
+        }
+
+        public PrototypeTestLabOperation RecordBodyTransitionHistory()
+        {
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime))
+            {
+                return RecordFailure("Record 8.3 Body Transition", "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            string oldBody = GetPrototypeBodyId();
+            string newBody = "body.prototype.future";
+            HistoryOperationResult transition;
+            if (historyRuntime.TryGetEvent("event.prototype.body-transition", out HistoricalEventRecord existingTransition))
+            {
+                transition = HistoryOperationResult.Success("Body transition already exists.", "history.8.3.body-transition.existing", existingTransition, null, null, historyRuntime.HistoryRevision, historyRuntime.HistoryRevision, duplicate: true);
+            }
+            else
+            {
+                transition = historyRuntime.RecordBodyTransition($"history.8.3.body-transition.{Guid.NewGuid():N}", "event.prototype.body-transition", GetPrototypePersonId(), oldBody, newBody, GetGameTimeSeconds(), GetGameTimeSeconds(), "Prototype body continuity test");
+            }
+
+            if (!transition.Succeeded && transition.Code != HistoryResultCode.Duplicate)
+            {
+                return RecordHistoryResult("Record 8.3 Body Transition", transition);
+            }
+
+            FormMemoryRequest memory = BuildMemoryRequest("history.8.3.previous-body-memory", "memory.prototype.previous-body", "event.prototype.body-transition", HistoryMemorySource.PreviousBody, createKnowledge: false);
+            memory.BodyAtTimeId = oldBody;
+            if (!memoryRuntime.TryGetMemory(memory.MemoryId, out _))
+            {
+                memoryRuntime.FormMemory(memory);
+            }
+
+            IReadOnlyList<BodyOccupationRecord> occupations = historyRuntime.QueryBodyOccupations(GetPrototypePersonId());
+            bool succeeded = occupations.Any(record => record.BodyId == newBody) && memoryRuntime.CreateSnapshot().Memories.Any(record => record.BodyAtTimeId == oldBody);
+            return Record(succeeded, "Record 8.3 Body Transition", succeeded ? "Success" : "ContinuityMissing", $"Transition={transition.Code} Occupations={occupations.Count} Memories={memoryRuntime.CreateSnapshot().Memories.Count}.");
+        }
+
+        public PrototypeTestLabOperation CompareHistoryKnowledgeMemoryViews()
+        {
+            FormWitnessHistoryMemory();
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
+            HistorySnapshot authoritative = historyRuntime.CreateSnapshot();
+            IReadOnlyList<HistoricalEventRecord> known = historyRuntime.QueryPersonAccessible(GetPrototypePersonId(), memoryRuntime);
+            PersonMemorySnapshot memories = memoryRuntime.CreateSnapshot();
+            KnowledgeSnapshot knowledgeSnapshot = knowledge.CreateSnapshot();
+            bool succeeded = authoritative.Events.Count >= known.Count && memories.Memories.Count > 0 && knowledgeSnapshot.Evidence.Any(evidence => !string.IsNullOrWhiteSpace(evidence.Data.relatedEventId));
+            return Record(succeeded, "Compare 8.3 History Views", succeeded ? "Success" : "ViewMismatch", $"Authoritative={authoritative.Events.Count} PersonKnown={known.Count} Memories={memories.Memories.Count} KnowledgeEvidence={knowledgeSnapshot.Evidence.Count}.");
+        }
+
+        public PrototypeTestLabOperation ValidateHistorySaveRestore()
+        {
+            FormWitnessHistoryMemory();
+            RecordBodyTransitionHistory();
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime))
+            {
+                return RecordFailure("Validate 8.3 History Save Restore", "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            lastHistorySaveData = historyRuntime.CreateSaveData();
+            lastMemorySaveData = memoryRuntime.CreateSaveData();
+            int historyEvents = 0;
+            int memoryEvents = 0;
+            void CountHistory(AuthoritativeHistoryRuntime _, HistoryOperationResult __) => historyEvents++;
+            void CountMemory(PersonMemoryRuntime _, HistoryOperationResult __) => memoryEvents++;
+            historyRuntime.HistoryChanged += CountHistory;
+            memoryRuntime.MemoryChanged += CountMemory;
+            HistoryOperationResult historyRestore = historyRuntime.RestoreFromSaveData(lastHistorySaveData, registry, GetKnownPrototypePersons(), GetKnownPrototypeBodies(), restoring: true);
+            HistoryOperationResult memoryRestore = memoryRuntime.RestoreFromSaveData(lastMemorySaveData, registry, historyRuntime, GetKnownPrototypePersons(), restoring: true);
+            historyRuntime.HistoryChanged -= CountHistory;
+            memoryRuntime.MemoryChanged -= CountMemory;
+            bool succeeded = historyRestore.Succeeded && memoryRestore.Succeeded && historyEvents == 0 && memoryEvents == 0;
+            return Record(succeeded, "Validate 8.3 History Save Restore", succeeded ? "Success" : "RestoreFailed", $"History={historyRestore.Code} Memory={memoryRestore.Code} Events={historyEvents}/{memoryEvents} Ordering={string.Join(",", historyRuntime.CreateSnapshot().Events.Select(record => record.EventId).Take(6))}.");
+        }
+
         public PrototypeTestLabOperation ValidateObservationFoundation()
         {
             int observations = CountDefinitions<ObservationMethodDefinition>();
@@ -3731,6 +4011,183 @@ namespace UnityIsekaiGame.Development
             return result.Succeeded
                 ? Record(true, operationName, result.Code.ToString(), message)
                 : RecordFailure(operationName, message, result.Code.ToString());
+        }
+
+        private bool EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime)
+        {
+            historyRuntime = authoritativeHistory;
+            memoryRuntime = playerMemory;
+            if (registry == null)
+            {
+                registry = CreateRegistry(context?.DefinitionCatalog);
+            }
+
+            string personId = GetPrototypePersonId();
+            if (string.IsNullOrWhiteSpace(personId))
+            {
+                return false;
+            }
+
+            historyRuntime.Configure(registry, PersistenceService.LocalWorldId, GetKnownPrototypePersons(), GetKnownPrototypeBodies());
+            memoryRuntime.Configure(personId, registry, historyRuntime, GetKnownPrototypePersons());
+            return true;
+        }
+
+        private RecordHistoricalEventRequest BuildHistoryEventRequest(string transactionId, string eventId, string definitionId, string personId, KnowledgeVisibility visibility, string note)
+        {
+            double now = GetGameTimeSeconds();
+            return new RecordHistoricalEventRequest
+            {
+                TransactionId = transactionId,
+                EventId = eventId,
+                EventDefinitionId = definitionId,
+                OccurredAtWorldTime = now,
+                RecordedAtWorldTime = now,
+                PrimaryPersonId = personId,
+                ParticipantPersonIds = new[] { personId },
+                BodyIds = new[] { GetPrototypeBodyId() },
+                Visibility = visibility,
+                SourceSystem = "PrototypeTestLab",
+                Provenance = "Development fixture",
+                Payload = new HistoricalEventPayloadData
+                {
+                    kind = HistoricalEventPayloadKind.Generic,
+                    note = note
+                },
+                Tags = new[] { "feature.8.3", "prototype" }
+            };
+        }
+
+        private FormMemoryRequest BuildMemoryRequest(string transactionId, string memoryId, string eventId, HistoryMemorySource source, bool createKnowledge)
+        {
+            double now = GetGameTimeSeconds();
+            return new FormMemoryRequest
+            {
+                TransactionId = transactionId,
+                MemoryId = memoryId,
+                OwnerPersonId = GetPrototypePersonId(),
+                HistoricalEventId = eventId,
+                Source = source,
+                FormedAtWorldTime = now + 0.1d,
+                RememberedOccurredAtWorldTime = now,
+                Confidence = 780,
+                Clarity = 720,
+                Salience = 650,
+                FirstHand = source == HistoryMemorySource.DirectObservation || source == HistoryMemorySource.DirectParticipation || source == HistoryMemorySource.PreviousBody,
+                Visibility = KnowledgeVisibility.Private,
+                BodyAtTimeId = GetPrototypeBodyId(),
+                DebugDescription = "Prototype Test Lab historical memory.",
+                CreateKnowledgeEvidence = createKnowledge,
+                Tags = new[] { "feature.8.3", "memory" }
+            };
+        }
+
+        private KnowledgeObservationRequest BuildHistoricalKnowledgeRequest(string transactionId, string eventId, KnowledgeEvidenceDirection direction, int strength, int credibility)
+        {
+            return new KnowledgeObservationRequest
+            {
+                PersonId = GetPrototypePersonId(),
+                TransactionId = transactionId,
+                Proposition = new KnowledgePropositionData
+                {
+                    factDefinitionId = BuiltInKnowledgeFacts.EventOccurred,
+                    subjectType = KnowledgeSubjectType.Event,
+                    subjectId = eventId,
+                    valueType = KnowledgeValueType.Boolean,
+                    booleanValue = true,
+                    bodyContextId = GetPrototypeBodyId(),
+                    sourceContextId = "prototype.history.test-lab"
+                },
+                AcquisitionSource = KnowledgeAcquisitionSource.SkillOrEducation,
+                Provenance = KnowledgeProvenance.Inference,
+                Direction = direction,
+                Strength = strength,
+                Credibility = credibility,
+                GameTimeSeconds = GetGameTimeSeconds(),
+                SourceId = "prototype.history.test-lab",
+                EvidenceId = $"evidence.history.{Guid.NewGuid():N}",
+                Visibility = KnowledgeVisibility.Private,
+                PrivateAccessAuthorized = true,
+                RelatedEventId = eventId,
+                Tags = new[] { "feature.8.3", "history-belief" }
+            };
+        }
+
+        private PrototypeTestLabOperation RecordHistoryResult(string operationName, HistoryOperationResult result)
+        {
+            bool succeeded = result != null && result.Succeeded;
+            return succeeded
+                ? Record(true, operationName, result.Code.ToString(), FormatHistoryResult(result))
+                : RecordFailure(operationName, FormatHistoryResult(result), result?.Code.ToString() ?? HistoryResultCode.InvalidRequest.ToString());
+        }
+
+        private static string FormatHistoryResult(HistoryOperationResult result)
+        {
+            if (result == null)
+            {
+                return "History result is missing.";
+            }
+
+            string eventId = result.Event == null ? "None" : result.Event.EventId;
+            string memoryId = result.Memory == null ? "None" : result.Memory.MemoryId;
+            string knowledge = result.KnowledgeResult == null ? "None" : $"{result.KnowledgeResult.Code}/{result.KnowledgeResult.ResultingBelief?.BeliefId ?? "NoBelief"}";
+            return $"Success={result.Succeeded} Code={result.Code} Preview={result.Preview} Duplicate={result.Duplicate} Event={eventId} Memory={memoryId} Knowledge={knowledge} Revision={result.PriorRevision}->{result.ResultingRevision}. {result.Message}";
+        }
+
+        private string GetPrototypePersonId()
+        {
+            if (context?.IdentityProgression != null && !string.IsNullOrWhiteSpace(context.IdentityProgression.PersonId))
+            {
+                return context.IdentityProgression.PersonId;
+            }
+
+            if (context?.PlayerKnowledge != null && !string.IsNullOrWhiteSpace(context.PlayerKnowledge.PersonId))
+            {
+                return context.PlayerKnowledge.PersonId;
+            }
+
+            return PersistenceService.LocalPlayerId;
+        }
+
+        private string GetPrototypeBodyId()
+        {
+            if (context?.PlayerTransform != null)
+            {
+                ActorBodyRuntime body = context.PlayerTransform.GetComponentInParent<ActorBodyRuntime>();
+                if (body != null && !string.IsNullOrWhiteSpace(body.ActorBodyId))
+                {
+                    return body.ActorBodyId;
+                }
+            }
+
+            return "body.prototype.current";
+        }
+
+        private string[] GetKnownPrototypePersons()
+        {
+            return new[]
+            {
+                GetPrototypePersonId(),
+                "person.prototype.listener",
+                "person.prototype.uninformed",
+                "person.prototype.witness"
+            }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
+        }
+
+        private string[] GetKnownPrototypeBodies()
+        {
+            return new[]
+            {
+                GetPrototypeBodyId(),
+                "body.prototype.current",
+                "body.prototype.previous",
+                "body.prototype.future"
+            }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
+        }
+
+        private double GetGameTimeSeconds()
+        {
+            return context?.Persistence?.PlayTime == null ? Time.timeAsDouble : context.Persistence.PlayTime.CumulativeSeconds;
         }
 
         private string FormatObservationResult(ObservationResult result)

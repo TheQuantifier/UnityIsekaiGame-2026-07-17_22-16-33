@@ -438,7 +438,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.7.9.diseases-biological-conditions",
                 "feature.7.10.biological-integration",
                 "feature.8.1.knowledge-facts-beliefs",
-                "feature.8.2.observation-examination-identification-diagnosis"
+                "feature.8.2.observation-examination-identification-diagnosis",
+                "feature.8.3.character-history-memory-timelines"
             }));
         }
 
