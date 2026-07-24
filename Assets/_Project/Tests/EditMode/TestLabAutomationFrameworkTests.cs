@@ -441,7 +441,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.8.2.observation-examination-identification-diagnosis",
                 "feature.8.3.character-history-memory-timelines",
                 "feature.8.4.memory-recall-forgetting-alteration",
-                "feature.8.5.character-history-life-events"
+                "feature.8.5.character-history-life-events",
+                "feature.8.6.information-sources-reliability"
             }));
         }
 

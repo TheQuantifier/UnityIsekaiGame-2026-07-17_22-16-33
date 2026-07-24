@@ -65,6 +65,7 @@ namespace UnityIsekaiGame.Development
             "History 8.3",
             "Memory 8.4",
             "Life Events 8.5",
+            "Sources 8.6",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -129,6 +130,7 @@ namespace UnityIsekaiGame.Development
         private Text characterHistoryText;
         private Text memoryRecallText;
         private Text lifeEventsText;
+        private Text informationSourcesText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -320,6 +322,7 @@ namespace UnityIsekaiGame.Development
             Transform characterHistorySection = AddSection(content, "History 8.3 Section");
             Transform memoryRecallSection = AddSection(content, "Memory 8.4 Section");
             Transform lifeEventsSection = AddSection(content, "Life Events 8.5 Section");
+            Transform informationSourcesSection = AddSection(content, "Sources 8.6 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -362,6 +365,7 @@ namespace UnityIsekaiGame.Development
             BuildCharacterHistorySection(characterHistorySection, font);
             BuildMemoryRecallSection(memoryRecallSection, font);
             BuildLifeEventsSection(lifeEventsSection, font);
+            BuildInformationSourcesSection(informationSourcesSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -843,6 +847,46 @@ namespace UnityIsekaiGame.Development
                 ("Milestones", () => service.ShowLifeEventMajorMilestones()),
                 ("Run 8.5 Auto", () => service.RunAutomationSuite("feature.8.5.character-history-life-events", automationStopOnFirstFailure)));
             lifeEventsText = AddText(parent, font, "Life event runtime not available.", 12, 980);
+        }
+
+        private void BuildInformationSourcesSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Validate Defs", () => service.ValidateInformationSourceDefinitions()),
+                ("Direct Obs", () => service.RegisterDirectObservationSource()),
+                ("Expert", () => service.RegisterExpertSource()),
+                ("Testimony", () => service.RegisterTestimonySource()));
+            AddButtonRow(parent, font,
+                ("Anonymous", () => service.RegisterAnonymousSource()),
+                ("Official", () => service.RegisterOfficialRecordSource()),
+                ("Copy", () => service.CopySource()),
+                ("Translate", () => service.TranslateSource()));
+            AddButtonRow(parent, font,
+                ("Summarize", () => service.SummarizeSource()),
+                ("Evaluate", () => service.EvaluateReliability()),
+                ("Compare People", () => service.CompareTwoPersonsSourceAssessments()),
+                ("Trusted", () => service.MarkSourceTrusted()));
+            AddButtonRow(parent, font,
+                ("Untrusted", () => service.MarkSourceUntrusted()),
+                ("Authority", () => service.AddSourceDomainAuthority()),
+                ("Bias", () => service.AddSourceBias()),
+                ("Error Risk", () => service.AddSourceErrorRisk()));
+            AddButtonRow(parent, font,
+                ("Deception", () => service.AddSourceDeceptionRisk()),
+                ("Age", () => service.AgeSource()),
+                ("Staleness", () => service.EvaluateSourceStaleness()),
+                ("Trace", () => service.TraceSourceChain()));
+            AddButtonRow(parent, font,
+                ("Immediate/Orig", () => service.CompareImmediateAndOriginalSource()),
+                ("Dependent", () => service.TestDependentReports()),
+                ("Independent", () => service.TestIndependentCorroboration()),
+                ("Correct", () => service.CorrectSourceAssessment()));
+            AddButtonRow(parent, font,
+                ("Hide Original", () => service.HideOriginalSource()),
+                ("Raw/Effective", () => service.CompareRawAndEffectiveEvidenceStrength()),
+                ("Save/Restore", () => service.ValidateInformationSourceSaveRestore()),
+                ("Run 8.6 Auto", () => service.RunAutomationSuite("feature.8.6.information-sources-reliability", automationStopOnFirstFailure)));
+            informationSourcesText = AddText(parent, font, "Information Source runtime not available.", 12, 980);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1451,6 +1495,9 @@ namespace UnityIsekaiGame.Development
                 case "Life Events 8.5":
                     SetValue(lifeEventsText, service.BuildLifeEventSummary());
                     break;
+                case "Sources 8.6":
+                    SetValue(informationSourcesText, service.BuildInformationSourceSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1969,7 +2016,7 @@ namespace UnityIsekaiGame.Development
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
                 Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8", "Biological Conditions 7.9", "Biology Integration 7.10"),
-                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3", "Memory 8.4", "Life Events 8.5")
+                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3", "Memory 8.4", "Life Events 8.5", "Sources 8.6")
             };
         }
 

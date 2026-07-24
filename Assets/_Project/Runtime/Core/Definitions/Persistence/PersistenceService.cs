@@ -1143,6 +1143,7 @@ namespace UnityIsekaiGame.GameData.Persistence
                 return PersistenceValidationResult.Failure(PersistenceValidationStatus.UnsupportedSchemaVersion, slotId, path, $"Unsupported save schema version {envelope.schemaVersion}.");
             }
 
+            envelope.participants?.Sort(CompareRecords);
             string expectedChecksum = ComputeChecksum(envelope);
             if (!string.Equals(envelope.contentChecksum, expectedChecksum, StringComparison.Ordinal))
             {

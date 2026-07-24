@@ -18,6 +18,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildHistorySuite());
             TryRegister(registry, BuildMemorySuite());
             TryRegister(registry, BuildLifeEventsSuite());
+            TryRegister(registry, BuildInformationSourcesSuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -292,6 +293,48 @@ namespace UnityIsekaiGame.Development.Automation
                 Scenario("timeline-and-milestones", "Timeline and major milestone queries are available", 70,
                     Step("timeline", "Show timeline", context => Operation(context.Service.ShowLifeEventPersonTimeline(), context, "step8-life-timeline")),
                     Step("milestones", "Show milestones", context => Operation(context.Service.ShowLifeEventMajorMilestones(), context, "step8-life-milestones"))));
+        }
+
+        private static ITestLabAutomationSuite BuildInformationSourcesSuite()
+        {
+            return Suite("feature.8.6.information-sources-reliability", "Feature 8.6 Information Sources and Reliability", "8.6", 860,
+                Required("InformationSourceRuntime", "InformationSourceDefinition", "PersonKnowledgeRuntime"),
+                Scenario("foundation-validates", "Information Source definitions validate", 10,
+                    Step("validate", "Validate source definitions", context => Operation(context.Service.ValidateInformationSourceDefinitions(), context, "step8-sources-validate"))),
+                Scenario("register-source-categories", "Representative source categories register", 20,
+                    Step("direct", "Register direct observation", context => Operation(context.Service.RegisterDirectObservationSource(), context, "step8-sources-direct")),
+                    Step("expert", "Register expert testimony", context => Operation(context.Service.RegisterExpertSource(), context, "step8-sources-expert")),
+                    Step("testimony", "Register testimony", context => Operation(context.Service.RegisterTestimonySource(), context, "step8-sources-testimony")),
+                    Step("anonymous", "Register anonymous testimony", context => Operation(context.Service.RegisterAnonymousSource(), context, "step8-sources-anonymous")),
+                    Step("official", "Register official record", context => Operation(context.Service.RegisterOfficialRecordSource(), context, "step8-sources-official"))),
+                Scenario("person-relative-assessments", "Two Persons can assess the same source differently", 30,
+                    Step("compare", "Compare person assessments", context => Operation(context.Service.CompareTwoPersonsSourceAssessments(), context, "step8-sources-person-relative"))),
+                Scenario("trust-authority-bias-risk", "Trust, authority, bias, error, and deception are distinct", 40,
+                    Step("trusted", "Mark trusted", context => Operation(context.Service.MarkSourceTrusted(), context, "step8-sources-trusted")),
+                    Step("untrusted", "Mark untrusted", context => Operation(context.Service.MarkSourceUntrusted(), context, "step8-sources-untrusted")),
+                    Step("authority", "Add authority", context => Operation(context.Service.AddSourceDomainAuthority(), context, "step8-sources-authority")),
+                    Step("bias", "Add bias", context => Operation(context.Service.AddSourceBias(), context, "step8-sources-bias")),
+                    Step("error", "Add error risk", context => Operation(context.Service.AddSourceErrorRisk(), context, "step8-sources-error")),
+                    Step("deception", "Add deception risk", context => Operation(context.Service.AddSourceDeceptionRisk(), context, "step8-sources-deception"))),
+                Scenario("transformations-and-chain", "Copies, translations, and summaries retain source chains", 50,
+                    Step("copy", "Copy source", context => Operation(context.Service.CopySource(), context, "step8-sources-copy")),
+                    Step("translate", "Translate source", context => Operation(context.Service.TranslateSource(), context, "step8-sources-translate")),
+                    Step("summarize", "Summarize source", context => Operation(context.Service.SummarizeSource(), context, "step8-sources-summarize")),
+                    Step("trace", "Trace chain", context => Operation(context.Service.TraceSourceChain(), context, "step8-sources-trace")),
+                    Step("compare", "Compare immediate and original", context => Operation(context.Service.CompareImmediateAndOriginalSource(), context, "step8-sources-immediate-original"))),
+                Scenario("age-staleness-reliability", "Age and staleness influence reliability deterministically", 60,
+                    Step("age", "Age source", context => Operation(context.Service.AgeSource(), context, "step8-sources-age")),
+                    Step("stale", "Evaluate staleness", context => Operation(context.Service.EvaluateSourceStaleness(), context, "step8-sources-stale")),
+                    Step("evaluate", "Evaluate reliability", context => Operation(context.Service.EvaluateReliability(), context, "step8-sources-evaluate"))),
+                Scenario("independence-and-corroboration", "Dependent reports and independent corroboration stay distinct", 70,
+                    Step("dependent", "Dependent reports", context => Operation(context.Service.TestDependentReports(), context, "step8-sources-dependent")),
+                    Step("independent", "Independent corroboration", context => Operation(context.Service.TestIndependentCorroboration(), context, "step8-sources-independent"))),
+                Scenario("privacy-correction-evidence", "Privacy, corrections, and effective evidence are represented", 80,
+                    Step("hide", "Hide original source", context => Operation(context.Service.HideOriginalSource(), context, "step8-sources-hide")),
+                    Step("correct", "Correct assessment", context => Operation(context.Service.CorrectSourceAssessment(), context, "step8-sources-correct")),
+                    Step("raw-effective", "Compare raw and effective evidence", context => Operation(context.Service.CompareRawAndEffectiveEvidenceStrength(), context, "step8-sources-raw-effective"))),
+                Scenario("save-restore-round-trip", "Information Sources save and restore silently", 90,
+                    Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateInformationSourceSaveRestore(), context, "step8-sources-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)
