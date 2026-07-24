@@ -98,6 +98,101 @@ namespace UnityIsekaiGame.Knowledge.History
     }
 
     [Serializable]
+    public sealed class MemoryDetailData
+    {
+        public string detailId;
+        public MemoryDetailKind kind;
+        public MemoryDetailState state = MemoryDetailState.Remembered;
+        public string value;
+        public int confidence = 700;
+        public string sourceId;
+        public string alteredByRevisionId;
+
+        public MemoryDetailData Clone()
+        {
+            return new MemoryDetailData
+            {
+                detailId = detailId,
+                kind = kind,
+                state = state,
+                value = value,
+                confidence = HistoryMath.ClampMetric(confidence),
+                sourceId = sourceId,
+                alteredByRevisionId = alteredByRevisionId
+            };
+        }
+    }
+
+    [Serializable]
+    public sealed class MemorySuppressionData
+    {
+        public string suppressionId;
+        public string memoryId;
+        public string sourceId;
+        public string reasonId;
+        public double startedAtWorldTime;
+        public double endedAtWorldTime = -1d;
+        public bool removed;
+        public double removedAtWorldTime = -1d;
+        public bool allowsCueBypass;
+        public bool privilegedVisible = true;
+        public string provenance;
+
+        public MemorySuppressionData Clone()
+        {
+            return (MemorySuppressionData)MemberwiseClone();
+        }
+
+        public bool IsActiveAt(double worldTime)
+        {
+            if (removed)
+            {
+                return false;
+            }
+
+            return startedAtWorldTime <= worldTime && (endedAtWorldTime < 0d || worldTime < endedAtWorldTime);
+        }
+    }
+
+    [Serializable]
+    public sealed class MemoryRevisionData
+    {
+        public string revisionId;
+        public string previousRevisionId;
+        public string transactionId;
+        public MemoryAlterationType alterationType;
+        public double worldTime;
+        public string sourceId;
+        public string description;
+        public MemoryState state;
+        public int confidence;
+        public int clarity;
+        public int salience;
+        public string bodyAtTimeId;
+        public MemoryDetailData[] details;
+
+        public MemoryRevisionData Clone()
+        {
+            return new MemoryRevisionData
+            {
+                revisionId = revisionId,
+                previousRevisionId = previousRevisionId,
+                transactionId = transactionId,
+                alterationType = alterationType,
+                worldTime = worldTime,
+                sourceId = sourceId,
+                description = description,
+                state = state,
+                confidence = HistoryMath.ClampMetric(confidence),
+                clarity = HistoryMath.ClampMetric(clarity),
+                salience = HistoryMath.ClampMetric(salience),
+                bodyAtTimeId = bodyAtTimeId,
+                details = details == null ? Array.Empty<MemoryDetailData>() : details.Select(detail => detail?.Clone()).Where(detail => detail != null).ToArray()
+            };
+        }
+    }
+
+    [Serializable]
     public sealed class HistoryMemoryRecordData
     {
         public string memoryId;
@@ -109,16 +204,26 @@ namespace UnityIsekaiGame.Knowledge.History
         public double formedAtWorldTime;
         public double rememberedOccurredAtWorldTime;
         public double lastRecalledWorldTime;
+        public double lastRecallAttemptWorldTime;
+        public double lastReinforcedWorldTime;
+        public double lastDegradationEvaluatedWorldTime;
+        public int recallCount;
+        public int reinforcementCount;
         public int confidence;
         public int clarity;
         public int salience;
         public bool firstHand;
         public MemoryState state;
         public KnowledgeVisibility visibility;
+        public MemoryState stateBeforeSuppression;
         public string identityAtTimeId;
         public string bodyAtTimeId;
         public string correctedByMemoryId;
         public string correctionOfMemoryId;
+        public string currentRevisionId;
+        public MemoryDetailData[] rememberedDetails;
+        public MemorySuppressionData[] suppressions;
+        public MemoryRevisionData[] revisions;
         public string[] tags;
         public string debugDescription;
 
@@ -135,16 +240,26 @@ namespace UnityIsekaiGame.Knowledge.History
                 formedAtWorldTime = formedAtWorldTime,
                 rememberedOccurredAtWorldTime = rememberedOccurredAtWorldTime,
                 lastRecalledWorldTime = lastRecalledWorldTime,
+                lastRecallAttemptWorldTime = lastRecallAttemptWorldTime,
+                lastReinforcedWorldTime = lastReinforcedWorldTime,
+                lastDegradationEvaluatedWorldTime = lastDegradationEvaluatedWorldTime,
+                recallCount = Math.Max(0, recallCount),
+                reinforcementCount = Math.Max(0, reinforcementCount),
                 confidence = HistoryMath.ClampMetric(confidence),
                 clarity = HistoryMath.ClampMetric(clarity),
                 salience = HistoryMath.ClampMetric(salience),
                 firstHand = firstHand,
                 state = state,
                 visibility = visibility,
+                stateBeforeSuppression = stateBeforeSuppression,
                 identityAtTimeId = identityAtTimeId,
                 bodyAtTimeId = bodyAtTimeId,
                 correctedByMemoryId = correctedByMemoryId,
                 correctionOfMemoryId = correctionOfMemoryId,
+                currentRevisionId = currentRevisionId,
+                rememberedDetails = rememberedDetails == null ? Array.Empty<MemoryDetailData>() : rememberedDetails.Select(detail => detail?.Clone()).Where(detail => detail != null).ToArray(),
+                suppressions = suppressions == null ? Array.Empty<MemorySuppressionData>() : suppressions.Select(suppression => suppression?.Clone()).Where(suppression => suppression != null).ToArray(),
+                revisions = revisions == null ? Array.Empty<MemoryRevisionData>() : revisions.Select(revision => revision?.Clone()).Where(revision => revision != null).ToArray(),
                 tags = tags == null ? Array.Empty<string>() : tags.ToArray(),
                 debugDescription = debugDescription
             };
@@ -185,7 +300,7 @@ namespace UnityIsekaiGame.Knowledge.History
     [Serializable]
     public sealed class PersonMemorySaveData
     {
-        public const int CurrentSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 2;
         public int schemaVersion = CurrentSchemaVersion;
         public string personId;
         public long memoryRevision;
@@ -240,8 +355,20 @@ namespace UnityIsekaiGame.Knowledge.History
         public int Confidence => HistoryMath.ClampMetric(Data.confidence);
         public int Clarity => HistoryMath.ClampMetric(Data.clarity);
         public int Salience => HistoryMath.ClampMetric(Data.salience);
-        public bool Accessible => State != MemoryState.Forgotten && State != MemoryState.Inaccessible;
+        public double FormedAtWorldTime => Data.formedAtWorldTime;
+        public double RememberedOccurredAtWorldTime => Data.rememberedOccurredAtWorldTime;
+        public double LastRecalledWorldTime => Data.lastRecalledWorldTime;
+        public double LastRecallAttemptWorldTime => Data.lastRecallAttemptWorldTime;
+        public double LastReinforcedWorldTime => Data.lastReinforcedWorldTime;
+        public int RecallCount => Math.Max(0, Data.recallCount);
+        public int ReinforcementCount => Math.Max(0, Data.reinforcementCount);
+        public double LastDegradationEvaluatedWorldTime => Data.lastDegradationEvaluatedWorldTime;
+        public bool Accessible => State != MemoryState.Forgotten && State != MemoryState.Inaccessible && State != MemoryState.Suppressed && State != MemoryState.Dormant;
         public string BodyAtTimeId => Data.bodyAtTimeId ?? string.Empty;
+        public string CurrentRevisionId => Data.currentRevisionId ?? string.Empty;
+        public IReadOnlyList<MemoryDetailData> RememberedDetails => Data.rememberedDetails == null ? Array.Empty<MemoryDetailData>() : Data.rememberedDetails.Select(detail => detail.Clone()).ToArray();
+        public IReadOnlyList<MemorySuppressionData> Suppressions => Data.suppressions == null ? Array.Empty<MemorySuppressionData>() : Data.suppressions.Select(suppression => suppression.Clone()).ToArray();
+        public IReadOnlyList<MemoryRevisionData> Revisions => Data.revisions == null ? Array.Empty<MemoryRevisionData>() : Data.revisions.Select(revision => revision.Clone()).ToArray();
     }
 
     public sealed class BodyOccupationRecord
@@ -376,6 +503,155 @@ namespace UnityIsekaiGame.Knowledge.History
         {
             return new HistoryOperationResult(false, code, message, transactionId, preview, false, null, null, null, revision, revision);
         }
+    }
+
+    public sealed class MemoryRecallCue
+    {
+        public MemoryCueKind Kind { get; set; }
+        public string ReferenceId { get; set; }
+        public int Strength { get; set; } = 500;
+    }
+
+    public sealed class MemoryRecallRequest
+    {
+        public string TransactionId { get; set; }
+        public string RequestingPersonId { get; set; }
+        public string MemoryId { get; set; }
+        public string HistoricalEventId { get; set; }
+        public string SubjectId { get; set; }
+        public string BodyId { get; set; }
+        public string LocationId { get; set; }
+        public string OrganizationId { get; set; }
+        public string[] Tags { get; set; }
+        public MemoryRecallCue[] Cues { get; set; }
+        public int MaxResults { get; set; } = 8;
+        public double WorldTime { get; set; }
+        public MemoryAccessContext AccessContext { get; set; } = MemoryAccessContext.OrdinaryRecall;
+        public bool AttemptDifficult { get; set; }
+        public bool AllowCueRecovery { get; set; }
+        public bool ReinforceOnSuccess { get; set; }
+        public bool MutateMetadata { get; set; } = true;
+        public string DeterministicSeed { get; set; }
+    }
+
+    public sealed class MemoryRecallEntry
+    {
+        public MemoryRecallEntry(HistoryMemoryRecord memory, MemoryRecallOutcome outcome, IReadOnlyList<MemoryDetailData> recalledDetails, IReadOnlyList<MemoryDetailData> unavailableDetails, bool metadataUpdated, bool cueMatched, string reason)
+        {
+            Memory = memory;
+            Outcome = outcome;
+            RecalledDetails = (recalledDetails ?? Array.Empty<MemoryDetailData>()).Select(detail => detail.Clone()).ToArray();
+            UnavailableDetails = (unavailableDetails ?? Array.Empty<MemoryDetailData>()).Select(detail => detail.Clone()).ToArray();
+            MetadataUpdated = metadataUpdated;
+            CueMatched = cueMatched;
+            Reason = reason ?? string.Empty;
+        }
+
+        public HistoryMemoryRecord Memory { get; }
+        public MemoryRecallOutcome Outcome { get; }
+        public IReadOnlyList<MemoryDetailData> RecalledDetails { get; }
+        public IReadOnlyList<MemoryDetailData> UnavailableDetails { get; }
+        public bool MetadataUpdated { get; }
+        public bool CueMatched { get; }
+        public string Reason { get; }
+    }
+
+    public sealed class MemoryRecallResult
+    {
+        private MemoryRecallResult(bool succeeded, HistoryResultCode code, MemoryRecallOutcome outcome, string transactionId, string message, IReadOnlyList<MemoryRecallEntry> entries, long priorRevision, long resultingRevision, bool preview)
+        {
+            Succeeded = succeeded;
+            Code = code;
+            Outcome = outcome;
+            TransactionId = transactionId ?? string.Empty;
+            Message = message ?? string.Empty;
+            Entries = (entries ?? Array.Empty<MemoryRecallEntry>()).ToArray();
+            PriorRevision = priorRevision;
+            ResultingRevision = resultingRevision;
+            Preview = preview;
+        }
+
+        public bool Succeeded { get; }
+        public HistoryResultCode Code { get; }
+        public MemoryRecallOutcome Outcome { get; }
+        public string TransactionId { get; }
+        public string Message { get; }
+        public IReadOnlyList<MemoryRecallEntry> Entries { get; }
+        public long PriorRevision { get; }
+        public long ResultingRevision { get; }
+        public bool Preview { get; }
+
+        public static MemoryRecallResult Success(MemoryRecallOutcome outcome, string transactionId, string message, IReadOnlyList<MemoryRecallEntry> entries, long priorRevision, long resultingRevision, bool preview = false)
+        {
+            return new MemoryRecallResult(true, preview ? HistoryResultCode.Preview : HistoryResultCode.Success, preview ? MemoryRecallOutcome.Preview : outcome, transactionId, message, entries, priorRevision, resultingRevision, preview);
+        }
+
+        public static MemoryRecallResult Failure(HistoryResultCode code, MemoryRecallOutcome outcome, string transactionId, string message, long revision)
+        {
+            return new MemoryRecallResult(false, code, outcome, transactionId, message, Array.Empty<MemoryRecallEntry>(), revision, revision, preview: false);
+        }
+    }
+
+    public sealed class MemoryReinforcementRequest
+    {
+        public string TransactionId { get; set; }
+        public string OwnerPersonId { get; set; }
+        public string MemoryId { get; set; }
+        public double WorldTime { get; set; }
+        public MemoryReinforcementSource Source { get; set; } = MemoryReinforcementSource.SuccessfulRecall;
+        public int ConfidenceDelta { get; set; }
+        public int ClarityDelta { get; set; }
+        public int SalienceDelta { get; set; }
+        public bool ImproveAccessibility { get; set; } = true;
+        public string SourceId { get; set; }
+    }
+
+    public sealed class MemoryDegradationRequest
+    {
+        public string TransactionId { get; set; }
+        public string OwnerPersonId { get; set; }
+        public string MemoryId { get; set; }
+        public double FromWorldTime { get; set; }
+        public double ToWorldTime { get; set; }
+        public int ConfidenceLossPerDay { get; set; }
+        public int ClarityLossPerDay { get; set; }
+        public int SalienceLossPerDay { get; set; }
+        public int DifficultClarityThreshold { get; set; } = 350;
+        public int InaccessibleClarityThreshold { get; set; } = 150;
+        public int ForgottenClarityThreshold { get; set; } = 0;
+        public bool CreateRevision { get; set; } = true;
+    }
+
+    public sealed class MemoryAlterationRequest
+    {
+        public string TransactionId { get; set; }
+        public string OwnerPersonId { get; set; }
+        public string MemoryId { get; set; }
+        public double WorldTime { get; set; }
+        public MemoryAlterationType AlterationType { get; set; }
+        public MemoryState? ResultingState { get; set; }
+        public string SourceId { get; set; }
+        public string Description { get; set; }
+        public string[] DetailIdsToForget { get; set; }
+        public MemoryDetailData[] DetailsToAddOrReplace { get; set; }
+        public int ConfidenceDelta { get; set; }
+        public int ClarityDelta { get; set; }
+        public int SalienceDelta { get; set; }
+        public string BodyAtTimeId { get; set; }
+    }
+
+    public sealed class MemorySuppressionRequest
+    {
+        public string TransactionId { get; set; }
+        public string OwnerPersonId { get; set; }
+        public string MemoryId { get; set; }
+        public string SuppressionId { get; set; }
+        public string SourceId { get; set; }
+        public string ReasonId { get; set; }
+        public double StartedAtWorldTime { get; set; }
+        public double EndedAtWorldTime { get; set; } = -1d;
+        public bool AllowsCueBypass { get; set; }
+        public string Provenance { get; set; }
     }
 
     public static class HistoryMath

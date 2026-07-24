@@ -47,6 +47,12 @@ namespace UnityIsekaiGame.Knowledge.History
                 return HistoryOperationResult.Success("Memory transaction already processed.", request.TransactionId, null, TryWrap(request.MemoryId), null, priorRevision, MemoryRevision, duplicate: true);
             }
 
+            HistoricalEventRecord linkedEvent = null;
+            if (!string.IsNullOrWhiteSpace(request.HistoricalEventId))
+            {
+                historyRuntime?.TryGetEvent(request.HistoricalEventId, out linkedEvent);
+            }
+
             HistoryMemoryRecordData data = new HistoryMemoryRecordData
             {
                 memoryId = request.MemoryId,
@@ -57,17 +63,28 @@ namespace UnityIsekaiGame.Knowledge.History
                 source = request.Source,
                 formedAtWorldTime = request.FormedAtWorldTime,
                 rememberedOccurredAtWorldTime = request.RememberedOccurredAtWorldTime,
-                lastRecalledWorldTime = request.FormedAtWorldTime,
+                lastRecalledWorldTime = -1d,
+                lastRecallAttemptWorldTime = -1d,
+                lastReinforcedWorldTime = -1d,
+                lastDegradationEvaluatedWorldTime = request.FormedAtWorldTime,
                 confidence = HistoryMath.ClampMetric(request.Confidence),
                 clarity = HistoryMath.ClampMetric(request.Clarity),
                 salience = HistoryMath.ClampMetric(request.Salience),
                 firstHand = request.FirstHand,
                 state = MemoryState.Accessible,
                 visibility = request.Visibility,
+                stateBeforeSuppression = MemoryState.Accessible,
                 identityAtTimeId = request.IdentityAtTimeId,
                 bodyAtTimeId = request.BodyAtTimeId,
+                currentRevisionId = $"{request.MemoryId}.revision.0",
+                rememberedDetails = BuildInitialDetails(request, linkedEvent),
+                suppressions = Array.Empty<MemorySuppressionData>(),
                 tags = request.Tags == null ? Array.Empty<string>() : request.Tags.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray(),
                 debugDescription = request.DebugDescription
+            };
+            data.revisions = new[]
+            {
+                CreateRevision(data, request.TransactionId, MemoryAlterationType.None, request.FormedAtWorldTime, request.Source.ToString(), "Memory formed.", previousRevisionId: string.Empty)
             };
 
             KnowledgeOperationResult knowledgeResult = null;
@@ -97,71 +114,41 @@ namespace UnityIsekaiGame.Knowledge.History
 
         public HistoryOperationResult RecallMemory(string memoryId, string transactionId, double recalledAtWorldTime, int clarityReinforcement = 50, bool preview = false, bool restoring = false)
         {
-            if (string.IsNullOrWhiteSpace(transactionId))
+            MemoryRecallResult recalled = Recall(new MemoryRecallRequest
             {
-                return HistoryOperationResult.Failure(HistoryResultCode.InvalidRequest, "Memory recall requires a transaction ID.", transactionId, preview, MemoryRevision);
-            }
-
-            if (!memoriesById.TryGetValue(memoryId ?? string.Empty, out HistoryMemoryRecordData memory))
-            {
-                return HistoryOperationResult.Failure(HistoryResultCode.MissingMemory, $"Memory '{memoryId}' is missing.", transactionId, preview, MemoryRevision);
-            }
-
-            long priorRevision = MemoryRevision;
-            if (preview)
-            {
-                return HistoryOperationResult.Success("Memory recall preview succeeded.", transactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision, preview: true);
-            }
-
-            if (processedTransactions.Contains(transactionId))
-            {
-                return HistoryOperationResult.Success("Memory recall transaction already processed.", transactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision, duplicate: true);
-            }
-
-            memory.lastRecalledWorldTime = Math.Max(memory.lastRecalledWorldTime, recalledAtWorldTime);
-            memory.clarity = HistoryMath.ClampMetric(memory.clarity + Math.Max(0, clarityReinforcement));
-            if (memory.state == MemoryState.Inaccessible || memory.state == MemoryState.Uncertain)
-            {
-                memory.state = MemoryState.Accessible;
-            }
-
-            processedTransactions.Add(transactionId);
-            MemoryRevision++;
-            HistoryOperationResult result = HistoryOperationResult.Success("Memory recalled.", transactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision);
-            RaiseChanged(result, restoring);
-            return result;
+                TransactionId = transactionId,
+                RequestingPersonId = PersonId,
+                MemoryId = memoryId,
+                WorldTime = recalledAtWorldTime,
+                AttemptDifficult = true,
+                AllowCueRecovery = true,
+                ReinforceOnSuccess = clarityReinforcement > 0,
+                MutateMetadata = true,
+                AccessContext = MemoryAccessContext.OrdinaryRecall
+            }, preview, restoring);
+            HistoryMemoryRecord memory = recalled.Entries.FirstOrDefault()?.Memory ?? TryWrap(memoryId);
+            return recalled.Succeeded
+                ? HistoryOperationResult.Success(recalled.Message, transactionId, null, memory, null, recalled.PriorRevision, recalled.ResultingRevision, preview: recalled.Preview)
+                : HistoryOperationResult.Failure(recalled.Code, recalled.Message, transactionId, preview, MemoryRevision);
         }
 
         public HistoryOperationResult ForgetMemory(string memoryId, string transactionId, int clarityReduction = 1000, bool preview = false, bool restoring = false)
         {
-            if (string.IsNullOrWhiteSpace(transactionId))
+            MemoryState resultingState = clarityReduction >= 1000 ? MemoryState.Forgotten : MemoryState.Inaccessible;
+            double worldTime = memoriesById.TryGetValue(memoryId ?? string.Empty, out HistoryMemoryRecordData existing)
+                ? Math.Max(existing.formedAtWorldTime, existing.lastRecallAttemptWorldTime)
+                : 0d;
+            return AlterMemory(new MemoryAlterationRequest
             {
-                return HistoryOperationResult.Failure(HistoryResultCode.InvalidRequest, "Memory forgetting requires a transaction ID.", transactionId, preview, MemoryRevision);
-            }
-
-            if (!memoriesById.TryGetValue(memoryId ?? string.Empty, out HistoryMemoryRecordData memory))
-            {
-                return HistoryOperationResult.Failure(HistoryResultCode.MissingMemory, $"Memory '{memoryId}' is missing.", transactionId, preview, MemoryRevision);
-            }
-
-            long priorRevision = MemoryRevision;
-            if (preview)
-            {
-                return HistoryOperationResult.Success("Memory forgetting preview succeeded.", transactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision, preview: true);
-            }
-
-            if (processedTransactions.Contains(transactionId))
-            {
-                return HistoryOperationResult.Success("Memory forgetting transaction already processed.", transactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision, duplicate: true);
-            }
-
-            memory.clarity = HistoryMath.ClampMetric(memory.clarity - Math.Max(0, clarityReduction));
-            memory.state = memory.clarity == 0 ? MemoryState.Forgotten : MemoryState.Inaccessible;
-            processedTransactions.Add(transactionId);
-            MemoryRevision++;
-            HistoryOperationResult result = HistoryOperationResult.Success("Memory access reduced.", transactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision);
-            RaiseChanged(result, restoring);
-            return result;
+                TransactionId = transactionId,
+                OwnerPersonId = PersonId,
+                MemoryId = memoryId,
+                WorldTime = worldTime,
+                AlterationType = MemoryAlterationType.DetailLoss,
+                ResultingState = resultingState,
+                ClarityDelta = -Math.Max(0, clarityReduction),
+                Description = "Memory access reduced through compatibility forgetting API."
+            }, preview, restoring);
         }
 
         public HistoryOperationResult CorrectMemory(string existingMemoryId, FormMemoryRequest correctedMemoryRequest, bool preview = false, bool restoring = false)
@@ -182,6 +169,292 @@ namespace UnityIsekaiGame.Knowledge.History
             memoriesById[correctedMemoryRequest.MemoryId].correctionOfMemoryId = existingMemoryId;
             MemoryRevision++;
             return formed;
+        }
+
+        public MemoryRecallResult Recall(MemoryRecallRequest request, bool preview = false, bool restoring = false)
+        {
+            long priorRevision = MemoryRevision;
+            if (!ValidateRecallRequest(request, out string failure, out HistoryResultCode code))
+            {
+                return MemoryRecallResult.Failure(code, code == HistoryResultCode.AccessDenied ? MemoryRecallOutcome.AccessDenied : MemoryRecallOutcome.NoMatch, request?.TransactionId, failure, MemoryRevision);
+            }
+
+            IReadOnlyList<HistoryMemoryRecordData> candidates = QueryMemoryData(request);
+            if (candidates.Count == 0)
+            {
+                return MemoryRecallResult.Failure(HistoryResultCode.NoMatch, MemoryRecallOutcome.NoMatch, request.TransactionId, "No matching memory exists.", MemoryRevision);
+            }
+
+            List<MemoryRecallEntry> entries = new List<MemoryRecallEntry>();
+            bool mutated = false;
+            bool anySuccess = false;
+            foreach (HistoryMemoryRecordData memory in candidates)
+            {
+                MemoryRecallEntry entry = EvaluateRecall(memory, request, preview, out bool entrySuccess, out bool entryMutated);
+                entries.Add(entry);
+                anySuccess |= entrySuccess;
+                mutated |= entryMutated;
+            }
+
+            if (!preview && mutated)
+            {
+                processedTransactions.Add(request.TransactionId ?? string.Empty);
+                MemoryRevision++;
+                HistoryOperationResult changed = HistoryOperationResult.Success("Memory recall metadata updated.", request.TransactionId, null, entries.FirstOrDefault()?.Memory, null, priorRevision, MemoryRevision);
+                RaiseChanged(changed, restoring);
+            }
+
+            MemoryRecallOutcome aggregate = ResolveAggregateOutcome(entries);
+            HistoryResultCode resultCode = anySuccess ? HistoryResultCode.Success : FailureCodeFor(aggregate);
+            return anySuccess || preview
+                ? MemoryRecallResult.Success(aggregate, request.TransactionId, preview ? "Memory recall preview succeeded." : "Memory recall evaluated.", entries, priorRevision, MemoryRevision, preview)
+                : MemoryRecallResult.Failure(resultCode, aggregate, request.TransactionId, entries.FirstOrDefault()?.Reason ?? "Recall failed.", MemoryRevision);
+        }
+
+        public HistoryOperationResult ReinforceMemory(MemoryReinforcementRequest request, bool preview = false, bool restoring = false)
+        {
+            long priorRevision = MemoryRevision;
+            if (!ValidateMemoryMutation(request?.OwnerPersonId, request?.MemoryId, request?.TransactionId, request?.WorldTime ?? 0d, out HistoryMemoryRecordData memory, out string failure, out HistoryResultCode code))
+            {
+                return HistoryOperationResult.Failure(code, failure, request?.TransactionId, preview, MemoryRevision);
+            }
+
+            if (!preview && processedTransactions.Contains(request.TransactionId ?? string.Empty))
+            {
+                return HistoryOperationResult.Success("Memory reinforcement transaction already processed.", request.TransactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision, duplicate: true);
+            }
+
+            HistoryMemoryRecordData working = memory.Clone();
+            ApplyReinforcement(working, request);
+            AddRevision(working, request.TransactionId, MemoryAlterationType.Reinforcement, request.WorldTime, request.SourceId, $"Reinforced by {request.Source}.");
+            if (preview)
+            {
+                return HistoryOperationResult.Success("Memory reinforcement preview succeeded.", request.TransactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision, preview: true);
+            }
+
+            memoriesById[memory.memoryId] = working;
+            processedTransactions.Add(request.TransactionId ?? string.Empty);
+            MemoryRevision++;
+            HistoryOperationResult result = HistoryOperationResult.Success("Memory reinforced.", request.TransactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision);
+            RaiseChanged(result, restoring);
+            return result;
+        }
+
+        public HistoryOperationResult ApplyDegradation(MemoryDegradationRequest request, bool preview = false, bool restoring = false)
+        {
+            long priorRevision = MemoryRevision;
+            if (!ValidateMemoryMutation(request?.OwnerPersonId, request?.MemoryId, request?.TransactionId, request?.ToWorldTime ?? 0d, out HistoryMemoryRecordData memory, out string failure, out HistoryResultCode code))
+            {
+                return HistoryOperationResult.Failure(code, failure, request?.TransactionId, preview, MemoryRevision);
+            }
+
+            if (request.ToWorldTime < request.FromWorldTime)
+            {
+                return HistoryOperationResult.Failure(HistoryResultCode.InvalidTimeRange, "Memory degradation end time cannot be earlier than start time.", request.TransactionId, preview, MemoryRevision);
+            }
+
+            if (!preview && processedTransactions.Contains(request.TransactionId ?? string.Empty))
+            {
+                return HistoryOperationResult.Success("Memory degradation transaction already processed.", request.TransactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision, duplicate: true);
+            }
+
+            double effectiveFrom = Math.Max(request.FromWorldTime, memory.lastDegradationEvaluatedWorldTime);
+            if (request.ToWorldTime <= effectiveFrom)
+            {
+                return HistoryOperationResult.Success("Memory degradation already evaluated for this world-time boundary.", request.TransactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision);
+            }
+
+            HistoryMemoryRecordData working = memory.Clone();
+            double days = Math.Max(0d, request.ToWorldTime - effectiveFrom) / 86400d;
+            working.confidence = HistoryMath.ClampMetric(working.confidence - (int)Math.Floor(days * Math.Max(0, request.ConfidenceLossPerDay)));
+            working.clarity = HistoryMath.ClampMetric(working.clarity - (int)Math.Floor(days * Math.Max(0, request.ClarityLossPerDay)));
+            working.salience = HistoryMath.ClampMetric(working.salience - (int)Math.Floor(days * Math.Max(0, request.SalienceLossPerDay)));
+            working.lastDegradationEvaluatedWorldTime = request.ToWorldTime;
+            if (working.clarity <= request.ForgottenClarityThreshold)
+            {
+                working.state = MemoryState.Forgotten;
+            }
+            else if (working.clarity <= request.InaccessibleClarityThreshold)
+            {
+                working.state = MemoryState.Inaccessible;
+            }
+            else if (working.clarity <= request.DifficultClarityThreshold && working.state == MemoryState.Accessible)
+            {
+                working.state = MemoryState.Difficult;
+            }
+
+            if (request.CreateRevision)
+            {
+                AddRevision(working, request.TransactionId, MemoryAlterationType.NaturalDegradation, request.ToWorldTime, "memory.degradation.policy", "World-time memory degradation evaluated.");
+            }
+
+            if (preview)
+            {
+                return HistoryOperationResult.Success("Memory degradation preview succeeded.", request.TransactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision, preview: true);
+            }
+
+            memoriesById[memory.memoryId] = working;
+            processedTransactions.Add(request.TransactionId ?? string.Empty);
+            MemoryRevision++;
+            HistoryOperationResult result = HistoryOperationResult.Success("Memory degradation applied.", request.TransactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision);
+            RaiseChanged(result, restoring);
+            return result;
+        }
+
+        public HistoryOperationResult AlterMemory(MemoryAlterationRequest request, bool preview = false, bool restoring = false)
+        {
+            long priorRevision = MemoryRevision;
+            if (!ValidateMemoryMutation(request?.OwnerPersonId, request?.MemoryId, request?.TransactionId, request?.WorldTime ?? 0d, out HistoryMemoryRecordData memory, out string failure, out HistoryResultCode code))
+            {
+                return HistoryOperationResult.Failure(code, failure, request?.TransactionId, preview, MemoryRevision);
+            }
+
+            if (!preview && processedTransactions.Contains(request.TransactionId ?? string.Empty))
+            {
+                return HistoryOperationResult.Success("Memory alteration transaction already processed.", request.TransactionId, null, new HistoryMemoryRecord(memory), null, priorRevision, MemoryRevision, duplicate: true);
+            }
+
+            HistoryMemoryRecordData working = memory.Clone();
+            working.confidence = HistoryMath.ClampMetric(working.confidence + request.ConfidenceDelta);
+            working.clarity = HistoryMath.ClampMetric(working.clarity + request.ClarityDelta);
+            working.salience = HistoryMath.ClampMetric(working.salience + request.SalienceDelta);
+            if (request.ResultingState.HasValue)
+            {
+                working.state = request.ResultingState.Value;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.BodyAtTimeId))
+            {
+                working.bodyAtTimeId = request.BodyAtTimeId;
+            }
+
+            ApplyDetailAlterations(working, request);
+            AddRevision(working, request.TransactionId, request.AlterationType == MemoryAlterationType.None ? MemoryAlterationType.Reconstruction : request.AlterationType, request.WorldTime, request.SourceId, request.Description);
+            if (preview)
+            {
+                return HistoryOperationResult.Success("Memory alteration preview succeeded.", request.TransactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision, preview: true);
+            }
+
+            memoriesById[memory.memoryId] = working;
+            processedTransactions.Add(request.TransactionId ?? string.Empty);
+            MemoryRevision++;
+            HistoryOperationResult result = HistoryOperationResult.Success("Memory altered.", request.TransactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision);
+            RaiseChanged(result, restoring);
+            return result;
+        }
+
+        public HistoryOperationResult AddSuppression(MemorySuppressionRequest request, bool preview = false, bool restoring = false)
+        {
+            long priorRevision = MemoryRevision;
+            if (!ValidateMemoryMutation(request?.OwnerPersonId, request?.MemoryId, request?.TransactionId, request?.StartedAtWorldTime ?? 0d, out HistoryMemoryRecordData memory, out string failure, out HistoryResultCode code))
+            {
+                return HistoryOperationResult.Failure(code, failure, request?.TransactionId, preview, MemoryRevision);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.SuppressionId) || string.IsNullOrWhiteSpace(request.SourceId))
+            {
+                return HistoryOperationResult.Failure(HistoryResultCode.InvalidSuppression, "Memory suppression requires suppression and source IDs.", request.TransactionId, preview, MemoryRevision);
+            }
+
+            if (request.EndedAtWorldTime >= 0d && request.EndedAtWorldTime <= request.StartedAtWorldTime)
+            {
+                return HistoryOperationResult.Failure(HistoryResultCode.InvalidTimeRange, "Memory suppression end time must be after start time.", request.TransactionId, preview, MemoryRevision);
+            }
+
+            if ((memory.suppressions ?? Array.Empty<MemorySuppressionData>()).Any(suppression => string.Equals(suppression.suppressionId, request.SuppressionId, StringComparison.Ordinal)))
+            {
+                return HistoryOperationResult.Failure(HistoryResultCode.InvalidSuppression, $"Memory suppression '{request.SuppressionId}' already exists.", request.TransactionId, preview, MemoryRevision);
+            }
+
+            HistoryMemoryRecordData working = memory.Clone();
+            List<MemorySuppressionData> suppressions = (working.suppressions ?? Array.Empty<MemorySuppressionData>()).Select(suppression => suppression.Clone()).ToList();
+            if (!HasActiveBlockingSuppression(working, request.StartedAtWorldTime, bypassWithCue: false))
+            {
+                working.stateBeforeSuppression = working.state == MemoryState.Suppressed ? MemoryState.Accessible : working.state;
+            }
+
+            suppressions.Add(new MemorySuppressionData
+            {
+                suppressionId = request.SuppressionId,
+                memoryId = request.MemoryId,
+                sourceId = request.SourceId,
+                reasonId = request.ReasonId,
+                startedAtWorldTime = request.StartedAtWorldTime,
+                endedAtWorldTime = request.EndedAtWorldTime,
+                allowsCueBypass = request.AllowsCueBypass,
+                provenance = request.Provenance
+            });
+            working.suppressions = suppressions.OrderBy(suppression => suppression.suppressionId, StringComparer.Ordinal).ToArray();
+            working.state = MemoryState.Suppressed;
+            AddRevision(working, request.TransactionId, MemoryAlterationType.Suppression, request.StartedAtWorldTime, request.SourceId, "Memory suppression added.");
+            if (preview)
+            {
+                return HistoryOperationResult.Success("Memory suppression preview succeeded.", request.TransactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision, preview: true);
+            }
+
+            memoriesById[memory.memoryId] = working;
+            processedTransactions.Add(request.TransactionId ?? string.Empty);
+            MemoryRevision++;
+            HistoryOperationResult result = HistoryOperationResult.Success("Memory suppression added.", request.TransactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision);
+            RaiseChanged(result, restoring);
+            return result;
+        }
+
+        public HistoryOperationResult RemoveSuppression(string memoryId, string suppressionId, string transactionId, double worldTime, bool expireOnly = false, bool preview = false, bool restoring = false)
+        {
+            long priorRevision = MemoryRevision;
+            if (!ValidateMemoryMutation(PersonId, memoryId, transactionId, worldTime, out HistoryMemoryRecordData memory, out string failure, out HistoryResultCode code))
+            {
+                return HistoryOperationResult.Failure(code, failure, transactionId, preview, MemoryRevision);
+            }
+
+            HistoryMemoryRecordData working = memory.Clone();
+            MemorySuppressionData suppression = (working.suppressions ?? Array.Empty<MemorySuppressionData>()).FirstOrDefault(item => string.Equals(item.suppressionId, suppressionId, StringComparison.Ordinal));
+            if (suppression == null)
+            {
+                return HistoryOperationResult.Failure(HistoryResultCode.InvalidSuppression, $"Memory suppression '{suppressionId}' is missing.", transactionId, preview, MemoryRevision);
+            }
+
+            if (expireOnly && suppression.endedAtWorldTime < 0d)
+            {
+                return HistoryOperationResult.Failure(HistoryResultCode.InvalidSuppression, $"Permanent suppression '{suppressionId}' cannot expire without explicit removal.", transactionId, preview, MemoryRevision);
+            }
+
+            suppression.removed = !expireOnly;
+            suppression.removedAtWorldTime = worldTime;
+
+            if (!HasActiveBlockingSuppression(working, worldTime, bypassWithCue: false))
+            {
+                working.state = working.stateBeforeSuppression == MemoryState.Suppressed ? MemoryState.Accessible : working.stateBeforeSuppression;
+            }
+
+            AddRevision(working, transactionId, MemoryAlterationType.SuppressionRemoval, worldTime, suppression.sourceId, "Memory suppression removed or expired.");
+            if (preview)
+            {
+                return HistoryOperationResult.Success("Memory suppression removal preview succeeded.", transactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision, preview: true);
+            }
+
+            memoriesById[memory.memoryId] = working;
+            processedTransactions.Add(transactionId ?? string.Empty);
+            MemoryRevision++;
+            HistoryOperationResult result = HistoryOperationResult.Success("Memory suppression removed.", transactionId, null, new HistoryMemoryRecord(working), null, priorRevision, MemoryRevision);
+            RaiseChanged(result, restoring);
+            return result;
+        }
+
+        public HistoryOperationResult RecoverMemory(string memoryId, string transactionId, double worldTime, MemoryState resultingState = MemoryState.Accessible, string sourceId = "memory.recovery", bool preview = false, bool restoring = false)
+        {
+            return AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = transactionId,
+                OwnerPersonId = PersonId,
+                MemoryId = memoryId,
+                WorldTime = worldTime,
+                AlterationType = MemoryAlterationType.Recovery,
+                ResultingState = resultingState,
+                SourceId = sourceId,
+                Description = "Memory explicitly recovered."
+            }, preview, restoring);
         }
 
         public bool TryGetMemory(string memoryId, out HistoryMemoryRecord memory)
@@ -277,7 +550,7 @@ namespace UnityIsekaiGame.Knowledge.History
                 return false;
             }
 
-            if (saveData.schemaVersion != PersonMemorySaveData.CurrentSchemaVersion)
+            if (saveData.schemaVersion < 1 || saveData.schemaVersion > PersonMemorySaveData.CurrentSchemaVersion)
             {
                 failureReason = $"Unsupported Person Memory schema version {saveData.schemaVersion}.";
                 return false;
@@ -293,6 +566,7 @@ namespace UnityIsekaiGame.Knowledge.History
             HashSet<string> ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (HistoryMemoryRecordData memory in saveData.memories ?? Array.Empty<HistoryMemoryRecordData>())
             {
+                NormalizeMigratedMemory(memory, saveData.schemaVersion);
                 if (!ValidateMemoryData(memory, saveData.personId, authoritativeHistory, out failureReason) || !ids.Add(memory.memoryId ?? string.Empty))
                 {
                     failureReason = string.IsNullOrWhiteSpace(failureReason) ? $"Missing or duplicate memory ID '{memory?.memoryId}'." : failureReason;
@@ -301,6 +575,488 @@ namespace UnityIsekaiGame.Knowledge.History
             }
 
             return true;
+        }
+
+        private bool ValidateRecallRequest(MemoryRecallRequest request, out string failure, out HistoryResultCode code)
+        {
+            failure = string.Empty;
+            code = HistoryResultCode.InvalidRequest;
+            if (request == null || string.IsNullOrWhiteSpace(request.TransactionId))
+            {
+                failure = "Memory recall requires a transaction ID.";
+                return false;
+            }
+
+            if (!string.Equals(request.RequestingPersonId, PersonId, StringComparison.Ordinal) && request.AccessContext == MemoryAccessContext.OrdinaryRecall)
+            {
+                code = HistoryResultCode.AccessDenied;
+                failure = $"Person '{request.RequestingPersonId}' cannot recall memories owned by '{PersonId}'.";
+                return false;
+            }
+
+            if (processedTransactions.Contains(request.TransactionId ?? string.Empty) && request.MutateMetadata)
+            {
+                code = HistoryResultCode.Duplicate;
+                failure = "Memory recall transaction already processed.";
+                return false;
+            }
+
+            if (request.MaxResults < 0)
+            {
+                failure = "Memory recall max results cannot be negative.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool ValidateMemoryMutation(string ownerPersonId, string memoryId, string transactionId, double worldTime, out HistoryMemoryRecordData memory, out string failure, out HistoryResultCode code)
+        {
+            memory = null;
+            failure = string.Empty;
+            code = HistoryResultCode.InvalidRequest;
+            if (string.IsNullOrWhiteSpace(transactionId))
+            {
+                failure = "Memory mutation requires a transaction ID.";
+                return false;
+            }
+
+            if (!string.Equals(ownerPersonId, PersonId, StringComparison.Ordinal))
+            {
+                code = HistoryResultCode.AccessDenied;
+                failure = $"Memory mutation targets Person '{ownerPersonId}', but runtime owns '{PersonId}'.";
+                return false;
+            }
+
+            if (!memoriesById.TryGetValue(memoryId ?? string.Empty, out memory))
+            {
+                code = HistoryResultCode.MissingMemory;
+                failure = $"Memory '{memoryId}' is missing.";
+                return false;
+            }
+
+            if (worldTime < memory.formedAtWorldTime)
+            {
+                code = HistoryResultCode.InvalidTimeRange;
+                failure = "Memory mutation cannot occur before memory formation.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private IReadOnlyList<HistoryMemoryRecordData> QueryMemoryData(MemoryRecallRequest request)
+        {
+            IEnumerable<HistoryMemoryRecordData> query = memoriesById.Values;
+            if (!string.IsNullOrWhiteSpace(request.MemoryId))
+            {
+                query = query.Where(memory => string.Equals(memory.memoryId, request.MemoryId, StringComparison.Ordinal));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.HistoricalEventId))
+            {
+                query = query.Where(memory => string.Equals(memory.historicalEventId, request.HistoricalEventId, StringComparison.Ordinal));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.SubjectId))
+            {
+                query = query.Where(memory => MemoryMatchesReference(memory, request.SubjectId));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.BodyId))
+            {
+                query = query.Where(memory => string.Equals(memory.bodyAtTimeId, request.BodyId, StringComparison.Ordinal) || DetailMatches(memory, MemoryDetailKind.Body, request.BodyId));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.LocationId))
+            {
+                query = query.Where(memory => DetailMatches(memory, MemoryDetailKind.Location, request.LocationId));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.OrganizationId))
+            {
+                query = query.Where(memory => DetailMatches(memory, MemoryDetailKind.Organization, request.OrganizationId));
+            }
+
+            string[] tags = request.Tags ?? Array.Empty<string>();
+            if (tags.Length > 0)
+            {
+                query = query.Where(memory => tags.All(tag => (memory.tags ?? Array.Empty<string>()).Contains(tag, StringComparer.Ordinal)));
+            }
+
+            int limit = request.MaxResults <= 0 ? int.MaxValue : request.MaxResults;
+            return query.OrderBy(memory => memory.rememberedOccurredAtWorldTime).ThenBy(memory => memory.memoryId, StringComparer.Ordinal).Take(limit).ToArray();
+        }
+
+        private MemoryRecallEntry EvaluateRecall(HistoryMemoryRecordData memory, MemoryRecallRequest request, bool preview, out bool succeeded, out bool mutated)
+        {
+            succeeded = false;
+            mutated = false;
+            bool cueMatched = CueMatches(memory, request.Cues);
+            bool privileged = request.AccessContext != MemoryAccessContext.OrdinaryRecall;
+            bool suppressed = HasActiveBlockingSuppression(memory, request.WorldTime, cueMatched);
+            if (suppressed && !privileged)
+            {
+                return Entry(memory, MemoryRecallOutcome.BlockedBySuppression, false, false, cueMatched, "Recall blocked by active suppression.");
+            }
+
+            if (memory.state == MemoryState.Forgotten && !privileged && !(request.AllowCueRecovery && cueMatched))
+            {
+                return Entry(memory, MemoryRecallOutcome.Forgotten, false, false, cueMatched, "Memory is forgotten.");
+            }
+
+            if (memory.state == MemoryState.Inaccessible && !privileged && !(request.AllowCueRecovery && cueMatched))
+            {
+                return Entry(memory, MemoryRecallOutcome.Inaccessible, false, false, cueMatched, "Memory is inaccessible.");
+            }
+
+            if (memory.state == MemoryState.Difficult && !request.AttemptDifficult && !cueMatched && !privileged)
+            {
+                return Entry(memory, MemoryRecallOutcome.Inaccessible, false, false, cueMatched, "Memory is difficult to recall without an attempt or cue.");
+            }
+
+            if (memory.state == MemoryState.Dormant && !privileged && !cueMatched)
+            {
+                return Entry(memory, MemoryRecallOutcome.Inaccessible, false, false, cueMatched, "Memory is dormant.");
+            }
+
+            HistoryMemoryRecordData working = memory;
+            MemoryRecallOutcome outcome = OutcomeFor(memory, cueMatched, request.AllowCueRecovery);
+            if (!preview && request.MutateMetadata)
+            {
+                working.lastRecallAttemptWorldTime = Math.Max(working.lastRecallAttemptWorldTime, request.WorldTime);
+                if (outcome != MemoryRecallOutcome.Inaccessible && outcome != MemoryRecallOutcome.Forgotten && outcome != MemoryRecallOutcome.BlockedBySuppression)
+                {
+                    working.lastRecalledWorldTime = Math.Max(working.lastRecalledWorldTime, request.WorldTime);
+                    working.recallCount = Math.Max(0, working.recallCount) + 1;
+                    if (outcome == MemoryRecallOutcome.Recovered || outcome == MemoryRecallOutcome.CueAssisted)
+                    {
+                        working.state = MemoryState.Recovered;
+                        AddRevision(working, request.TransactionId, MemoryAlterationType.Recovery, request.WorldTime, "memory.recall.cue", "Memory recovered during cue-assisted recall.");
+                    }
+
+                    if (request.ReinforceOnSuccess)
+                    {
+                        ApplyReinforcement(working, new MemoryReinforcementRequest
+                        {
+                            TransactionId = request.TransactionId,
+                            OwnerPersonId = PersonId,
+                            MemoryId = memory.memoryId,
+                            WorldTime = request.WorldTime,
+                            Source = MemoryReinforcementSource.SuccessfulRecall,
+                            ClarityDelta = 25,
+                            SalienceDelta = 10,
+                            SourceId = "memory.recall"
+                        });
+                    }
+                }
+
+                mutated = true;
+            }
+
+            succeeded = true;
+            return Entry(working, outcome, true, mutated, cueMatched, cueMatched ? "Memory recalled with contextual cue." : "Memory recalled.");
+        }
+
+        private MemoryRecallEntry Entry(HistoryMemoryRecordData memory, MemoryRecallOutcome outcome, bool recalled, bool metadataUpdated, bool cueMatched, string reason)
+        {
+            MemoryDetailData[] details = memory.rememberedDetails ?? Array.Empty<MemoryDetailData>();
+            IReadOnlyList<MemoryDetailData> remembered = recalled ? details.Where(detail => detail.state == MemoryDetailState.Remembered || detail.state == MemoryDetailState.Recovered || detail.state == MemoryDetailState.Altered || detail.state == MemoryDetailState.Uncertain).Select(detail => detail.Clone()).ToArray() : Array.Empty<MemoryDetailData>();
+            IReadOnlyList<MemoryDetailData> unavailable = details.Where(detail => detail.state == MemoryDetailState.Unavailable || detail.state == MemoryDetailState.Suppressed).Select(detail => detail.Clone()).ToArray();
+            return new MemoryRecallEntry(new HistoryMemoryRecord(memory), outcome, remembered, unavailable, metadataUpdated, cueMatched, reason);
+        }
+
+        private static MemoryRecallOutcome ResolveAggregateOutcome(IReadOnlyList<MemoryRecallEntry> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return MemoryRecallOutcome.NoMatch;
+            }
+
+            if (entries.Count > 1 && entries.Any(entry => entry.Outcome == MemoryRecallOutcome.FullyRecalled || entry.Outcome == MemoryRecallOutcome.PartiallyRecalled || entry.Outcome == MemoryRecallOutcome.Altered))
+            {
+                return MemoryRecallOutcome.Conflicting;
+            }
+
+            return entries[0].Outcome;
+        }
+
+        private static HistoryResultCode FailureCodeFor(MemoryRecallOutcome outcome)
+        {
+            return outcome switch
+            {
+                MemoryRecallOutcome.AccessDenied => HistoryResultCode.AccessDenied,
+                MemoryRecallOutcome.BlockedBySuppression => HistoryResultCode.Suppressed,
+                MemoryRecallOutcome.Forgotten => HistoryResultCode.Forgotten,
+                MemoryRecallOutcome.Inaccessible => HistoryResultCode.InvalidTransition,
+                _ => HistoryResultCode.NoMatch
+            };
+        }
+
+        private static MemoryRecallOutcome OutcomeFor(HistoryMemoryRecordData memory, bool cueMatched, bool allowCueRecovery)
+        {
+            if ((memory.state == MemoryState.Inaccessible || memory.state == MemoryState.Forgotten || memory.state == MemoryState.Dormant) && cueMatched && allowCueRecovery)
+            {
+                return MemoryRecallOutcome.Recovered;
+            }
+
+            if (cueMatched && memory.state == MemoryState.Difficult)
+            {
+                return MemoryRecallOutcome.CueAssisted;
+            }
+
+            MemoryDetailData[] details = memory.rememberedDetails ?? Array.Empty<MemoryDetailData>();
+            if (details.Any(detail => detail.state == MemoryDetailState.Unavailable || detail.state == MemoryDetailState.Suppressed))
+            {
+                return MemoryRecallOutcome.PartiallyRecalled;
+            }
+
+            if (memory.state == MemoryState.Altered || memory.state == MemoryState.Corrected)
+            {
+                return MemoryRecallOutcome.Altered;
+            }
+
+            if (memory.clarity < 500 || memory.confidence < 500 || memory.state == MemoryState.Uncertain || memory.state == MemoryState.Difficult)
+            {
+                return MemoryRecallOutcome.Uncertain;
+            }
+
+            return MemoryRecallOutcome.FullyRecalled;
+        }
+
+        private static bool HasActiveBlockingSuppression(HistoryMemoryRecordData memory, double worldTime, bool bypassWithCue)
+        {
+            return (memory.suppressions ?? Array.Empty<MemorySuppressionData>()).Any(suppression => suppression.IsActiveAt(worldTime) && !(bypassWithCue && suppression.allowsCueBypass));
+        }
+
+        private static bool CueMatches(HistoryMemoryRecordData memory, IEnumerable<MemoryRecallCue> cues)
+        {
+            foreach (MemoryRecallCue cue in cues ?? Array.Empty<MemoryRecallCue>())
+            {
+                if (cue == null || string.IsNullOrWhiteSpace(cue.ReferenceId))
+                {
+                    continue;
+                }
+
+                if (cue.Kind == MemoryCueKind.HistoricalEvent && string.Equals(memory.historicalEventId, cue.ReferenceId, StringComparison.Ordinal)
+                    || cue.Kind == MemoryCueKind.Body && string.Equals(memory.bodyAtTimeId, cue.ReferenceId, StringComparison.Ordinal)
+                    || cue.Kind == MemoryCueKind.Memory && string.Equals(memory.memoryId, cue.ReferenceId, StringComparison.Ordinal)
+                    || cue.Kind == MemoryCueKind.Tag && (memory.tags ?? Array.Empty<string>()).Contains(cue.ReferenceId, StringComparer.Ordinal)
+                    || DetailMatches(memory, DetailKindForCue(cue.Kind), cue.ReferenceId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static MemoryDetailKind DetailKindForCue(MemoryCueKind kind)
+        {
+            return kind switch
+            {
+                MemoryCueKind.Person => MemoryDetailKind.Participant,
+                MemoryCueKind.Location => MemoryDetailKind.Location,
+                MemoryCueKind.Body => MemoryDetailKind.Body,
+                MemoryCueKind.Item => MemoryDetailKind.Item,
+                MemoryCueKind.Organization => MemoryDetailKind.Organization,
+                _ => MemoryDetailKind.Unknown
+            };
+        }
+
+        private static bool MemoryMatchesReference(HistoryMemoryRecordData memory, string referenceId)
+        {
+            return string.Equals(memory.historicalEventId, referenceId, StringComparison.Ordinal)
+                || string.Equals(memory.bodyAtTimeId, referenceId, StringComparison.Ordinal)
+                || DetailMatches(memory, MemoryDetailKind.Unknown, referenceId)
+                || (memory.tags ?? Array.Empty<string>()).Contains(referenceId, StringComparer.Ordinal);
+        }
+
+        private static bool DetailMatches(HistoryMemoryRecordData memory, MemoryDetailKind kind, string value)
+        {
+            return (memory.rememberedDetails ?? Array.Empty<MemoryDetailData>()).Any(detail =>
+                (kind == MemoryDetailKind.Unknown || detail.kind == kind)
+                && string.Equals(detail.value, value, StringComparison.Ordinal)
+                && detail.state != MemoryDetailState.Unavailable
+                && detail.state != MemoryDetailState.Suppressed);
+        }
+
+        private static void ApplyReinforcement(HistoryMemoryRecordData memory, MemoryReinforcementRequest request)
+        {
+            memory.confidence = HistoryMath.ClampMetric(memory.confidence + Math.Max(0, request.ConfidenceDelta));
+            memory.clarity = HistoryMath.ClampMetric(memory.clarity + Math.Max(0, request.ClarityDelta));
+            memory.salience = HistoryMath.ClampMetric(memory.salience + Math.Max(0, request.SalienceDelta));
+            memory.lastReinforcedWorldTime = Math.Max(memory.lastReinforcedWorldTime, request.WorldTime);
+            memory.reinforcementCount = Math.Max(0, memory.reinforcementCount) + 1;
+            if (request.ImproveAccessibility && (memory.state == MemoryState.Difficult || memory.state == MemoryState.Inaccessible || memory.state == MemoryState.Uncertain))
+            {
+                memory.state = memory.clarity >= 500 ? MemoryState.Accessible : MemoryState.Difficult;
+            }
+        }
+
+        private static void ApplyDetailAlterations(HistoryMemoryRecordData memory, MemoryAlterationRequest request)
+        {
+            List<MemoryDetailData> details = (memory.rememberedDetails ?? Array.Empty<MemoryDetailData>()).Select(detail => detail.Clone()).ToList();
+            foreach (string detailId in request.DetailIdsToForget ?? Array.Empty<string>())
+            {
+                MemoryDetailData detail = details.FirstOrDefault(item => string.Equals(item.detailId, detailId, StringComparison.Ordinal));
+                if (detail != null)
+                {
+                    detail.state = request.AlterationType == MemoryAlterationType.Suppression ? MemoryDetailState.Suppressed : MemoryDetailState.Unavailable;
+                    detail.alteredByRevisionId = request.TransactionId;
+                }
+            }
+
+            foreach (MemoryDetailData incoming in request.DetailsToAddOrReplace ?? Array.Empty<MemoryDetailData>())
+            {
+                if (incoming == null || string.IsNullOrWhiteSpace(incoming.detailId))
+                {
+                    continue;
+                }
+
+                int index = details.FindIndex(item => string.Equals(item.detailId, incoming.detailId, StringComparison.Ordinal));
+                MemoryDetailData clone = incoming.Clone();
+                clone.alteredByRevisionId = request.TransactionId;
+                if (index >= 0)
+                {
+                    details[index] = clone;
+                }
+                else
+                {
+                    details.Add(clone);
+                }
+            }
+
+            memory.rememberedDetails = details.OrderBy(detail => detail.detailId, StringComparer.Ordinal).ToArray();
+            if (request.AlterationType != MemoryAlterationType.Recovery && request.AlterationType != MemoryAlterationType.SuppressionRemoval && request.AlterationType != MemoryAlterationType.Reinforcement)
+            {
+                memory.state = request.ResultingState ?? MemoryState.Altered;
+            }
+        }
+
+        private static MemoryDetailData[] BuildInitialDetails(FormMemoryRequest request, HistoricalEventRecord historicalEvent)
+        {
+            List<MemoryDetailData> details = new List<MemoryDetailData>
+            {
+                Detail("detail.event", MemoryDetailKind.Event, request.HistoricalEventId),
+                Detail("detail.time", MemoryDetailKind.Time, request.RememberedOccurredAtWorldTime.ToString("R"))
+            };
+
+            if (!string.IsNullOrWhiteSpace(request.BodyAtTimeId))
+            {
+                details.Add(Detail("detail.body", MemoryDetailKind.Body, request.BodyAtTimeId));
+            }
+
+            if (historicalEvent != null)
+            {
+                if (!string.IsNullOrWhiteSpace(historicalEvent.PrimaryPersonId))
+                {
+                    details.Add(Detail("detail.primary-person", MemoryDetailKind.Participant, historicalEvent.PrimaryPersonId));
+                }
+
+                foreach (string person in historicalEvent.ParticipantPersonIds.Where(value => !string.IsNullOrWhiteSpace(value)).OrderBy(value => value, StringComparer.Ordinal))
+                {
+                    details.Add(Detail($"detail.participant.{person}", MemoryDetailKind.Participant, person));
+                }
+
+                if (!string.IsNullOrWhiteSpace(historicalEvent.LocationId))
+                {
+                    details.Add(Detail("detail.location", MemoryDetailKind.Location, historicalEvent.LocationId));
+                }
+
+                if (!string.IsNullOrWhiteSpace(historicalEvent.OrganizationId))
+                {
+                    details.Add(Detail("detail.organization", MemoryDetailKind.Organization, historicalEvent.OrganizationId));
+                }
+            }
+
+            return details.GroupBy(detail => detail.detailId, StringComparer.Ordinal).Select(group => group.First()).OrderBy(detail => detail.detailId, StringComparer.Ordinal).ToArray();
+        }
+
+        private static MemoryDetailData Detail(string id, MemoryDetailKind kind, string value)
+        {
+            return new MemoryDetailData
+            {
+                detailId = id,
+                kind = kind,
+                state = MemoryDetailState.Remembered,
+                value = value ?? string.Empty,
+                confidence = 700
+            };
+        }
+
+        private static void AddRevision(HistoryMemoryRecordData memory, string transactionId, MemoryAlterationType type, double worldTime, string sourceId, string description)
+        {
+            MemoryRevisionData previous = (memory.revisions ?? Array.Empty<MemoryRevisionData>()).LastOrDefault();
+            string previousId = previous?.revisionId ?? string.Empty;
+            string revisionId = $"{memory.memoryId}.revision.{(memory.revisions ?? Array.Empty<MemoryRevisionData>()).Length}";
+            MemoryRevisionData revision = CreateRevision(memory, transactionId, type, worldTime, sourceId, description, previousId);
+            revision.revisionId = revisionId;
+            List<MemoryRevisionData> revisions = (memory.revisions ?? Array.Empty<MemoryRevisionData>()).Select(item => item.Clone()).ToList();
+            revisions.Add(revision);
+            memory.revisions = revisions.ToArray();
+            memory.currentRevisionId = revisionId;
+        }
+
+        private static MemoryRevisionData CreateRevision(HistoryMemoryRecordData memory, string transactionId, MemoryAlterationType type, double worldTime, string sourceId, string description, string previousRevisionId)
+        {
+            return new MemoryRevisionData
+            {
+                revisionId = string.IsNullOrWhiteSpace(memory.currentRevisionId) ? $"{memory.memoryId}.revision.0" : memory.currentRevisionId,
+                previousRevisionId = previousRevisionId,
+                transactionId = transactionId,
+                alterationType = type,
+                worldTime = worldTime,
+                sourceId = sourceId,
+                description = description,
+                state = memory.state,
+                confidence = memory.confidence,
+                clarity = memory.clarity,
+                salience = memory.salience,
+                bodyAtTimeId = memory.bodyAtTimeId,
+                details = memory.rememberedDetails == null ? Array.Empty<MemoryDetailData>() : memory.rememberedDetails.Select(detail => detail.Clone()).ToArray()
+            };
+        }
+
+        private static void NormalizeMigratedMemory(HistoryMemoryRecordData memory, int schemaVersion)
+        {
+            if (memory == null)
+            {
+                return;
+            }
+
+            memory.evidenceIds ??= Array.Empty<string>();
+            memory.tags ??= Array.Empty<string>();
+            memory.rememberedDetails ??= Array.Empty<MemoryDetailData>();
+            memory.suppressions ??= Array.Empty<MemorySuppressionData>();
+            memory.revisions ??= Array.Empty<MemoryRevisionData>();
+            if (schemaVersion <= 1)
+            {
+            memory.lastRecallAttemptWorldTime = memory.lastRecalledWorldTime;
+            memory.lastReinforcedWorldTime = -1d;
+            memory.lastDegradationEvaluatedWorldTime = memory.formedAtWorldTime;
+            memory.recallCount = 0;
+            memory.reinforcementCount = 0;
+            memory.stateBeforeSuppression = memory.state == MemoryState.Suppressed ? MemoryState.Accessible : memory.state;
+                if (string.IsNullOrWhiteSpace(memory.currentRevisionId))
+                {
+                    memory.currentRevisionId = $"{memory.memoryId}.revision.0";
+                }
+
+                if (memory.rememberedDetails.Length == 0)
+                {
+                    memory.rememberedDetails = new[]
+                    {
+                        Detail("detail.event", MemoryDetailKind.Event, memory.historicalEventId),
+                        Detail("detail.time", MemoryDetailKind.Time, memory.rememberedOccurredAtWorldTime.ToString("R"))
+                    };
+                }
+
+                if (memory.revisions.Length == 0)
+                {
+                    memory.revisions = new[] { CreateRevision(memory, "migration.memory.v1", MemoryAlterationType.None, memory.formedAtWorldTime, "migration", "Migrated Feature 8.3 memory.", string.Empty) };
+                }
+            }
         }
 
         private bool ValidateFormMemory(FormMemoryRequest request, out string failure, out HistoryResultCode code)
@@ -375,6 +1131,109 @@ namespace UnityIsekaiGame.Knowledge.History
             {
                 failure = $"Memory '{memory.memoryId}' has invalid time ordering.";
                 return false;
+            }
+
+            if (memory.lastRecalledWorldTime > 0d && memory.lastRecalledWorldTime < memory.formedAtWorldTime || memory.lastRecallAttemptWorldTime > 0d && memory.lastRecallAttemptWorldTime < memory.formedAtWorldTime)
+            {
+                failure = $"Memory '{memory.memoryId}' has recall metadata earlier than formation.";
+                return false;
+            }
+
+            if (memory.lastDegradationEvaluatedWorldTime > 0d && memory.lastDegradationEvaluatedWorldTime < memory.formedAtWorldTime)
+            {
+                failure = $"Memory '{memory.memoryId}' has degradation metadata earlier than formation.";
+                return false;
+            }
+
+            HashSet<string> detailIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (MemoryDetailData detail in memory.rememberedDetails ?? Array.Empty<MemoryDetailData>())
+            {
+                if (detail == null || string.IsNullOrWhiteSpace(detail.detailId) || !detailIds.Add(detail.detailId))
+                {
+                    failure = $"Memory '{memory.memoryId}' has missing or duplicate detail IDs.";
+                    return false;
+                }
+            }
+
+            HashSet<string> suppressionIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (MemorySuppressionData suppression in memory.suppressions ?? Array.Empty<MemorySuppressionData>())
+            {
+                if (suppression == null || string.IsNullOrWhiteSpace(suppression.suppressionId) || string.IsNullOrWhiteSpace(suppression.sourceId) || !suppressionIds.Add(suppression.suppressionId))
+                {
+                    failure = $"Memory '{memory.memoryId}' has missing or duplicate suppression IDs.";
+                    return false;
+                }
+
+                if (!string.Equals(suppression.memoryId, memory.memoryId, StringComparison.Ordinal))
+                {
+                    failure = $"Suppression '{suppression.suppressionId}' targets '{suppression.memoryId}' instead of memory '{memory.memoryId}'.";
+                    return false;
+                }
+
+                if (suppression.endedAtWorldTime >= 0d && suppression.endedAtWorldTime <= suppression.startedAtWorldTime)
+                {
+                    failure = $"Suppression '{suppression.suppressionId}' has an invalid time range.";
+                    return false;
+                }
+            }
+
+            if (!ValidateRevisionChain(memory, out failure))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool ValidateRevisionChain(HistoryMemoryRecordData memory, out string failure)
+        {
+            failure = string.Empty;
+            MemoryRevisionData[] revisions = memory.revisions ?? Array.Empty<MemoryRevisionData>();
+            HashSet<string> ids = new HashSet<string>(StringComparer.Ordinal);
+            Dictionary<string, MemoryRevisionData> byId = new Dictionary<string, MemoryRevisionData>(StringComparer.Ordinal);
+            foreach (MemoryRevisionData revision in revisions)
+            {
+                if (revision == null || string.IsNullOrWhiteSpace(revision.revisionId) || !ids.Add(revision.revisionId))
+                {
+                    failure = $"Memory '{memory.memoryId}' has missing or duplicate revision IDs.";
+                    return false;
+                }
+
+                if (string.Equals(revision.revisionId, revision.previousRevisionId, StringComparison.Ordinal))
+                {
+                    failure = $"Memory revision '{revision.revisionId}' cannot reference itself.";
+                    return false;
+                }
+
+                byId[revision.revisionId] = revision;
+            }
+
+            foreach (MemoryRevisionData revision in revisions)
+            {
+                if (!string.IsNullOrWhiteSpace(revision.previousRevisionId) && !byId.ContainsKey(revision.previousRevisionId))
+                {
+                    failure = $"Memory revision '{revision.revisionId}' references missing previous revision '{revision.previousRevisionId}'.";
+                    return false;
+                }
+            }
+
+            HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+            string current = memory.currentRevisionId;
+            while (!string.IsNullOrWhiteSpace(current))
+            {
+                if (!seen.Add(current))
+                {
+                    failure = $"Memory '{memory.memoryId}' has a circular revision chain.";
+                    return false;
+                }
+
+                if (!byId.TryGetValue(current, out MemoryRevisionData revision))
+                {
+                    failure = $"Memory '{memory.memoryId}' current revision '{current}' is missing.";
+                    return false;
+                }
+
+                current = revision.previousRevisionId;
             }
 
             return true;

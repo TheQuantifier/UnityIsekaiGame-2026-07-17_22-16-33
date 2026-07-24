@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Gameplay;
 
 namespace UnityIsekaiGame.Tests
 {
@@ -60,6 +61,31 @@ namespace UnityIsekaiGame.Tests
             Assert.That(player.transform.position.y, Is.EqualTo(1.1f).Within(0.001f));
             Assert.That(player.transform.position.z, Is.EqualTo(3f).Within(0.001f));
             Assert.That(Quaternion.Angle(player.transform.rotation, Quaternion.Euler(0f, 75f, 0f)), Is.LessThan(0.01f));
+        }
+
+        [Test]
+        public void LocationRestorePreservesOpenPlayerMenu()
+        {
+            CreateGround();
+            GameObject player = CreateGameObject("Player");
+            player.AddComponent<CharacterController>();
+            FakePlayerMenuController menu = new FakePlayerMenuController { IsOpen = true };
+            object participant = CreateParticipant(player.transform, menu);
+
+            object data = ValidSaveData();
+            SetField(data, "positionX", 1f);
+            SetField(data, "positionY", 1.1f);
+            SetField(data, "positionZ", 2f);
+            object prepare = Invoke(participant, "PreparePayload", JsonUtility.ToJson(data), Get<int>(participant, "ParticipantSchemaVersion"));
+            Assert.That(Get<bool>(prepare, "Succeeded"), Is.True, Get<string>(prepare, "Message"));
+
+            object commit = Invoke(participant, "CommitPreparedPayload", Get<object>(prepare, "PreparedPayload"));
+
+            Assert.That(Get<bool>(commit, "Succeeded"), Is.True, Get<string>(commit, "Message"));
+            Assert.That(menu.CloseCount, Is.EqualTo(0));
+            Assert.That(menu.BeginRestoreCount, Is.EqualTo(1));
+            Assert.That(menu.CompleteRestoreCount, Is.EqualTo(1));
+            Assert.That(menu.IsOpen, Is.True);
         }
 
         [Test]
@@ -162,6 +188,11 @@ namespace UnityIsekaiGame.Tests
 
         private object CreateParticipant(Transform player)
         {
+            return CreateParticipant(player, null);
+        }
+
+        private object CreateParticipant(Transform player, IPlayerMenuController menuController)
+        {
             Type participantType = RequiredType("UnityIsekaiGame.Persistence.PlayerLocationPersistenceParticipant");
             Func<DefinitionRegistry> registryProvider = () => new DefinitionRegistry(Array.Empty<IGameDefinition>());
             return Activator.CreateInstance(
@@ -172,7 +203,7 @@ namespace UnityIsekaiGame.Tests
                 "scene.prototype",
                 "spawn.prototype.default",
                 null,
-                null,
+                menuController,
                 null);
         }
 
@@ -265,6 +296,30 @@ namespace UnityIsekaiGame.Tests
             MethodInfo method = type.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null, $"{methodName} not found on {type.Name}");
             return method.Invoke(null, args);
+        }
+
+        private sealed class FakePlayerMenuController : IPlayerMenuController
+        {
+            public bool IsOpen { get; set; }
+            public int CloseCount { get; private set; }
+            public int BeginRestoreCount { get; private set; }
+            public int CompleteRestoreCount { get; private set; }
+
+            public void CloseForPrototypeReset()
+            {
+                CloseCount++;
+                IsOpen = false;
+            }
+
+            public void BeginPersistenceRestore()
+            {
+                BeginRestoreCount++;
+            }
+
+            public void CompletePersistenceRestore()
+            {
+                CompleteRestoreCount++;
+            }
         }
     }
 }

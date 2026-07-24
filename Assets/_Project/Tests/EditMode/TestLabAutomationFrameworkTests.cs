@@ -439,7 +439,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.7.10.biological-integration",
                 "feature.8.1.knowledge-facts-beliefs",
                 "feature.8.2.observation-examination-identification-diagnosis",
-                "feature.8.3.character-history-memory-timelines"
+                "feature.8.3.character-history-memory-timelines",
+                "feature.8.4.memory-recall-forgetting-alteration"
             }));
         }
 

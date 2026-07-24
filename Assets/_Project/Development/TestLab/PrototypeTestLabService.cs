@@ -3655,6 +3655,577 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "Validate 8.3 History Save Restore", succeeded ? "Success" : "RestoreFailed", $"History={historyRestore.Code} Memory={memoryRestore.Code} Events={historyEvents}/{memoryEvents} Ordering={string.Join(",", historyRuntime.CreateSnapshot().Events.Select(record => record.EventId).Take(6))}.");
         }
 
+        public string BuildMemoryRecallSummary()
+        {
+            FormWitnessHistoryMemory();
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime))
+            {
+                return "Memory runtime is missing.";
+            }
+
+            StringBuilder builder = new StringBuilder();
+            PersonMemorySnapshot snapshot = memoryRuntime.CreateSnapshot();
+            builder.AppendLine("Feature 8.4 Memory Recall, Reinforcement, Forgetting, and Alteration");
+            builder.AppendLine($"Person={snapshot.PersonId} Revision={snapshot.Revision} Memories={snapshot.Memories.Count}");
+            foreach (HistoryMemoryRecord memory in snapshot.Memories.Take(8))
+            {
+                builder.AppendLine($"{memory.MemoryId} Event={memory.HistoricalEventId} State={memory.State} Confidence={memory.Confidence} Clarity={memory.Clarity} Salience={memory.Salience} Recall={memory.RecallCount} Reinforce={memory.ReinforcementCount} Suppressions={memory.Suppressions.Count} Revisions={memory.Revisions.Count} Body={EmptyAs(memory.BodyAtTimeId, "None")}");
+                string details = string.Join(", ", memory.RememberedDetails.Take(6).Select(detail => $"{detail.detailId}:{detail.state}:{detail.value}"));
+                builder.AppendLine($"  Details={EmptyAs(details, "None")}");
+            }
+
+            IReadOnlyList<HistoricalEventRecord> privileged = historyRuntime.QueryPersonAccessible(GetPrototypePersonId(), privileged: true);
+            builder.AppendLine($"PrivilegedHistoryVisible={privileged.Count}");
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateMemory84()
+        {
+            FormWitnessHistoryMemory();
+            if (!EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime))
+            {
+                return RecordFailure("Validate 8.4 Memory", "Memory runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            PersonMemorySnapshot snapshot = memoryRuntime.CreateSnapshot();
+            bool hasStructured = snapshot.Memories.Any(memory => memory.RememberedDetails.Count > 0 && memory.Revisions.Count > 0);
+            bool schemaValid = PersonMemoryRuntime.ValidateSaveData(memoryRuntime.CreateSaveData(), authoritativeHistory, GetKnownPrototypePersons(), out string failure);
+            return Record(hasStructured && schemaValid, "Validate 8.4 Memory", hasStructured && schemaValid ? "Success" : "InvalidMemory", schemaValid ? $"Memories={snapshot.Memories.Count} Structured={hasStructured}." : failure);
+        }
+
+        public PrototypeTestLabOperation InspectExistingMemories()
+        {
+            FormWitnessHistoryMemory();
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            PersonMemorySnapshot snapshot = memoryRuntime.CreateSnapshot();
+            return Record(snapshot.Memories.Count > 0, "Inspect 8.4 Memories", snapshot.Memories.Count > 0 ? "Success" : HistoryResultCode.MissingMemory.ToString(), BuildMemoryRecallSummary());
+        }
+
+        public PrototypeTestLabOperation RecallPrototypeMemory()
+        {
+            string memoryId = GetPrototypeMemoryId();
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            return RecallMemoryWithRequest("Recall 8.4 Memory", new MemoryRecallRequest
+            {
+                TransactionId = $"history.8.4.recall.{Guid.NewGuid():N}",
+                RequestingPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AttemptDifficult = true,
+                ReinforceOnSuccess = true
+            });
+        }
+
+        public PrototypeTestLabOperation RecallPrototypeMemoryBySubject()
+        {
+            string memoryId = GetPrototypeMemoryId();
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            return RecallMemoryWithRequest("Recall 8.4 By Subject", new MemoryRecallRequest
+            {
+                TransactionId = $"history.8.4.recall-subject.{Guid.NewGuid():N}",
+                RequestingPersonId = GetPrototypePersonId(),
+                SubjectId = "event.prototype.hidden.secret",
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AttemptDifficult = true
+            });
+        }
+
+        public PrototypeTestLabOperation RecallPrototypeMemoryWithCue()
+        {
+            string memoryId = GetPrototypeMemoryId();
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            return RecallMemoryWithRequest("Recall 8.4 With Cue", new MemoryRecallRequest
+            {
+                TransactionId = $"history.8.4.recall-cue.{Guid.NewGuid():N}",
+                RequestingPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AttemptDifficult = true,
+                AllowCueRecovery = true,
+                Cues = new[] { new MemoryRecallCue { Kind = MemoryCueKind.HistoricalEvent, ReferenceId = "event.prototype.hidden.secret", Strength = 1000 } }
+            });
+        }
+
+        public PrototypeTestLabOperation ReinforcePrototypeMemory()
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            HistoryOperationResult result = memoryRuntime.ReinforceMemory(new MemoryReinforcementRequest
+            {
+                TransactionId = $"history.8.4.reinforce.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                Source = MemoryReinforcementSource.Study,
+                ConfidenceDelta = 20,
+                ClarityDelta = 40,
+                SalienceDelta = 20,
+                SourceId = "test-lab.memory.reinforce"
+            });
+            return RecordHistoryResult("Reinforce 8.4 Memory", result);
+        }
+
+        public PrototypeTestLabOperation ReinforceFalsePrototypeMemory()
+        {
+            FormWitnessHistoryMemory();
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = $"memory.prototype.false-reinforcement.{Guid.NewGuid():N}";
+            FormMemoryRequest request = BuildMemoryRequest($"history.8.4.false-memory.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.WitnessTestimony, createKnowledge: false);
+            request.Confidence = 320;
+            request.Clarity = 360;
+            request.DebugDescription = "Distorted prototype memory used to prove reinforcement is not truth.";
+            HistoryOperationResult formed = memoryRuntime.FormMemory(request);
+            HistoryOperationResult altered = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.false-memory-alter.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId, 0.5d),
+                AlterationType = MemoryAlterationType.Distortion,
+                ResultingState = MemoryState.Altered,
+                DetailsToAddOrReplace = new[] { new MemoryDetailData { detailId = "detail.false-claim", kind = MemoryDetailKind.Note, state = MemoryDetailState.Altered, value = "Incorrect recollection reinforced by repetition.", confidence = 900 } },
+                SourceId = "test-lab.memory.false-reinforcement",
+                Description = "Create a false/distorted recollection before reinforcing it."
+            });
+            HistoryOperationResult reinforced = memoryRuntime.ReinforceMemory(new MemoryReinforcementRequest
+            {
+                TransactionId = $"history.8.4.false-memory-reinforce.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId, 1d),
+                Source = MemoryReinforcementSource.RepeatedTestimony,
+                ConfidenceDelta = 250,
+                ClarityDelta = 150,
+                SalienceDelta = 100,
+                SourceId = "test-lab.memory.false-reinforcement"
+            });
+            bool historyUnchanged = historyRuntime.TryGetEvent("event.prototype.hidden.secret", out HistoricalEventRecord authoritative) && authoritative != null;
+            bool succeeded = formed.Succeeded && altered.Succeeded && reinforced.Succeeded && historyUnchanged;
+            return Record(succeeded, "Reinforce 8.4 False Memory", succeeded ? "Success" : reinforced.Code.ToString(), $"Formed={formed.Code} Altered={altered.Code} Reinforced={reinforced.Code} HistoryUnchanged={historyUnchanged}. Reinforcement increases confidence/clarity only; authoritative history is not changed.");
+        }
+
+        public PrototypeTestLabOperation ReduceMemoryClarity()
+        {
+            return AlterPrototypeMemoryMetric("Reduce 8.4 Clarity", clarityDelta: -250, confidenceDelta: 0, salienceDelta: 0, MemoryState.Difficult);
+        }
+
+        public PrototypeTestLabOperation ReduceMemoryConfidence()
+        {
+            return AlterPrototypeMemoryMetric("Reduce 8.4 Confidence", clarityDelta: 0, confidenceDelta: -250, salienceDelta: 0, null);
+        }
+
+        public PrototypeTestLabOperation ProveMemoryDegradationIdempotence()
+        {
+            RecordHiddenHistoryEvent();
+            EnsureHistoryRuntime(out _, out _);
+            PersonMemoryRuntime memoryRuntime = CreateMemoryProofRuntime();
+            string memoryId = $"memory.prototype.degradation-proof.{Guid.NewGuid():N}";
+            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.degrade-form.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
+            double start = GetMemoryWorldTime(memoryRuntime, memoryId);
+            MemoryDegradationRequest firstRequest = new MemoryDegradationRequest
+            {
+                TransactionId = $"history.8.4.degrade.first.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                FromWorldTime = start,
+                ToWorldTime = start + 86400d,
+                ConfidenceLossPerDay = 10,
+                ClarityLossPerDay = 20,
+                SalienceLossPerDay = 5
+            };
+            HistoryOperationResult first = memoryRuntime.ApplyDegradation(firstRequest);
+            HistoryMemoryRecord afterFirst = memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord firstSnapshot) ? firstSnapshot : null;
+            HistoryOperationResult repeat = memoryRuntime.ApplyDegradation(new MemoryDegradationRequest
+            {
+                TransactionId = $"history.8.4.degrade.repeat.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                FromWorldTime = start,
+                ToWorldTime = start + 86400d,
+                ConfidenceLossPerDay = 10,
+                ClarityLossPerDay = 20,
+                SalienceLossPerDay = 5
+            });
+            HistoryMemoryRecord afterRepeat = memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord repeatSnapshot) ? repeatSnapshot : null;
+            HistoryOperationResult advance = memoryRuntime.ApplyDegradation(new MemoryDegradationRequest
+            {
+                TransactionId = $"history.8.4.degrade.advance.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                FromWorldTime = start,
+                ToWorldTime = start + 172800d,
+                ConfidenceLossPerDay = 10,
+                ClarityLossPerDay = 20,
+                SalienceLossPerDay = 5
+            });
+            PersonMemorySaveData save = memoryRuntime.CreateSaveData();
+            HistoryOperationResult restore = memoryRuntime.RestoreFromSaveData(save, registry, authoritativeHistory, GetKnownPrototypePersons(), restoring: true);
+            HistoryMemoryRecord afterRestore = memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord restoredSnapshot) ? restoredSnapshot : null;
+            HistoryOperationResult restoredRepeat = memoryRuntime.ApplyDegradation(new MemoryDegradationRequest
+            {
+                TransactionId = $"history.8.4.degrade.restore-repeat.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                FromWorldTime = start,
+                ToWorldTime = start + 172800d,
+                ConfidenceLossPerDay = 10,
+                ClarityLossPerDay = 20,
+                SalienceLossPerDay = 5
+            });
+            HistoryMemoryRecord final = memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord finalSnapshot) ? finalSnapshot : null;
+            bool repeatedSame = afterFirst != null && afterRepeat != null && afterFirst.Clarity == afterRepeat.Clarity && afterFirst.Confidence == afterRepeat.Confidence && afterFirst.Salience == afterRepeat.Salience;
+            bool advancedOnce = afterRepeat != null && afterRestore != null && afterRestore.Clarity < afterRepeat.Clarity;
+            bool restoreSame = afterRestore != null && final != null && afterRestore.Clarity == final.Clarity && afterRestore.Confidence == final.Confidence && afterRestore.Salience == final.Salience;
+            bool succeeded = formed.Succeeded && first.Succeeded && repeat.Succeeded && advance.Succeeded && restore.Succeeded && restoredRepeat.Succeeded && repeatedSame && advancedOnce && restoreSame;
+            return Record(succeeded, "Prove 8.4 Degradation Idempotence", succeeded ? "Success" : "DegradationMismatch", $"Formed={formed.Code} First={first.Code} Repeat={repeat.Code} Advance={advance.Code} Restore={restore.Code} RestoreMessage='{restore.Message}' RestoredRepeat={restoredRepeat.Code} RepeatedSame={repeatedSame} AdvancedOnce={advancedOnce} RestoreSame={restoreSame}.");
+        }
+
+        public PrototypeTestLabOperation MakeMemoryDifficult()
+        {
+            return SetPrototypeMemoryState("Make 8.4 Difficult", MemoryState.Difficult);
+        }
+
+        public PrototypeTestLabOperation PartialForgetPrototypeMemory()
+        {
+            return ForgetMemoryParticipant();
+        }
+
+        public PrototypeTestLabOperation ForgetMemoryParticipant()
+        {
+            return AlterPrototypeMemoryDetails("Forget 8.4 Participant", new[] { "detail.primary-person" });
+        }
+
+        public PrototypeTestLabOperation ForgetMemoryTimeOrLocation()
+        {
+            return AlterPrototypeMemoryDetails("Forget 8.4 Time Location", new[] { "detail.time", "detail.location" });
+        }
+
+        public PrototypeTestLabOperation MakeMemoryInaccessible()
+        {
+            return SetPrototypeMemoryState("Make 8.4 Inaccessible", MemoryState.Inaccessible);
+        }
+
+        public PrototypeTestLabOperation MarkMemoryForgotten()
+        {
+            return SetPrototypeMemoryState("Mark 8.4 Forgotten", MemoryState.Forgotten);
+        }
+
+        public PrototypeTestLabOperation AddMemorySuppression()
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            double startedAt = GetMemoryWorldTime(memoryRuntime, memoryId);
+            string suppressionId = $"suppression.test-lab.{Guid.NewGuid():N}";
+            HistoryOperationResult result = memoryRuntime.AddSuppression(new MemorySuppressionRequest
+            {
+                TransactionId = $"history.8.4.suppression.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                SuppressionId = suppressionId,
+                SourceId = "test-lab.memory.suppression",
+                ReasonId = "development.memory-block",
+                StartedAtWorldTime = startedAt,
+                AllowsCueBypass = false,
+                Provenance = "Development fixture"
+            });
+            return RecordHistoryResult("Add 8.4 Suppression", result);
+        }
+
+        public PrototypeTestLabOperation RemoveMemorySuppression()
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            if (!TryFindSuppressedMemory(memoryRuntime, out string memoryId, out MemorySuppressionData suppression))
+            {
+                return RecordSuccess("Remove 8.4 Suppression", "No active suppression exists; memory remains available for recall.");
+            }
+
+            double removalTime = Math.Max(GetMemoryWorldTime(memoryRuntime, memoryId), suppression.startedAtWorldTime + 0.1d);
+            HistoryOperationResult result = memoryRuntime.RemoveSuppression(memoryId, suppression.suppressionId, $"history.8.4.suppression-remove.{Guid.NewGuid():N}", removalTime);
+            return RecordHistoryResult("Remove 8.4 Suppression", result);
+        }
+
+        public PrototypeTestLabOperation ExpireMemorySuppression()
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            double now = GetMemoryWorldTime(memoryRuntime, memoryId);
+            string boundedSuppressionId = $"suppression.test-lab.bounded.{Guid.NewGuid():N}";
+            HistoryOperationResult add = memoryRuntime.AddSuppression(new MemorySuppressionRequest
+            {
+                TransactionId = $"history.8.4.suppression-bounded.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                SuppressionId = boundedSuppressionId,
+                SourceId = "test-lab.memory.bounded-suppression",
+                ReasonId = "development.memory-block",
+                StartedAtWorldTime = now,
+                EndedAtWorldTime = now + 5d,
+                AllowsCueBypass = false,
+                Provenance = "Development fixture"
+            });
+            if (!add.Succeeded)
+            {
+                return RecordHistoryResult("Expire 8.4 Suppression", add);
+            }
+
+            HistoryOperationResult result = memoryRuntime.RemoveSuppression(memoryId, boundedSuppressionId, $"history.8.4.suppression-expire.{Guid.NewGuid():N}", now + 10d, expireOnly: true);
+            return RecordHistoryResult("Expire 8.4 Suppression", result);
+        }
+
+        public PrototypeTestLabOperation ProveMemorySuppressionStacking()
+        {
+            FormWitnessHistoryMemory();
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = $"memory.prototype.suppression-stack.{Guid.NewGuid():N}";
+            double now = GetGameTimeSeconds();
+            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.suppression-stack-form.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DirectObservation, createKnowledge: false));
+            now = GetMemoryWorldTime(memoryRuntime, memoryId);
+            HistoryOperationResult difficult = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.suppression-stack-difficult.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = now + 0.5d,
+                AlterationType = MemoryAlterationType.Reconstruction,
+                ResultingState = MemoryState.Difficult,
+                SourceId = "test-lab.memory.suppression-stack",
+                Description = "Set a non-accessible underlying state before suppression proof."
+            });
+            string permanentSuppressionId = $"suppression.test-lab.stack.permanent.{Guid.NewGuid():N}";
+            string boundedSuppressionId = $"suppression.test-lab.stack.bounded.{Guid.NewGuid():N}";
+            HistoryOperationResult first = memoryRuntime.AddSuppression(new MemorySuppressionRequest
+            {
+                TransactionId = $"history.8.4.suppression-stack-first.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                SuppressionId = permanentSuppressionId,
+                SourceId = "test-lab.memory.suppression-stack.permanent",
+                ReasonId = "development.memory-block",
+                StartedAtWorldTime = now + 1d,
+                Provenance = "Development fixture"
+            });
+            HistoryOperationResult second = memoryRuntime.AddSuppression(new MemorySuppressionRequest
+            {
+                TransactionId = $"history.8.4.suppression-stack-second.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                SuppressionId = boundedSuppressionId,
+                SourceId = "test-lab.memory.suppression-stack.bounded",
+                ReasonId = "development.memory-block",
+                StartedAtWorldTime = now + 1d,
+                EndedAtWorldTime = now + 5d,
+                Provenance = "Development fixture"
+            });
+            MemoryRecallResult blocked = memoryRuntime.Recall(new MemoryRecallRequest
+            {
+                TransactionId = $"history.8.4.suppression-stack-recall-blocked.{Guid.NewGuid():N}",
+                RequestingPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = now + 2d,
+                MutateMetadata = false
+            });
+            HistoryOperationResult expired = memoryRuntime.RemoveSuppression(memoryId, boundedSuppressionId, $"history.8.4.suppression-stack-expire.{Guid.NewGuid():N}", now + 6d, expireOnly: true);
+            MemoryRecallResult stillBlocked = memoryRuntime.Recall(new MemoryRecallRequest
+            {
+                TransactionId = $"history.8.4.suppression-stack-recall-still-blocked.{Guid.NewGuid():N}",
+                RequestingPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = now + 6.5d,
+                MutateMetadata = false
+            });
+            HistoryOperationResult removed = memoryRuntime.RemoveSuppression(memoryId, permanentSuppressionId, $"history.8.4.suppression-stack-remove.{Guid.NewGuid():N}", now + 7d);
+            bool restoredUnderlying = memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord finalMemory) && finalMemory.State == MemoryState.Difficult;
+            bool succeeded = formed.Succeeded
+                && difficult.Succeeded
+                && first.Succeeded
+                && second.Succeeded
+                && blocked.Outcome == MemoryRecallOutcome.BlockedBySuppression
+                && expired.Succeeded
+                && stillBlocked.Outcome == MemoryRecallOutcome.BlockedBySuppression
+                && removed.Succeeded
+                && restoredUnderlying;
+            return Record(succeeded, "Prove 8.4 Suppression Stacking", succeeded ? "Success" : "SuppressionStackMismatch", $"Formed={formed.Code} Difficult={difficult.Code} First={first.Code} Second={second.Code} Blocked={blocked.Outcome}/{blocked.Code} Expired={expired.Code} StillBlocked={stillBlocked.Outcome}/{stillBlocked.Code} Removed={removed.Code} RestoredUnderlying={restoredUnderlying}.");
+        }
+
+        public PrototypeTestLabOperation RecoverPrototypeMemory()
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            double start = GetMemoryWorldTime(memoryRuntime, memoryId);
+            HistoryOperationResult prep = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.recovery-prep.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = start,
+                AlterationType = MemoryAlterationType.Reconstruction,
+                ResultingState = MemoryState.Inaccessible,
+                SourceId = "test-lab.memory.recovery-prep",
+                Description = "Make memory inaccessible before recovery proof."
+            });
+            if (!prep.Succeeded)
+            {
+                return RecordHistoryResult("Recover 8.4 Memory", prep);
+            }
+
+            HistoryOperationResult result = memoryRuntime.RecoverMemory(memoryId, $"history.8.4.recovery.{Guid.NewGuid():N}", start + 1d, MemoryState.Accessible, "test-lab.memory.recovery");
+            return RecordHistoryResult("Recover 8.4 Memory", result);
+        }
+
+        public PrototypeTestLabOperation AlterPrototypeMemory()
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            HistoryOperationResult result = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.alter.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AlterationType = MemoryAlterationType.Distortion,
+                ResultingState = MemoryState.Altered,
+                ConfidenceDelta = 80,
+                DetailsToAddOrReplace = new[] { new MemoryDetailData { detailId = "detail.altered-claim", kind = MemoryDetailKind.Note, state = MemoryDetailState.Altered, value = "Distorted development recollection", confidence = 850 } },
+                SourceId = "test-lab.memory.distortion",
+                Description = "Prototype distortion of a remembered detail."
+            });
+            return RecordHistoryResult("Alter 8.4 Memory", result);
+        }
+
+        public PrototypeTestLabOperation CorrectAlteredMemory()
+        {
+            AlterPrototypeMemory();
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            double correctionTime = GetMemoryWorldTime(memoryRuntime, memoryId, 2d);
+            HistoryOperationResult result = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.correct-alteration.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = correctionTime,
+                AlterationType = MemoryAlterationType.Correction,
+                ResultingState = MemoryState.Recovered,
+                ClarityDelta = 100,
+                DetailsToAddOrReplace = new[] { new MemoryDetailData { detailId = "detail.altered-claim", kind = MemoryDetailKind.Note, state = MemoryDetailState.Recovered, value = "Corrected by new evidence", confidence = 900 } },
+                SourceId = "test-lab.memory.correction",
+                Description = "Corrected altered memory using new evidence."
+            });
+            return RecordHistoryResult("Correct 8.4 Altered Memory", result);
+        }
+
+        public PrototypeTestLabOperation ShowMemoryRevisionHistory()
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord memory);
+            int revisions = memory?.Revisions.Count ?? 0;
+            string detail = memory == null ? "No memory." : string.Join(" | ", memory.Revisions.Select(revision => $"{revision.revisionId}:{revision.alterationType}:{revision.state}").Take(8));
+            return Record(revisions > 0, "Show 8.4 Revision History", revisions > 0 ? "Success" : HistoryResultCode.InvalidRevision.ToString(), detail);
+        }
+
+        public PrototypeTestLabOperation CreateConflictingMemories()
+        {
+            RecordHiddenHistoryEvent();
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = $"memory.prototype.conflict.{Guid.NewGuid():N}";
+            FormMemoryRequest request = BuildMemoryRequest($"history.8.4.conflict.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.WitnessTestimony, createKnowledge: false);
+            request.Confidence = 350;
+            request.Clarity = 450;
+            request.DebugDescription = "Conflicting testimony about the hidden event.";
+            HistoryOperationResult formed = memoryRuntime.FormMemory(request);
+            MemoryRecallResult recall = memoryRuntime.Recall(new MemoryRecallRequest
+            {
+                TransactionId = $"history.8.4.conflict-recall.{Guid.NewGuid():N}",
+                RequestingPersonId = GetPrototypePersonId(),
+                HistoricalEventId = "event.prototype.hidden.secret",
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AttemptDifficult = true,
+                MutateMetadata = false
+            });
+            bool succeeded = formed.Succeeded && recall.Entries.Count > 1 && recall.Outcome == MemoryRecallOutcome.Conflicting;
+            return Record(succeeded, "Create 8.4 Conflicting Memories", succeeded ? "Success" : recall.Code.ToString(), $"Formed={formed.Code} Recall={FormatMemoryRecallResult(recall)}");
+        }
+
+        public PrototypeTestLabOperation SuppressPreviousBodyAssociation()
+        {
+            RecordBodyTransitionHistory();
+            return AlterPrototypePreviousBody("Suppress 8.4 Previous Body", MemoryDetailState.Suppressed, MemoryState.Altered);
+        }
+
+        public PrototypeTestLabOperation RecoverPreviousBodyAssociation()
+        {
+            RecordBodyTransitionHistory();
+            return AlterPrototypePreviousBody("Recover 8.4 Previous Body", MemoryDetailState.Recovered, MemoryState.Recovered);
+        }
+
+        public PrototypeTestLabOperation CompareMemoryBeliefHistory()
+        {
+            FormWitnessHistoryMemory();
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
+            MemoryRecallResult recall = memoryRuntime.Recall(new MemoryRecallRequest
+            {
+                TransactionId = $"history.8.4.compare.{Guid.NewGuid():N}",
+                RequestingPersonId = GetPrototypePersonId(),
+                HistoricalEventId = "event.prototype.hidden.secret",
+                WorldTime = GetMemoryWorldTime(memoryRuntime, GetPrototypeMemoryId()),
+                MutateMetadata = false,
+                AccessContext = MemoryAccessContext.Debug
+            });
+            int historyCount = historyRuntime.CreateSnapshot().Events.Count;
+            int evidenceCount = knowledge.CreateSnapshot().Evidence.Count;
+            bool succeeded = historyCount > 0 && memoryRuntime.CreateSnapshot().Memories.Count > 0 && recall.Entries.Count > 0;
+            return Record(succeeded, "Compare 8.4 Memory Belief History", succeeded ? "Success" : "ViewMismatch", $"History={historyCount} Memories={memoryRuntime.CreateSnapshot().Memories.Count} Recall={FormatMemoryRecallResult(recall)} Evidence={evidenceCount}.");
+        }
+
+        public PrototypeTestLabOperation ValidateMemory84SaveRestore()
+        {
+            RecordHiddenHistoryEvent();
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
+            {
+                return RecordFailure("Validate 8.4 Save Restore", "Memory runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            PersonMemoryRuntime memoryRuntime = CreateMemoryProofRuntime();
+            string memoryId = $"memory.prototype.save-restore-proof.{Guid.NewGuid():N}";
+            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.save-restore-form.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
+            double start = GetMemoryWorldTime(memoryRuntime, memoryId);
+            HistoryOperationResult suppression = memoryRuntime.AddSuppression(new MemorySuppressionRequest
+            {
+                TransactionId = $"history.8.4.save-restore-suppression.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                SuppressionId = $"suppression.test-lab.save-restore.{Guid.NewGuid():N}",
+                SourceId = "test-lab.memory.save-restore",
+                ReasonId = "development.memory-block",
+                StartedAtWorldTime = start,
+                Provenance = "Development fixture"
+            });
+            HistoryOperationResult altered = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.save-restore-alter.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = start + 1d,
+                AlterationType = MemoryAlterationType.Distortion,
+                ResultingState = MemoryState.Altered,
+                DetailsToAddOrReplace = new[] { new MemoryDetailData { detailId = "detail.save-restore-proof", kind = MemoryDetailKind.Note, state = MemoryDetailState.Altered, value = "Save restore proof detail.", confidence = 820 } },
+                SourceId = "test-lab.memory.save-restore",
+                Description = "Create a revision after suppression for save/restore proof."
+            });
+            PersonMemorySaveData saveData = memoryRuntime.CreateSaveData();
+            int events = 0;
+            void Count(PersonMemoryRuntime _, HistoryOperationResult __) => events++;
+            memoryRuntime.MemoryChanged += Count;
+            HistoryOperationResult restore = memoryRuntime.RestoreFromSaveData(saveData, registry, historyRuntime, GetKnownPrototypePersons(), restoring: true);
+            memoryRuntime.MemoryChanged -= Count;
+            PersonMemorySnapshot snapshot = memoryRuntime.CreateSnapshot();
+            bool preserved = snapshot.Memories.Any(memory => memory.Suppressions.Count > 0 && memory.Revisions.Count > 1);
+            bool succeeded = formed.Succeeded && suppression.Succeeded && altered.Succeeded && restore.Succeeded && events == 0 && preserved;
+            return Record(succeeded, "Validate 8.4 Save Restore", succeeded ? "Success" : restore.Code.ToString(), $"Formed={formed.Code} Suppression={suppression.Code} Altered={altered.Code} Restore={restore.Code} RestoreMessage='{restore.Message}' Events={events} Preserved={preserved} Memories={snapshot.Memories.Count}.");
+        }
+
         public PrototypeTestLabOperation ValidateObservationFoundation()
         {
             int observations = CountDefinitions<ObservationMethodDefinition>();
@@ -4121,6 +4692,184 @@ namespace UnityIsekaiGame.Development
                 : RecordFailure(operationName, FormatHistoryResult(result), result?.Code.ToString() ?? HistoryResultCode.InvalidRequest.ToString());
         }
 
+        private PrototypeTestLabOperation RecallMemoryWithRequest(string operationName, MemoryRecallRequest request)
+        {
+            FormWitnessHistoryMemory();
+            if (!EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime))
+            {
+                return RecordFailure(operationName, "Memory runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+            }
+
+            MemoryRecallResult result = memoryRuntime.Recall(request);
+            return result.Succeeded
+                ? Record(true, operationName, result.Code.ToString(), FormatMemoryRecallResult(result))
+                : RecordFailure(operationName, FormatMemoryRecallResult(result), result.Code.ToString());
+        }
+
+        private PrototypeTestLabOperation AlterPrototypeMemoryMetric(string operationName, int clarityDelta, int confidenceDelta, int salienceDelta, MemoryState? state)
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            HistoryOperationResult result = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.metric.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AlterationType = MemoryAlterationType.NaturalDegradation,
+                ResultingState = state,
+                ClarityDelta = clarityDelta,
+                ConfidenceDelta = confidenceDelta,
+                SalienceDelta = salienceDelta,
+                SourceId = "test-lab.memory.metric",
+                Description = operationName
+            });
+            return RecordHistoryResult(operationName, result);
+        }
+
+        private PrototypeTestLabOperation SetPrototypeMemoryState(string operationName, MemoryState state)
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            HistoryOperationResult result = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.state.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AlterationType = state == MemoryState.Forgotten ? MemoryAlterationType.DetailLoss : MemoryAlterationType.Reconstruction,
+                ResultingState = state,
+                SourceId = "test-lab.memory.state",
+                Description = $"Set memory state to {state}."
+            });
+            return RecordHistoryResult(operationName, result);
+        }
+
+        private PrototypeTestLabOperation AlterPrototypeMemoryDetails(string operationName, string[] detailIds)
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = GetPrototypeMemoryId();
+            HistoryOperationResult result = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.details.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AlterationType = MemoryAlterationType.DetailLoss,
+                ResultingState = MemoryState.Altered,
+                DetailIdsToForget = detailIds,
+                SourceId = "test-lab.memory.partial-forgetting",
+                Description = operationName
+            });
+            return RecordHistoryResult(operationName, result);
+        }
+
+        private PrototypeTestLabOperation AlterPrototypePreviousBody(string operationName, MemoryDetailState detailState, MemoryState state)
+        {
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            string memoryId = "memory.prototype.previous-body";
+            MemoryDetailData detail = new MemoryDetailData
+            {
+                detailId = "detail.body",
+                kind = MemoryDetailKind.Body,
+                state = detailState,
+                value = GetPrototypeBodyId(),
+                confidence = detailState == MemoryDetailState.Suppressed ? 100 : 850
+            };
+            HistoryOperationResult result = memoryRuntime.AlterMemory(new MemoryAlterationRequest
+            {
+                TransactionId = $"history.8.4.previous-body.{Guid.NewGuid():N}",
+                OwnerPersonId = GetPrototypePersonId(),
+                MemoryId = memoryId,
+                WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
+                AlterationType = detailState == MemoryDetailState.Suppressed ? MemoryAlterationType.Suppression : MemoryAlterationType.Recovery,
+                ResultingState = state,
+                DetailsToAddOrReplace = new[] { detail },
+                SourceId = "test-lab.memory.previous-body",
+                Description = operationName
+            });
+            return RecordHistoryResult(operationName, result);
+        }
+
+        private string GetPrototypeMemoryId()
+        {
+            FormWitnessHistoryMemory();
+            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            double now = GetGameTimeSeconds();
+            HistoryMemoryRecord memory = memoryRuntime.CreateSnapshot().Memories
+                .OrderByDescending(record => record.Accessible)
+                .ThenBy(record => record.MemoryId, StringComparer.Ordinal)
+                .FirstOrDefault(record => IsMemoryAutomationTarget(record, now));
+            if (memory != null)
+            {
+                return memory.MemoryId;
+            }
+
+            string memoryId = $"memory.prototype.automation.{Guid.NewGuid():N}";
+            memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.automation-memory.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
+            return memoryId;
+        }
+
+        private static bool IsMemoryAutomationTarget(HistoryMemoryRecord memory, double worldTime)
+        {
+            if (memory == null || string.Equals(memory.MemoryId, "memory.prototype.previous-body", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!memory.Accessible)
+            {
+                return false;
+            }
+
+            return !memory.Suppressions.Any(suppression => suppression.IsActiveAt(worldTime));
+        }
+
+        private PersonMemoryRuntime CreateMemoryProofRuntime()
+        {
+            PersonMemoryRuntime memoryRuntime = new PersonMemoryRuntime();
+            memoryRuntime.Configure(GetPrototypePersonId(), registry, authoritativeHistory, GetKnownPrototypePersons());
+            return memoryRuntime;
+        }
+
+        private double GetMemoryWorldTime(PersonMemoryRuntime memoryRuntime, string memoryId, double offsetSeconds = 1d)
+        {
+            double current = GetGameTimeSeconds();
+            if (memoryRuntime != null && memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord memory))
+            {
+                current = Math.Max(current, memory.FormedAtWorldTime);
+            }
+
+            return current + Math.Max(0d, offsetSeconds);
+        }
+
+        private bool TryFindSuppressedMemory(PersonMemoryRuntime memoryRuntime, out string memoryId, out MemorySuppressionData suppression)
+        {
+            memoryId = string.Empty;
+            suppression = null;
+            if (memoryRuntime == null)
+            {
+                return false;
+            }
+
+            double now = GetGameTimeSeconds();
+            foreach (HistoryMemoryRecord memory in memoryRuntime.CreateSnapshot().Memories.OrderBy(record => record.MemoryId, StringComparer.Ordinal))
+            {
+                MemorySuppressionData candidate = memory.Suppressions
+                    .OrderBy(entry => entry.startedAtWorldTime)
+                    .ThenBy(entry => entry.suppressionId, StringComparer.Ordinal)
+                    .FirstOrDefault(entry => entry.endedAtWorldTime < 0d || entry.endedAtWorldTime > now);
+                if (candidate != null)
+                {
+                    memoryId = memory.MemoryId;
+                    suppression = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static string FormatHistoryResult(HistoryOperationResult result)
         {
             if (result == null)
@@ -4132,6 +4881,18 @@ namespace UnityIsekaiGame.Development
             string memoryId = result.Memory == null ? "None" : result.Memory.MemoryId;
             string knowledge = result.KnowledgeResult == null ? "None" : $"{result.KnowledgeResult.Code}/{result.KnowledgeResult.ResultingBelief?.BeliefId ?? "NoBelief"}";
             return $"Success={result.Succeeded} Code={result.Code} Preview={result.Preview} Duplicate={result.Duplicate} Event={eventId} Memory={memoryId} Knowledge={knowledge} Revision={result.PriorRevision}->{result.ResultingRevision}. {result.Message}";
+        }
+
+        private static string FormatMemoryRecallResult(MemoryRecallResult result)
+        {
+            if (result == null)
+            {
+                return "Memory recall result is missing.";
+            }
+
+            string entries = string.Join(" | ", result.Entries.Select(entry =>
+                $"{entry.Memory.MemoryId}:{entry.Outcome}:state={entry.Memory.State}:conf={entry.Memory.Confidence}:clarity={entry.Memory.Clarity}:details={entry.RecalledDetails.Count}:unavailable={entry.UnavailableDetails.Count}:cue={entry.CueMatched}").Take(8));
+            return $"Success={result.Succeeded} Code={result.Code} Outcome={result.Outcome} Preview={result.Preview} Revision={result.PriorRevision}->{result.ResultingRevision} Entries={result.Entries.Count} [{entries}]. {result.Message}";
         }
 
         private string GetPrototypePersonId()

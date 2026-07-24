@@ -43,7 +43,7 @@ namespace UnityIsekaiGame.Development
         private static readonly Color ActiveButtonColor = new Color(0.20f, 0.42f, 0.55f, 1f);
         private const int MaximumDynamicReportCharacters = 10000;
         private const int MaximumDynamicReportLines = 220;
-        private const float MaximumDynamicReportHeight = 3600f;
+        private const float MaximumDynamicReportHeight = 900f;
 
         private static readonly string[] SectionNames =
         {
@@ -63,6 +63,7 @@ namespace UnityIsekaiGame.Development
             "Knowledge 8.1",
             "Observation 8.2",
             "History 8.3",
+            "Memory 8.4",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -125,6 +126,7 @@ namespace UnityIsekaiGame.Development
         private Text knowledgeText;
         private Text observationText;
         private Text characterHistoryText;
+        private Text memoryRecallText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -214,6 +216,7 @@ namespace UnityIsekaiGame.Development
         private bool automationAutoScroll = true;
         private bool automationCancelRequested;
         private Coroutine automationRunCoroutine;
+        private string automationProgressText;
 
         private void OnEnable()
         {
@@ -313,6 +316,7 @@ namespace UnityIsekaiGame.Development
             Transform knowledgeSection = AddSection(content, "Knowledge 8.1 Section");
             Transform observationSection = AddSection(content, "Observation 8.2 Section");
             Transform characterHistorySection = AddSection(content, "History 8.3 Section");
+            Transform memoryRecallSection = AddSection(content, "Memory 8.4 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -353,6 +357,7 @@ namespace UnityIsekaiGame.Development
             BuildKnowledgeSection(knowledgeSection, font);
             BuildObservationSection(observationSection, font);
             BuildCharacterHistorySection(characterHistorySection, font);
+            BuildMemoryRecallSection(memoryRecallSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -753,6 +758,48 @@ namespace UnityIsekaiGame.Development
             AddButtonRow(parent, font,
                 ("Save/Restore", () => service.ValidateHistorySaveRestore()));
             characterHistoryText = AddText(parent, font, "History runtime not available.", 12, 900);
+        }
+
+        private void BuildMemoryRecallSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Validate", () => service.ValidateMemory84()),
+                ("Inspect", () => service.InspectExistingMemories()),
+                ("Recall", () => service.RecallPrototypeMemory()),
+                ("By Subject", () => service.RecallPrototypeMemoryBySubject()));
+            AddButtonRow(parent, font,
+                ("With Cue", () => service.RecallPrototypeMemoryWithCue()),
+                ("Reinforce", () => service.ReinforcePrototypeMemory()),
+                ("False Reinforce", () => service.ReinforceFalsePrototypeMemory()),
+                ("Degrade Proof", () => service.ProveMemoryDegradationIdempotence()));
+            AddButtonRow(parent, font,
+                ("Reduce Clarity", () => service.ReduceMemoryClarity()),
+                ("Reduce Conf", () => service.ReduceMemoryConfidence()),
+                ("Difficult", () => service.MakeMemoryDifficult()),
+                ("Partial Forget", () => service.PartialForgetPrototypeMemory()));
+            AddButtonRow(parent, font,
+                ("Forget Person", () => service.ForgetMemoryParticipant()));
+            AddButtonRow(parent, font,
+                ("Forget Time", () => service.ForgetMemoryTimeOrLocation()),
+                ("Inaccessible", () => service.MakeMemoryInaccessible()),
+                ("Forgotten", () => service.MarkMemoryForgotten()),
+                ("Suppress", () => service.AddMemorySuppression()));
+            AddButtonRow(parent, font,
+                ("Stack Proof", () => service.ProveMemorySuppressionStacking()),
+                ("Remove Supp", () => service.RemoveMemorySuppression()),
+                ("Expire Supp", () => service.ExpireMemorySuppression()),
+                ("Recover", () => service.RecoverPrototypeMemory()),
+                ("Alter", () => service.AlterPrototypeMemory()));
+            AddButtonRow(parent, font,
+                ("Correct", () => service.CorrectAlteredMemory()),
+                ("Revisions", () => service.ShowMemoryRevisionHistory()),
+                ("Conflicts", () => service.CreateConflictingMemories()),
+                ("Suppress Body", () => service.SuppressPreviousBodyAssociation()));
+            AddButtonRow(parent, font,
+                ("Recover Body", () => service.RecoverPreviousBodyAssociation()),
+                ("Compare", () => service.CompareMemoryBeliefHistory()),
+                ("Save/Restore", () => service.ValidateMemory84SaveRestore()));
+            memoryRecallText = AddText(parent, font, "Memory runtime not available.", 12, 980);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1355,6 +1402,9 @@ namespace UnityIsekaiGame.Development
                 case "History 8.3":
                     SetValue(characterHistoryText, service.BuildHistorySummary());
                     break;
+                case "Memory 8.4":
+                    SetValue(memoryRecallText, service.BuildMemoryRecallSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -1446,6 +1496,12 @@ namespace UnityIsekaiGame.Development
             if (service == null || service.History.Count == 0)
             {
                 latestOperationText.text = "Last Result: No operations yet.";
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(automationProgressText))
+            {
+                latestOperationText.text = automationProgressText;
                 return;
             }
 
@@ -1611,6 +1667,7 @@ namespace UnityIsekaiGame.Development
         private IEnumerator RunAutomationBatch(TestLabAutomationRunMode runMode, IReadOnlyList<(string SuiteId, string ScenarioId)> selections)
         {
             service.BeginAutomationBatch(runMode);
+            SetAutomationProgress($"Automation Running: 0/{selections.Count} {runMode}");
             Refresh();
             yield return null;
 
@@ -1622,7 +1679,12 @@ namespace UnityIsekaiGame.Development
                 }
 
                 (string suiteId, string scenarioId) = selections[i];
+                SetAutomationProgress($"Automation Running: {i + 1}/{selections.Count} {ShortAutomationId(suiteId)}/{scenarioId}");
+                Refresh();
+                yield return null;
+
                 PrototypeTestLabOperation operation = service.RunAutomationScenarioInBatch(suiteId, scenarioId, automationStopOnFirstFailure);
+                SetAutomationProgress($"Automation Progress: {i + 1}/{selections.Count} {(operation.Succeeded ? "PASS" : "FAIL")} {ShortAutomationId(suiteId)}/{scenarioId}");
                 Refresh();
                 if (automationAutoScroll && bodyScrollRect != null)
                 {
@@ -1638,9 +1700,27 @@ namespace UnityIsekaiGame.Development
             }
 
             service.CompleteAutomationBatch(automationCancelRequested);
+            automationProgressText = string.Empty;
             Refresh();
             automationRunCoroutine = null;
             automationCancelRequested = false;
+        }
+
+        private void SetAutomationProgress(string text)
+        {
+            automationProgressText = text ?? string.Empty;
+            UpdateLatestOperation();
+        }
+
+        private static string ShortAutomationId(string suiteId)
+        {
+            if (string.IsNullOrWhiteSpace(suiteId))
+            {
+                return "suite";
+            }
+
+            const string prefix = "feature.";
+            return suiteId.StartsWith(prefix, StringComparison.Ordinal) ? suiteId.Substring(prefix.Length) : suiteId;
         }
 
         private void CancelAutomationBatch()
@@ -1843,7 +1923,7 @@ namespace UnityIsekaiGame.Development
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
                 Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8", "Biological Conditions 7.9", "Biology Integration 7.10"),
-                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3")
+                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3", "Memory 8.4")
             };
         }
 
@@ -1914,7 +1994,7 @@ namespace UnityIsekaiGame.Development
             contentRect.offsetMin = new Vector2(10f, 0f);
             contentRect.offsetMax = new Vector2(-10f, -10f);
             VerticalLayoutGroup layout = content.GetComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(0, 0, 10, 10);
+            layout.padding = new RectOffset(0, 0, 10, 34);
             layout.spacing = 8f;
             layout.childControlWidth = true;
             layout.childControlHeight = true;
@@ -2099,7 +2179,7 @@ namespace UnityIsekaiGame.Development
             {
                 if (dynamicTextBlocks.Contains(text))
                 {
-                    text.text = ClampDynamicReportText(value);
+                    text.text = ClampDynamicReportText(value).TrimEnd();
                     UpdateDynamicTextHeight(text);
                     return;
                 }
@@ -2179,6 +2259,7 @@ namespace UnityIsekaiGame.Development
 
         private static int CountLines(string value)
         {
+            value = string.IsNullOrEmpty(value) ? string.Empty : value.TrimEnd();
             if (string.IsNullOrEmpty(value))
             {
                 return 1;

@@ -240,6 +240,45 @@ namespace UnityIsekaiGame.UI.Inventory
             }
         }
 
+        public void BeginPersistenceRestore()
+        {
+            if (!isOpen)
+            {
+                return;
+            }
+
+            if (input != null)
+            {
+                input.SetGameplayInputBlocked(true);
+                input.ClearGameplayActionQueues();
+                input.ClearInventoryUiActions();
+            }
+
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            view?.Show();
+        }
+
+        public void CompletePersistenceRestore()
+        {
+            if (!isOpen)
+            {
+                return;
+            }
+
+            if (input != null)
+            {
+                input.SetGameplayInputBlocked(true);
+                input.ClearGameplayActionQueues();
+                input.ClearInventoryUiActions();
+            }
+
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            Refresh();
+            view?.Show();
+        }
+
         private void Open()
         {
             if (isOpen)
@@ -344,6 +383,7 @@ namespace UnityIsekaiGame.UI.Inventory
 
         public PlayerInventory Inventory => inventory;
         public PlayerEquipment Equipment => equipment;
+        public bool IsOpen => isOpen;
         public PlayerStats PlayerStats => playerStats;
         public PlayerHealth PlayerHealth => playerHealth;
         public PlayerMana PlayerMana => playerMana;

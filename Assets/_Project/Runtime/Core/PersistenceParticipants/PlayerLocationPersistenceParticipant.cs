@@ -226,6 +226,7 @@ namespace UnityIsekaiGame.Persistence
             Quaternion previousRotation = playerRoot.rotation;
             CharacterController characterController = playerRoot.GetComponent<CharacterController>();
             bool wasControllerEnabled = characterController != null && characterController.enabled;
+            bool preserveOpenMenu = inventoryScreenController != null && inventoryScreenController.IsOpen;
 
             LocationRestoreStarted?.Invoke(new LocationRestoreEventArgs(prepared.SaveData.sceneKey, prepared.Place, prepared.TargetPosition, prepared.TargetRotation, prepared.FallbackUsed));
 
@@ -235,7 +236,14 @@ namespace UnityIsekaiGame.Persistence
                 {
                     input?.SetGameplayInputBlocked(true);
                     input?.ClearGameplayActionQueues();
-                    inventoryScreenController?.CloseForPrototypeReset();
+                    if (preserveOpenMenu)
+                    {
+                        inventoryScreenController.BeginPersistenceRestore();
+                    }
+                    else
+                    {
+                        inventoryScreenController?.CloseForPrototypeReset();
+                    }
 
                     if (characterController != null)
                     {
@@ -256,7 +264,14 @@ namespace UnityIsekaiGame.Persistence
 
                     placeTracker?.ForceCurrentPlace(prepared.Place, isRestoration: true);
                     input?.ClearGameplayActionQueues();
-                    input?.SetGameplayInputBlocked(false);
+                    if (preserveOpenMenu)
+                    {
+                        inventoryScreenController.CompletePersistenceRestore();
+                    }
+                    else
+                    {
+                        input?.SetGameplayInputBlocked(false);
+                    }
 
                     if (prepared.FallbackUsed)
                     {
@@ -289,6 +304,11 @@ namespace UnityIsekaiGame.Persistence
                     }
 
                     input?.SetGameplayInputBlocked(false);
+                    if (preserveOpenMenu)
+                    {
+                        inventoryScreenController.CompletePersistenceRestore();
+                    }
+
                     return PersistenceParticipantCommitResult.Failure($"Player location commit failed; previous transform restored: {exception.Message}");
                 }
             }

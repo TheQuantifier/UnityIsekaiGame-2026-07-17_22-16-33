@@ -16,6 +16,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildKnowledgeSuite());
             TryRegister(registry, BuildObservationSuite());
             TryRegister(registry, BuildHistorySuite());
+            TryRegister(registry, BuildMemorySuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -213,6 +214,46 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("compare", "Compare views", context => Operation(context.Service.CompareHistoryKnowledgeMemoryViews(), context, "step8-history-compare"))),
                 Scenario("save-restore-round-trip", "History and memory save/restore preserves state silently", 90,
                     Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateHistorySaveRestore(), context, "step8-history-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildMemorySuite()
+        {
+            return Suite("feature.8.4.memory-recall-forgetting-alteration", "Feature 8.4 Memory Recall, Forgetting, and Alteration", "8.4", 840,
+                Required("PersonMemoryRuntime", "AuthoritativeHistoryRuntime", "PersonKnowledgeRuntime"),
+                Scenario("foundation-validates", "Memory 8.4 runtime data validates", 10,
+                    Step("validate", "Validate Memory", context => Operation(context.Service.ValidateMemory84(), context, "step8-memory-validate"))),
+                Scenario("recall-accessible-memory", "Accessible event-linked memory can be recalled", 20,
+                    Step("recall", "Recall memory", context => Operation(context.Service.RecallPrototypeMemory(), context, "step8-memory-recall"))),
+                Scenario("recall-by-subject-and-cue", "Subject and cue recall are deterministic", 30,
+                    Step("subject", "Recall by subject", context => Operation(context.Service.RecallPrototypeMemoryBySubject(), context, "step8-memory-subject")),
+                    Step("cue", "Recall with cue", context => Operation(context.Service.RecallPrototypeMemoryWithCue(), context, "step8-memory-cue"))),
+                Scenario("reinforcement-is-not-truth", "False memory can be reinforced without changing history", 40,
+                    Step("false-reinforce", "Reinforce false memory", context => Operation(context.Service.ReinforceFalsePrototypeMemory(), context, "step8-memory-false-reinforce"))),
+                Scenario("degradation-and-difficulty", "Clarity/confidence reduction changes accessibility", 50,
+                    Step("idempotence", "Prove degradation idempotence", context => Operation(context.Service.ProveMemoryDegradationIdempotence(), context, "step8-memory-degrade-idempotence")),
+                    Step("clarity", "Reduce clarity", context => Operation(context.Service.ReduceMemoryClarity(), context, "step8-memory-clarity")),
+                    Step("difficulty", "Make difficult", context => Operation(context.Service.MakeMemoryDifficult(), context, "step8-memory-difficult"))),
+                Scenario("partial-forgetting", "Participant, time, and location details can be unavailable", 60,
+                    Step("participant", "Forget participant", context => Operation(context.Service.ForgetMemoryParticipant(), context, "step8-memory-forget-participant")),
+                    Step("time-location", "Forget time or location", context => Operation(context.Service.ForgetMemoryTimeOrLocation(), context, "step8-memory-forget-time-location"))),
+                Scenario("suppression-stacking-and-removal", "Suppression blocks recall until removed or expired", 70,
+                    Step("stacking", "Prove suppression stacking", context => Operation(context.Service.ProveMemorySuppressionStacking(), context, "step8-memory-suppression-stacking")),
+                    Step("suppress", "Add suppression", context => Operation(context.Service.AddMemorySuppression(), context, "step8-memory-suppress")),
+                    Step("remove", "Remove suppression", context => Operation(context.Service.RemoveMemorySuppression(), context, "step8-memory-remove-suppression")),
+                    Step("expire", "Expire suppression", context => Operation(context.Service.ExpireMemorySuppression(), context, "step8-memory-expire-suppression"))),
+                Scenario("recovery-and-alteration", "Recovery, alteration, and correction preserve revisions", 80,
+                    Step("recover", "Recover memory", context => Operation(context.Service.RecoverPrototypeMemory(), context, "step8-memory-recover")),
+                    Step("alter", "Alter memory", context => Operation(context.Service.AlterPrototypeMemory(), context, "step8-memory-alter")),
+                    Step("correct", "Correct altered memory", context => Operation(context.Service.CorrectAlteredMemory(), context, "step8-memory-correct")),
+                    Step("revisions", "Show revisions", context => Operation(context.Service.ShowMemoryRevisionHistory(), context, "step8-memory-revisions"))),
+                Scenario("conflicting-memories", "Multiple conflicting memories remain separate", 90,
+                    Step("conflicts", "Create conflicts", context => Operation(context.Service.CreateConflictingMemories(), context, "step8-memory-conflicts"))),
+                Scenario("previous-body-accessibility", "Previous-body association can be suppressed and recovered", 100,
+                    Step("suppress-body", "Suppress previous body", context => Operation(context.Service.SuppressPreviousBodyAssociation(), context, "step8-memory-suppress-body")),
+                    Step("recover-body", "Recover previous body", context => Operation(context.Service.RecoverPreviousBodyAssociation(), context, "step8-memory-recover-body"))),
+                Scenario("compare-and-save-restore", "Memory, belief, history, and persistence stay separated", 110,
+                    Step("compare", "Compare views", context => Operation(context.Service.CompareMemoryBeliefHistory(), context, "step8-memory-compare")),
+                    Step("save-restore", "Save restore", context => Operation(context.Service.ValidateMemory84SaveRestore(), context, "step8-memory-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

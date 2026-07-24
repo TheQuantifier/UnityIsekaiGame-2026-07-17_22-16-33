@@ -56,6 +56,8 @@ Corrections to authoritative history do not automatically rewrite Person beliefs
 
 `PersonMemoryRuntime` owns structured memory records for a specific persistent Person. A memory can reference a historical event, belief, evidence IDs, source type, formation time, remembered event time, last recall time, confidence, clarity, salience, visibility, identity/body-at-time, and correction links.
 
+Feature 8.4 extends these memory records with deterministic recall requests/results, accessibility states, structured detail availability, suppression records, reinforcement/degradation metadata, and auditable revision history. Authoritative history remains unchanged when a memory is forgotten, suppressed, altered, or recovered.
+
 Memory states include accessible, inaccessible, uncertain, disputed, corrected, and forgotten. Forgetting a memory changes Person memory accessibility; it does not delete authoritative history.
 
 ## Knowledge Integration
