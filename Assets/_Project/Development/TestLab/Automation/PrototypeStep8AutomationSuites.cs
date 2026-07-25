@@ -22,6 +22,8 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildInformationSharingSuite());
             TryRegister(registry, BuildInformationAccessSuite());
             TryRegister(registry, BuildKnowledgeRecordsSuite());
+            TryRegister(registry, BuildKnowledgeHistoryIntegrationSuite());
+            TryRegister(registry, BuildStep8MasterIntegrationSuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -432,6 +434,69 @@ namespace UnityIsekaiGame.Development.Automation
                 Scenario("search-and-save-restore", "Search and persistence preserve records deterministically", 70,
                     Step("search", "Search records", context => Operation(context.Service.SearchKnowledgeRecords(), context, "step8-records-search")),
                     Step("save-restore", "Save restore", context => Operation(context.Service.ValidateKnowledgeRecordSaveRestore(), context, "step8-records-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildKnowledgeHistoryIntegrationSuite()
+        {
+            return Suite("feature.8.10.knowledge-history-integration", "Feature 8.10 Knowledge and History Integration", "8.10", 900,
+                Required("KnowledgeHistoryFacade", "PersonKnowledgeRuntime", "AuthoritativeHistoryRuntime", "PersonMemoryRuntime", "InformationAccessRuntime", "KnowledgeRecordRuntime"),
+                Scenario("readiness-and-validation", "Integrated Step 8 readiness and validation pass", 10,
+                    Step("prepare", "Prepare integration fixtures", context => Operation(context.Service.PrepareKnowledgeHistoryIntegrationFixtures(), context, "step8-integration-prepare")),
+                    Step("readiness", "Validate readiness snapshot", context => Operation(context.Service.ValidateKnowledgeHistoryReadiness(), context, "step8-integration-readiness")),
+                    Step("validate", "Validate integrated state", context => Operation(context.Service.ValidateKnowledgeHistoryIntegration(), context, "step8-integration-validate"))),
+                Scenario("definition-fallbacks-and-save-graph", "Fallback diagnostics and persistence graph are explicit", 20,
+                    Step("prepare", "Prepare integration fixtures", context => Operation(context.Service.PrepareKnowledgeHistoryIntegrationFixtures(), context, "step8-integration-prepare")),
+                    Step("fallbacks", "Show fallback diagnostics", context => Operation(context.Service.ShowKnowledgeHistoryFallbackDiagnostics(), context, "step8-integration-fallbacks")),
+                    Step("save-graph", "Validate save capture graph", context => Operation(context.Service.ValidateKnowledgeHistorySaveCapture(), context, "step8-integration-save-graph"))),
+                Scenario("facade-workflows", "Facade routes representative workflows through owning runtimes", 30,
+                    Step("prepare", "Prepare integration fixtures", context => Operation(context.Service.PrepareKnowledgeHistoryIntegrationFixtures(), context, "step8-integration-prepare")),
+                    Step("discovery", "Run discovery flow", context => Operation(context.Service.RunKnowledgeHistoryDiscoveryFlow(), context, "step8-integration-discovery")),
+                    Step("event-memory", "Run event and memory flow", context => Operation(context.Service.RunKnowledgeHistoryEventMemoryFlow(), context, "step8-integration-event-memory")),
+                    Step("record-read", "Run record reading flow", context => Operation(context.Service.RunKnowledgeHistoryRecordReadingFlow(), context, "step8-integration-record-read"))),
+                Scenario("access-and-step9-contracts", "Access projection remains enforced and Step 9 contracts are present", 40,
+                    Step("prepare", "Prepare integration fixtures", context => Operation(context.Service.PrepareKnowledgeHistoryIntegrationFixtures(), context, "step8-integration-prepare")),
+                    Step("access", "Run access projection", context => Operation(context.Service.RunKnowledgeHistoryAccessProjectionFlow(), context, "step8-integration-access")),
+                    Step("step9", "Preview Step 9 contracts", context => Operation(context.Service.PreviewStep9KnowledgeContracts(), context, "step8-integration-step9"))));
+        }
+
+        private static ITestLabAutomationSuite BuildStep8MasterIntegrationSuite()
+        {
+            return new TestLabAutomationSuite(
+                "step.8.knowledge-history-integration",
+                "Step 8 Knowledge and History Integration Master",
+                "Step 8",
+                "Runs Feature 8.1 through 8.10 in dependency order, then performs final Step 8 integration hardening checks.",
+                910,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: false,
+                requiredServices: Required("PersonKnowledgeRuntime", "AuthoritativeHistoryRuntime", "PersonMemoryRuntime", "InformationSourceRuntime", "InformationTransferRuntime", "InformationAccessRuntime", "KnowledgeRecordRuntime", "KnowledgeHistoryFacade"),
+                scenarios: new[]
+                {
+                    Scenario("feature-suites-in-order", "Run Step 8 feature suites in dependency order", 10,
+                        Step("feature-8-1", "Run Feature 8.1 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.1.knowledge-facts-beliefs", stopOnFirstFailure: true), context, "step8-master-8-1")),
+                        Step("feature-8-2", "Run Feature 8.2 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.2.observation-examination-identification-diagnosis", stopOnFirstFailure: true), context, "step8-master-8-2")),
+                        Step("feature-8-3", "Run Feature 8.3 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.3.character-history-memory-timelines", stopOnFirstFailure: true), context, "step8-master-8-3")),
+                        Step("feature-8-4", "Run Feature 8.4 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.4.memory-recall-forgetting-alteration", stopOnFirstFailure: true), context, "step8-master-8-4")),
+                        Step("feature-8-5", "Run Feature 8.5 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.5.character-history-life-events", stopOnFirstFailure: true), context, "step8-master-8-5")),
+                        Step("feature-8-6", "Run Feature 8.6 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.6.information-sources-reliability", stopOnFirstFailure: true), context, "step8-master-8-6")),
+                        Step("feature-8-7", "Run Feature 8.7 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.7.information-sharing-teaching", stopOnFirstFailure: true), context, "step8-master-8-7")),
+                        Step("feature-8-8", "Run Feature 8.8 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.8.secrets-visibility-information-access", stopOnFirstFailure: true), context, "step8-master-8-8")),
+                        Step("feature-8-9", "Run Feature 8.9 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.9.historical-records-journals-codex", stopOnFirstFailure: true), context, "step8-master-8-9")),
+                        Step("feature-8-10", "Run Feature 8.10 suite", context => Operation(context.Service.RunAutomationSuite("feature.8.10.knowledge-history-integration", stopOnFirstFailure: true), context, "step8-master-8-10"))),
+                    Scenario("final-hardening", "Run final cross-runtime integration hardening checks", 20,
+                        Step("prepare", "Prepare integration fixtures", context => Operation(context.Service.PrepareKnowledgeHistoryIntegrationFixtures(), context, "step8-master-prepare")),
+                        Step("cross-runtime", "Cross-runtime workflows", context => Operation(context.Service.RunKnowledgeHistoryEventMemoryFlow(), context, "step8-master-cross-runtime")),
+                        Step("save-capture", "Full save capture graph", context => Operation(context.Service.ValidateKnowledgeHistorySaveCapture(), context, "step8-master-save-capture")),
+                        Step("save-restore", "Full save restore", context => Operation(context.Service.ValidateKnowledgeHistoryFullSaveRestore(), context, "step8-master-save-restore")),
+                        Step("corrupt-restore", "Corrupt restore rollback", context => Operation(context.Service.ValidateKnowledgeHistoryCorruptRestoreRollback(), context, "step8-master-corrupt-restore")),
+                        Step("definitions", "Definition registry consistency", context => Operation(context.Service.ShowKnowledgeHistoryFallbackDiagnostics(), context, "step8-master-definitions")),
+                        Step("access", "Access and redaction safety", context => Operation(context.Service.ValidateKnowledgeHistoryAccessSafety(), context, "step8-master-access")),
+                        Step("snapshot", "Snapshot immutability", context => Operation(context.Service.ValidateKnowledgeHistorySnapshotImmutability(), context, "step8-master-snapshot")),
+                        Step("ordering", "Deterministic ordering", context => Operation(context.Service.ValidateKnowledgeHistoryDeterministicOrdering(), context, "step8-master-ordering")),
+                        Step("dirty-events", "Dirty state and restore event behavior", context => Operation(context.Service.ValidateKnowledgeHistoryDirtyAndEventBoundaries(), context, "step8-master-dirty-events"))),
+                    Scenario("step9-contracts", "Step 9 contracts remain present and non-authoritative", 30,
+                        Step("contracts", "Preview Step 9 contracts", context => Operation(context.Service.PreviewStep9KnowledgeContracts(), context, "step8-master-step9")))
+                });
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

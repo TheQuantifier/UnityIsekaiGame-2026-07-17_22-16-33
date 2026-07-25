@@ -36,6 +36,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.History;
+using UnityIsekaiGame.Knowledge.Integration;
 using UnityIsekaiGame.Knowledge.Observation;
 using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
@@ -3582,21 +3583,40 @@ namespace UnityIsekaiGame.Development
         {
             RecordLifeEventBirthOrCreation();
             RecordLifeEventBattleParticipation();
-            RecordLifeEventMajorInjury();
-            CorrectLifeEventPresumedDeath();
             EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            string runId = Guid.NewGuid().ToString("N");
+            string presumedDeathId = $"event.prototype.life.presumed-death.{runId}";
+            string returnCorrectionId = $"event.prototype.life.return.corrected.{runId}";
+            HistoryOperationResult presumedDeath = historyRuntime.RecordLifeEvent(BuildPrototypeLifeEventRequest(presumedDeathId, "history-event.life.presumed-death", LifeEventCategory.Disappearance, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.Major, LifeEventBiographyRelevance.RestrictedBiographyEvent, KnowledgeVisibility.Private, LifeEventParticipantRole.Subject));
+            RecordLifeEventRequest correctionRequest = BuildPrototypeLifeEventRequest(returnCorrectionId, "history-event.life.return", LifeEventCategory.ReturnOrResurrection, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.MajorBiographyEvent, KnowledgeVisibility.Public, LifeEventParticipantRole.Subject);
+            correctionRequest.SupersedesEventId = presumedDeathId;
+            HistoryOperationResult correction = presumedDeath.Succeeded
+                ? historyRuntime.RecordLifeEvent(correctionRequest)
+                : HistoryOperationResult.Failure(presumedDeath.Code, presumedDeath.Message, presumedDeath.TransactionId, revision: historyRuntime.HistoryRevision);
             AuthoritativeHistorySaveData historySave = historyRuntime.CreateSaveData();
             PersonMemorySaveData memorySave = memoryRuntime.CreateSaveData();
             AuthoritativeHistoryRuntime restoredHistory = new AuthoritativeHistoryRuntime();
             restoredHistory.Configure(registry, PersistenceService.LocalWorldId, GetKnownPrototypePersons(), GetKnownPrototypeBodies());
             PersonMemoryRuntime restoredMemory = new PersonMemoryRuntime();
             restoredMemory.Configure(GetPrototypePersonId(), registry, restoredHistory, GetKnownPrototypePersons());
+            int historyEvents = 0;
+            int memoryEvents = 0;
+            void CountHistory(AuthoritativeHistoryRuntime _, HistoryOperationResult __) => historyEvents++;
+            void CountMemory(PersonMemoryRuntime _, HistoryOperationResult __) => memoryEvents++;
+            restoredHistory.HistoryChanged += CountHistory;
+            restoredMemory.MemoryChanged += CountMemory;
             HistoryOperationResult historyRestore = restoredHistory.RestoreFromSaveData(historySave, registry, GetKnownPrototypePersons(), GetKnownPrototypeBodies(), restoring: true);
             HistoryOperationResult memoryRestore = restoredMemory.RestoreFromSaveData(memorySave, registry, restoredHistory, GetKnownPrototypePersons(), restoring: true);
+            restoredHistory.HistoryChanged -= CountHistory;
+            restoredMemory.MemoryChanged -= CountMemory;
             HistoricalEventRecord accepted = null;
-            bool acceptedResolved = restoredHistory.TryGetAcceptedEvent("event.prototype.life.presumed-death", out accepted);
-            bool succeeded = historyRestore.Succeeded && memoryRestore.Succeeded && restoredHistory.QueryLifeEventsForPerson(GetPrototypePersonId()).Count >= 3 && acceptedResolved && accepted.EventId == "event.prototype.life.return.corrected";
-            return Record(succeeded, "Validate 8.5 Save Restore", succeeded ? "Success" : "RestoreFailed", $"History={historyRestore.Code} '{historyRestore.Message}' Memory={memoryRestore.Code} '{memoryRestore.Message}' Events={restoredHistory.QueryLifeEventsForPerson(GetPrototypePersonId()).Count} AcceptedPresumedDeath={(accepted == null ? "None" : accepted.EventId)}.");
+            bool acceptedResolved = restoredHistory.TryGetAcceptedEvent(presumedDeathId, out accepted);
+            bool presumedRestored = restoredHistory.TryGetEvent(presumedDeathId, out _);
+            bool correctionRestored = restoredHistory.TryGetEvent(returnCorrectionId, out _);
+            int restoredLifeEvents = restoredHistory.QueryLifeEventsForPerson(GetPrototypePersonId()).Count;
+            bool noReplayEvents = historyEvents == 0 && memoryEvents == 0;
+            bool succeeded = presumedDeath.Succeeded && correction.Succeeded && historyRestore.Succeeded && memoryRestore.Succeeded && presumedRestored && correctionRestored && acceptedResolved && accepted.EventId == returnCorrectionId && noReplayEvents;
+            return Record(succeeded, "Validate 8.5 Save Restore", succeeded ? "Success" : "RestoreFailed", $"Presumed={presumedDeath.Code} Correction={correction.Code} History={historyRestore.Code} '{historyRestore.Message}' Memory={memoryRestore.Code} '{memoryRestore.Message}' Events={restoredLifeEvents} Restored={presumedRestored}/{correctionRestored} RestoreEvents={historyEvents}/{memoryEvents} AcceptedPresumedDeath={(accepted == null ? "None" : accepted.EventId)}.");
         }
 
         public PrototypeTestLabOperation RecordAuthoritativeHistoryEvent()
@@ -3772,31 +3792,29 @@ namespace UnityIsekaiGame.Development
 
             string oldBody = GetPrototypeBodyId();
             string newBody = "body.prototype.future";
-            HistoryOperationResult transition;
-            if (historyRuntime.TryGetEvent("event.prototype.body-transition", out HistoricalEventRecord existingTransition))
-            {
-                transition = HistoryOperationResult.Success("Body transition already exists.", "history.8.3.body-transition.existing", existingTransition, null, null, historyRuntime.HistoryRevision, historyRuntime.HistoryRevision, duplicate: true);
-            }
-            else
-            {
-                transition = historyRuntime.RecordBodyTransition($"history.8.3.body-transition.{Guid.NewGuid():N}", "event.prototype.body-transition", GetPrototypePersonId(), oldBody, newBody, GetGameTimeSeconds(), GetGameTimeSeconds(), "Prototype body continuity test");
-            }
+            string runId = Guid.NewGuid().ToString("N");
+            string transitionEventId = $"event.prototype.body-transition.{runId}";
+            HistoryOperationResult transition = historyRuntime.RecordBodyTransition($"history.8.3.body-transition.{runId}", transitionEventId, GetPrototypePersonId(), oldBody, newBody, GetGameTimeSeconds(), GetGameTimeSeconds(), "Prototype body continuity test");
 
             if (!transition.Succeeded && transition.Code != HistoryResultCode.Duplicate)
             {
                 return RecordHistoryResult("Record 8.3 Body Transition", transition);
             }
 
-            FormMemoryRequest memory = BuildMemoryRequest("history.8.3.previous-body-memory", "memory.prototype.previous-body", "event.prototype.body-transition", HistoryMemorySource.PreviousBody, createKnowledge: false);
+            string transitionMemoryId = $"memory.prototype.previous-body.{runId}";
+            FormMemoryRequest memory = BuildMemoryRequest($"history.8.3.previous-body-memory.{runId}", transitionMemoryId, transitionEventId, HistoryMemorySource.PreviousBody, createKnowledge: false);
             memory.BodyAtTimeId = oldBody;
-            if (!memoryRuntime.TryGetMemory(memory.MemoryId, out _))
+            HistoryOperationResult memoryResult = memoryRuntime.FormMemory(memory);
+            if (!memoryRuntime.TryGetMemory("memory.prototype.previous-body", out _))
             {
-                memoryRuntime.FormMemory(memory);
+                FormMemoryRequest compatibilityMemory = BuildMemoryRequest("history.8.3.previous-body-memory.compatibility", "memory.prototype.previous-body", transitionEventId, HistoryMemorySource.PreviousBody, createKnowledge: false);
+                compatibilityMemory.BodyAtTimeId = oldBody;
+                memoryRuntime.FormMemory(compatibilityMemory);
             }
 
             IReadOnlyList<BodyOccupationRecord> occupations = historyRuntime.QueryBodyOccupations(GetPrototypePersonId());
-            bool succeeded = occupations.Any(record => record.BodyId == newBody) && memoryRuntime.CreateSnapshot().Memories.Any(record => record.BodyAtTimeId == oldBody);
-            return Record(succeeded, "Record 8.3 Body Transition", succeeded ? "Success" : "ContinuityMissing", $"Transition={transition.Code} Occupations={occupations.Count} Memories={memoryRuntime.CreateSnapshot().Memories.Count}.");
+            bool succeeded = transition.Succeeded && memoryResult.Succeeded && occupations.Any(record => record.BodyId == newBody) && memoryRuntime.CreateSnapshot().Memories.Any(record => record.MemoryId == transitionMemoryId && record.BodyAtTimeId == oldBody);
+            return Record(succeeded, "Record 8.3 Body Transition", succeeded ? "Success" : "ContinuityMissing", $"Transition={transition.Code} Memory={memoryResult.Code} Occupations={occupations.Count} Memories={memoryRuntime.CreateSnapshot().Memories.Count}.");
         }
 
         public PrototypeTestLabOperation CompareHistoryKnowledgeMemoryViews()
@@ -3900,22 +3918,28 @@ namespace UnityIsekaiGame.Development
 
         public PrototypeTestLabOperation RecallPrototypeMemoryBySubject()
         {
-            string memoryId = GetPrototypeMemoryId();
-            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            if (!TryCreateIsolatedMemoryRecallFixture("subject", out PersonMemoryRuntime memoryRuntime, out string memoryId, out string eventId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
             return RecallMemoryWithRequest("Recall 8.4 By Subject", new MemoryRecallRequest
             {
                 TransactionId = $"history.8.4.recall-subject.{Guid.NewGuid():N}",
                 RequestingPersonId = GetPrototypePersonId(),
-                SubjectId = "event.prototype.hidden.secret",
+                SubjectId = eventId,
                 WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
                 AttemptDifficult = true
-            });
+            }, memoryRuntime);
         }
 
         public PrototypeTestLabOperation RecallPrototypeMemoryWithCue()
         {
-            string memoryId = GetPrototypeMemoryId();
-            EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
+            if (!TryCreateIsolatedMemoryRecallFixture("cue", out PersonMemoryRuntime memoryRuntime, out string memoryId, out string eventId, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
             return RecallMemoryWithRequest("Recall 8.4 With Cue", new MemoryRecallRequest
             {
                 TransactionId = $"history.8.4.recall-cue.{Guid.NewGuid():N}",
@@ -3924,8 +3948,8 @@ namespace UnityIsekaiGame.Development
                 WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
                 AttemptDifficult = true,
                 AllowCueRecovery = true,
-                Cues = new[] { new MemoryRecallCue { Kind = MemoryCueKind.HistoricalEvent, ReferenceId = "event.prototype.hidden.secret", Strength = 1000 } }
-            });
+                Cues = new[] { new MemoryRecallCue { Kind = MemoryCueKind.HistoricalEvent, ReferenceId = eventId, Strength = 1000 } }
+            }, memoryRuntime);
         }
 
         public PrototypeTestLabOperation ReinforcePrototypeMemory()
@@ -4847,15 +4871,22 @@ namespace UnityIsekaiGame.Development
                 return RecordFailure("Validate 8.8 Projection Adapters", $"Source fixture failed: {sourceResult.Code} {sourceResult.Message}", InformationAccessResultCode.InvalidRequest.ToString());
             }
 
+            string historyPolicyId = $"information-access.policy.adapter.history-hidden-event.{SanitizeForTransaction(eventRecord.EventId)}";
+            string lifePolicyId = $"information-access.policy.adapter.life-injury.{SanitizeForTransaction(lifeEventId)}";
+            string lifeHistoryPolicyId = $"information-access.policy.adapter.life-injury-history.{SanitizeForTransaction(lifeEventId)}";
+            string memoryPolicyId = $"information-access.policy.adapter.memory-hidden-witness.{SanitizeForTransaction(memoryRecord.MemoryId)}";
+            string knowledgePolicyId = $"information-access.policy.adapter.knowledge-hidden-event.{SanitizeForTransaction(knowledgeResult.ResultingBelief.BeliefId)}";
+            string sourcePolicyId = $"information-access.policy.adapter.source-direct.{SanitizeForTransaction(sourceId)}";
+            string sourceChainPolicyId = $"information-access.policy.adapter.source-chain-direct.{SanitizeForTransaction(sourceId)}";
             InformationAccessOperationResult[] policies =
             {
-                RegisterProjectionPolicy("information-access.policy.adapter.history-hidden-event", InformationSubjectType.HistoricalEvent, eventRecord.EventId, GetPrototypePersonId()),
-                RegisterProjectionPolicy("information-access.policy.adapter.life-injury", InformationSubjectType.LifeEvent, lifeEventId, GetPrototypePersonId()),
-                RegisterProjectionPolicy("information-access.policy.adapter.life-injury-history", InformationSubjectType.HistoricalEvent, lifeEventId, GetPrototypePersonId()),
-                RegisterProjectionPolicy("information-access.policy.adapter.memory-hidden-witness", InformationSubjectType.Memory, memoryRecord.MemoryId, GetPrototypePersonId()),
-                RegisterProjectionPolicy("information-access.policy.adapter.knowledge-hidden-event", InformationSubjectType.Belief, knowledgeResult.ResultingBelief.BeliefId, GetPrototypePersonId()),
-                RegisterProjectionPolicy("information-access.policy.adapter.source-direct", InformationSubjectType.Source, sourceId, GetPrototypePersonId()),
-                RegisterProjectionPolicy("information-access.policy.adapter.source-chain-direct", InformationSubjectType.SourceChain, sourceId, GetPrototypePersonId())
+                RegisterProjectionPolicy(historyPolicyId, InformationSubjectType.HistoricalEvent, eventRecord.EventId, GetPrototypePersonId()),
+                RegisterProjectionPolicy(lifePolicyId, InformationSubjectType.LifeEvent, lifeEventId, GetPrototypePersonId()),
+                RegisterProjectionPolicy(lifeHistoryPolicyId, InformationSubjectType.HistoricalEvent, lifeEventId, GetPrototypePersonId()),
+                RegisterProjectionPolicy(memoryPolicyId, InformationSubjectType.Memory, memoryRecord.MemoryId, GetPrototypePersonId()),
+                RegisterProjectionPolicy(knowledgePolicyId, InformationSubjectType.Belief, knowledgeResult.ResultingBelief.BeliefId, GetPrototypePersonId()),
+                RegisterProjectionPolicy(sourcePolicyId, InformationSubjectType.Source, sourceId, GetPrototypePersonId()),
+                RegisterProjectionPolicy(sourceChainPolicyId, InformationSubjectType.SourceChain, sourceId, GetPrototypePersonId())
             };
             InformationAccessOperationResult failedPolicy = policies.FirstOrDefault(result => result == null || !result.Succeeded);
             if (failedPolicy != null)
@@ -5001,7 +5032,12 @@ namespace UnityIsekaiGame.Development
 
         public PrototypeTestLabOperation CreateHistoricalArchiveRecord()
         {
-            RecordAuthoritativeHistoryEvent();
+            HistoryOperationResult history = EnsurePrototypeHistoricalEvent("event.prototype.participation", KnowledgeVisibility.Public, "Prototype person participated in a representative event.");
+            if (!history.Succeeded && !history.Duplicate)
+            {
+                return RecordFailure("Create 8.9 Historical Record", history.Message, history.Code.ToString());
+            }
+
             KnowledgeRecordOperationResult result = CreatePrototypeRecord(
                 "record.prototype.history.archive",
                 "record-definition.historical-record",
@@ -5061,6 +5097,12 @@ namespace UnityIsekaiGame.Development
 
         public PrototypeTestLabOperation CreateMedicalRecord()
         {
+            KnowledgeOperationResult evidence = EnsurePrototypeEvidence("evidence.prototype.symptom", BuiltInKnowledgeFacts.BodySymptom, KnowledgeSubjectType.Body, GetPrototypeBodyId(), KnowledgeValueType.Qualitative, "prototype-infection-symptom", KnowledgeProvenance.DirectObservation);
+            if (!evidence.Succeeded && !evidence.Duplicate)
+            {
+                return RecordFailure("Create 8.9 Medical Record", evidence.Message, evidence.Code.ToString());
+            }
+
             KnowledgeRecordOperationResult result = CreatePrototypeRecord(
                 "record.prototype.medical.diagnosis-note",
                 "record-definition.medical-record",
@@ -5076,6 +5118,18 @@ namespace UnityIsekaiGame.Development
 
         public PrototypeTestLabOperation CreateInvestigationRecord()
         {
+            InformationSourceOperationResult source = EnsurePrototypeSource("information-source.prototype.investigation", InformationSourceCategory.DirectObservation);
+            if (!source.Succeeded && !source.Duplicate)
+            {
+                return RecordFailure("Create 8.9 Investigation Record", source.Message, source.Code.ToString());
+            }
+
+            KnowledgeOperationResult evidence = EnsurePrototypeEvidence("evidence.prototype.investigation", BuiltInKnowledgeFacts.EventOccurred, KnowledgeSubjectType.Event, "event.prototype.investigation", KnowledgeValueType.Boolean, "true", KnowledgeProvenance.Document);
+            if (!evidence.Succeeded && !evidence.Duplicate)
+            {
+                return RecordFailure("Create 8.9 Investigation Record", evidence.Message, evidence.Code.ToString());
+            }
+
             KnowledgeRecordOperationResult result = CreatePrototypeRecord(
                 "record.prototype.investigation.source-chain",
                 "record-definition.investigation-record",
@@ -5164,16 +5218,54 @@ namespace UnityIsekaiGame.Development
 
         public PrototypeTestLabOperation SearchKnowledgeRecords()
         {
-            CreatePersonalJournalRecord();
-            CreateBestiaryRecord();
-            CreateLocationRecord();
-            IReadOnlyList<KnowledgeRecordProjection> results = EnsureKnowledgeRecordRuntime().Search(new KnowledgeRecordSearchQuery
+            string runId = Guid.NewGuid().ToString("N");
+            string journalId = $"record.prototype.search.journal.{runId}";
+            string bestiaryId = $"record.prototype.search.bestiary.{runId}";
+            string locationId = $"record.prototype.search.location.{runId}";
+            KnowledgeRecordOperationResult journal = CreatePrototypeRecord(
+                journalId,
+                "record-definition.journal-entry",
+                KnowledgeRecordCategory.PersonalJournal,
+                InformationSubjectType.HistoricalEvent,
+                $"event.prototype.search.journal.{runId}",
+                InformationVisibilityClassification.Personal,
+                "Search journal entry.",
+                "A run-scoped journal record for deterministic search.");
+            KnowledgeRecordOperationResult bestiary = CreatePrototypeRecord(
+                bestiaryId,
+                "record-definition.bestiary-entry",
+                KnowledgeRecordCategory.Bestiary,
+                InformationSubjectType.BodyIdentity,
+                "species.human",
+                InformationVisibilityClassification.Public,
+                "Search bestiary entry.",
+                "A run-scoped bestiary record for deterministic search.");
+            KnowledgeRecordOperationResult location = CreatePrototypeRecord(
+                locationId,
+                "record-definition.location-entry",
+                KnowledgeRecordCategory.LocationRecord,
+                InformationSubjectType.Location,
+                "place.prototype.central-hub",
+                InformationVisibilityClassification.Public,
+                "Search location entry.",
+                "A run-scoped location record for deterministic search.");
+            if (!journal.Succeeded || !bestiary.Succeeded || !location.Succeeded)
+            {
+                string failure = string.Join(" | ", new[] { journal, bestiary, location }.Where(result => result == null || !result.Succeeded).Select(result => $"{result?.Code.ToString() ?? "MissingResult"} {result?.Message ?? "No result."}"));
+                return RecordFailure("Search 8.9 Knowledge Records", failure, KnowledgeRecordResultCode.InvalidRequest.ToString());
+            }
+
+            string[] expected = { journalId, bestiaryId, locationId };
+            KnowledgeRecordRuntime runtime = EnsureKnowledgeRecordRuntime();
+            IReadOnlyList<KnowledgeRecordProjection> results = runtime.Search(new KnowledgeRecordSearchQuery
             {
                 OwnerId = GetPrototypePersonId(),
-                Limit = 20
+                Limit = 500
             }, BuildKnowledgeRecordProjectionContext(GetPrototypePersonId(), InformationAccessMode.Query, privileged: true), EnsureInformationAccessRuntime());
-            bool deterministic = results.Select(result => result.VisibleRecordId).SequenceEqual(results.Select(result => result.VisibleRecordId).OrderBy(id => EnsureKnowledgeRecordRuntime().CreateSnapshot().Records.First(record => record.RecordId == id).Data.occurredStartWorldTime).ThenBy(id => id, StringComparer.Ordinal));
-            bool succeeded = results.Count >= 3 && deterministic;
+            HashSet<string> visible = new HashSet<string>(results.Select(result => result.VisibleRecordId), StringComparer.Ordinal);
+            bool containsExpected = expected.All(visible.Contains);
+            bool deterministic = results.Select(result => result.VisibleRecordId).SequenceEqual(results.Select(result => result.VisibleRecordId).OrderBy(id => runtime.CreateSnapshot().Records.First(record => record.RecordId == id).Data.occurredStartWorldTime).ThenBy(id => id, StringComparer.Ordinal));
+            bool succeeded = containsExpected && deterministic;
             return Record(succeeded, "Search 8.9 Knowledge Records", succeeded ? "Success" : "SearchMismatch", $"Count={results.Count} Deterministic={deterministic} Records=[{string.Join(",", results.Select(result => result.VisibleRecordId))}]");
         }
 
@@ -5242,6 +5334,502 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "Validate 8.9 Projection Boundaries", succeeded ? "Success" : "MutationDetected", $"Preview={preview.Code} NoMutation={noMutation} History={historyRevision}->{historyRuntime.HistoryRevision} Memory={memoryRevision}->{memoryRuntime.MemoryRevision} Knowledge={knowledgeRevision}->{knowledge.KnowledgeRevision} Records={recordRevision}->{EnsureKnowledgeRecordRuntime().RecordRevision}.");
         }
 
+        public string BuildKnowledgeHistoryIntegrationSummary()
+        {
+            KnowledgeHistoryFacade facade = CreateKnowledgeHistoryFacade();
+            KnowledgeHistoryValidationResult validation = facade.ValidateCurrentState();
+            KnowledgeHistoryPersistenceInventory persistence = facade.CreatePersistenceInventory();
+            IReadOnlyList<KnowledgeHistoryDefinitionFallbackDiagnostic> fallbackDiagnostics = facade.CreateDefinitionFallbackDiagnostics(CreatePrototypeKnowledgeRecordDefinitions().Select(definition => definition.Id), "PrototypeKnowledgeRecordDefinitionFactory");
+
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 8.10 Knowledge and History Integration Finalization");
+            builder.AppendLine(validation.Readiness?.ToSummary() ?? "Readiness unavailable.");
+            builder.AppendLine(validation.ToSummary());
+            builder.AppendLine(persistence.ToSummary());
+            builder.AppendLine($"Definition fallbacks: Catalog={fallbackDiagnostics.Count(item => item.CatalogAuthored)} FallbackNeeded={fallbackDiagnostics.Count(item => item.FallbackWouldBeUsed)} Missing={fallbackDiagnostics.Count(item => item.Missing)}");
+            PrototypeTestLabOperation last = history.Count == 0 ? default : history[0];
+            if (!string.IsNullOrWhiteSpace(last.OperationName) && last.OperationName.Contains("8.10", StringComparison.Ordinal))
+            {
+                builder.AppendLine($"Last 8.10: {last.OperationName} Code={last.Code} Success={last.Succeeded}");
+                builder.AppendLine(last.Message);
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistoryReadiness()
+        {
+            KnowledgeHistoryReadinessSnapshot snapshot = CreateKnowledgeHistoryFacade().CreateReadinessSnapshot();
+            return Record(snapshot.Ready, "Validate 8.10 Readiness", snapshot.Ready ? "Success" : "NotReady", snapshot.ToSummary());
+        }
+
+        public PrototypeTestLabOperation PrepareKnowledgeHistoryIntegrationFixtures()
+        {
+            List<string> failures = new List<string>();
+            CapturePreparation(CreateHistoricalArchiveRecord(), failures);
+            CapturePreparation(CreateMedicalRecord(), failures);
+            CapturePreparation(CreateInvestigationRecord(), failures);
+            CaptureAccessPreparation(RegisterProjectionPolicy("information-access.policy.integration.hidden-record", InformationSubjectType.Diagnosis, "condition.biology.prototype-infection", GetPrototypePersonId()), failures);
+            KnowledgeHistoryValidationResult validation = CreateKnowledgeHistoryFacade().ValidateCurrentState();
+            foreach (string error in validation.Errors)
+            {
+                failures.Add(error);
+            }
+
+            bool succeeded = failures.Count == 0;
+            return Record(succeeded, "Prepare 8.10 Integration Fixtures", succeeded ? "Success" : "FixturePreparationFailed", succeeded ? "Integration fixture dependencies are present." : string.Join(" | ", failures));
+
+            static void CapturePreparation(PrototypeTestLabOperation operation, List<string> target)
+            {
+                if (!operation.Succeeded)
+                {
+                    target.Add($"{operation.OperationName}: {operation.Code} {operation.Message}");
+                }
+            }
+
+            static void CaptureAccessPreparation(InformationAccessOperationResult operation, List<string> target)
+            {
+                if (operation == null || !operation.Succeeded)
+                {
+                    target.Add($"Information Access Policy: {operation?.Code.ToString() ?? "MissingResult"} {operation?.Message ?? "No result was returned."}");
+                }
+            }
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistoryIntegration()
+        {
+            KnowledgeHistoryValidationResult validation = CreateKnowledgeHistoryFacade().ValidateCurrentState();
+            return Record(validation.Succeeded, "Validate 8.10 Integration", validation.Succeeded ? "Success" : "ValidationFailed", validation.ToSummary());
+        }
+
+        public PrototypeTestLabOperation ShowKnowledgeHistoryFallbackDiagnostics()
+        {
+            IReadOnlyList<KnowledgeHistoryDefinitionFallbackDiagnostic> diagnostics = CreateKnowledgeHistoryFacade().CreateDefinitionFallbackDiagnostics(CreatePrototypeKnowledgeRecordDefinitions().Select(definition => definition.Id), "PrototypeKnowledgeRecordDefinitionFactory");
+            bool succeeded = diagnostics.All(item => !item.Missing);
+            string message = string.Join(Environment.NewLine, diagnostics.Select(item => item.ToSummary()));
+            return Record(succeeded, "Show 8.10 Definition Fallbacks", succeeded ? "Success" : "MissingFallback", message);
+        }
+
+        public PrototypeTestLabOperation RunKnowledgeHistoryDiscoveryFlow()
+        {
+            if (!TryBuildSpeciesCapabilityObservation($"knowledge.8.10.discovery.{Guid.NewGuid():N}", 850, 900, out _, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure))
+            {
+                return failure;
+            }
+
+            KnowledgeHistoryOperationResult result = CreateKnowledgeHistoryFacade().RecordObservation(request);
+            return Record(result.Succeeded, "Run 8.10 Discovery Flow", result.Code, result.ToSummary());
+        }
+
+        public PrototypeTestLabOperation RunKnowledgeHistoryEventMemoryFlow()
+        {
+            KnowledgeHistoryFacade facade = CreateKnowledgeHistoryFacade();
+            string eventId = $"event.prototype.integration.{Guid.NewGuid():N}";
+            KnowledgeHistoryOperationResult historyResult = facade.RecordHistoricalEvent(BuildHistoryEventRequest($"history.8.10.event.{Guid.NewGuid():N}", eventId, "history-event.person-participation", GetPrototypePersonId(), KnowledgeVisibility.Public, "8.10 integration event."));
+            KnowledgeHistoryOperationResult memoryResult = historyResult.Succeeded
+                ? facade.FormMemory(BuildMemoryRequest($"history.8.10.memory.{Guid.NewGuid():N}", $"memory.prototype.integration.{Guid.NewGuid():N}", eventId, HistoryMemorySource.DirectObservation, createKnowledge: false))
+                : new KnowledgeHistoryOperationResult(false, "Skipped", "Memory was skipped because history failed.", historyResult.Diagnostic);
+            bool succeeded = historyResult.Succeeded && memoryResult.Succeeded;
+            return Record(succeeded, "Run 8.10 Event Memory Flow", succeeded ? "Success" : memoryResult.Code, $"History={historyResult.ToSummary()} Memory={memoryResult.ToSummary()}");
+        }
+
+        public PrototypeTestLabOperation RunKnowledgeHistoryRecordReadingFlow()
+        {
+            if (!EnsureHistoryRuntime(out _, out _) || !EnsureKnowledgeRuntime(out _))
+            {
+                return RecordFailure("Run 8.10 Record Reading", "History, Memory, or Knowledge runtime is missing.", "MissingRuntime");
+            }
+
+            CreatePersonalJournalRecord();
+            KnowledgeHistoryOperationResult result = CreateKnowledgeHistoryFacade().ReadRecordAsPerson(new KnowledgeRecordReadRequest
+            {
+                TransactionId = $"record.8.10.read.{Guid.NewGuid():N}",
+                RecordId = "record.prototype.journal.entry",
+                ReaderPersonId = GetPrototypePersonId(),
+                ProjectionContext = BuildKnowledgeRecordProjectionContext(GetPrototypePersonId(), InformationAccessMode.Read, privileged: true),
+                WorldTimeSeconds = GetPrototypeWorldTime(),
+                CreateInformationSource = true,
+                CreateKnowledgeEvidence = true,
+                CreateMemory = true,
+                EvidenceStrength = 550,
+                EvidenceCredibility = 650,
+                EvidenceVisibility = KnowledgeVisibility.Private
+            });
+            return Record(result.Succeeded, "Run 8.10 Record Reading", result.Code, result.ToSummary());
+        }
+
+        public PrototypeTestLabOperation RunKnowledgeHistoryAccessProjectionFlow()
+        {
+            EnsurePrototypeAccessPolicies();
+            RegisterProjectionPolicy("information-access.policy.integration.medical", InformationSubjectType.Diagnosis, "condition.biology.prototype-infection", GetPrototypePersonId());
+            InformationAccessContext visitor = BuildPrototypeAccessContext("information-access.policy.integration.medical", "condition.biology.prototype-infection", "person.prototype.visitor", InformationSubjectType.Diagnosis, InformationAccessMode.Read, discovered: true);
+            InformationAccessContext owner = BuildPrototypeAccessContext("information-access.policy.integration.medical", "condition.biology.prototype-infection", GetPrototypePersonId(), InformationSubjectType.Diagnosis, InformationAccessMode.Read, discovered: true, authorizationIds: new[] { "grant.integration.owner" });
+            KnowledgeHistoryOperationResult restricted = CreateKnowledgeHistoryFacade().EvaluateAccess(visitor);
+            KnowledgeHistoryOperationResult allowed = CreateKnowledgeHistoryFacade().EvaluateAccess(owner);
+            bool restrictedByPolicy = restricted.Code != InformationAccessDecisionKind.FullAccess.ToString();
+            bool succeeded = restrictedByPolicy && allowed.Succeeded;
+            return Record(succeeded, "Run 8.10 Access Projection", succeeded ? "Success" : "AccessMismatch", $"Restricted={restricted.ToSummary()} Allowed={allowed.ToSummary()}");
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistorySaveCapture()
+        {
+            KnowledgeHistoryFacade facade = CreateKnowledgeHistoryFacade();
+            KnowledgeHistoryValidationResult validation = facade.ValidateCurrentState();
+            KnowledgeHistoryPersistenceInventory inventory = facade.CreatePersistenceInventory();
+            bool succeeded = validation.Succeeded && inventory.Participants.Contains(KnowledgeRecordPersistenceParticipant.Key) && inventory.RequiredDependencies.Contains($"{PersonMemoryPersistenceParticipant.Key} -> {AuthoritativeHistoryPersistenceParticipant.Key}");
+            return Record(succeeded, "Validate 8.10 Save Capture", succeeded ? "Success" : "PersistenceMismatch", $"{validation.ToSummary()} {inventory.ToSummary()}");
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistoryFullSaveRestore()
+        {
+            RecordKnowledgeVisibleInjury();
+            RunKnowledgeHistoryEventMemoryFlow();
+            EnsurePrototypeSource("information-source.prototype.direct-observation", InformationSourceCategory.DirectObservation);
+            ShareDirectObservation();
+            EnsurePrototypeAccessPolicies();
+            GrantInspectInformationAccess();
+            CreateMedicalRecord();
+            CreateKnowledgeRecordCollection();
+
+            EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            InformationSourceRuntime sourceRuntime = informationSources;
+            InformationTransferRuntime transferRuntime = informationTransfers;
+            InformationAccessRuntime accessRuntime = informationAccess;
+            KnowledgeRecordRuntime recordRuntime = knowledgeRecords;
+
+            int knowledgeEvents = 0;
+            int historyEvents = 0;
+            int memoryEvents = 0;
+            int sourceEvents = 0;
+            knowledge.KnowledgeChanged += CountKnowledge;
+            historyRuntime.HistoryChanged += CountHistory;
+            memoryRuntime.MemoryChanged += CountMemory;
+            sourceRuntime.SourcesChanged += CountSource;
+
+            PersonKnowledgeSaveData knowledgeSave = knowledge.CreateSaveData();
+            AuthoritativeHistorySaveData historySave = historyRuntime.CreateSaveData();
+            PersonMemorySaveData memorySave = memoryRuntime.CreateSaveData();
+            InformationSourceSaveData sourceSave = sourceRuntime.CreateSaveData();
+            InformationTransferSaveData transferSave = transferRuntime.CreateSaveData();
+            InformationAccessSaveData accessSave = accessRuntime.CreateSaveData();
+            KnowledgeRecordSaveData recordSave = recordRuntime.CreateSaveData();
+
+            string knowledgeFailure = string.Empty;
+            string historyFailure = string.Empty;
+            string memoryFailure = string.Empty;
+            string sourceFailure = string.Empty;
+            string transferFailure = string.Empty;
+            string accessFailure = string.Empty;
+            string recordFailure = string.Empty;
+            bool valid = PersonKnowledgeRuntime.ValidateSaveData(knowledgeSave, registry, GetPrototypePersonId(), out knowledgeFailure)
+                && AuthoritativeHistoryRuntime.ValidateSaveData(historySave, registry, GetKnownPrototypePersons(), GetKnownPrototypeBodies(), out historyFailure)
+                && PersonMemoryRuntime.ValidateSaveData(memorySave, historyRuntime, GetKnownPrototypePersons(), out memoryFailure)
+                && InformationSourceRuntime.ValidateSaveData(sourceSave, registry, GetPrototypePersonId(), out sourceFailure)
+                && InformationTransferRuntime.ValidateSaveData(transferSave, registry, GetPrototypePersonId(), out transferFailure)
+                && InformationAccessRuntime.ValidateSaveData(accessSave, registry, GetPrototypePersonId(), out accessFailure)
+                && KnowledgeRecordRuntime.ValidateSaveData(recordSave, registry, GetPrototypePersonId(), out recordFailure);
+
+            bool restored = valid
+                && historyRuntime.RestoreFromSaveData(historySave, registry, GetKnownPrototypePersons(), GetKnownPrototypeBodies(), restoring: true).Succeeded
+                && knowledge.RestoreFromSaveData(knowledgeSave, registry, GetPrototypePersonId(), restoring: true).Succeeded
+                && memoryRuntime.RestoreFromSaveData(memorySave, registry, historyRuntime, GetKnownPrototypePersons(), restoring: true).Succeeded
+                && sourceRuntime.RestoreFromSaveData(sourceSave, registry, GetPrototypePersonId(), restoring: true).Succeeded
+                && transferRuntime.RestoreFromSaveData(transferSave, registry, GetPrototypePersonId(), restoring: true).Succeeded
+                && accessRuntime.RestoreFromSaveData(accessSave, registry, GetPrototypePersonId(), restoring: true).Succeeded
+                && recordRuntime.RestoreFromSaveData(recordSave, registry, GetPrototypePersonId(), restoring: true).Succeeded;
+
+            knowledge.KnowledgeChanged -= CountKnowledge;
+            historyRuntime.HistoryChanged -= CountHistory;
+            memoryRuntime.MemoryChanged -= CountMemory;
+            sourceRuntime.SourcesChanged -= CountSource;
+
+            bool countsMatch = knowledge.CreateSaveData().evidence.Length == knowledgeSave.evidence.Length
+                && historyRuntime.CreateSaveData().events.Length == historySave.events.Length
+                && memoryRuntime.CreateSaveData().memories.Length == memorySave.memories.Length
+                && sourceRuntime.CreateSaveData().sources.Length == sourceSave.sources.Length
+                && transferRuntime.CreateSaveData().transfers.Length == transferSave.transfers.Length
+                && accessRuntime.CreateSaveData().policies.Length == accessSave.policies.Length
+                && recordRuntime.CreateSaveData().records.Length == recordSave.records.Length;
+            bool noEvents = knowledgeEvents == 0 && historyEvents == 0 && memoryEvents == 0 && sourceEvents == 0;
+            bool succeeded = restored && countsMatch && noEvents;
+            string failures = string.Join(" | ", new[] { knowledgeFailure, historyFailure, memoryFailure, sourceFailure, transferFailure, accessFailure, recordFailure }.Where(value => !string.IsNullOrWhiteSpace(value)));
+            return Record(succeeded, "Validate 8.10 Full Save Restore", succeeded ? "Success" : "SaveRestoreMismatch", $"Valid={valid} Restored={restored} Counts={countsMatch} Events={knowledgeEvents}/{historyEvents}/{memoryEvents}/{sourceEvents}. Failures={failures}");
+
+            void CountKnowledge(PersonKnowledgeRuntime _, KnowledgeOperationResult __) => knowledgeEvents++;
+            void CountHistory(AuthoritativeHistoryRuntime _, HistoryOperationResult __) => historyEvents++;
+            void CountMemory(PersonMemoryRuntime _, HistoryOperationResult __) => memoryEvents++;
+            void CountSource(InformationSourceRuntime _, InformationSourceOperationResult __) => sourceEvents++;
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistoryCorruptRestoreRollback()
+        {
+            CreateMedicalRecord();
+            KnowledgeRecordRuntime recordRuntime = EnsureKnowledgeRecordRuntime();
+            KnowledgeRecordSaveData before = recordRuntime.CreateSaveData();
+            KnowledgeRecordSaveData corrupt = recordRuntime.CreateSaveData();
+            if (corrupt.records.Length > 0)
+            {
+                KnowledgeRecordData duplicate = corrupt.records[0].Clone();
+                corrupt.records = corrupt.records.Concat(new[] { duplicate }).ToArray();
+            }
+            else
+            {
+                corrupt.records = new[]
+                {
+                    new KnowledgeRecordData { recordId = "record.prototype.corrupt", definitionId = "record-definition.missing", ownerId = GetPrototypePersonId() }
+                };
+            }
+
+            KnowledgeRecordOperationResult restore = recordRuntime.RestoreFromSaveData(corrupt, registry, GetPrototypePersonId(), restoring: true);
+            KnowledgeRecordSaveData after = recordRuntime.CreateSaveData();
+            bool unchanged = before.recordRevision == after.recordRevision
+                && before.records.Length == after.records.Length
+                && before.collections.Length == after.collections.Length
+                && string.Join(",", before.records.Select(record => record.recordId).OrderBy(value => value, StringComparer.Ordinal)) == string.Join(",", after.records.Select(record => record.recordId).OrderBy(value => value, StringComparer.Ordinal));
+            bool succeeded = !restore.Succeeded && unchanged;
+            return Record(succeeded, "Validate 8.10 Corrupt Restore Rollback", succeeded ? "Success" : "RollbackMismatch", $"Restore={restore.Code} Unchanged={unchanged} Records={before.records.Length}->{after.records.Length} Revision={before.recordRevision}->{after.recordRevision}. {restore.Message}");
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistoryAccessSafety()
+        {
+            EnsurePrototypeAccessPolicies();
+            RegisterProjectionPolicy("information-access.policy.integration.hidden-record", InformationSubjectType.Diagnosis, "condition.biology.prototype-infection", GetPrototypePersonId());
+            KnowledgeRecordOperationResult medical = CreatePrototypeRecord(
+                "record.prototype.integration.hidden-medical",
+                "record-definition.medical-record",
+                KnowledgeRecordCategory.MedicalRecord,
+                InformationSubjectType.Diagnosis,
+                "condition.biology.prototype-infection",
+                InformationVisibilityClassification.Secret,
+                "Hidden integration diagnosis",
+                "Private diagnosis details.",
+                accessPolicyId: "information-access.policy.integration.hidden-record");
+            KnowledgeRecordRuntime runtime = EnsureKnowledgeRecordRuntime();
+            KnowledgeRecordProjection denied = runtime.ProjectRecord(
+                medical.Record?.RecordId ?? "record.prototype.integration.hidden-medical",
+                BuildKnowledgeRecordProjectionContext("person.prototype.visitor", InformationAccessMode.Read, privileged: false),
+                informationAccess);
+            KnowledgeRecordProjection privileged = runtime.ProjectRecord(
+                medical.Record?.RecordId ?? "record.prototype.integration.hidden-medical",
+                BuildKnowledgeRecordProjectionContext(GetPrototypePersonId(), InformationAccessMode.Read, privileged: true),
+                informationAccess);
+            bool hiddenIdProtected = denied == null || denied.Denied || denied.Redacted;
+            bool privilegedFull = privileged != null && privileged.Succeeded && !privileged.Redacted;
+            bool succeeded = medical.Succeeded && hiddenIdProtected && privilegedFull;
+            return Record(succeeded, "Validate 8.10 Access Safety", succeeded ? "Success" : "AccessLeak", $"Create={medical.Code} RestrictedDenied={denied?.Denied ?? true} RestrictedRedacted={denied?.Redacted ?? false} VisibleRecord='{denied?.VisibleRecordId ?? string.Empty}' Privileged={privilegedFull}.");
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistorySnapshotImmutability()
+        {
+            EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            KnowledgeRecordRuntime recordRuntime = EnsureKnowledgeRecordRuntime();
+            KnowledgeSnapshot knowledgeBefore = knowledge.CreateSnapshot();
+            HistorySnapshot historyBefore = historyRuntime.CreateSnapshot();
+            PersonMemorySnapshot memoryBefore = memoryRuntime.CreateSnapshot();
+            KnowledgeRecordSnapshot recordsBefore = recordRuntime.CreateSnapshot();
+            string beforeSummary = SnapshotSummary(knowledgeBefore, historyBefore, memoryBefore, recordsBefore);
+
+            RecordKnowledgeVisibleInjury();
+            RunKnowledgeHistoryEventMemoryFlow();
+            CreateLocationRecord();
+
+            string unchangedSummary = SnapshotSummary(knowledgeBefore, historyBefore, memoryBefore, recordsBefore);
+            string afterSummary = SnapshotSummary(knowledge.CreateSnapshot(), historyRuntime.CreateSnapshot(), memoryRuntime.CreateSnapshot(), recordRuntime.CreateSnapshot());
+            bool immutable = string.Equals(beforeSummary, unchangedSummary, StringComparison.Ordinal) && !string.Equals(beforeSummary, afterSummary, StringComparison.Ordinal);
+            bool collectionsImmutable = CollectionRejectsMutation(knowledgeBefore.Beliefs)
+                && CollectionRejectsMutation(historyBefore.Events)
+                && CollectionRejectsMutation(memoryBefore.Memories)
+                && CollectionRejectsMutation(recordsBefore.Records);
+            bool succeeded = immutable && collectionsImmutable;
+            return Record(succeeded, "Validate 8.10 Snapshot Immutability", succeeded ? "Success" : "MutableSnapshot", $"StableBefore={immutable} ReadOnlyCollections={collectionsImmutable} Before='{beforeSummary}' After='{afterSummary}'.");
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistoryDeterministicOrdering()
+        {
+            RunKnowledgeHistoryEventMemoryFlow();
+            CreatePersonalJournalRecord();
+            CreateLocationRecord();
+            CreateMedicalRecord();
+            KnowledgeHistoryFacade facade = CreateKnowledgeHistoryFacade();
+            string first = DeterministicIntegrationSummary(facade);
+            string second = DeterministicIntegrationSummary(facade);
+            bool succeeded = string.Equals(first, second, StringComparison.Ordinal);
+            return Record(succeeded, "Validate 8.10 Deterministic Ordering", succeeded ? "Success" : "OrderingMismatch", $"First='{first}' Second='{second}'.");
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeHistoryDirtyAndEventBoundaries()
+        {
+            EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
+            long knowledgeRevision = knowledge.KnowledgeRevision;
+            int knowledgeEvents = 0;
+            knowledge.KnowledgeChanged += CountKnowledge;
+
+            bool previewNoMutation = false;
+            bool failedNoMutation = false;
+            bool successOnce = false;
+            try
+            {
+                if (!TryBuildSpeciesCapabilityObservation($"knowledge.8.10.preview.{Guid.NewGuid():N}", 850, 900, out _, out KnowledgeObservationRequest request, out PrototypeTestLabOperation failure))
+                {
+                    return failure;
+                }
+
+                KnowledgeOperationResult preview = knowledge.PreviewObservation(request);
+                previewNoMutation = preview.Succeeded && preview.Preview && knowledge.KnowledgeRevision == knowledgeRevision && knowledgeEvents == 0;
+
+                KnowledgeOperationResult failed = knowledge.RecordObservation(new KnowledgeObservationRequest { PersonId = GetPrototypePersonId(), TransactionId = $"knowledge.8.10.invalid.{Guid.NewGuid():N}" });
+                failedNoMutation = !failed.Succeeded && knowledge.KnowledgeRevision == knowledgeRevision && knowledgeEvents == 0;
+
+                request.TransactionId = $"knowledge.8.10.commit.{Guid.NewGuid():N}";
+                KnowledgeOperationResult committed = knowledge.RecordObservation(request);
+                successOnce = committed.Succeeded && knowledge.KnowledgeRevision == knowledgeRevision + 1 && knowledgeEvents == 1;
+            }
+            finally
+            {
+                knowledge.KnowledgeChanged -= CountKnowledge;
+            }
+
+            bool succeeded = previewNoMutation && failedNoMutation && successOnce;
+            return Record(succeeded, "Validate 8.10 Dirty and Events", succeeded ? "Success" : "BoundaryMismatch", $"PreviewNoMutation={previewNoMutation} FailedNoMutation={failedNoMutation} SuccessOnce={successOnce} Events={knowledgeEvents} Revision={knowledgeRevision}->{knowledge.KnowledgeRevision}.");
+
+            void CountKnowledge(PersonKnowledgeRuntime _, KnowledgeOperationResult __) => knowledgeEvents++;
+        }
+
+        public PrototypeTestLabOperation PreviewStep9KnowledgeContracts()
+        {
+            ItemKnowledgeRequest item = new ItemKnowledgeRequest { RequestingPersonId = GetPrototypePersonId(), ItemDefinitionId = "item.health-potion", ItemInstanceId = string.Empty };
+            RecipeKnowledgeRequest recipe = new RecipeKnowledgeRequest { RequestingPersonId = GetPrototypePersonId(), RecipeDefinitionId = "recipe.prototype.health-potion", RequiredSkillId = "skill.alchemy" };
+            ProductionDiscoveryRequest production = new ProductionDiscoveryRequest { RequestingPersonId = GetPrototypePersonId(), ProductionDefinitionId = "production.prototype.brewing", ObservedActorId = ResolveActorId(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject), ObservedItemId = "item.health-potion" };
+            CraftedItemProvenanceRequest provenance = new CraftedItemProvenanceRequest { CraftedItemInstanceId = "item-instance.prototype.crafted", CrafterPersonId = GetPrototypePersonId(), RecipeDefinitionId = recipe.RecipeDefinitionId, WorkstationId = "workstation.prototype.alchemy", WorldTimeSeconds = GetPrototypeWorldTime() };
+            Step9KnowledgeContractResult result = Step9KnowledgeContractResult.PreviewReady("Step 9 item, recipe, production, teaching, and provenance contracts are present without runtime ownership.");
+            bool succeeded = result.Succeeded
+                && !string.IsNullOrWhiteSpace(item.SubjectId)
+                && !string.IsNullOrWhiteSpace(recipe.RecipeDefinitionId)
+                && !string.IsNullOrWhiteSpace(production.ProductionDefinitionId)
+                && !string.IsNullOrWhiteSpace(provenance.CraftedItemInstanceId);
+            return Record(succeeded, "Preview 8.10 Step 9 Contracts", succeeded ? result.Code : "ContractMismatch", $"{result.Message} Item={item.SubjectId} Recipe={recipe.RecipeDefinitionId} Production={production.ProductionDefinitionId} Provenance={provenance.CraftedItemInstanceId}.");
+        }
+
+        private KnowledgeHistoryFacade CreateKnowledgeHistoryFacade()
+        {
+            EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            informationSources ??= context?.Persistence?.InformationSources ?? new InformationSourceRuntime();
+            informationSources.Configure(registry, GetPrototypePersonId());
+            informationTransfers ??= context?.Persistence?.InformationTransfers ?? new InformationTransferRuntime();
+            informationTransfers.Configure(registry, GetPrototypePersonId());
+            informationAccess = EnsureInformationAccessRuntime();
+            knowledgeRecords = EnsureKnowledgeRecordRuntime();
+            return new KnowledgeHistoryFacade(new KnowledgeHistoryRuntimeSet
+            {
+                DefinitionRegistry = registry,
+                PersonId = GetPrototypePersonId(),
+                WorldId = PersistenceService.LocalWorldId,
+                KnownPersonIds = GetKnownPrototypePersons(),
+                KnownBodyIds = GetKnownPrototypeBodies(),
+                KnowledgeRuntime = knowledge,
+                HistoryRuntime = historyRuntime,
+                MemoryRuntime = memoryRuntime,
+                SourceRuntime = informationSources,
+                TransferRuntime = informationTransfers,
+                AccessRuntime = informationAccess,
+                RecordRuntime = knowledgeRecords
+            });
+        }
+
+        private static string SnapshotSummary(KnowledgeSnapshot knowledge, HistorySnapshot historySnapshot, PersonMemorySnapshot memory, KnowledgeRecordSnapshot records)
+        {
+            string knowledgeIds = string.Join(",", (knowledge?.Beliefs ?? Array.Empty<KnowledgeBeliefRecord>()).Select(item => item.BeliefId));
+            string historyIds = string.Join(",", (historySnapshot?.Events ?? Array.Empty<HistoricalEventRecord>()).Select(item => item.EventId));
+            string memoryIds = string.Join(",", (memory?.Memories ?? Array.Empty<HistoryMemoryRecord>()).Select(item => item.MemoryId));
+            string recordIds = string.Join(",", (records?.Records ?? Array.Empty<KnowledgeRecord>()).Select(item => item.RecordId));
+            return $"K[{knowledge?.Revision ?? 0}:{knowledgeIds}] H[{historySnapshot?.Revision ?? 0}:{historyIds}] M[{memory?.Revision ?? 0}:{memoryIds}] R[{records?.Revision ?? 0}:{recordIds}]";
+        }
+
+        private static bool CollectionRejectsMutation<T>(IReadOnlyList<T> values)
+        {
+            try
+            {
+                ((IList<T>)values).Add(default);
+                return false;
+            }
+            catch (NotSupportedException)
+            {
+                return true;
+            }
+            catch (InvalidCastException)
+            {
+                return true;
+            }
+        }
+
+        private static string DeterministicIntegrationSummary(KnowledgeHistoryFacade facade)
+        {
+            KnowledgeHistoryValidationResult validation = facade.ValidateCurrentState();
+            KnowledgeHistoryReadinessSnapshot readiness = facade.CreateReadinessSnapshot();
+            KnowledgeHistoryPersistenceInventory persistence = facade.CreatePersistenceInventory();
+            return $"{readiness.ToSummary()} :: {validation.ToSummary()} :: {persistence.ToSummary()}";
+        }
+
+        private HistoryOperationResult EnsurePrototypeHistoricalEvent(string eventId, KnowledgeVisibility visibility, string note)
+        {
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
+            if (historyRuntime.TryGetEvent(eventId, out HistoricalEventRecord existing))
+            {
+                return HistoryOperationResult.Success("Historical event already exists.", string.Empty, existing, null, null, historyRuntime.HistoryRevision, historyRuntime.HistoryRevision, duplicate: true);
+            }
+
+            return historyRuntime.RecordEvent(BuildHistoryEventRequest($"history.ensure.{SanitizeForTransaction(eventId)}.{Guid.NewGuid():N}", eventId, "history-event.person-participation", GetPrototypePersonId(), visibility, note));
+        }
+
+        private KnowledgeOperationResult EnsurePrototypeEvidence(
+            string evidenceId,
+            string factDefinitionId,
+            KnowledgeSubjectType subjectType,
+            string subjectId,
+            KnowledgeValueType valueType,
+            string value,
+            KnowledgeProvenance provenance)
+        {
+            EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
+            KnowledgeEvidenceRecord existing = knowledge.CreateSnapshot().Evidence.FirstOrDefault(record => string.Equals(record.EvidenceId, evidenceId, StringComparison.Ordinal));
+            if (existing != null)
+            {
+                return KnowledgeOperationResult.Success("Knowledge evidence already exists.", string.Empty, null, null, existing, null, knowledge.KnowledgeRevision, knowledge.KnowledgeRevision, duplicate: true);
+            }
+
+            KnowledgePropositionData proposition = new KnowledgePropositionData
+            {
+                factDefinitionId = factDefinitionId,
+                subjectType = subjectType,
+                subjectId = subjectId,
+                valueType = valueType,
+                stableValueId = valueType == KnowledgeValueType.StableId ? value : string.Empty,
+                qualitativeValue = valueType == KnowledgeValueType.Qualitative || valueType == KnowledgeValueType.Text ? value : string.Empty,
+                numericValue = valueType == KnowledgeValueType.Numeric && int.TryParse(value, out int numericValue) ? numericValue : 0,
+                booleanValue = valueType == KnowledgeValueType.Boolean && bool.TryParse(value, out bool booleanValue) && booleanValue,
+                bodyContextId = subjectType == KnowledgeSubjectType.Body ? subjectId : string.Empty,
+                sourceContextId = "test-lab.knowledge-record-fixture"
+            };
+            return knowledge.RecordObservation(new KnowledgeObservationRequest
+            {
+                PersonId = knowledge.PersonId,
+                TransactionId = $"knowledge.ensure.{SanitizeForTransaction(evidenceId)}.{Guid.NewGuid():N}",
+                EvidenceId = evidenceId,
+                Proposition = proposition,
+                AcquisitionSource = KnowledgeAcquisitionSource.DirectObservation,
+                Provenance = provenance,
+                Direction = KnowledgeEvidenceDirection.Supports,
+                Strength = 760,
+                Credibility = 780,
+                GameTimeSeconds = GetPrototypeWorldTime(),
+                SourceId = "test-lab.knowledge-record-fixture",
+                Visibility = KnowledgeVisibility.Public
+            });
+        }
+
         private InformationAccessRuntime EnsureInformationAccessRuntime()
         {
             informationAccess ??= context?.InformationAccess ?? context?.Persistence?.InformationAccess ?? new InformationAccessRuntime();
@@ -5274,7 +5862,8 @@ namespace UnityIsekaiGame.Development
             string[] sourceIds = null,
             string[] evidenceIds = null,
             string[] historicalEventIds = null,
-            string[] lifeEventIds = null)
+            string[] lifeEventIds = null,
+            string accessPolicyId = "")
         {
             KnowledgeRecordRuntime runtime = EnsureKnowledgeRecordRuntime();
             if (!preview)
@@ -5286,7 +5875,7 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return runtime.CreateRecord(BuildPrototypeRecordRequest(recordId, definitionId, category, subjectType, subjectId, classification, summary, body, preview, sourceIds, evidenceIds, historicalEventIds, lifeEventIds));
+            return runtime.CreateRecord(BuildPrototypeRecordRequest(recordId, definitionId, category, subjectType, subjectId, classification, summary, body, preview, sourceIds, evidenceIds, historicalEventIds, lifeEventIds, accessPolicyId));
         }
 
         private KnowledgeRecordCreateRequest BuildPrototypeRecordRequest(
@@ -5302,7 +5891,8 @@ namespace UnityIsekaiGame.Development
             string[] sourceIds = null,
             string[] evidenceIds = null,
             string[] historicalEventIds = null,
-            string[] lifeEventIds = null)
+            string[] lifeEventIds = null,
+            string accessPolicyId = "")
         {
             return new KnowledgeRecordCreateRequest
             {
@@ -5323,6 +5913,7 @@ namespace UnityIsekaiGame.Development
                 LifeEventIds = lifeEventIds ?? Array.Empty<string>(),
                 Confidence = classification == InformationVisibilityClassification.Public ? 850 : 650,
                 Reliability = classification == InformationVisibilityClassification.Public ? 800 : 600,
+                AccessPolicyId = accessPolicyId ?? string.Empty,
                 Classification = classification,
                 Tags = new[] { "feature.8.9", "prototype-record" },
                 Details = new[]
@@ -5432,7 +6023,24 @@ namespace UnityIsekaiGame.Development
         private InformationAccessOperationResult RegisterProjectionPolicy(string policyId, InformationSubjectType subjectType, string subjectId, string ownerPersonId)
         {
             EnsureInformationAccessRuntime();
-            InformationAccessPolicyData policy = new InformationAccessPolicyData
+            InformationAccessPolicyData policy = BuildProjectionPolicyData(policyId, subjectType, subjectId, ownerPersonId);
+            InformationAccessPolicyRecord existing = informationAccess.CreateSnapshot().Policies.FirstOrDefault(record => string.Equals(record.PolicyId, policyId, StringComparison.Ordinal));
+            if (existing != null)
+            {
+                if (!ProjectionPolicyMatches(existing.Data, policy))
+                {
+                    return InformationAccessOperationResult.Failure(InformationAccessResultCode.InvalidRequest, $"Information access policy '{policyId}' already exists with different fixture data.", revision: informationAccess.AccessRevision);
+                }
+
+                return InformationAccessOperationResult.Success("Information access policy already exists.", string.Empty, informationAccess.AccessRevision, informationAccess.AccessRevision, duplicate: true);
+            }
+
+            return informationAccess.RegisterPolicy(policy, $"access.8.8.projection-policy.{SanitizeForTransaction(policyId)}.{Guid.NewGuid():N}");
+        }
+
+        private InformationAccessPolicyData BuildProjectionPolicyData(string policyId, InformationSubjectType subjectType, string subjectId, string ownerPersonId)
+        {
+            return new InformationAccessPolicyData
             {
                 policyId = policyId,
                 subject = BuildPrototypeSubject(subjectType, subjectId, ownerPersonId),
@@ -5448,7 +6056,35 @@ namespace UnityIsekaiGame.Development
                 defaultHiddenDetails = new[] { "detail.payload", "detail.context", "detail.suppression", "detail.transformations" },
                 provenance = "Prototype Test Lab access projection adapter."
             };
-            return informationAccess.RegisterPolicy(policy, $"access.8.8.projection-policy.{SanitizeForTransaction(policyId)}.{Guid.NewGuid():N}");
+        }
+
+        private static bool ProjectionPolicyMatches(InformationAccessPolicyData existing, InformationAccessPolicyData expected)
+        {
+            if (existing == null || expected == null)
+            {
+                return false;
+            }
+
+            return string.Equals(existing.policyId, expected.policyId, StringComparison.Ordinal)
+                && existing.subject?.subjectType == expected.subject?.subjectType
+                && string.Equals(existing.subject?.subjectId, expected.subject?.subjectId, StringComparison.Ordinal)
+                && string.Equals(existing.subject?.ownerPersonId, expected.subject?.ownerPersonId, StringComparison.Ordinal)
+                && existing.classification == expected.classification
+                && existing.disclosurePolicy == expected.disclosurePolicy
+                && existing.resharingPolicy == expected.resharingPolicy
+                && existing.sourceVisibilityPolicy == expected.sourceVisibilityPolicy
+                && existing.detailVisibilityPolicy == expected.detailVisibilityPolicy
+                && existing.auditPolicy == expected.auditPolicy
+                && SameSet(existing.allowedPersonIds, expected.allowedPersonIds)
+                && SameSet(existing.defaultVisibleDetails, expected.defaultVisibleDetails)
+                && SameSet(existing.defaultRedactedDetails, expected.defaultRedactedDetails)
+                && SameSet(existing.defaultHiddenDetails, expected.defaultHiddenDetails);
+        }
+
+        private static bool SameSet(IEnumerable<string> first, IEnumerable<string> second)
+        {
+            return new HashSet<string>((first ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)), StringComparer.Ordinal)
+                .SetEquals((second ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)));
         }
 
         private void RevokePrototypeAccessGrantIfPresent(string grantId)
@@ -6075,9 +6711,15 @@ namespace UnityIsekaiGame.Development
 
         private InformationSourceOperationResult EnsurePrototypeSource(string sourceId, InformationSourceCategory category)
         {
-            if (informationSources.TryGetSource(sourceId, out _))
+            informationSources.Configure(registry, GetPrototypePersonId());
+            if (informationSources.TryGetSource(sourceId, out InformationSourceRecord existing))
             {
-                return InformationSourceOperationResult.Success("Source already exists.", string.Empty, null, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: true);
+                if (existing.Category != category)
+                {
+                    return InformationSourceOperationResult.Failure(InformationSourceResultCode.InvalidRequest, $"Source instance '{sourceId}' already exists as {existing.Category}, not {category}.", revision: informationSources.SourceRevision);
+                }
+
+                return InformationSourceOperationResult.Success("Source already exists.", string.Empty, existing, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: true);
             }
 
             InformationSourceReferenceType referenceType = category switch
@@ -6096,9 +6738,29 @@ namespace UnityIsekaiGame.Development
                 : referenceType == InformationSourceReferenceType.Document ? $"document.prototype.{SanitizeForTransaction(sourceId)}"
                 : referenceType == InformationSourceReferenceType.None ? string.Empty
                 : "person.prototype.source";
-            RegisterPrototypeSource($"Ensure 8.6 {category}", sourceId, category, referenceType, referenced, KnowledgeDomain.Medical, category == InformationSourceCategory.DirectObservation ? "observation-method.ordinary-visual" : string.Empty);
-            informationSources.TryGetSource(sourceId, out InformationSourceRecord record);
-            return InformationSourceOperationResult.Success("Source ensured.", string.Empty, record, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: record != null);
+            return informationSources.RegisterSource(new InformationSourceRegistrationRequest
+            {
+                TransactionId = $"source.ensure.{SanitizeForTransaction(sourceId)}.{Guid.NewGuid():N}",
+                SourceInstanceId = sourceId,
+                Category = category,
+                ReferenceType = referenceType,
+                ReferencedId = referenced,
+                OriginalCreatorPersonId = category == InformationSourceCategory.DirectObservation ? GetPrototypePersonId() : "person.prototype.source-origin",
+                ObserverPersonId = category == InformationSourceCategory.DirectObservation ? GetPrototypePersonId() : string.Empty,
+                HolderPersonId = GetPrototypePersonId(),
+                TransmitterPersonId = category == InformationSourceCategory.DirectObservation ? string.Empty : "person.prototype.transmitter",
+                CreationWorldTimeSeconds = GetPrototypeWorldTime(),
+                ObservationWorldTimeSeconds = GetPrototypeWorldTime(),
+                TransmissionWorldTimeSeconds = GetPrototypeWorldTime(),
+                Domain = KnowledgeDomain.Medical,
+                SubjectId = string.IsNullOrWhiteSpace(referenced) ? GetPrototypePersonId() : referenced,
+                MethodId = category == InformationSourceCategory.DirectObservation ? "observation-method.ordinary-visual" : string.Empty,
+                ErrorRisk = category == InformationSourceCategory.Hearsay || category == InformationSourceCategory.AnonymousTestimony ? 550 : 180,
+                DeceptionRisk = category == InformationSourceCategory.AnonymousTestimony ? 600 : 120,
+                BiasRisk = category == InformationSourceCategory.PersonalTestimony ? 320 : 140,
+                Privacy = SourcePrivacyLevel.Public,
+                Tags = new[] { "feature.8.6", category.ToString() }
+            });
         }
 
         private PrototypeTestLabOperation TransformPrototypeSource(string operationName, string newSourceId, InformationSourceTransformationType transformationType, int quality, bool hidesOriginal)
@@ -6967,12 +7629,16 @@ namespace UnityIsekaiGame.Development
                 : RecordFailure(operationName, FormatHistoryResult(result), result?.Code.ToString() ?? HistoryResultCode.InvalidRequest.ToString());
         }
 
-        private PrototypeTestLabOperation RecallMemoryWithRequest(string operationName, MemoryRecallRequest request)
+        private PrototypeTestLabOperation RecallMemoryWithRequest(string operationName, MemoryRecallRequest request, PersonMemoryRuntime memoryRuntimeOverride = null)
         {
-            FormWitnessHistoryMemory();
-            if (!EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime))
+            PersonMemoryRuntime memoryRuntime = memoryRuntimeOverride;
+            if (memoryRuntime == null)
             {
-                return RecordFailure(operationName, "Memory runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+                FormWitnessHistoryMemory();
+                if (!EnsureHistoryRuntime(out _, out memoryRuntime))
+                {
+                    return RecordFailure(operationName, "Memory runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+                }
             }
 
             MemoryRecallResult result = memoryRuntime.Recall(request);
@@ -7074,7 +7740,7 @@ namespace UnityIsekaiGame.Development
             HistoryMemoryRecord memory = memoryRuntime.CreateSnapshot().Memories
                 .OrderByDescending(record => record.Accessible)
                 .ThenBy(record => record.MemoryId, StringComparer.Ordinal)
-                .FirstOrDefault(record => IsMemoryAutomationTarget(record, now));
+                .FirstOrDefault(record => IsMemoryAutomationTarget(record, now) && string.Equals(record.HistoricalEventId, "event.prototype.hidden.secret", StringComparison.Ordinal));
             if (memory != null)
             {
                 return memory.MemoryId;
@@ -7083,6 +7749,38 @@ namespace UnityIsekaiGame.Development
             string memoryId = $"memory.prototype.automation.{Guid.NewGuid():N}";
             memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.automation-memory.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
             return memoryId;
+        }
+
+        private bool TryCreateIsolatedMemoryRecallFixture(string fixtureName, out PersonMemoryRuntime memoryRuntime, out string memoryId, out string eventId, out PrototypeTestLabOperation failure)
+        {
+            memoryRuntime = null;
+            memoryId = string.Empty;
+            eventId = string.Empty;
+            failure = default;
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _))
+            {
+                failure = RecordFailure("Prepare 8.4 Recall Fixture", "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
+                return false;
+            }
+
+            eventId = $"event.prototype.memory-recall.{SanitizeForTransaction(fixtureName)}.{Guid.NewGuid():N}";
+            memoryId = $"memory.prototype.memory-recall.{SanitizeForTransaction(fixtureName)}.{Guid.NewGuid():N}";
+            HistoryOperationResult eventResult = historyRuntime.RecordEvent(BuildHistoryEventRequest($"history.8.4.recall-fixture-event.{Guid.NewGuid():N}", eventId, "history-event.hidden-witnessed-event", GetPrototypePersonId(), KnowledgeVisibility.Hidden, $"Isolated 8.4 {fixtureName} recall fixture."));
+            if (!eventResult.Succeeded)
+            {
+                failure = RecordHistoryResult("Prepare 8.4 Recall Fixture", eventResult);
+                return false;
+            }
+
+            memoryRuntime = CreateMemoryProofRuntime();
+            HistoryOperationResult memoryResult = memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.recall-fixture-memory.{Guid.NewGuid():N}", memoryId, eventId, HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
+            if (!memoryResult.Succeeded)
+            {
+                failure = RecordHistoryResult("Prepare 8.4 Recall Fixture", memoryResult);
+                return false;
+            }
+
+            return true;
         }
 
         private static bool IsMemoryAutomationTarget(HistoryMemoryRecord memory, double worldTime)
