@@ -68,6 +68,7 @@ namespace UnityIsekaiGame.Development
             "Sources 8.6",
             "Sharing 8.7",
             "Access 8.8",
+            "Records 8.9",
             "Identity 5.1",
             "Numbers 5.4a",
             "Resources 5.4b",
@@ -135,6 +136,7 @@ namespace UnityIsekaiGame.Development
         private Text informationSourcesText;
         private Text informationSharingText;
         private Text informationAccessText;
+        private Text knowledgeRecordsText;
         private Text identityProgressionText;
         private Text attributesCalculatedStatsText;
         private Text resourcesText;
@@ -329,6 +331,7 @@ namespace UnityIsekaiGame.Development
             Transform informationSourcesSection = AddSection(content, "Sources 8.6 Section");
             Transform informationSharingSection = AddSection(content, "Sharing 8.7 Section");
             Transform informationAccessSection = AddSection(content, "Access 8.8 Section");
+            Transform knowledgeRecordsSection = AddSection(content, "Records 8.9 Section");
             Transform identitySection = AddSection(content, "Identity 5.1 Section");
             Transform feature52Section = AddSection(content, "Numbers 5.4a Section");
             Transform feature54bSection = AddSection(content, "Resources 5.4b Section");
@@ -374,6 +377,7 @@ namespace UnityIsekaiGame.Development
             BuildInformationSourcesSection(informationSourcesSection, font);
             BuildInformationSharingSection(informationSharingSection, font);
             BuildInformationAccessSection(informationAccessSection, font);
+            BuildKnowledgeRecordsSection(knowledgeRecordsSection, font);
             BuildIdentityProgressionSection(identitySection, font);
             BuildFeature52Section(feature52Section, font);
             BuildFeature54bSection(feature54bSection, font);
@@ -956,6 +960,31 @@ namespace UnityIsekaiGame.Development
                 ("Save/Restore", () => service.ValidateInformationAccessSaveRestore()),
                 ("Run 8.8 Auto", () => service.RunAutomationSuite("feature.8.8.secrets-visibility-information-access", automationStopOnFirstFailure)));
             informationAccessText = AddText(parent, font, "Information Access runtime not available.", 12, 980);
+        }
+
+        private void BuildKnowledgeRecordsSection(Transform parent, Font font)
+        {
+            AddButtonRow(parent, font,
+                ("Validate Defs", () => service.ValidateKnowledgeRecordDefinitions()),
+                ("Journal", () => service.CreatePersonalJournalRecord()),
+                ("History", () => service.CreateHistoricalArchiveRecord()),
+                ("Biography", () => service.CreateBiographyProjectionRecord()));
+            AddButtonRow(parent, font,
+                ("Bestiary", () => service.CreateBestiaryRecord()),
+                ("Location", () => service.CreateLocationRecord()),
+                ("Medical", () => service.CreateMedicalRecord()),
+                ("Investigation", () => service.CreateInvestigationRecord()));
+            AddButtonRow(parent, font,
+                ("Correct", () => service.CreateCorrectedKnowledgeRecord()),
+                ("Read Owner", () => service.ReadKnowledgeRecordAsOwner()),
+                ("Deny Read", () => service.AttemptUnauthorizedKnowledgeRecordRead()),
+                ("Search", () => service.SearchKnowledgeRecords()));
+            AddButtonRow(parent, font,
+                ("Collection", () => service.CreateKnowledgeRecordCollection()),
+                ("Projection", () => service.ValidateKnowledgeRecordLiveProjectionBoundaries()),
+                ("Save/Restore", () => service.ValidateKnowledgeRecordSaveRestore()),
+                ("Run 8.9 Auto", () => service.RunAutomationSuite("feature.8.9.historical-records-journals-codex", automationStopOnFirstFailure)));
+            knowledgeRecordsText = AddText(parent, font, "Knowledge Record runtime not available.", 12, 980);
         }
 
         private void BuildIdentityProgressionSection(Transform parent, Font font)
@@ -1573,6 +1602,9 @@ namespace UnityIsekaiGame.Development
                 case "Access 8.8":
                     SetValue(informationAccessText, service.BuildInformationAccessSummary());
                     break;
+                case "Records 8.9":
+                    SetValue(knowledgeRecordsText, service.BuildKnowledgeRecordSummary());
+                    break;
                 case "Identity 5.1":
                     SetValue(identityProgressionText, service.BuildIdentityProgressionSummary());
                     break;
@@ -2091,7 +2123,7 @@ namespace UnityIsekaiGame.Development
                 Group("Character Step 5", "Identity 5.1", "Numbers 5.4a", "Resources 5.4b", "Traits 5.5", "Skills 5.3", "Character 5.6"),
                 Group("Combat Step 6", "Combat", "Lifecycle 6.3", "Ongoing 6.4", "Combat State 6.5", "Defense 6.6", "Execution 6.7", "Reactions 6.8", "Contribution 6.9", "Combat Overview 6.10"),
                 Group("Body Step 7", "Body Species 7.1", "Body Anatomy 7.2", "Body Condition 7.3", "Vital Processes 7.4", "Biological Hazards 7.5", "Biological Compatibility 7.6", "Natural Recovery 7.7", "Transformation 7.8", "Biological Conditions 7.9", "Biology Integration 7.10"),
-                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3", "Memory 8.4", "Life Events 8.5", "Sources 8.6", "Sharing 8.7", "Access 8.8")
+                Group("Knowledge Step 8", "Knowledge 8.1", "Observation 8.2", "History 8.3", "Memory 8.4", "Life Events 8.5", "Sources 8.6", "Sharing 8.7", "Access 8.8", "Records 8.9")
             };
         }
 
