@@ -191,6 +191,7 @@ namespace UnityIsekaiGame.Development
                 PlayerTraits = menuController.RuntimeTraits,
                 PlayerKnowledge = playerTransform == null ? null : playerTransform.GetComponentInParent<PersonKnowledgeRuntime>(),
                 InformationAccess = persistence?.InformationAccess,
+                KnowledgeRecords = persistence?.KnowledgeRecords,
                 CharacterSystem = menuController.RuntimeCharacterSystem,
                 PlayerStatuses = menuController.StatusEffects,
                 IdentityProgression = menuController.IdentityProgression,

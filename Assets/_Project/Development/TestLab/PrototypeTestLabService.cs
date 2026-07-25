@@ -37,6 +37,7 @@ using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Observation;
+using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
@@ -126,6 +127,7 @@ namespace UnityIsekaiGame.Development
         private InformationSourceRuntime informationSources = new InformationSourceRuntime();
         private InformationTransferRuntime informationTransfers = new InformationTransferRuntime();
         private InformationAccessRuntime informationAccess = new InformationAccessRuntime();
+        private KnowledgeRecordRuntime knowledgeRecords = new KnowledgeRecordRuntime();
         private AuthoritativeHistorySaveData lastHistorySaveData;
         private PersonMemorySaveData lastMemorySaveData;
 
@@ -165,6 +167,8 @@ namespace UnityIsekaiGame.Development
             informationTransfers.Configure(registry, GetPrototypePersonId());
             informationAccess = context?.InformationAccess ?? context?.Persistence?.InformationAccess ?? informationAccess ?? new InformationAccessRuntime();
             informationAccess.Configure(registry, GetPrototypePersonId());
+            knowledgeRecords = context?.KnowledgeRecords ?? context?.Persistence?.KnowledgeRecords ?? knowledgeRecords ?? new KnowledgeRecordRuntime();
+            knowledgeRecords.Configure(registry, GetPrototypePersonId());
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -4931,11 +4935,432 @@ namespace UnityIsekaiGame.Development
             return Record(succeeded, "Validate 8.8 Access Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} Reject={rejected.Code} Unchanged={unchanged} Policies={saveData.policies.Length} Grants={saveData.grants.Length} Audits={saveData.audits.Length}. {rejected.Message}");
         }
 
+        public string BuildKnowledgeRecordSummary()
+        {
+            EnsureKnowledgeRecordRuntime();
+            KnowledgeRecordSnapshot snapshot = knowledgeRecords.CreateSnapshot();
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Feature 8.9 Historical Records, Journals, and Codex");
+            builder.AppendLine($"Owner: {snapshot.OwnerId} Revision: {snapshot.Revision} Records: {snapshot.Records.Count} Collections: {snapshot.Collections.Count}");
+            foreach (KnowledgeRecord record in snapshot.Records.OrderBy(record => record.Data.occurredStartWorldTime).ThenBy(record => record.RecordId, StringComparer.Ordinal).Take(12))
+            {
+                builder.AppendLine($"{record.RecordId}: {record.Category} {record.Status} Subject={record.Subject.SubjectType}/{record.Subject.SubjectId} Details={record.Details.Count} Class={record.Classification}");
+            }
+
+            foreach (KnowledgeRecordCollection collection in snapshot.Collections.OrderBy(collection => collection.CollectionId, StringComparer.Ordinal).Take(5))
+            {
+                builder.AppendLine($"Collection {collection.CollectionId}: {collection.RecordIds.Count} record(s)");
+            }
+
+            PrototypeTestLabOperation last = history.Count == 0 ? default : history[0];
+            if (!string.IsNullOrWhiteSpace(last.OperationName) && last.OperationName.Contains("8.9", StringComparison.Ordinal))
+            {
+                builder.AppendLine($"Last 8.9: {last.OperationName} Code={last.Code} Success={last.Succeeded}");
+                builder.AppendLine(last.Message);
+            }
+
+            return builder.ToString();
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeRecordDefinitions()
+        {
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            Dictionary<string, IGameDefinition> definitions = new Dictionary<string, IGameDefinition>(StringComparer.Ordinal);
+            foreach (IGameDefinition definition in registry?.DefinitionsById.Values ?? Array.Empty<IGameDefinition>())
+            {
+                definitions[definition.Id] = definition;
+            }
+
+            foreach (KnowledgeRecordDefinition definition in CreatePrototypeKnowledgeRecordDefinitions())
+            {
+                definitions[definition.Id] = definition;
+            }
+
+            foreach (KnowledgeRecordDefinition definition in CreatePrototypeKnowledgeRecordDefinitions())
+            {
+                definition.ValidateCatalogDefinition(definitions, report);
+            }
+
+            bool succeeded = report.ErrorCount == 0 && report.WarningCount == 0;
+            return Record(succeeded, "Validate 8.9 Record Definitions", succeeded ? "Success" : "ValidationFailed", report.GetSummary());
+        }
+
+        public PrototypeTestLabOperation CreatePersonalJournalRecord()
+        {
+            KnowledgeRecordOperationResult result = CreatePrototypeRecord(
+                "record.prototype.journal.entry",
+                "record-definition.journal-entry",
+                KnowledgeRecordCategory.PersonalJournal,
+                InformationSubjectType.HistoricalEvent,
+                "event.prototype.journal.first-entry",
+                InformationVisibilityClassification.Personal,
+                "First prototype journal entry.",
+                "The player records a personal note without changing authoritative history.");
+            return RecordKnowledgeRecordOperation("Create 8.9 Journal Record", result);
+        }
+
+        public PrototypeTestLabOperation CreateHistoricalArchiveRecord()
+        {
+            RecordAuthoritativeHistoryEvent();
+            KnowledgeRecordOperationResult result = CreatePrototypeRecord(
+                "record.prototype.history.archive",
+                "record-definition.historical-record",
+                KnowledgeRecordCategory.HistoricalRecord,
+                InformationSubjectType.HistoricalEvent,
+                "event.prototype.participation",
+                InformationVisibilityClassification.Public,
+                "Archive entry.",
+                "A live history projection is preserved as an explicit historical record.",
+                historicalEventIds: new[] { "event.prototype.participation" });
+            return RecordKnowledgeRecordOperation("Create 8.9 Historical Record", result);
+        }
+
+        public PrototypeTestLabOperation CreateBiographyProjectionRecord()
+        {
+            RecordLifeEventBirthOrCreation();
+            KnowledgeRecordOperationResult result = CreatePrototypeRecord(
+                "record.prototype.biography.entry",
+                "record-definition.biography-entry",
+                KnowledgeRecordCategory.Biography,
+                InformationSubjectType.PersonIdentity,
+                GetPrototypePersonId(),
+                InformationVisibilityClassification.Private,
+                "Biography milestone.",
+                "A person biography projection is captured as a person-owned record.",
+                lifeEventIds: new[] { "event.prototype.life.birth" });
+            return RecordKnowledgeRecordOperation("Create 8.9 Biography Record", result);
+        }
+
+        public PrototypeTestLabOperation CreateBestiaryRecord()
+        {
+            KnowledgeRecordOperationResult result = CreatePrototypeRecord(
+                "record.prototype.codex.species-human",
+                "record-definition.bestiary-entry",
+                KnowledgeRecordCategory.Bestiary,
+                InformationSubjectType.BodyIdentity,
+                "species.human",
+                InformationVisibilityClassification.Public,
+                "Human species entry.",
+                "A codex entry can summarize discovered species facts without granting new knowledge.");
+            return RecordKnowledgeRecordOperation("Create 8.9 Bestiary Record", result);
+        }
+
+        public PrototypeTestLabOperation CreateLocationRecord()
+        {
+            KnowledgeRecordOperationResult result = CreatePrototypeRecord(
+                "record.prototype.location.central-hub",
+                "record-definition.location-entry",
+                KnowledgeRecordCategory.LocationRecord,
+                InformationSubjectType.Location,
+                "place.prototype.central-hub",
+                InformationVisibilityClassification.Public,
+                "Central hub map note.",
+                "A discovered place is represented as a location record.");
+            return RecordKnowledgeRecordOperation("Create 8.9 Location Record", result);
+        }
+
+        public PrototypeTestLabOperation CreateMedicalRecord()
+        {
+            KnowledgeRecordOperationResult result = CreatePrototypeRecord(
+                "record.prototype.medical.diagnosis-note",
+                "record-definition.medical-record",
+                KnowledgeRecordCategory.MedicalRecord,
+                InformationSubjectType.Diagnosis,
+                "condition.biology.prototype-infection",
+                InformationVisibilityClassification.Medical,
+                "Prototype diagnosis.",
+                "Medical details are recordable but remain access-controlled.",
+                evidenceIds: new[] { "evidence.prototype.symptom" });
+            return RecordKnowledgeRecordOperation("Create 8.9 Medical Record", result);
+        }
+
+        public PrototypeTestLabOperation CreateInvestigationRecord()
+        {
+            KnowledgeRecordOperationResult result = CreatePrototypeRecord(
+                "record.prototype.investigation.source-chain",
+                "record-definition.investigation-record",
+                KnowledgeRecordCategory.InvestigationRecord,
+                InformationSubjectType.SourceChain,
+                "information-source.prototype.investigation",
+                InformationVisibilityClassification.Confidential,
+                "Investigation source chain.",
+                "Evidence and provenance references remain explicit record details.",
+                sourceIds: new[] { "information-source.prototype.investigation" },
+                evidenceIds: new[] { "evidence.prototype.investigation" });
+            return RecordKnowledgeRecordOperation("Create 8.9 Investigation Record", result);
+        }
+
+        public PrototypeTestLabOperation CreateCorrectedKnowledgeRecord()
+        {
+            KnowledgeRecordOperationResult original = CreatePrototypeRecord(
+                "record.prototype.journal.correctable",
+                "record-definition.journal-entry",
+                KnowledgeRecordCategory.PersonalJournal,
+                InformationSubjectType.Claim,
+                "claim.prototype.first-version",
+                InformationVisibilityClassification.Personal,
+                "Original note.",
+                "This first version remains auditable after correction.");
+            if (!original.Succeeded && !original.Duplicate)
+            {
+                return RecordKnowledgeRecordOperation("Create 8.9 Correctable Record", original);
+            }
+
+            KnowledgeRecord existingCorrection = EnsureKnowledgeRecordRuntime().CreateSnapshot().Records.FirstOrDefault(record => string.Equals(record.RecordId, "record.prototype.journal.corrected", StringComparison.Ordinal));
+            if (existingCorrection != null)
+            {
+                return RecordKnowledgeRecordOperation("Correct 8.9 Knowledge Record", KnowledgeRecordOperationResult.Success("Knowledge Record correction fixture already exists.", string.Empty, EnsureKnowledgeRecordRuntime().RecordRevision, EnsureKnowledgeRecordRuntime().RecordRevision, existingCorrection, duplicate: true));
+            }
+
+            KnowledgeRecordOperationResult correction = EnsureKnowledgeRecordRuntime().CorrectRecord(BuildPrototypeRecordRequest(
+                    "record.prototype.journal.corrected",
+                    "record-definition.journal-entry",
+                    KnowledgeRecordCategory.PersonalJournal,
+                    InformationSubjectType.Claim,
+                    "claim.prototype.first-version",
+                    InformationVisibilityClassification.Personal,
+                    "Corrected note.",
+                    "The corrected record supersedes the original but does not delete it."),
+                "record.prototype.journal.correctable");
+            return RecordKnowledgeRecordOperation("Correct 8.9 Knowledge Record", correction);
+        }
+
+        public PrototypeTestLabOperation ReadKnowledgeRecordAsOwner()
+        {
+            if (!EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime) || !EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledgeRuntime))
+            {
+                return RecordFailure("Read 8.9 Owner Record", "History, Memory, or Knowledge runtime is missing.", KnowledgeRecordResultCode.InvalidRequest.ToString());
+            }
+
+            CreatePersonalJournalRecord();
+            KnowledgeRecordProjectionContext projectionContext = BuildKnowledgeRecordProjectionContext(GetPrototypePersonId(), InformationAccessMode.Read, privileged: true);
+            KnowledgeRecordReadResult result = EnsureKnowledgeRecordRuntime().ReadRecordAsPerson(new KnowledgeRecordReadRequest
+            {
+                TransactionId = $"record.8.9.read.owner.{Guid.NewGuid():N}",
+                RecordId = "record.prototype.journal.entry",
+                ReaderPersonId = GetPrototypePersonId(),
+                ProjectionContext = projectionContext,
+                WorldTimeSeconds = GetPrototypeWorldTime(),
+                CreateInformationSource = true,
+                CreateKnowledgeEvidence = true,
+                CreateMemory = true,
+                EvidenceStrength = 550,
+                EvidenceCredibility = 650,
+                EvidenceVisibility = KnowledgeVisibility.Private
+            }, EnsureInformationAccessRuntime(), informationSources, knowledgeRuntime, memoryRuntime);
+            return RecordKnowledgeRecordReadOperation("Read 8.9 Owner Record", result);
+        }
+
+        public PrototypeTestLabOperation AttemptUnauthorizedKnowledgeRecordRead()
+        {
+            EnsurePrototypeAccessPolicies();
+            CreateMedicalRecord();
+            RegisterProjectionPolicy("information-access.policy.record.medical-diagnosis", InformationSubjectType.Diagnosis, "condition.biology.prototype-infection", GetPrototypePersonId());
+            KnowledgeRecordProjectionContext projectionContext = BuildKnowledgeRecordProjectionContext("person.prototype.visitor", InformationAccessMode.Read, privileged: false);
+            KnowledgeRecordProjection projection = EnsureKnowledgeRecordRuntime().ProjectRecord("record.prototype.medical.diagnosis-note", projectionContext, EnsureInformationAccessRuntime());
+            bool succeeded = projection.Record == null && string.IsNullOrWhiteSpace(projection.VisibleRecordId);
+            return Record(succeeded, "Reject 8.9 Unauthorized Record Read", succeeded ? "Success" : "AccessLeaked", $"Succeeded={projection.Succeeded} Denied={projection.Denied} VisibleId='{projection.VisibleRecordId}' Message='{projection.Message}'");
+        }
+
+        public PrototypeTestLabOperation SearchKnowledgeRecords()
+        {
+            CreatePersonalJournalRecord();
+            CreateBestiaryRecord();
+            CreateLocationRecord();
+            IReadOnlyList<KnowledgeRecordProjection> results = EnsureKnowledgeRecordRuntime().Search(new KnowledgeRecordSearchQuery
+            {
+                OwnerId = GetPrototypePersonId(),
+                Limit = 20
+            }, BuildKnowledgeRecordProjectionContext(GetPrototypePersonId(), InformationAccessMode.Query, privileged: true), EnsureInformationAccessRuntime());
+            bool deterministic = results.Select(result => result.VisibleRecordId).SequenceEqual(results.Select(result => result.VisibleRecordId).OrderBy(id => EnsureKnowledgeRecordRuntime().CreateSnapshot().Records.First(record => record.RecordId == id).Data.occurredStartWorldTime).ThenBy(id => id, StringComparer.Ordinal));
+            bool succeeded = results.Count >= 3 && deterministic;
+            return Record(succeeded, "Search 8.9 Knowledge Records", succeeded ? "Success" : "SearchMismatch", $"Count={results.Count} Deterministic={deterministic} Records=[{string.Join(",", results.Select(result => result.VisibleRecordId))}]");
+        }
+
+        public PrototypeTestLabOperation CreateKnowledgeRecordCollection()
+        {
+            CreatePersonalJournalRecord();
+            CreateBestiaryRecord();
+            KnowledgeRecordOperationResult result = EnsureKnowledgeRecordRuntime().CreateCollection(
+                "record-collection.prototype.step8-codex",
+                "Prototype Step 8 Codex",
+                GetPrototypePersonId(),
+                new[] { "record.prototype.journal.entry", "record.prototype.codex.species-human" },
+                $"record.8.9.collection.{Guid.NewGuid():N}");
+            return RecordKnowledgeRecordOperation("Create 8.9 Record Collection", result);
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeRecordSaveRestore()
+        {
+            CreatePersonalJournalRecord();
+            CreateMedicalRecord();
+            CreateKnowledgeRecordCollection();
+            KnowledgeRecordSaveData saveData = EnsureKnowledgeRecordRuntime().CreateSaveData();
+            KnowledgeRecordRuntime restored = new KnowledgeRecordRuntime();
+            restored.Configure(registry, GetPrototypePersonId());
+            KnowledgeRecordOperationResult restore = restored.RestoreFromSaveData(saveData, registry, GetPrototypePersonId(), restoring: true);
+            KnowledgeRecordSnapshot before = knowledgeRecords.CreateSnapshot();
+            KnowledgeRecordSaveData corrupt = knowledgeRecords.CreateSaveData();
+            corrupt.records = corrupt.records.Concat(corrupt.records.Take(1).Select(record => record.Clone())).ToArray();
+            KnowledgeRecordOperationResult rejected = knowledgeRecords.RestoreFromSaveData(corrupt, registry, GetPrototypePersonId(), restoring: true);
+            KnowledgeRecordSnapshot after = knowledgeRecords.CreateSnapshot();
+            bool unchanged = before.Revision == after.Revision && before.Records.Count == after.Records.Count && before.Collections.Count == after.Collections.Count;
+            bool succeeded = restore.Succeeded && !rejected.Succeeded && unchanged && restored.CreateSnapshot().Records.Count == saveData.records.Length;
+            return Record(succeeded, "Validate 8.9 Record Save Restore", succeeded ? "Success" : "RestoreMismatch", $"Restore={restore.Code} Reject={rejected.Code} Unchanged={unchanged} Records={saveData.records.Length} Collections={saveData.collections.Length}. {rejected.Message}");
+        }
+
+        public PrototypeTestLabOperation ValidateKnowledgeRecordLiveProjectionBoundaries()
+        {
+            if (!EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime) || !EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return RecordFailure("Validate 8.9 Projection Boundaries", "History, Memory, or Knowledge runtime is missing.", KnowledgeRecordResultCode.InvalidRequest.ToString());
+            }
+
+            RecordAuthoritativeHistoryEvent();
+            FormWitnessHistoryMemory();
+            RecordKnowledgeVisibleInjury();
+            long historyRevision = historyRuntime.HistoryRevision;
+            long memoryRevision = memoryRuntime.MemoryRevision;
+            long knowledgeRevision = knowledge.KnowledgeRevision;
+            long recordRevision = EnsureKnowledgeRecordRuntime().RecordRevision;
+            KnowledgeRecordOperationResult preview = CreatePrototypeRecord(
+                "record.prototype.preview.live-projection",
+                "record-definition.historical-record",
+                KnowledgeRecordCategory.HistoricalRecord,
+                InformationSubjectType.HistoricalEvent,
+                "event.prototype.participation",
+                InformationVisibilityClassification.Public,
+                "Preview archive.",
+                "Previewing a record must not persist a live projection.",
+                preview: true,
+                historicalEventIds: new[] { "event.prototype.participation" });
+            bool noMutation = historyRuntime.HistoryRevision == historyRevision
+                && memoryRuntime.MemoryRevision == memoryRevision
+                && knowledge.KnowledgeRevision == knowledgeRevision
+                && EnsureKnowledgeRecordRuntime().RecordRevision == recordRevision;
+            bool succeeded = preview.Succeeded && preview.Preview && noMutation;
+            return Record(succeeded, "Validate 8.9 Projection Boundaries", succeeded ? "Success" : "MutationDetected", $"Preview={preview.Code} NoMutation={noMutation} History={historyRevision}->{historyRuntime.HistoryRevision} Memory={memoryRevision}->{memoryRuntime.MemoryRevision} Knowledge={knowledgeRevision}->{knowledge.KnowledgeRevision} Records={recordRevision}->{EnsureKnowledgeRecordRuntime().RecordRevision}.");
+        }
+
         private InformationAccessRuntime EnsureInformationAccessRuntime()
         {
             informationAccess ??= context?.InformationAccess ?? context?.Persistence?.InformationAccess ?? new InformationAccessRuntime();
             informationAccess.Configure(registry, GetPrototypePersonId());
             return informationAccess;
+        }
+
+        private KnowledgeRecordRuntime EnsureKnowledgeRecordRuntime()
+        {
+            knowledgeRecords ??= context?.KnowledgeRecords ?? context?.Persistence?.KnowledgeRecords ?? new KnowledgeRecordRuntime();
+            knowledgeRecords.Configure(registry, GetPrototypePersonId());
+            if (context != null)
+            {
+                context.KnowledgeRecords = knowledgeRecords;
+            }
+
+            return knowledgeRecords;
+        }
+
+        private KnowledgeRecordOperationResult CreatePrototypeRecord(
+            string recordId,
+            string definitionId,
+            KnowledgeRecordCategory category,
+            InformationSubjectType subjectType,
+            string subjectId,
+            InformationVisibilityClassification classification,
+            string summary,
+            string body,
+            bool preview = false,
+            string[] sourceIds = null,
+            string[] evidenceIds = null,
+            string[] historicalEventIds = null,
+            string[] lifeEventIds = null)
+        {
+            KnowledgeRecordRuntime runtime = EnsureKnowledgeRecordRuntime();
+            if (!preview)
+            {
+                KnowledgeRecord existing = runtime.CreateSnapshot().Records.FirstOrDefault(record => string.Equals(record.RecordId, recordId, StringComparison.Ordinal));
+                if (existing != null)
+                {
+                    return KnowledgeRecordOperationResult.Success("Knowledge Record fixture already exists.", string.Empty, runtime.RecordRevision, runtime.RecordRevision, existing, duplicate: true);
+                }
+            }
+
+            return runtime.CreateRecord(BuildPrototypeRecordRequest(recordId, definitionId, category, subjectType, subjectId, classification, summary, body, preview, sourceIds, evidenceIds, historicalEventIds, lifeEventIds));
+        }
+
+        private KnowledgeRecordCreateRequest BuildPrototypeRecordRequest(
+            string recordId,
+            string definitionId,
+            KnowledgeRecordCategory category,
+            InformationSubjectType subjectType,
+            string subjectId,
+            InformationVisibilityClassification classification,
+            string summary,
+            string body,
+            bool preview = false,
+            string[] sourceIds = null,
+            string[] evidenceIds = null,
+            string[] historicalEventIds = null,
+            string[] lifeEventIds = null)
+        {
+            return new KnowledgeRecordCreateRequest
+            {
+                TransactionId = $"record.8.9.{SanitizeForTransaction(recordId)}.{Guid.NewGuid():N}",
+                RecordId = recordId,
+                DefinitionId = definitionId,
+                Category = category,
+                OwnerKind = KnowledgeRecordOwnerKind.Person,
+                OwnerId = GetPrototypePersonId(),
+                Subject = BuildPrototypeSubject(subjectType, subjectId, GetPrototypePersonId()),
+                AuthorPersonId = GetPrototypePersonId(),
+                WorldTimeSeconds = GetPrototypeWorldTime(),
+                OccurredWorldTimeSeconds = GetPrototypeWorldTime(),
+                KnowledgeOwnerPersonId = GetPrototypePersonId(),
+                SourceIds = sourceIds ?? Array.Empty<string>(),
+                EvidenceIds = evidenceIds ?? Array.Empty<string>(),
+                HistoricalEventIds = historicalEventIds ?? Array.Empty<string>(),
+                LifeEventIds = lifeEventIds ?? Array.Empty<string>(),
+                Confidence = classification == InformationVisibilityClassification.Public ? 850 : 650,
+                Reliability = classification == InformationVisibilityClassification.Public ? 800 : 600,
+                Classification = classification,
+                Tags = new[] { "feature.8.9", "prototype-record" },
+                Details = new[]
+                {
+                    new KnowledgeRecordDetailData { detailId = "detail.summary", labelKey = "summary", value = summary ?? string.Empty, valueType = KnowledgeValueType.Text },
+                    new KnowledgeRecordDetailData { detailId = "detail.body", labelKey = "body", value = body ?? string.Empty, valueType = KnowledgeValueType.Text },
+                    new KnowledgeRecordDetailData { detailId = "detail.source", labelKey = "source", value = string.Join(",", sourceIds ?? Array.Empty<string>()), valueType = KnowledgeValueType.Text, uncertain = sourceIds == null || sourceIds.Length == 0 }
+                },
+                Preview = preview
+            };
+        }
+
+        private KnowledgeRecordProjectionContext BuildKnowledgeRecordProjectionContext(string requesterId, InformationAccessMode mode, bool privileged)
+        {
+            return new KnowledgeRecordProjectionContext
+            {
+                RequesterPersonId = requesterId,
+                ContextKind = privileged ? KnowledgeRecordProjectionContextKind.Privileged : KnowledgeRecordProjectionContextKind.Public,
+                AccessContext = BuildProjectionAccessContext(requesterId, mode)
+            };
+        }
+
+        private PrototypeTestLabOperation RecordKnowledgeRecordOperation(string operationName, KnowledgeRecordOperationResult result)
+        {
+            bool succeeded = result != null && result.Succeeded;
+            string message = result == null
+                ? "Knowledge Record operation returned no result."
+                : $"{result.Message} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code} Revision={result.PriorRevision}->{result.ResultingRevision} Record={result.Record?.RecordId ?? "None"} Details={result.Record?.Details.Count ?? 0}.";
+            return Record(succeeded, operationName, succeeded ? result.Code.ToString() : result?.Code.ToString() ?? KnowledgeRecordResultCode.InvalidRequest.ToString(), message);
+        }
+
+        private PrototypeTestLabOperation RecordKnowledgeRecordReadOperation(string operationName, KnowledgeRecordReadResult result)
+        {
+            bool succeeded = result != null && result.Succeeded;
+            string message = result == null
+                ? "Knowledge Record read returned no result."
+                : $"{result.Message} Preview={result.Preview} Duplicate={result.Duplicate} Code={result.Code} Record={result.Projection?.VisibleRecordId ?? "None"} Source={result.SourceInstanceId} Evidence={result.EvidenceId} Belief={result.BeliefId} Memory={result.MemoryId} SourceResult={result.SourceResult?.Code.ToString() ?? "None"} KnowledgeResult={result.KnowledgeResult?.Code.ToString() ?? "None"} MemoryResult={result.MemoryResult?.Code.ToString() ?? "None"}.";
+            return Record(succeeded, operationName, succeeded ? result.Code.ToString() : result?.Code.ToString() ?? KnowledgeRecordResultCode.InvalidRequest.ToString(), message);
         }
 
         private void EnsurePrototypeAccessPolicies()
@@ -12531,6 +12956,14 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
+            foreach (KnowledgeRecordDefinition definition in CreatePrototypeKnowledgeRecordDefinitions())
+            {
+                if (!definitions.Any(existing => string.Equals(existing.Id, definition.Id, StringComparison.Ordinal)))
+                {
+                    definitions.Add(definition);
+                }
+            }
+
             return new DefinitionRegistry(definitions);
         }
 
@@ -12556,6 +12989,11 @@ namespace UnityIsekaiGame.Development
                 LifeEventDefinition("history-event.life.presumed-death", "Presumed Death", HistoricalEventCategory.DeathOrDisappearance, KnowledgeVisibility.Private, HistoricalEventPayloadKind.Generic, true, LifeEventCategory.Disappearance, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.Major, LifeEventBiographyRelevance.RestrictedBiographyEvent, LifeEventPublicRecordRelevance.OrganizationRecord, LifeEventParticipantRole.Subject),
                 LifeEventDefinition("history-event.life.return", "Return", HistoricalEventCategory.DeathOrDisappearance, KnowledgeVisibility.Public, HistoricalEventPayloadKind.Generic, true, LifeEventCategory.ReturnOrResurrection, LifeEventPayloadKind.DeathOrDisappearance, LifeEventSignificance.LifeDefining, LifeEventBiographyRelevance.MajorBiographyEvent, LifeEventPublicRecordRelevance.PublicRecord, LifeEventParticipantRole.Subject)
             };
+        }
+
+        private static IReadOnlyList<KnowledgeRecordDefinition> CreatePrototypeKnowledgeRecordDefinitions()
+        {
+            return PrototypeKnowledgeRecordDefinitionFactory.CreateKnowledgeRecordDefinitions();
         }
 
         private static HistoricalEventDefinition LifeEventDefinition(string id, string displayName, HistoricalEventCategory historicalCategory, KnowledgeVisibility visibility, HistoricalEventPayloadKind historicalPayloadKind, bool isLifeEvent, LifeEventCategory lifeCategory, LifeEventPayloadKind lifePayloadKind, LifeEventSignificance significance, LifeEventBiographyRelevance biography, LifeEventPublicRecordRelevance publicRecord, LifeEventParticipantRole requiredRole)

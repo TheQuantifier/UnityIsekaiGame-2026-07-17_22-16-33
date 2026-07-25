@@ -13,6 +13,7 @@ using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
+using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
@@ -72,6 +73,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
+        [SerializeField] private bool registerPlayerKnowledgeRecords = true;
         [SerializeField] private bool registerPlayerStatsVitalsStatus = true;
         [SerializeField] private bool registerPlayerResources = true;
         [SerializeField] private bool registerPlayerCombatExecution = true;
@@ -99,6 +101,7 @@ namespace UnityIsekaiGame.Gameplay
         private InformationSourcePersistenceParticipant playerInformationSourceParticipant;
         private InformationTransferPersistenceParticipant playerInformationTransferParticipant;
         private InformationAccessPersistenceParticipant playerInformationAccessParticipant;
+        private KnowledgeRecordPersistenceParticipant playerKnowledgeRecordParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
@@ -112,6 +115,7 @@ namespace UnityIsekaiGame.Gameplay
         private InformationSourceRuntime playerInformationSources;
         private InformationTransferRuntime playerInformationTransfers;
         private InformationAccessRuntime playerInformationAccess;
+        private KnowledgeRecordRuntime playerKnowledgeRecords;
         private bool dirtyEventsSubscribed;
 
         public PersistenceService Service => service;
@@ -127,6 +131,7 @@ namespace UnityIsekaiGame.Gameplay
         public InformationSourceRuntime InformationSources => playerInformationSources ??= new InformationSourceRuntime();
         public InformationTransferRuntime InformationTransfers => playerInformationTransfers ??= new InformationTransferRuntime();
         public InformationAccessRuntime InformationAccess => playerInformationAccess ??= new InformationAccessRuntime();
+        public KnowledgeRecordRuntime KnowledgeRecords => playerKnowledgeRecords ??= new KnowledgeRecordRuntime();
 
         private void Awake()
         {
@@ -225,6 +230,12 @@ namespace UnityIsekaiGame.Gameplay
                 playerLocationParticipant = null;
             }
 
+            if (service != null && playerKnowledgeRecordParticipant != null)
+            {
+                service.UnregisterParticipant(playerKnowledgeRecordParticipant);
+                playerKnowledgeRecordParticipant = null;
+            }
+
             UnsubscribeDirtyEvents();
         }
 
@@ -295,6 +306,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerInformationSourceParticipant();
             EnsurePlayerInformationTransferParticipant();
             EnsurePlayerInformationAccessParticipant();
+            EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -966,6 +978,40 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerInformationAccessParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerKnowledgeRecordParticipant()
+        {
+            if (!registerPlayerKnowledgeRecords || playerKnowledgeRecordParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (playerIdentityProgression == null)
+            {
+                Debug.LogWarning("Knowledge Record persistence participant was not registered because the prototype Person identity/progression component is missing.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Knowledge Record persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            KnowledgeRecords.Configure(GetDefinitionRegistry(), playerIdentityProgression.PersonId);
+            playerKnowledgeRecordParticipant = new KnowledgeRecordPersistenceParticipant(
+                KnowledgeRecords,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerKnowledgeRecordParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerKnowledgeRecordParticipant = null;
             }
         }
 
@@ -1983,7 +2029,29 @@ namespace UnityIsekaiGame.Gameplay
                 return null;
             }
 
-            return definitionRegistry ??= definitionCatalog.CreateRegistry();
+            if (definitionRegistry != null)
+            {
+                return definitionRegistry;
+            }
+
+            DefinitionRegistry catalogRegistry = definitionCatalog.CreateRegistry();
+            List<IGameDefinition> definitions = new List<IGameDefinition>();
+            HashSet<string> definitionIds = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (IGameDefinition definition in catalogRegistry.DefinitionsById.Values)
+            {
+                if (definition != null && definitionIds.Add(definition.Id))
+                {
+                    definitions.Add(definition);
+                }
+            }
+
+            foreach (KnowledgeRecordDefinition definition in PrototypeKnowledgeRecordDefinitionFactory.CreateMissingKnowledgeRecordDefinitions(definitionIds))
+            {
+                definitions.Add(definition);
+            }
+
+            definitionRegistry = new DefinitionRegistry(definitions);
+            return definitionRegistry;
         }
     }
 }

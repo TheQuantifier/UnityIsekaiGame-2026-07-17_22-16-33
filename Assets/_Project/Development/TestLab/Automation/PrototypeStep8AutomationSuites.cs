@@ -21,6 +21,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildInformationSourcesSuite());
             TryRegister(registry, BuildInformationSharingSuite());
             TryRegister(registry, BuildInformationAccessSuite());
+            TryRegister(registry, BuildKnowledgeRecordsSuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -403,6 +404,34 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("projection", "Compare projections", context => Operation(context.Service.CompareInformationAccessProjections(), context, "step8-access-projection")),
                     Step("adapters", "Validate non-transfer projection adapters", context => Operation(context.Service.ValidateInformationAccessProjectionAdapters(), context, "step8-access-adapters")),
                     Step("save-restore", "Validate save restore", context => Operation(context.Service.ValidateInformationAccessSaveRestore(), context, "step8-access-save-restore"))));
+        }
+
+        private static ITestLabAutomationSuite BuildKnowledgeRecordsSuite()
+        {
+            return Suite("feature.8.9.historical-records-journals-codex", "Feature 8.9 Historical Records, Journals, and Codex", "8.9", 890,
+                Required("KnowledgeRecordRuntime", "KnowledgeRecordDefinition", "InformationAccessRuntime", "InformationSourceRuntime", "AuthoritativeHistoryRuntime", "PersonMemoryRuntime"),
+                Scenario("foundation-validates", "Knowledge Record definitions validate", 10,
+                    Step("validate", "Validate record definitions", context => Operation(context.Service.ValidateKnowledgeRecordDefinitions(), context, "step8-records-validate"))),
+                Scenario("explicit-record-categories", "Representative explicit record categories can be created", 20,
+                    Step("journal", "Create journal", context => Operation(context.Service.CreatePersonalJournalRecord(), context, "step8-records-journal")),
+                    Step("history", "Create history", context => Operation(context.Service.CreateHistoricalArchiveRecord(), context, "step8-records-history")),
+                    Step("biography", "Create biography", context => Operation(context.Service.CreateBiographyProjectionRecord(), context, "step8-records-biography")),
+                    Step("bestiary", "Create bestiary", context => Operation(context.Service.CreateBestiaryRecord(), context, "step8-records-bestiary")),
+                    Step("location", "Create location", context => Operation(context.Service.CreateLocationRecord(), context, "step8-records-location"))),
+                Scenario("specialized-records", "Medical and investigation records remain explicit and typed", 30,
+                    Step("medical", "Create medical", context => Operation(context.Service.CreateMedicalRecord(), context, "step8-records-medical")),
+                    Step("investigation", "Create investigation", context => Operation(context.Service.CreateInvestigationRecord(), context, "step8-records-investigation"))),
+                Scenario("projection-boundaries", "Live projections preview without mutating owning systems", 40,
+                    Step("projection", "Validate projection boundaries", context => Operation(context.Service.ValidateKnowledgeRecordLiveProjectionBoundaries(), context, "step8-records-projection"))),
+                Scenario("access-aware-read", "Record reading applies authorized source, evidence, and memory effects", 50,
+                    Step("owner", "Owner read effects", context => Operation(context.Service.ReadKnowledgeRecordAsOwner(), context, "step8-records-owner-read")),
+                    Step("deny", "Unauthorized denied", context => Operation(context.Service.AttemptUnauthorizedKnowledgeRecordRead(), context, "step8-records-deny-read"))),
+                Scenario("correction-and-collection", "Corrections and collections preserve original records", 60,
+                    Step("correct", "Correct record", context => Operation(context.Service.CreateCorrectedKnowledgeRecord(), context, "step8-records-correct")),
+                    Step("collection", "Create collection", context => Operation(context.Service.CreateKnowledgeRecordCollection(), context, "step8-records-collection"))),
+                Scenario("search-and-save-restore", "Search and persistence preserve records deterministically", 70,
+                    Step("search", "Search records", context => Operation(context.Service.SearchKnowledgeRecords(), context, "step8-records-search")),
+                    Step("save-restore", "Save restore", context => Operation(context.Service.ValidateKnowledgeRecordSaveRestore(), context, "step8-records-save-restore"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)
