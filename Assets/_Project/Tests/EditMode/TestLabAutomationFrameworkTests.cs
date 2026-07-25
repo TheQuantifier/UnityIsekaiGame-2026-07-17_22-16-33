@@ -445,8 +445,11 @@ namespace UnityIsekaiGame.Tests
                 "feature.8.6.information-sources-reliability",
                 "feature.8.7.information-sharing-teaching",
                 "feature.8.8.secrets-visibility-information-access",
-                "feature.8.9.historical-records-journals-codex"
+                "feature.8.9.historical-records-journals-codex",
+                "feature.8.10.knowledge-history-integration",
+                "step.8.knowledge-history-integration"
             }));
+            Assert.That(registry.Suites.Single(suite => suite.SuiteId == "step.8.knowledge-history-integration").IncludeInRunAll, Is.False);
         }
 
         [Test]
