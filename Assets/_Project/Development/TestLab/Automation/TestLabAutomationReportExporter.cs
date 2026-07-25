@@ -40,6 +40,8 @@ namespace UnityIsekaiGame.Development.Automation
             AppendJsonProperty(builder, "platform", Application.platform.ToString(), 1, comma: true);
             AppendJsonProperty(builder, "runId", result.RunId, 1, comma: true);
             AppendJsonProperty(builder, "runMode", result.RunMode.ToString(), 1, comma: true);
+            AppendJsonProperty(builder, "scenarioOrder", result.ScenarioOrder.ToString(), 1, comma: true);
+            AppendJsonProperty(builder, "shuffleSeed", result.ShuffleSeed.ToString(), 1, comma: true, quoteValue: false);
             AppendJsonProperty(builder, "startedAtUtc", result.StartedAtUtc.ToString("O"), 1, comma: true);
             AppendJsonProperty(builder, "endedAtUtc", result.EndedAtUtc.ToString("O"), 1, comma: true);
             AppendJsonProperty(builder, "cancelled", result.Cancelled ? "true" : "false", 1, comma: true, quoteValue: false);
@@ -103,6 +105,8 @@ namespace UnityIsekaiGame.Development.Automation
             builder.AppendLine();
             builder.AppendLine($"Run: `{result.RunId}`");
             builder.AppendLine($"Mode: `{result.RunMode}`");
+            builder.AppendLine($"Scenario Order: `{result.ScenarioOrder}`");
+            builder.AppendLine($"Shuffle Seed: `{result.ShuffleSeed}`");
             builder.AppendLine($"Started UTC: `{result.StartedAtUtc:O}`");
             builder.AppendLine($"Ended UTC: `{result.EndedAtUtc:O}`");
             builder.AppendLine($"Totals: {result.PassedScenarios} passed, {result.FailedScenarios} failed, {result.ErrorScenarios} error, {result.SkippedScenarios} skipped, {result.CancelledScenarios} cancelled, {result.TotalSteps} steps.");

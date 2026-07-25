@@ -5,12 +5,12 @@ namespace UnityIsekaiGame.Development.Automation
     {
         public TestLabAutomationStepResult Reset(TestLabAutomationContext context, string reason)
         {
-            if (context?.Service == null)
+            PrototypeTestLabService service = context?.GetHost<PrototypeTestLabAutomationHost>()?.Service;
+            if (service == null)
             {
                 return TestLabAssertions.Fail("reset", "Reset runtime state", "NotNull", "PrototypeTestLabService", "null", "Test Lab service is required before scenarios can reset.");
             }
 
-            PrototypeTestLabService service = context.Service;
             service.ResetAutomationRuntimeState();
             context.EventCapture?.Clear();
             return TestLabAssertions.Pass("reset", "Reset runtime state", reason ?? string.Empty);

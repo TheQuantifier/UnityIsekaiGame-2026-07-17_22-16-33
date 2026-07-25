@@ -15,6 +15,7 @@ using UnityIsekaiGame.Beings.Biology.Recovery;
 using UnityIsekaiGame.Beings.Biology.Transformation;
 using UnityIsekaiGame.Beings.Biology.VitalProcesses;
 using UnityIsekaiGame.Development.Automation;
+using UnityIsekaiGame.Development.Automation.Fixtures.History;
 using UnityIsekaiGame.Abilities;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.CharacterSystem;
@@ -87,10 +88,15 @@ namespace UnityIsekaiGame.Development
         private CombatRuntimeFacade combatRuntimeFacade;
         private readonly TestLabAutomationRegistry automationRegistry = new TestLabAutomationRegistry();
         private readonly TestLabAutomationReportExporter automationReportExporter = new TestLabAutomationReportExporter();
+        private PrototypeTestLabAutomationHost automationHost;
         private TestLabAutomationRunner automationRunner;
         private TestLabAutomationResult lastAutomationResult;
         private readonly List<TestLabScenarioResult> automationBatchScenarios = new List<TestLabScenarioResult>();
         private readonly HashSet<string> loggedAutomationFailureKeys = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Stack<AutomationRuntimeBindingFrame> automationRuntimeBindingStack = new Stack<AutomationRuntimeBindingFrame>();
+        private readonly Dictionary<string, TestLabRuntimeBundle> sharedAutomationRuntimeBundles = new Dictionary<string, TestLabRuntimeBundle>(StringComparer.Ordinal);
+        private readonly Dictionary<string, TestLabRuntimeBundle> persistentAutomationRuntimeBundles = new Dictionary<string, TestLabRuntimeBundle>(StringComparer.Ordinal);
+        private TestLabScenarioContext currentAutomationScenarioContext;
         private DateTime automationBatchStartedAtUtc;
         private string automationBatchRunId;
         private TestLabAutomationRunMode automationBatchMode;
@@ -199,19 +205,39 @@ namespace UnityIsekaiGame.Development
                 : Array.Empty<ITestLabAutomationScenario>();
         }
 
+        public TestLabSuiteCompatibilityReport PreviewAutomationCompatibility(string suiteId = "")
+        {
+            EnsureAutomation();
+            return automationRunner.PreviewCompatibility(suiteId);
+        }
+
+        public void UnregisterAutomationHost()
+        {
+            if (automationHost != null)
+            {
+                TestLabAutomationHostRegistry.Unregister(automationHost);
+            }
+        }
+
         public string BuildAutomationSummary()
         {
             EnsureAutomation();
             TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(automationRegistry);
+            TestLabAutomationMigrationInventory inventory = TestLabAutomationValidation.BuildMigrationInventory(automationRegistry);
+            TestLabSuiteCompatibilityReport compatibility = automationRunner.PreviewCompatibility();
+            string hostSummary = automationHost == null ? "Host: none." : "Host: " + automationHost.GetCapabilities().ToDiagnostic();
             if (lastAutomationResult == null)
             {
-                return $"{validation.ToSummary()}\nSuites: {automationRegistry.Suites.Count}\nNo automation run yet.";
+                return $"{validation.ToSummary()}\n{inventory.ToSummary()}\n{compatibility.ToDiagnostic()}\n{hostSummary}\nSuites: {automationRegistry.Suites.Count}\nNo automation run yet.";
             }
 
             List<string> lines = new List<string>
             {
                 validation.ToSummary(),
-                $"Run: {lastAutomationResult.RunId} ({lastAutomationResult.RunMode}) Cancelled={lastAutomationResult.Cancelled}",
+                inventory.ToSummary(),
+                compatibility.ToDiagnostic(),
+                hostSummary,
+                $"Run: {lastAutomationResult.RunId} ({lastAutomationResult.RunMode}) Order={lastAutomationResult.ScenarioOrder} Seed={lastAutomationResult.ShuffleSeed} Cancelled={lastAutomationResult.Cancelled}",
                 $"Scenarios: {lastAutomationResult.PassedScenarios} passed, {lastAutomationResult.FailedScenarios} failed, {lastAutomationResult.ErrorScenarios} error, {lastAutomationResult.SkippedScenarios} skipped, {lastAutomationResult.CancelledScenarios} cancelled.",
                 $"Steps: {lastAutomationResult.TotalSteps}. Elapsed: {lastAutomationResult.Elapsed.TotalSeconds:0.###}s."
             };
@@ -237,7 +263,9 @@ namespace UnityIsekaiGame.Development
         {
             EnsureAutomation();
             TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(automationRegistry);
-            string message = validation.ToSummary();
+            TestLabAutomationMigrationInventory inventory = TestLabAutomationValidation.BuildMigrationInventory(automationRegistry);
+            TestLabSuiteCompatibilityReport compatibility = automationRunner.PreviewCompatibility();
+            string message = validation.ToSummary() + Environment.NewLine + inventory.ToSummary() + Environment.NewLine + compatibility.ToDiagnostic();
             if (validation.Errors.Count > 0)
             {
                 message += Environment.NewLine + string.Join(Environment.NewLine, validation.Errors);
@@ -248,7 +276,15 @@ namespace UnityIsekaiGame.Development
                 message += Environment.NewLine + string.Join(Environment.NewLine, validation.Warnings);
             }
 
-            return Record(validation.Succeeded, "Validate Test Lab Automation", validation.Succeeded ? "Valid" : "Invalid", message);
+            if (compatibility.UnsupportedCount > 0)
+            {
+                message += Environment.NewLine + string.Join(Environment.NewLine, compatibility.Scenarios
+                    .Where(scenario => !scenario.Compatible)
+                    .Select(scenario => $"{scenario.SuiteId}/{scenario.ScenarioId}: {scenario.FailureCode} {scenario.Diagnostics}"));
+            }
+
+            bool succeeded = validation.Succeeded && compatibility.Compatible;
+            return Record(succeeded, "Validate Test Lab Automation", succeeded ? "Valid" : "Invalid", message);
         }
 
         public PrototypeTestLabOperation RunAutomationScenario(string suiteId, string scenarioId, bool stopOnFirstFailure)
@@ -358,6 +394,90 @@ namespace UnityIsekaiGame.Development
             return RecordSuccess("Clear Automation Results", "Automation result summary cleared.");
         }
 
+        public TestLabScenarioContext CreateAutomationScenarioContext(string runId, string suiteId, string scenarioId, TestLabScenarioIsolationMode isolationMode, TestLabRuntimeArea requiredRuntimeAreas, IEnumerable<string> requiredFixtureIds)
+        {
+            TestLabRuntimeBundle runtimeBundle = CreateAutomationRuntimeBundle(runId, suiteId, scenarioId, isolationMode, out bool contextOwnsRuntime);
+            return new TestLabScenarioContext(
+                runId,
+                suiteId,
+                scenarioId,
+                isolationMode,
+                runtimeBundle,
+                contextOwnsRuntime ? runtimeBundle : null,
+                requiredRuntimeAreas,
+                requiredFixtureIds,
+                CaptureAutomationSceneFingerprint);
+        }
+
+        public TestLabDefinitionContext CreateAutomationDefinitionContext()
+        {
+            return new TestLabDefinitionContext(
+                registry,
+                PrototypeCatalogPath,
+                "Prototype Definition Catalog",
+                catalogAuthored: context?.DefinitionCatalog != null,
+                fallbackDefinitionsAvailable: true,
+                revision: registry == null ? 0 : registry.Count,
+                new[] { context?.DefinitionCatalog == null ? "Using explicit Prototype fallback definitions where catalog assets are unavailable." : "Prototype catalog-authored definitions are authoritative." });
+        }
+
+        public void SetActiveAutomationScenarioContext(TestLabScenarioContext scenarioContext)
+        {
+            automationRuntimeBindingStack.Push(new AutomationRuntimeBindingFrame(
+                currentAutomationScenarioContext,
+                informationSources,
+                informationTransfers,
+                informationAccess,
+                knowledgeRecords));
+            currentAutomationScenarioContext = scenarioContext;
+            ApplyAutomationRuntimeBindings(scenarioContext);
+        }
+
+        public void ClearActiveAutomationScenarioContext(TestLabScenarioContext scenarioContext)
+        {
+            if (automationRuntimeBindingStack.Count == 0)
+            {
+                if (ReferenceEquals(currentAutomationScenarioContext, scenarioContext))
+                {
+                    currentAutomationScenarioContext = null;
+                }
+
+                return;
+            }
+
+            AutomationRuntimeBindingFrame frame = automationRuntimeBindingStack.Pop();
+            if (ReferenceEquals(currentAutomationScenarioContext, scenarioContext))
+            {
+                currentAutomationScenarioContext = frame.PreviousContext;
+                informationSources = frame.PreviousSources;
+                informationTransfers = frame.PreviousTransfers;
+                informationAccess = frame.PreviousAccess;
+                knowledgeRecords = frame.PreviousRecords;
+                ApplyAutomationRuntimeBindings(currentAutomationScenarioContext);
+                return;
+            }
+
+            currentAutomationScenarioContext = frame.PreviousContext;
+            informationSources = frame.PreviousSources;
+            informationTransfers = frame.PreviousTransfers;
+            informationAccess = frame.PreviousAccess;
+            knowledgeRecords = frame.PreviousRecords;
+            ApplyAutomationRuntimeBindings(currentAutomationScenarioContext);
+        }
+
+        public void ClearAutomationRunScopes(string runId)
+        {
+            DisposeAutomationBundles(sharedAutomationRuntimeBundles, runId);
+            DisposeAutomationBundles(persistentAutomationRuntimeBundles, runId);
+        }
+
+        public string CreateAutomationScopedId(string category, string slug)
+        {
+            return currentAutomationScenarioContext == null
+                ? $"{SanitizeForTransaction(category)}.manual.{SanitizeForTransaction(slug)}.{Guid.NewGuid():N}"
+                : currentAutomationScenarioContext.ScopedId(category, slug);
+        }
+
         public PrototypeTestLabOperation ResetAutomationRuntimeState()
         {
             RestoreVitals();
@@ -396,6 +516,313 @@ namespace UnityIsekaiGame.Development
             lastContributionCreditTargetActorId = string.Empty;
             ResetEnemy();
             return RecordSuccess("Reset Automation Runtime", "Runtime automation baseline restored without expected optional-action warnings.");
+        }
+
+        internal TestLabRuntimeBundle CreateAutomationRuntimeBundleForHost(string runId, string suiteId, string scenarioId, TestLabScenarioIsolationMode isolationMode, out bool contextOwnsRuntime)
+        {
+            return CreateAutomationRuntimeBundle(runId, suiteId, scenarioId, isolationMode, out contextOwnsRuntime);
+        }
+
+        private TestLabRuntimeBundle CreateAutomationRuntimeBundle(string runId, string suiteId, string scenarioId, TestLabScenarioIsolationMode isolationMode, out bool contextOwnsRuntime)
+        {
+            contextOwnsRuntime = false;
+            switch (isolationMode)
+            {
+                case TestLabScenarioIsolationMode.FreshRuntime:
+                case TestLabScenarioIsolationMode.SnapshotRestore:
+                    contextOwnsRuntime = true;
+                    return TestLabRuntimeBundle.CreateFresh(
+                        registry,
+                        GetPrototypePersonId(),
+                        PersistenceService.LocalWorldId,
+                        GetKnownPrototypePersons(),
+                        GetKnownPrototypeBodies(),
+                        $"Test Lab {isolationMode} {suiteId}/{scenarioId}");
+                case TestLabScenarioIsolationMode.SharedRuntime:
+                    return GetOrCreateScopedAutomationBundle(sharedAutomationRuntimeBundles, $"{runId}:{suiteId}:shared", $"Test Lab Shared {suiteId}");
+                case TestLabScenarioIsolationMode.PersistentFixture:
+                    return GetOrCreateScopedAutomationBundle(persistentAutomationRuntimeBundles, $"{runId}:{suiteId}:persistent", $"Test Lab Persistent {suiteId}");
+            }
+
+            EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
+            informationSources = context?.Persistence?.InformationSources ?? informationSources ?? new InformationSourceRuntime();
+            informationSources.Configure(registry, GetPrototypePersonId());
+            informationTransfers = context?.Persistence?.InformationTransfers ?? informationTransfers ?? new InformationTransferRuntime();
+            informationTransfers.Configure(registry, GetPrototypePersonId());
+            informationAccess = EnsureInformationAccessRuntime();
+            knowledgeRecords = EnsureKnowledgeRecordRuntime();
+            return TestLabRuntimeBundle.FromExisting(
+                registry,
+                GetPrototypePersonId(),
+                PersistenceService.LocalWorldId,
+                GetKnownPrototypePersons(),
+                GetKnownPrototypeBodies(),
+                knowledge,
+                historyRuntime,
+                memoryRuntime,
+                informationSources,
+                informationTransfers,
+                informationAccess,
+                knowledgeRecords);
+        }
+
+        private TestLabRuntimeBundle GetOrCreateScopedAutomationBundle(Dictionary<string, TestLabRuntimeBundle> bundles, string key, string objectName)
+        {
+            if (bundles.TryGetValue(key, out TestLabRuntimeBundle existing))
+            {
+                return existing;
+            }
+
+            TestLabRuntimeBundle bundle = TestLabRuntimeBundle.CreateFresh(
+                registry,
+                GetPrototypePersonId(),
+                PersistenceService.LocalWorldId,
+                GetKnownPrototypePersons(),
+                GetKnownPrototypeBodies(),
+                objectName);
+            bundles.Add(key, bundle);
+            return bundle;
+        }
+
+        private static void DisposeAutomationBundles(Dictionary<string, TestLabRuntimeBundle> bundles, string runId)
+        {
+            if (bundles == null || bundles.Count == 0)
+            {
+                return;
+            }
+
+            string prefix = $"{runId}:";
+            string[] keys = bundles.Keys.Where(key => string.IsNullOrWhiteSpace(runId) || key.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+            foreach (string key in keys)
+            {
+                bundles[key]?.Dispose();
+                bundles.Remove(key);
+            }
+        }
+
+        private void ApplyAutomationRuntimeBindings(TestLabScenarioContext scenarioContext)
+        {
+            TestLabRuntimeBundle bundle = scenarioContext?.Runtimes;
+            if (bundle == null)
+            {
+                return;
+            }
+
+            informationSources = bundle.Sources ?? informationSources;
+            informationTransfers = bundle.Transfers ?? informationTransfers;
+            informationAccess = bundle.Access ?? informationAccess;
+            knowledgeRecords = bundle.Records ?? knowledgeRecords;
+        }
+
+        public IEnumerable<TestLabRuntimeFingerprintSection> CaptureAutomationSceneFingerprint(TestLabRuntimeArea requiredAreas)
+        {
+            List<TestLabRuntimeFingerprintSection> sections = new List<TestLabRuntimeFingerprintSection>();
+            if ((requiredAreas & TestLabRuntimeArea.Character) != 0)
+            {
+                sections.Add(CreateSceneFingerprintSection(
+                    "Scene.Character",
+                    context?.CharacterSystem == null ? 0L : context.CharacterSystem.Revision,
+                    context?.CharacterSystem == null ? null : context.CharacterSystem.GetSnapshot(developmentView: true),
+                    context?.IdentityProgression == null ? null : context.IdentityProgression.CreateSaveData(),
+                    context?.PlayerAttributes == null ? null : context.PlayerAttributes.CreateSaveData(PersistenceService.LocalPlayerId, GetPrototypePersonId()),
+                    context?.PlayerSkills == null ? null : context.PlayerSkills.CreateSaveData(PersistenceService.LocalPlayerId, GetPrototypePersonId()),
+                    context?.PlayerTraits == null ? null : context.PlayerTraits.CreateSaveData(PersistenceService.LocalPlayerId, GetPrototypePersonId()),
+                    context?.PlayerResources == null ? null : context.PlayerResources.CreateSaveData(PersistenceService.LocalPlayerId, GetPrototypePersonId()),
+                    context?.Inventory == null ? null : context.Inventory.CreateSaveData(),
+                    context?.Equipment == null ? null : context.Equipment.CreateSaveData(),
+                    context?.PlayerStatuses == null ? null : context.PlayerStatuses.CreateSaveData(saveEligibleOnly: false),
+                    LifecycleFingerprint(context?.PlayerLifecycle),
+                    LifecycleFingerprint(context?.EnemyLifecycle)));
+            }
+
+            if ((requiredAreas & TestLabRuntimeArea.Combat) != 0)
+            {
+                sections.Add(CreateSceneFingerprintSection(
+                    "Scene.Combat",
+                    combatRuntimeFacade == null ? 0L : combatRuntimeFacade.CreateSnapshot(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject).Revisions.AggregateRevision,
+                    combatRuntimeFacade == null || context?.PlayerTransform == null ? null : combatRuntimeFacade.CreateSnapshot(context.PlayerTransform.gameObject),
+                    combatRuntimeFacade == null || context?.EnemyTransform == null ? null : combatRuntimeFacade.CreateSnapshot(context.EnemyTransform.gameObject),
+                    combatExecutionService == null ? null : combatExecutionService.CreateSaveData(PersistenceService.LocalPlayerId, GetPrototypePersonId()),
+                    context?.PlayerOngoingEffects == null ? null : context.PlayerOngoingEffects.CreateSaveData(PersistenceService.LocalPlayerId, PersistenceService.LocalPlayerId),
+                    context?.EnemyOngoingEffects == null ? null : context.EnemyOngoingEffects.CreateSaveData(PersistenceService.LocalPlayerId, ResolveActorId(context.EnemyTransform == null ? null : context.EnemyTransform.gameObject)),
+                    combatContributionService == null ? null : combatContributionService.GetLedgerSnapshots(),
+                    combatReactionService == null ? null : combatReactionService.Registrations,
+                    CombatLastTransactionFingerprint()));
+            }
+
+            if ((requiredAreas & TestLabRuntimeArea.Biology) != 0)
+            {
+                ActorBodyRuntime playerBody = context?.CharacterSystem == null ? null : context.CharacterSystem.Body;
+                ActorBodyRuntime enemyBody = context?.EnemyTransform == null ? null : context.EnemyTransform.GetComponentInParent<ActorBodyRuntime>();
+                sections.Add(CreateSceneFingerprintSection(
+                    "Scene.Biology",
+                    (playerBody == null ? 0L : playerBody.BodyRevision) + (enemyBody == null ? 0L : enemyBody.BodyRevision),
+                    playerBody == null ? null : playerBody.CreateSaveData(),
+                    enemyBody == null ? null : enemyBody.CreateSaveData()));
+            }
+
+            if ((requiredAreas & TestLabRuntimeArea.Persistence) != 0)
+            {
+                sections.Add(CreateSceneFingerprintSection(
+                    "Scene.Persistence",
+                    context?.Persistence == null ? 0L : (long)Math.Round(context.Persistence.PlayTime == null ? 0d : context.Persistence.PlayTime.CumulativeSeconds),
+                    context?.Persistence == null ? null : context.Persistence.PrototypeSlotId,
+                    context?.Persistence == null ? null : context.Persistence.DirtyTracker,
+                    context?.Persistence == null || context.Persistence.PlayTime == null ? null : context.Persistence.PlayTime.CumulativeSeconds,
+                    CurrentSlotId));
+            }
+
+            return sections;
+        }
+
+        private TestLabRuntimeFingerprintSection CreateSceneFingerprintSection(string area, long revision, params object[] stateParts)
+        {
+            StringBuilder builder = new StringBuilder();
+            foreach (object statePart in stateParts ?? Array.Empty<object>())
+            {
+                AppendFingerprintValue(builder, statePart, 0);
+                builder.AppendLine();
+            }
+
+            return TestLabRuntimeFingerprintSection.FromText(area, revision, builder.ToString());
+        }
+
+        private object LifecycleFingerprint(ActorLifecycleController lifecycle)
+        {
+            return lifecycle == null
+                ? null
+                : new
+                {
+                    lifecycle.ActorId,
+                    lifecycle.State,
+                    lifecycle.Revision,
+                    defeatPolicyId = lifecycle.DefeatPolicy == null ? string.Empty : lifecycle.DefeatPolicy.Id
+                };
+        }
+
+        private object CombatLastTransactionFingerprint()
+        {
+            return new
+            {
+                lastAttackTransactionId,
+                lastDefenseActivationTransactionId,
+                lastCombatStateTransactionId,
+                lastCombatStateSplitTransactionId,
+                lastCombatExecutionBeginTransactionId,
+                lastCombatExecutionCommitTransactionId,
+                lastCombatExecutionInstanceId,
+                lastLifecycleTransactionId,
+                lastOngoingEffectTransactionId,
+                lastContributionCreditTargetActorId,
+                combatStateClockSeconds,
+                combatExecutionClockSeconds,
+                ongoingEffectClockSeconds
+            };
+        }
+
+        private static void AppendFingerprintValue(StringBuilder builder, object value, int depth)
+        {
+            if (builder == null)
+            {
+                return;
+            }
+
+            if (value == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            Type type = value.GetType();
+            if (depth > 4)
+            {
+                builder.Append(type.Name);
+                return;
+            }
+
+            if (value is string text)
+            {
+                builder.Append(text);
+                return;
+            }
+
+            if (type.IsPrimitive || type.IsEnum || value is decimal)
+            {
+                builder.Append(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture));
+                return;
+            }
+
+            if (value is UnityEngine.Object unityObject)
+            {
+                builder.Append(unityObject == null ? "null-unity-object" : $"{type.Name}:{unityObject.name}");
+                return;
+            }
+
+            if (value is System.Collections.IEnumerable enumerable)
+            {
+                builder.Append("[");
+                bool first = true;
+                foreach (object item in enumerable)
+                {
+                    if (!first)
+                    {
+                        builder.Append(",");
+                    }
+
+                    AppendFingerprintValue(builder, item, depth + 1);
+                    first = false;
+                }
+
+                builder.Append("]");
+                return;
+            }
+
+            builder.Append(type.FullName);
+            builder.Append("{");
+            bool firstMember = true;
+            foreach (System.Reflection.MemberInfo member in type.GetMembers(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Where(member => member.MemberType == System.Reflection.MemberTypes.Field || member.MemberType == System.Reflection.MemberTypes.Property)
+                .OrderBy(member => member.Name, StringComparer.Ordinal))
+            {
+                object memberValue;
+                if (member is System.Reflection.PropertyInfo property)
+                {
+                    if (property.GetIndexParameters().Length > 0 || !property.CanRead)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        memberValue = property.GetValue(value);
+                    }
+                    catch
+                    {
+                        memberValue = "<unreadable>";
+                    }
+                }
+                else if (member is System.Reflection.FieldInfo field)
+                {
+                    memberValue = field.GetValue(value);
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (!firstMember)
+                {
+                    builder.Append(";");
+                }
+
+                builder.Append(member.Name);
+                builder.Append("=");
+                AppendFingerprintValue(builder, memberValue, depth + 1);
+                firstMember = false;
+            }
+
+            builder.Append("}");
         }
 
         private void ResetInformationAutomationState()
@@ -3573,10 +4000,10 @@ namespace UnityIsekaiGame.Development
         }
 
         public PrototypeTestLabOperation ShowLifeEventPersonTimeline() => RecordLifeEventView("Show 8.5 Person Timeline", history => FormatLifeEvents(history.QueryLifeEventsForPerson(GetPrototypePersonId())));
-        public PrototypeTestLabOperation ShowLifeEventPublicBiography() => RecordLifeEventView("Show 8.5 Public Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), playerMemory, publicOnly: true)));
-        public PrototypeTestLabOperation ShowLifeEventAuthoritativeBiography() => RecordLifeEventView("Show 8.5 Authoritative Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), playerMemory, privileged: true)));
-        public PrototypeTestLabOperation ShowLifeEventPersonKnownBiography() => RecordLifeEventView("Show 8.5 Person Known Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), playerMemory, personKnown: true)));
-        public PrototypeTestLabOperation ShowLifeEventPersonRememberedBiography() => RecordLifeEventView("Show 8.5 Person Remembered Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), playerMemory, personRemembered: true)));
+        public PrototypeTestLabOperation ShowLifeEventPublicBiography() => RecordLifeEventView("Show 8.5 Public Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), GetActiveMemoryRuntime(), publicOnly: true)));
+        public PrototypeTestLabOperation ShowLifeEventAuthoritativeBiography() => RecordLifeEventView("Show 8.5 Authoritative Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), GetActiveMemoryRuntime(), privileged: true)));
+        public PrototypeTestLabOperation ShowLifeEventPersonKnownBiography() => RecordLifeEventView("Show 8.5 Person Known Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), GetActiveMemoryRuntime(), personKnown: true)));
+        public PrototypeTestLabOperation ShowLifeEventPersonRememberedBiography() => RecordLifeEventView("Show 8.5 Person Remembered Biography", history => FormatBiography(history.QueryBiography(GetPrototypePersonId(), GetActiveMemoryRuntime(), personRemembered: true)));
         public PrototypeTestLabOperation ShowLifeEventMajorMilestones() => RecordLifeEventView("Show 8.5 Major Milestones", history => FormatLifeEvents(history.QueryMajorLifeMilestones(GetPrototypePersonId())));
 
         public PrototypeTestLabOperation ValidateLifeEventSaveRestore()
@@ -3642,13 +4069,14 @@ namespace UnityIsekaiGame.Development
             }
 
             string personId = GetPrototypePersonId();
-            if (historyRuntime.TryGetEvent("event.prototype.hidden.secret", out HistoricalEventRecord existing))
+            string eventId = GetPrototypeHiddenHistoryEventId();
+            if (historyRuntime.TryGetEvent(eventId, out HistoricalEventRecord existing))
             {
                 HistoryOperationResult duplicate = HistoryOperationResult.Success("Hidden event already exists.", "history.8.3.hidden.fixed", existing, null, null, historyRuntime.HistoryRevision, historyRuntime.HistoryRevision, duplicate: true);
                 return RecordHistoryResult("Record 8.3 Hidden Event", duplicate);
             }
 
-            RecordHistoricalEventRequest request = BuildHistoryEventRequest("history.8.3.hidden.fixed", "event.prototype.hidden.secret", "history-event.hidden-witnessed-event", personId, KnowledgeVisibility.Hidden, "Hidden event witnessed by the prototype Person.");
+            RecordHistoricalEventRequest request = BuildHistoryEventRequest(CreateAutomationScopedId("history", "hidden-event"), eventId, "history-event.hidden-witnessed-event", personId, KnowledgeVisibility.Hidden, "Hidden event witnessed by the prototype Person.");
             request.ParticipantPersonIds = new[] { personId };
             HistoryOperationResult result = historyRuntime.RecordEvent(request);
             return RecordHistoryResult("Record 8.3 Hidden Event", result);
@@ -3660,27 +4088,57 @@ namespace UnityIsekaiGame.Development
             EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
             IReadOnlyList<HistoricalEventRecord> known = historyRuntime.QueryPersonAccessible("person.prototype.uninformed");
             IReadOnlyList<HistoricalEventRecord> privileged = historyRuntime.QueryPersonAccessible("person.prototype.uninformed", privileged: true);
-            bool succeeded = known.All(record => record.EventId != "event.prototype.hidden.secret") && privileged.Any(record => record.EventId == "event.prototype.hidden.secret");
+            string eventId = GetPrototypeHiddenHistoryEventId();
+            bool succeeded = known.All(record => record.EventId != eventId) && privileged.Any(record => record.EventId == eventId);
             return Record(succeeded, "Prove 8.3 Hidden History Privacy", succeeded ? "Success" : "PrivacyLeak", $"UninformedKnown={known.Count} Privileged={privileged.Count}.");
         }
 
         public PrototypeTestLabOperation FormWitnessHistoryMemory()
         {
+            if (currentAutomationScenarioContext != null)
+            {
+                TestLabFixtureHandle handle = currentAutomationScenarioContext.Fixtures.Require(TestLabHistoryFixtureProviders.WitnessMemoryFixtureId, currentAutomationScenarioContext);
+                if (!handle.Succeeded)
+                {
+                    return RecordFailure("Form 8.3 Witness Memory", handle.Message, handle.Outcome.ToString());
+                }
+
+                string message = currentAutomationScenarioContext.TryGetFixturePayload(TestLabHistoryFixtureProviders.WitnessMemoryFixtureId, out HiddenHistoryFixtureHandle payload)
+                    ? $"Scenario fixture ready. Event={payload.EventId} Memory={payload.MemoryId} Owner={payload.OwnerPersonId}."
+                    : "Scenario fixture ready.";
+                return Record(true, "Form 8.3 Witness Memory", handle.Outcome.ToString(), message);
+            }
+
             RecordHiddenHistoryEvent();
             if (!EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime) || !EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
             {
                 return RecordFailure("Form 8.3 Witness Memory", "History, Memory, or Knowledge runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
             }
 
-            if (memoryRuntime.TryGetMemory("memory.prototype.hidden-witness", out HistoryMemoryRecord existing))
+            string memoryId = GetPrototypeWitnessMemoryId();
+            string eventId = GetPrototypeHiddenHistoryEventId();
+            if (memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord existing))
             {
                 HistoryOperationResult duplicate = HistoryOperationResult.Success("Witness memory already exists.", "history.8.3.memory.hidden", null, existing, null, memoryRuntime.MemoryRevision, memoryRuntime.MemoryRevision, duplicate: true);
                 return RecordHistoryResult("Form 8.3 Witness Memory", duplicate);
             }
 
-            FormMemoryRequest request = BuildMemoryRequest("history.8.3.memory.hidden", "memory.prototype.hidden-witness", "event.prototype.hidden.secret", HistoryMemorySource.DirectObservation, createKnowledge: true);
+            FormMemoryRequest request = BuildMemoryRequest(CreateAutomationScopedId("history", "witness-memory"), memoryId, eventId, HistoryMemorySource.DirectObservation, createKnowledge: true);
             HistoryOperationResult result = memoryRuntime.FormMemory(request, knowledge);
             return RecordHistoryResult("Form 8.3 Witness Memory", result);
+        }
+
+        public PrototypeTestLabOperation PrepareWitnessHistoryMemoryAutomationFixture()
+        {
+            if (currentAutomationScenarioContext == null)
+            {
+                return FormWitnessHistoryMemory();
+            }
+
+            TestLabFixtureHandle handle = currentAutomationScenarioContext.Fixtures.Require(TestLabHistoryFixtureProviders.WitnessMemoryFixtureId, currentAutomationScenarioContext);
+            return handle.Succeeded
+                ? Record(true, "Prepare 8.3 Witness Memory Fixture", handle.Outcome.ToString(), handle.Message)
+                : RecordFailure("Prepare 8.3 Witness Memory Fixture", handle.Message, handle.Outcome.ToString());
         }
 
         public PrototypeTestLabOperation ShareHistoricalTestimony()
@@ -3691,14 +4149,15 @@ namespace UnityIsekaiGame.Development
                 return RecordFailure("Share 8.3 Historical Testimony", "History runtime is missing.", HistoryResultCode.InvalidRequest.ToString());
             }
 
+            string eventId = GetPrototypeHiddenHistoryEventId();
             PersonMemoryRuntime listenerMemory = new PersonMemoryRuntime();
             listenerMemory.Configure("person.prototype.listener", registry, historyRuntime, GetKnownPrototypePersons());
             FormMemoryRequest request = new FormMemoryRequest
             {
-                TransactionId = $"history.8.3.testimony.{Guid.NewGuid():N}",
-                MemoryId = $"memory.prototype.listener.testimony.{Guid.NewGuid():N}",
+                TransactionId = CreateAutomationScopedId("history", "testimony"),
+                MemoryId = CreateAutomationScopedId("memory", "listener-testimony"),
                 OwnerPersonId = "person.prototype.listener",
-                HistoricalEventId = "event.prototype.hidden.secret",
+                HistoricalEventId = eventId,
                 Source = HistoryMemorySource.WitnessTestimony,
                 FormedAtWorldTime = GetGameTimeSeconds() + 0.3d,
                 RememberedOccurredAtWorldTime = GetGameTimeSeconds(),
@@ -3710,7 +4169,7 @@ namespace UnityIsekaiGame.Development
                 Tags = new[] { "history", "testimony" }
             };
             HistoryOperationResult result = listenerMemory.FormMemory(request);
-            bool succeeded = result.Succeeded && historyRuntime.QueryPersonAccessible("person.prototype.listener", listenerMemory).Any(record => record.EventId == "event.prototype.hidden.secret");
+            bool succeeded = result.Succeeded && historyRuntime.QueryPersonAccessible("person.prototype.listener", listenerMemory).Any(record => record.EventId == eventId);
             return Record(succeeded, "Share 8.3 Historical Testimony", succeeded ? "Success" : result.Code.ToString(), $"{result.Message} ListenerMemories={listenerMemory.CreateSnapshot().Memories.Count}.");
         }
 
@@ -3791,21 +4250,47 @@ namespace UnityIsekaiGame.Development
             }
 
             string oldBody = GetPrototypeBodyId();
-            string newBody = "body.prototype.future";
             string runId = Guid.NewGuid().ToString("N");
-            string transitionEventId = $"event.prototype.body-transition.{runId}";
-            HistoryOperationResult transition = historyRuntime.RecordBodyTransition($"history.8.3.body-transition.{runId}", transitionEventId, GetPrototypePersonId(), oldBody, newBody, GetGameTimeSeconds(), GetGameTimeSeconds(), "Prototype body continuity test");
+            string newBody = currentAutomationScenarioContext == null
+                ? $"body.prototype.future.{runId}"
+                : currentAutomationScenarioContext.ScopedId("body", "future");
+            string transitionEventId = currentAutomationScenarioContext == null
+                ? $"event.prototype.body-transition.{runId}"
+                : currentAutomationScenarioContext.ScopedId("event", "body-transition");
+            string transitionTransactionId = currentAutomationScenarioContext == null
+                ? $"history.8.3.body-transition.{runId}"
+                : currentAutomationScenarioContext.ScopedId("history", "body-transition");
+
+            string[] knownBodies = GetKnownPrototypeBodies()
+                .Concat(new[] { oldBody, newBody })
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            historyRuntime.Configure(registry, PersistenceService.LocalWorldId, GetKnownPrototypePersons(), knownBodies);
+
+            HistoryOperationResult transition = historyRuntime.TryGetEvent(transitionEventId, out HistoricalEventRecord existingTransition)
+                ? HistoryOperationResult.Success("Body transition fixture already exists.", transitionTransactionId, existingTransition, null, null, historyRuntime.HistoryRevision, historyRuntime.HistoryRevision, duplicate: true)
+                : historyRuntime.RecordBodyTransition(transitionTransactionId, transitionEventId, GetPrototypePersonId(), oldBody, newBody, GetGameTimeSeconds(), GetGameTimeSeconds(), "Prototype body continuity test");
 
             if (!transition.Succeeded && transition.Code != HistoryResultCode.Duplicate)
             {
                 return RecordHistoryResult("Record 8.3 Body Transition", transition);
             }
 
-            string transitionMemoryId = $"memory.prototype.previous-body.{runId}";
-            FormMemoryRequest memory = BuildMemoryRequest($"history.8.3.previous-body-memory.{runId}", transitionMemoryId, transitionEventId, HistoryMemorySource.PreviousBody, createKnowledge: false);
-            memory.BodyAtTimeId = oldBody;
-            HistoryOperationResult memoryResult = memoryRuntime.FormMemory(memory);
-            if (!memoryRuntime.TryGetMemory("memory.prototype.previous-body", out _))
+            string transitionMemoryId = GetPrototypePreviousBodyMemoryId(runId);
+            HistoryOperationResult memoryResult;
+            if (memoryRuntime.TryGetMemory(transitionMemoryId, out HistoryMemoryRecord existingMemory))
+            {
+                memoryResult = HistoryOperationResult.Success("Previous body memory fixture already exists.", $"history.8.3.previous-body-memory.{runId}", null, existingMemory, null, memoryRuntime.MemoryRevision, memoryRuntime.MemoryRevision, duplicate: true);
+            }
+            else
+            {
+                FormMemoryRequest memory = BuildMemoryRequest($"history.8.3.previous-body-memory.{runId}", transitionMemoryId, transitionEventId, HistoryMemorySource.PreviousBody, createKnowledge: false);
+                memory.BodyAtTimeId = oldBody;
+                memoryResult = memoryRuntime.FormMemory(memory);
+            }
+
+            if (currentAutomationScenarioContext == null && !memoryRuntime.TryGetMemory("memory.prototype.previous-body", out _))
             {
                 FormMemoryRequest compatibilityMemory = BuildMemoryRequest("history.8.3.previous-body-memory.compatibility", "memory.prototype.previous-body", transitionEventId, HistoryMemorySource.PreviousBody, createKnowledge: false);
                 compatibilityMemory.BodyAtTimeId = oldBody;
@@ -3813,8 +4298,11 @@ namespace UnityIsekaiGame.Development
             }
 
             IReadOnlyList<BodyOccupationRecord> occupations = historyRuntime.QueryBodyOccupations(GetPrototypePersonId());
-            bool succeeded = transition.Succeeded && memoryResult.Succeeded && occupations.Any(record => record.BodyId == newBody) && memoryRuntime.CreateSnapshot().Memories.Any(record => record.MemoryId == transitionMemoryId && record.BodyAtTimeId == oldBody);
-            return Record(succeeded, "Record 8.3 Body Transition", succeeded ? "Success" : "ContinuityMissing", $"Transition={transition.Code} Memory={memoryResult.Code} Occupations={occupations.Count} Memories={memoryRuntime.CreateSnapshot().Memories.Count}.");
+            bool transitionPresent = historyRuntime.TryGetEvent(transitionEventId, out _);
+            bool occupationPresent = occupations.Any(record => string.Equals(record.BodyId, newBody, StringComparison.Ordinal));
+            bool memoryPresent = memoryRuntime.CreateSnapshot().Memories.Any(record => string.Equals(record.MemoryId, transitionMemoryId, StringComparison.Ordinal) && string.Equals(record.BodyAtTimeId, oldBody, StringComparison.Ordinal));
+            bool succeeded = transition.Succeeded && memoryResult.Succeeded && transitionPresent && occupationPresent && memoryPresent;
+            return Record(succeeded, "Record 8.3 Body Transition", succeeded ? "Success" : "ContinuityMissing", $"Transition={transition.Code} Memory={memoryResult.Code} Event={transitionPresent} Occupation={occupationPresent} MemoryPresent={memoryPresent} Occupations={occupations.Count} Memories={memoryRuntime.CreateSnapshot().Memories.Count} NewBody={newBody}.");
         }
 
         public PrototypeTestLabOperation CompareHistoryKnowledgeMemoryViews()
@@ -3889,7 +4377,8 @@ namespace UnityIsekaiGame.Development
 
             PersonMemorySnapshot snapshot = memoryRuntime.CreateSnapshot();
             bool hasStructured = snapshot.Memories.Any(memory => memory.RememberedDetails.Count > 0 && memory.Revisions.Count > 0);
-            bool schemaValid = PersonMemoryRuntime.ValidateSaveData(memoryRuntime.CreateSaveData(), authoritativeHistory, GetKnownPrototypePersons(), out string failure);
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime validationHistory, out _);
+            bool schemaValid = PersonMemoryRuntime.ValidateSaveData(memoryRuntime.CreateSaveData(), validationHistory, GetKnownPrototypePersons(), out string failure);
             return Record(hasStructured && schemaValid, "Validate 8.4 Memory", hasStructured && schemaValid ? "Success" : "InvalidMemory", schemaValid ? $"Memories={snapshot.Memories.Count} Structured={hasStructured}." : failure);
         }
 
@@ -3976,7 +4465,7 @@ namespace UnityIsekaiGame.Development
             FormWitnessHistoryMemory();
             EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
             string memoryId = $"memory.prototype.false-reinforcement.{Guid.NewGuid():N}";
-            FormMemoryRequest request = BuildMemoryRequest($"history.8.4.false-memory.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.WitnessTestimony, createKnowledge: false);
+            FormMemoryRequest request = BuildMemoryRequest(CreateAutomationScopedId("history", "false-memory"), memoryId, GetPrototypeHiddenHistoryEventId(), HistoryMemorySource.WitnessTestimony, createKnowledge: false);
             request.Confidence = 320;
             request.Clarity = 360;
             request.DebugDescription = "Distorted prototype memory used to prove reinforcement is not truth.";
@@ -4005,7 +4494,7 @@ namespace UnityIsekaiGame.Development
                 SalienceDelta = 100,
                 SourceId = "test-lab.memory.false-reinforcement"
             });
-            bool historyUnchanged = historyRuntime.TryGetEvent("event.prototype.hidden.secret", out HistoricalEventRecord authoritative) && authoritative != null;
+            bool historyUnchanged = historyRuntime.TryGetEvent(GetPrototypeHiddenHistoryEventId(), out HistoricalEventRecord authoritative) && authoritative != null;
             bool succeeded = formed.Succeeded && altered.Succeeded && reinforced.Succeeded && historyUnchanged;
             return Record(succeeded, "Reinforce 8.4 False Memory", succeeded ? "Success" : reinforced.Code.ToString(), $"Formed={formed.Code} Altered={altered.Code} Reinforced={reinforced.Code} HistoryUnchanged={historyUnchanged}. Reinforcement increases confidence/clarity only; authoritative history is not changed.");
         }
@@ -4026,7 +4515,7 @@ namespace UnityIsekaiGame.Development
             EnsureHistoryRuntime(out _, out _);
             PersonMemoryRuntime memoryRuntime = CreateMemoryProofRuntime();
             string memoryId = $"memory.prototype.degradation-proof.{Guid.NewGuid():N}";
-            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.degrade-form.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
+            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest(CreateAutomationScopedId("history", "degrade-form"), memoryId, GetPrototypeHiddenHistoryEventId(), HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
             double start = GetMemoryWorldTime(memoryRuntime, memoryId);
             MemoryDegradationRequest firstRequest = new MemoryDegradationRequest
             {
@@ -4065,7 +4554,8 @@ namespace UnityIsekaiGame.Development
                 SalienceLossPerDay = 5
             });
             PersonMemorySaveData save = memoryRuntime.CreateSaveData();
-            HistoryOperationResult restore = memoryRuntime.RestoreFromSaveData(save, registry, authoritativeHistory, GetKnownPrototypePersons(), restoring: true);
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime restoreHistory, out _);
+            HistoryOperationResult restore = memoryRuntime.RestoreFromSaveData(save, registry, restoreHistory, GetKnownPrototypePersons(), restoring: true);
             HistoryMemoryRecord afterRestore = memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord restoredSnapshot) ? restoredSnapshot : null;
             HistoryOperationResult restoredRepeat = memoryRuntime.ApplyDegradation(new MemoryDegradationRequest
             {
@@ -4184,7 +4674,7 @@ namespace UnityIsekaiGame.Development
             EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
             string memoryId = $"memory.prototype.suppression-stack.{Guid.NewGuid():N}";
             double now = GetGameTimeSeconds();
-            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.suppression-stack-form.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DirectObservation, createKnowledge: false));
+            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest(CreateAutomationScopedId("history", "suppression-stack-form"), memoryId, GetPrototypeHiddenHistoryEventId(), HistoryMemorySource.DirectObservation, createKnowledge: false));
             now = GetMemoryWorldTime(memoryRuntime, memoryId);
             HistoryOperationResult difficult = memoryRuntime.AlterMemory(new MemoryAlterationRequest
             {
@@ -4332,10 +4822,10 @@ namespace UnityIsekaiGame.Development
 
         public PrototypeTestLabOperation CreateConflictingMemories()
         {
-            RecordHiddenHistoryEvent();
+            PrototypeTestLabOperation baseFixture = PrepareWitnessHistoryMemoryAutomationFixture();
             EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
             string memoryId = $"memory.prototype.conflict.{Guid.NewGuid():N}";
-            FormMemoryRequest request = BuildMemoryRequest($"history.8.4.conflict.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.WitnessTestimony, createKnowledge: false);
+            FormMemoryRequest request = BuildMemoryRequest(CreateAutomationScopedId("history", "conflict"), memoryId, GetPrototypeHiddenHistoryEventId(), HistoryMemorySource.WitnessTestimony, createKnowledge: false);
             request.Confidence = 350;
             request.Clarity = 450;
             request.DebugDescription = "Conflicting testimony about the hidden event.";
@@ -4344,13 +4834,13 @@ namespace UnityIsekaiGame.Development
             {
                 TransactionId = $"history.8.4.conflict-recall.{Guid.NewGuid():N}",
                 RequestingPersonId = GetPrototypePersonId(),
-                HistoricalEventId = "event.prototype.hidden.secret",
+                HistoricalEventId = GetPrototypeHiddenHistoryEventId(),
                 WorldTime = GetMemoryWorldTime(memoryRuntime, memoryId),
                 AttemptDifficult = true,
                 MutateMetadata = false
             });
-            bool succeeded = formed.Succeeded && recall.Entries.Count > 1 && recall.Outcome == MemoryRecallOutcome.Conflicting;
-            return Record(succeeded, "Create 8.4 Conflicting Memories", succeeded ? "Success" : recall.Code.ToString(), $"Formed={formed.Code} Recall={FormatMemoryRecallResult(recall)}");
+            bool succeeded = baseFixture.Succeeded && formed.Succeeded && recall.Entries.Count > 1 && recall.Outcome == MemoryRecallOutcome.Conflicting;
+            return Record(succeeded, "Create 8.4 Conflicting Memories", succeeded ? "Succeeded" : recall.Code.ToString(), $"Base={baseFixture.Code} Formed={formed.Code} Recall={FormatMemoryRecallResult(recall)}");
         }
 
         public PrototypeTestLabOperation SuppressPreviousBodyAssociation()
@@ -4374,7 +4864,7 @@ namespace UnityIsekaiGame.Development
             {
                 TransactionId = $"history.8.4.compare.{Guid.NewGuid():N}",
                 RequestingPersonId = GetPrototypePersonId(),
-                HistoricalEventId = "event.prototype.hidden.secret",
+                HistoricalEventId = GetPrototypeHiddenHistoryEventId(),
                 WorldTime = GetMemoryWorldTime(memoryRuntime, GetPrototypeMemoryId()),
                 MutateMetadata = false,
                 AccessContext = MemoryAccessContext.Debug
@@ -4395,7 +4885,7 @@ namespace UnityIsekaiGame.Development
 
             PersonMemoryRuntime memoryRuntime = CreateMemoryProofRuntime();
             string memoryId = $"memory.prototype.save-restore-proof.{Guid.NewGuid():N}";
-            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.save-restore-form.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
+            HistoryOperationResult formed = memoryRuntime.FormMemory(BuildMemoryRequest(CreateAutomationScopedId("history", "save-restore-form"), memoryId, GetPrototypeHiddenHistoryEventId(), HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
             double start = GetMemoryWorldTime(memoryRuntime, memoryId);
             HistoryOperationResult suppression = memoryRuntime.AddSuppression(new MemorySuppressionRequest
             {
@@ -4819,8 +5309,8 @@ namespace UnityIsekaiGame.Development
                 return RecordFailure("Validate 8.8 Projection Adapters", "History, Memory, or Knowledge runtime is missing.", InformationAccessResultCode.InvalidRequest.ToString());
             }
 
-            const string eventId = "event.prototype.hidden.secret";
-            const string memoryId = "memory.prototype.hidden-witness";
+            string eventId = GetPrototypeHiddenHistoryEventId();
+            string memoryId = GetPrototypeWitnessMemoryId();
             string lifeEventId = $"event.prototype.access-adapter.life-injury.{Guid.NewGuid():N}";
             if (!historyRuntime.TryGetEvent(eventId, out HistoricalEventRecord eventRecord) || !memoryRuntime.TryGetMemory(memoryId, out HistoryMemoryRecord memoryRecord))
             {
@@ -4843,8 +5333,8 @@ namespace UnityIsekaiGame.Development
             }
 
             string sourceId = $"information-source.prototype.access-adapter.{Guid.NewGuid():N}";
-            informationSources.Configure(registry, GetPrototypePersonId());
-            InformationSourceOperationResult sourceResult = informationSources.RegisterSource(new InformationSourceRegistrationRequest
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            InformationSourceOperationResult sourceResult = sourceRuntime.RegisterSource(new InformationSourceRegistrationRequest
             {
                 TransactionId = $"source.8.8.adapter.{Guid.NewGuid():N}",
                 SourceInstanceId = sourceId,
@@ -5716,10 +6206,8 @@ namespace UnityIsekaiGame.Development
         {
             EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge);
             EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime);
-            informationSources ??= context?.Persistence?.InformationSources ?? new InformationSourceRuntime();
-            informationSources.Configure(registry, GetPrototypePersonId());
-            informationTransfers ??= context?.Persistence?.InformationTransfers ?? new InformationTransferRuntime();
-            informationTransfers.Configure(registry, GetPrototypePersonId());
+            informationSources = EnsureInformationSourceRuntime();
+            informationTransfers = EnsureInformationTransferRuntime();
             informationAccess = EnsureInformationAccessRuntime();
             knowledgeRecords = EnsureKnowledgeRecordRuntime();
             return new KnowledgeHistoryFacade(new KnowledgeHistoryRuntimeSet
@@ -5832,13 +6320,51 @@ namespace UnityIsekaiGame.Development
 
         private InformationAccessRuntime EnsureInformationAccessRuntime()
         {
+            if (currentAutomationScenarioContext?.Runtimes?.Access != null)
+            {
+                informationAccess = currentAutomationScenarioContext.Runtimes.Access;
+                return informationAccess;
+            }
+
             informationAccess ??= context?.InformationAccess ?? context?.Persistence?.InformationAccess ?? new InformationAccessRuntime();
             informationAccess.Configure(registry, GetPrototypePersonId());
             return informationAccess;
         }
 
+        private InformationSourceRuntime EnsureInformationSourceRuntime()
+        {
+            if (currentAutomationScenarioContext?.Runtimes?.Sources != null)
+            {
+                informationSources = currentAutomationScenarioContext.Runtimes.Sources;
+                return informationSources;
+            }
+
+            informationSources ??= context?.Persistence?.InformationSources ?? new InformationSourceRuntime();
+            informationSources.Configure(registry, GetPrototypePersonId());
+            return informationSources;
+        }
+
+        private InformationTransferRuntime EnsureInformationTransferRuntime()
+        {
+            if (currentAutomationScenarioContext?.Runtimes?.Transfers != null)
+            {
+                informationTransfers = currentAutomationScenarioContext.Runtimes.Transfers;
+                return informationTransfers;
+            }
+
+            informationTransfers ??= context?.Persistence?.InformationTransfers ?? new InformationTransferRuntime();
+            informationTransfers.Configure(registry, GetPrototypePersonId());
+            return informationTransfers;
+        }
+
         private KnowledgeRecordRuntime EnsureKnowledgeRecordRuntime()
         {
+            if (currentAutomationScenarioContext?.Runtimes?.Records != null)
+            {
+                knowledgeRecords = currentAutomationScenarioContext.Runtimes.Records;
+                return knowledgeRecords;
+            }
+
             knowledgeRecords ??= context?.KnowledgeRecords ?? context?.Persistence?.KnowledgeRecords ?? new KnowledgeRecordRuntime();
             knowledgeRecords.Configure(registry, GetPrototypePersonId());
             if (context != null)
@@ -6209,11 +6735,12 @@ namespace UnityIsekaiGame.Development
 
         public string BuildInformationTransferSummary()
         {
-            informationTransfers.Configure(registry, GetPrototypePersonId());
-            InformationTransferSnapshot snapshot = informationTransfers.CreateSnapshot();
+            InformationTransferRuntime transferRuntime = EnsureInformationTransferRuntime();
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            InformationTransferSnapshot snapshot = transferRuntime.CreateSnapshot();
             StringBuilder builder = new StringBuilder();
             builder.AppendLine("Feature 8.7 Information Sharing and Teaching");
-            builder.AppendLine($"Owner: {snapshot.OwnerId} Revision: {snapshot.Revision} Transfers: {snapshot.Transfers.Count} Sources: {informationSources.CreateSnapshot().Sources.Count}");
+            builder.AppendLine($"Owner: {snapshot.OwnerId} Revision: {snapshot.Revision} Transfers: {snapshot.Transfers.Count} Sources: {sourceRuntime.CreateSnapshot().Sources.Count}");
             foreach (InformationTransferRecord transfer in snapshot.Transfers.OrderByDescending(record => record.Data.revision).Take(10))
             {
                 TransferRecipientResult first = transfer.RecipientResults.FirstOrDefault();
@@ -6430,17 +6957,18 @@ namespace UnityIsekaiGame.Development
         {
             ExecutePrototypeTransferRaw("transfer-save-restore", InformationTransferMode.DirectTestimony, new[] { BuildTransferContent("content.save", InformationTransferContentType.BeliefStatement, false, string.Empty) }, null, null, null, false, false, false, false, false, out GameObject listener, out _);
             DestroyTestObject(listener);
-            InformationTransferSaveData saveData = informationTransfers.CreateSaveData();
-            long before = informationTransfers.TransferRevision;
-            InformationTransferResult restore = informationTransfers.RestoreFromSaveData(saveData, registry, informationTransfers.OwnerId, restoring: true);
-            bool succeeded = restore.Succeeded && informationTransfers.TransferRevision == before;
-            return Record(succeeded, "Information Transfer Save Restore", succeeded ? "Success" : restore.Status.ToString(), $"{restore.Message} Revision={before}->{informationTransfers.TransferRevision} Transfers={informationTransfers.CreateSnapshot().Transfers.Count}.");
+            InformationTransferRuntime transferRuntime = EnsureInformationTransferRuntime();
+            InformationTransferSaveData saveData = transferRuntime.CreateSaveData();
+            long before = transferRuntime.TransferRevision;
+            InformationTransferResult restore = transferRuntime.RestoreFromSaveData(saveData, registry, transferRuntime.OwnerId, restoring: true);
+            bool succeeded = restore.Succeeded && transferRuntime.TransferRevision == before;
+            return Record(succeeded, "Information Transfer Save Restore", succeeded ? "Success" : restore.Status.ToString(), $"{restore.Message} Revision={before}->{transferRuntime.TransferRevision} Transfers={transferRuntime.CreateSnapshot().Transfers.Count}.");
         }
 
         public string BuildInformationSourceSummary()
         {
-            informationSources.Configure(registry, GetPrototypePersonId());
-            InformationSourceSnapshot snapshot = informationSources.CreateSnapshot();
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            InformationSourceSnapshot snapshot = sourceRuntime.CreateSnapshot();
             StringBuilder builder = new StringBuilder();
             builder.AppendLine("Feature 8.6 Information Sources and Reliability");
             builder.AppendLine($"Owner: {snapshot.OwnerId} Revision: {snapshot.Revision} Sources: {snapshot.Sources.Count} Assessments: {snapshot.Assessments.Count} Transformations: {snapshot.Transformations.Count}");
@@ -6496,7 +7024,8 @@ namespace UnityIsekaiGame.Development
         public PrototypeTestLabOperation EvaluateReliability()
         {
             EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
-            SourceReliabilityResult result = informationSources.EvaluateReliability(new SourceReliabilityRequest
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            SourceReliabilityResult result = sourceRuntime.EvaluateReliability(new SourceReliabilityRequest
             {
                 EvaluatingPersonId = GetPrototypePersonId(),
                 SourceInstanceId = "information-source.prototype.expert",
@@ -6565,8 +7094,9 @@ namespace UnityIsekaiGame.Development
         {
             string sourceId = $"information-source.prototype.aged-record.{Guid.NewGuid():N}";
             RegisterPrototypeSource("Age 8.6 Source Setup", sourceId, InformationSourceCategory.HistoricalRecord, InformationSourceReferenceType.Document, "document.prototype.old-map", KnowledgeDomain.Historical, string.Empty, creationTime: 0d);
-            SourceReliabilityResult now = informationSources.EvaluateReliability(new SourceReliabilityRequest { EvaluatingPersonId = GetPrototypePersonId(), SourceInstanceId = sourceId, Domain = KnowledgeDomain.Historical, WorldTimeSeconds = 0d });
-            SourceReliabilityResult later = informationSources.EvaluateReliability(new SourceReliabilityRequest { EvaluatingPersonId = GetPrototypePersonId(), SourceInstanceId = sourceId, Domain = KnowledgeDomain.Historical, WorldTimeSeconds = 5000d });
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            SourceReliabilityResult now = sourceRuntime.EvaluateReliability(new SourceReliabilityRequest { EvaluatingPersonId = GetPrototypePersonId(), SourceInstanceId = sourceId, Domain = KnowledgeDomain.Historical, WorldTimeSeconds = 0d });
+            SourceReliabilityResult later = sourceRuntime.EvaluateReliability(new SourceReliabilityRequest { EvaluatingPersonId = GetPrototypePersonId(), SourceInstanceId = sourceId, Domain = KnowledgeDomain.Historical, WorldTimeSeconds = 5000d });
             bool succeeded = now.Succeeded && later.Succeeded && later.FinalDimensions.recency <= now.FinalDimensions.recency;
             return Record(succeeded, "Age 8.6 Source", succeeded ? "Success" : "AgeCheckFailed", $"Recency {now.FinalDimensions.recency}->{later.FinalDimensions.recency} Overall {now.DerivedOverall}->{later.DerivedOverall}.");
         }
@@ -6647,7 +7177,8 @@ namespace UnityIsekaiGame.Development
             AssessPrototypeSource($"source-assessment.prototype.evidence.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.testimony", 500, 700, 650, 620);
             SourceReliabilityResult reliability = EvaluateFor(GetPrototypePersonId(), "information-source.prototype.testimony");
             int raw = 800;
-            int effective = informationSources.CalculateEffectiveEvidenceStrength(raw, reliability);
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            int effective = sourceRuntime.CalculateEffectiveEvidenceStrength(raw, reliability);
             KnowledgeObservationRequest request = BuildPrototypeSourceEvidenceRequest(knowledge, $"knowledge.source-effective.{Guid.NewGuid():N}", "information-source.prototype.testimony", raw, effective, reliability);
             KnowledgeOperationResult result = knowledge.RecordObservation(request);
             bool succeeded = result.Succeeded && result.Evidence.RawStrength == raw && result.Evidence.EffectiveStrength == effective && effective < raw;
@@ -6658,31 +7189,32 @@ namespace UnityIsekaiGame.Development
         {
             EnsurePrototypeSource("information-source.prototype.expert", InformationSourceCategory.ExpertTestimony);
             AssessPrototypeSource($"source-assessment.prototype.save.{Guid.NewGuid():N}", GetPrototypePersonId(), "information-source.prototype.expert", 850, 100, 80, 100);
-            InformationSourceSaveData saveData = informationSources.CreateSaveData();
-            long before = informationSources.SourceRevision;
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            InformationSourceSaveData saveData = sourceRuntime.CreateSaveData();
+            long before = sourceRuntime.SourceRevision;
             int events = 0;
             void CountEvent(InformationSourceRuntime _, InformationSourceOperationResult __) => events++;
-            informationSources.SourcesChanged += CountEvent;
-            InformationSourceOperationResult result = informationSources.RestoreFromSaveData(saveData, registry, informationSources.OwnerId, restoring: true);
-            informationSources.SourcesChanged -= CountEvent;
-            bool succeeded = result.Succeeded && events == 0 && informationSources.SourceRevision == before;
-            return Record(succeeded, "Information Source Save Restore", succeeded ? "Success" : result.Code.ToString(), $"{result.Message} Events={events} Revision={before}->{informationSources.SourceRevision} Sources={informationSources.CreateSnapshot().Sources.Count}.");
+            sourceRuntime.SourcesChanged += CountEvent;
+            InformationSourceOperationResult result = sourceRuntime.RestoreFromSaveData(saveData, registry, sourceRuntime.OwnerId, restoring: true);
+            sourceRuntime.SourcesChanged -= CountEvent;
+            bool succeeded = result.Succeeded && events == 0 && sourceRuntime.SourceRevision == before;
+            return Record(succeeded, "Information Source Save Restore", succeeded ? "Success" : result.Code.ToString(), $"{result.Message} Events={events} Revision={before}->{sourceRuntime.SourceRevision} Sources={sourceRuntime.CreateSnapshot().Sources.Count}.");
         }
 
         private PrototypeTestLabOperation RegisterPrototypeSource(string operationName, string sourceId, InformationSourceCategory category, InformationSourceReferenceType referenceType, string referencedId, KnowledgeDomain domain, string methodId, string authority = "", SourcePrivacyLevel privacy = SourcePrivacyLevel.Public, double? creationTime = null)
         {
-            informationSources.Configure(registry, GetPrototypePersonId());
-            if (informationSources.TryGetSource(sourceId, out InformationSourceRecord existing))
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            if (sourceRuntime.TryGetSource(sourceId, out InformationSourceRecord existing))
             {
-                if (existing.Category != category)
+                if (existing.Category != category || existing.Data.referenceType != referenceType || !string.Equals(existing.Data.referencedId ?? string.Empty, referencedId ?? string.Empty, StringComparison.Ordinal))
                 {
-                    return RecordFailure(operationName, $"Source instance '{sourceId}' already exists as {existing.Category}, not {category}.", InformationSourceResultCode.InvalidRequest.ToString());
+                    return RecordFailure(operationName, $"Source instance '{sourceId}' already exists with different identity.", InformationSourceResultCode.InvalidRequest.ToString());
                 }
 
-                return RecordSourceOperation(operationName, InformationSourceOperationResult.Success("Prototype source already registered.", string.Empty, existing, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: true));
+                return RecordSourceOperation(operationName, InformationSourceOperationResult.Success("Prototype source already registered.", string.Empty, existing, null, sourceRuntime.SourceRevision, sourceRuntime.SourceRevision, duplicate: true));
             }
 
-            InformationSourceOperationResult result = informationSources.RegisterSource(new InformationSourceRegistrationRequest
+            InformationSourceOperationResult result = sourceRuntime.RegisterSource(new InformationSourceRegistrationRequest
             {
                 TransactionId = $"source.register.{SanitizeForTransaction(sourceId)}.{Guid.NewGuid():N}",
                 SourceInstanceId = sourceId,
@@ -6711,15 +7243,15 @@ namespace UnityIsekaiGame.Development
 
         private InformationSourceOperationResult EnsurePrototypeSource(string sourceId, InformationSourceCategory category)
         {
-            informationSources.Configure(registry, GetPrototypePersonId());
-            if (informationSources.TryGetSource(sourceId, out InformationSourceRecord existing))
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            if (sourceRuntime.TryGetSource(sourceId, out InformationSourceRecord existing))
             {
                 if (existing.Category != category)
                 {
-                    return InformationSourceOperationResult.Failure(InformationSourceResultCode.InvalidRequest, $"Source instance '{sourceId}' already exists as {existing.Category}, not {category}.", revision: informationSources.SourceRevision);
+                    return InformationSourceOperationResult.Failure(InformationSourceResultCode.InvalidRequest, $"Source instance '{sourceId}' already exists as {existing.Category}, not {category}.", revision: sourceRuntime.SourceRevision);
                 }
 
-                return InformationSourceOperationResult.Success("Source already exists.", string.Empty, existing, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: true);
+                return InformationSourceOperationResult.Success("Source already exists.", string.Empty, existing, null, sourceRuntime.SourceRevision, sourceRuntime.SourceRevision, duplicate: true);
             }
 
             InformationSourceReferenceType referenceType = category switch
@@ -6738,7 +7270,7 @@ namespace UnityIsekaiGame.Development
                 : referenceType == InformationSourceReferenceType.Document ? $"document.prototype.{SanitizeForTransaction(sourceId)}"
                 : referenceType == InformationSourceReferenceType.None ? string.Empty
                 : "person.prototype.source";
-            return informationSources.RegisterSource(new InformationSourceRegistrationRequest
+            return sourceRuntime.RegisterSource(new InformationSourceRegistrationRequest
             {
                 TransactionId = $"source.ensure.{SanitizeForTransaction(sourceId)}.{Guid.NewGuid():N}",
                 SourceInstanceId = sourceId,
@@ -6766,7 +7298,8 @@ namespace UnityIsekaiGame.Development
         private PrototypeTestLabOperation TransformPrototypeSource(string operationName, string newSourceId, InformationSourceTransformationType transformationType, int quality, bool hidesOriginal)
         {
             EnsurePrototypeSource("information-source.prototype.official-record", InformationSourceCategory.OfficialRecord);
-            InformationSourceOperationResult result = informationSources.TransformSource(new SourceTransformationRequest
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            InformationSourceOperationResult result = sourceRuntime.TransformSource(new SourceTransformationRequest
             {
                 TransactionId = $"source.transform.{SanitizeForTransaction(newSourceId)}.{Guid.NewGuid():N}",
                 ParentSourceId = "information-source.prototype.official-record",
@@ -6783,18 +7316,21 @@ namespace UnityIsekaiGame.Development
 
         private InformationSourceOperationResult EnsureTransformedSource(string sourceId, InformationSourceTransformationType transformationType)
         {
-            if (informationSources.TryGetSource(sourceId, out InformationSourceRecord record))
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            if (sourceRuntime.TryGetSource(sourceId, out InformationSourceRecord record))
             {
-                return InformationSourceOperationResult.Success("Transformed source already exists.", string.Empty, record, null, informationSources.SourceRevision, informationSources.SourceRevision, duplicate: true);
+                return InformationSourceOperationResult.Success("Transformed source already exists.", string.Empty, record, null, sourceRuntime.SourceRevision, sourceRuntime.SourceRevision, duplicate: true);
             }
 
             TransformPrototypeSource($"Ensure 8.6 {transformationType}", sourceId, transformationType, 760, hidesOriginal: false);
-            informationSources.TryGetSource(sourceId, out record);
-            return InformationSourceOperationResult.Success("Transformed source ensured.", string.Empty, record, null, informationSources.SourceRevision, informationSources.SourceRevision);
+            sourceRuntime = EnsureInformationSourceRuntime();
+            sourceRuntime.TryGetSource(sourceId, out record);
+            return InformationSourceOperationResult.Success("Transformed source ensured.", string.Empty, record, null, sourceRuntime.SourceRevision, sourceRuntime.SourceRevision);
         }
 
         private InformationSourceOperationResult AssessPrototypeSource(string assessmentId, string personId, string sourceId, int dependability, int errorRisk, int deceptionRisk, int biasRisk, int authority = 600)
         {
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
             ReliabilityProfileData reliability = ReliabilityProfileData.Default();
             reliability.generalDependability = dependability;
             reliability.domainExpertise = authority;
@@ -6810,7 +7346,7 @@ namespace UnityIsekaiGame.Development
             reliability.precision = dependability;
             reliability.contextFit = dependability;
 
-            return informationSources.AssessSource(new SourceAssessmentRequest
+            return sourceRuntime.AssessSource(new SourceAssessmentRequest
             {
                 TransactionId = $"source.assess.{SanitizeForTransaction(assessmentId)}.{Guid.NewGuid():N}",
                 AssessmentId = assessmentId,
@@ -6834,7 +7370,8 @@ namespace UnityIsekaiGame.Development
 
         private SourceReliabilityResult EvaluateFor(string personId, string sourceId)
         {
-            return informationSources.EvaluateReliability(new SourceReliabilityRequest
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            return sourceRuntime.EvaluateReliability(new SourceReliabilityRequest
             {
                 EvaluatingPersonId = personId,
                 SourceInstanceId = sourceId,
@@ -6991,8 +7528,9 @@ namespace UnityIsekaiGame.Development
                 summarization = true;
             }
 
-            informationTransfers.Configure(registry, GetPrototypePersonId());
-            return informationTransfers.ExecuteTransfer(new InformationTransferRequest
+            InformationSourceRuntime sourceRuntime = EnsureInformationSourceRuntime();
+            InformationTransferRuntime transferRuntime = EnsureInformationTransferRuntime();
+            return transferRuntime.ExecuteTransfer(new InformationTransferRequest
             {
                 TransactionId = $"transfer.8.7.{SanitizeForTransaction(transactionSlug)}.{Guid.NewGuid():N}",
                 TransferId = transferId,
@@ -7017,7 +7555,7 @@ namespace UnityIsekaiGame.Development
                 PrivilegedAccess = privacy != TransferPrivacyScope.Public,
                 SenderKnowledge = senderKnowledge,
                 SenderMemory = senderMemory,
-                SourceRuntime = informationSources,
+                SourceRuntime = sourceRuntime,
                 RecipientKnowledgeRuntimes = new Dictionary<string, PersonKnowledgeRuntime> { [recipientKnowledge.PersonId] = recipientKnowledge },
                 RecipientMemoryRuntimes = new Dictionary<string, PersonMemoryRuntime> { [recipientKnowledge.PersonId] = recipientMemory }
             });
@@ -7075,7 +7613,7 @@ namespace UnityIsekaiGame.Development
                 domain = contentType == InformationTransferContentType.HistoricalEventReference || contentType == InformationTransferContentType.MemoryStatement ? KnowledgeDomain.Historical : KnowledgeDomain.Species,
                 proposition = SpeciesCapabilityTransferProposition(),
                 senderMemoryId = memoryId,
-                historicalEventId = contentType == InformationTransferContentType.HistoricalEventReference || contentType == InformationTransferContentType.MemoryStatement ? "event.prototype.hidden.secret" : string.Empty,
+                historicalEventId = contentType == InformationTransferContentType.HistoricalEventReference || contentType == InformationTransferContentType.MemoryStatement ? GetPrototypeHiddenHistoryEventId() : string.Empty,
                 senderConfidence = 850,
                 senderBeliefState = KnowledgeBeliefState.Known,
                 includedDetailIds = recallRequired ? new[] { "detail.participant", "detail.location" } : Array.Empty<string>(),
@@ -7113,7 +7651,8 @@ namespace UnityIsekaiGame.Development
         private PersonMemoryRuntime CreateTransferRecipientMemory(string recipientId)
         {
             PersonMemoryRuntime runtime = new PersonMemoryRuntime();
-            runtime.Configure(recipientId, registry, authoritativeHistory, GetKnownPrototypePersons().Concat(new[] { recipientId }));
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
+            runtime.Configure(recipientId, registry, historyRuntime, GetKnownPrototypePersons().Concat(new[] { recipientId }));
             return runtime;
         }
 
@@ -7181,6 +7720,20 @@ namespace UnityIsekaiGame.Development
             return $"information-source.prototype.direct-observation.{SanitizeForTransaction(GetPrototypeBodyId())}";
         }
 
+        private string GetPrototypeHiddenHistoryEventId()
+        {
+            return currentAutomationScenarioContext == null
+                ? "event.prototype.hidden.secret"
+                : currentAutomationScenarioContext.ScopedId("event", "hidden-secret");
+        }
+
+        private string GetPrototypeWitnessMemoryId()
+        {
+            return currentAutomationScenarioContext == null
+                ? "memory.prototype.hidden-witness"
+                : currentAutomationScenarioContext.ScopedId("memory", "hidden-witness");
+        }
+
         private static string SanitizeForTransaction(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -7193,6 +7746,12 @@ namespace UnityIsekaiGame.Development
 
         private bool EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge)
         {
+            if (currentAutomationScenarioContext?.Runtimes?.Knowledge != null)
+            {
+                knowledge = currentAutomationScenarioContext.Runtimes.Knowledge;
+                return knowledge.IsReady;
+            }
+
             knowledge = context?.PlayerKnowledge;
             if (knowledge == null && context?.PlayerTransform != null)
             {
@@ -7379,6 +7938,13 @@ namespace UnityIsekaiGame.Development
 
         private bool EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out PersonMemoryRuntime memoryRuntime)
         {
+            if (currentAutomationScenarioContext?.Runtimes?.History != null && currentAutomationScenarioContext.Runtimes.Memory != null)
+            {
+                historyRuntime = currentAutomationScenarioContext.Runtimes.History;
+                memoryRuntime = currentAutomationScenarioContext.Runtimes.Memory;
+                return true;
+            }
+
             historyRuntime = authoritativeHistory;
             memoryRuntime = playerMemory;
             if (registry == null)
@@ -7395,6 +7961,11 @@ namespace UnityIsekaiGame.Development
             historyRuntime.Configure(registry, PersistenceService.LocalWorldId, GetKnownPrototypePersons(), GetKnownPrototypeBodies());
             memoryRuntime.Configure(personId, registry, historyRuntime, GetKnownPrototypePersons());
             return true;
+        }
+
+        private PersonMemoryRuntime GetActiveMemoryRuntime()
+        {
+            return EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime) ? memoryRuntime : playerMemory;
         }
 
         private RecordHistoricalEventRequest BuildHistoryEventRequest(string transactionId, string eventId, string definitionId, string personId, KnowledgeVisibility visibility, string note)
@@ -7708,7 +8279,16 @@ namespace UnityIsekaiGame.Development
         private PrototypeTestLabOperation AlterPrototypePreviousBody(string operationName, MemoryDetailState detailState, MemoryState state)
         {
             EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime);
-            string memoryId = "memory.prototype.previous-body";
+            string memoryId = GetPrototypePreviousBodyMemoryId();
+            if (!memoryRuntime.TryGetMemory(memoryId, out _))
+            {
+                PrototypeTestLabOperation transition = RecordBodyTransitionHistory();
+                if (!transition.Succeeded)
+                {
+                    return transition;
+                }
+            }
+
             MemoryDetailData detail = new MemoryDetailData
             {
                 detailId = "detail.body",
@@ -7732,6 +8312,18 @@ namespace UnityIsekaiGame.Development
             return RecordHistoryResult(operationName, result);
         }
 
+        private string GetPrototypePreviousBodyMemoryId(string fallbackRunId = null)
+        {
+            if (currentAutomationScenarioContext != null)
+            {
+                return currentAutomationScenarioContext.ScopedId("memory", "previous-body");
+            }
+
+            return string.IsNullOrWhiteSpace(fallbackRunId)
+                ? "memory.prototype.previous-body"
+                : $"memory.prototype.previous-body.{fallbackRunId}";
+        }
+
         private string GetPrototypeMemoryId()
         {
             FormWitnessHistoryMemory();
@@ -7740,14 +8332,14 @@ namespace UnityIsekaiGame.Development
             HistoryMemoryRecord memory = memoryRuntime.CreateSnapshot().Memories
                 .OrderByDescending(record => record.Accessible)
                 .ThenBy(record => record.MemoryId, StringComparer.Ordinal)
-                .FirstOrDefault(record => IsMemoryAutomationTarget(record, now) && string.Equals(record.HistoricalEventId, "event.prototype.hidden.secret", StringComparison.Ordinal));
+                .FirstOrDefault(record => IsMemoryAutomationTarget(record, now) && string.Equals(record.HistoricalEventId, GetPrototypeHiddenHistoryEventId(), StringComparison.Ordinal));
             if (memory != null)
             {
                 return memory.MemoryId;
             }
 
             string memoryId = $"memory.prototype.automation.{Guid.NewGuid():N}";
-            memoryRuntime.FormMemory(BuildMemoryRequest($"history.8.4.automation-memory.{Guid.NewGuid():N}", memoryId, "event.prototype.hidden.secret", HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
+            memoryRuntime.FormMemory(BuildMemoryRequest(CreateAutomationScopedId("history", "automation-memory"), memoryId, GetPrototypeHiddenHistoryEventId(), HistoryMemorySource.DevelopmentFixture, createKnowledge: false));
             return memoryId;
         }
 
@@ -7801,7 +8393,8 @@ namespace UnityIsekaiGame.Development
         private PersonMemoryRuntime CreateMemoryProofRuntime()
         {
             PersonMemoryRuntime memoryRuntime = new PersonMemoryRuntime();
-            memoryRuntime.Configure(GetPrototypePersonId(), registry, authoritativeHistory, GetKnownPrototypePersons());
+            EnsureHistoryRuntime(out AuthoritativeHistoryRuntime historyRuntime, out _);
+            memoryRuntime.Configure(GetPrototypePersonId(), registry, historyRuntime, GetKnownPrototypePersons());
             return memoryRuntime;
         }
 
@@ -7943,7 +8536,8 @@ namespace UnityIsekaiGame.Development
 
         private string[] GetKnownPrototypePersons()
         {
-            IEnumerable<string> historicalPersons = authoritativeHistory.CreateSnapshot().Events.SelectMany(record => (record.ParticipantPersonIds ?? Array.Empty<string>()).Concat(new[] { record.PrimaryPersonId }));
+            AuthoritativeHistoryRuntime historyRuntime = currentAutomationScenarioContext?.Runtimes?.History ?? authoritativeHistory;
+            IEnumerable<string> historicalPersons = historyRuntime.CreateSnapshot().Events.SelectMany(record => (record.ParticipantPersonIds ?? Array.Empty<string>()).Concat(new[] { record.PrimaryPersonId }));
             return new[]
             {
                 GetPrototypePersonId(),
@@ -7959,7 +8553,8 @@ namespace UnityIsekaiGame.Development
 
         private string[] GetKnownPrototypeBodies()
         {
-            HistorySnapshot historySnapshot = authoritativeHistory.CreateSnapshot();
+            AuthoritativeHistoryRuntime historyRuntime = currentAutomationScenarioContext?.Runtimes?.History ?? authoritativeHistory;
+            HistorySnapshot historySnapshot = historyRuntime.CreateSnapshot();
             IEnumerable<string> historicalBodies = historySnapshot.Events.SelectMany(record => record.BodyIds ?? Array.Empty<string>())
                 .Concat(historySnapshot.BodyOccupations.Select(record => record.BodyId));
             return new[]
@@ -12870,7 +13465,19 @@ namespace UnityIsekaiGame.Development
 
             if (automationRunner == null)
             {
-                automationRunner = new TestLabAutomationRunner(this, automationRegistry, new PrototypeTestLabAutomationResetCoordinator());
+                automationHost ??= new PrototypeTestLabAutomationHost(this);
+                TestLabAutomationHostRegistry.Register(automationHost, out _);
+                automationRunner = new TestLabAutomationRunner(
+                    automationRegistry,
+                    new PrototypeTestLabAutomationResetCoordinator(),
+                    requiredHostId => TestLabAutomationHostRegistry.ResolveActive(requiredHostId),
+                    CreateAutomationDefinitionContext());
+                return;
+            }
+
+            if (automationHost != null)
+            {
+                TestLabAutomationHostRegistry.Register(automationHost, out _);
             }
         }
 
@@ -12891,7 +13498,7 @@ namespace UnityIsekaiGame.Development
                 return "No automation result.";
             }
 
-            return $"Run {result.RunId}: {result.PassedScenarios} passed, {result.FailedScenarios} failed, {result.ErrorScenarios} error, {result.SkippedScenarios} skipped, {result.CancelledScenarios} cancelled, {result.TotalSteps} steps.";
+            return $"Run {result.RunId}: {result.PassedScenarios} passed, {result.FailedScenarios} failed, {result.ErrorScenarios} error, {result.SkippedScenarios} skipped, {result.CancelledScenarios} cancelled, {result.TotalSteps} steps. Order={result.ScenarioOrder} Seed={result.ShuffleSeed}.";
         }
 
         private void UpdateAutomationBatchResult()
@@ -12907,7 +13514,9 @@ namespace UnityIsekaiGame.Development
                 automationBatchStartedAtUtc,
                 DateTime.UtcNow,
                 automationBatchCancelled,
-                automationBatchScenarios);
+                automationBatchScenarios,
+                TestLabAutomationScenarioOrder.Normal,
+                0);
         }
 
         private bool EnsurePersistence(out PrototypePersistenceServiceBehaviour persistence)
@@ -13869,6 +14478,29 @@ namespace UnityIsekaiGame.Development
         private static void AddReferenceDiagnostic(List<string> lines, string label, UnityEngine.Object value)
         {
             lines.Add($"{label}: {(value == null ? "Missing" : "OK")}");
+        }
+
+        private sealed class AutomationRuntimeBindingFrame
+        {
+            public AutomationRuntimeBindingFrame(
+                TestLabScenarioContext previousContext,
+                InformationSourceRuntime previousSources,
+                InformationTransferRuntime previousTransfers,
+                InformationAccessRuntime previousAccess,
+                KnowledgeRecordRuntime previousRecords)
+            {
+                PreviousContext = previousContext;
+                PreviousSources = previousSources;
+                PreviousTransfers = previousTransfers;
+                PreviousAccess = previousAccess;
+                PreviousRecords = previousRecords;
+            }
+
+            public TestLabScenarioContext PreviousContext { get; }
+            public InformationSourceRuntime PreviousSources { get; }
+            public InformationTransferRuntime PreviousTransfers { get; }
+            public InformationAccessRuntime PreviousAccess { get; }
+            public KnowledgeRecordRuntime PreviousRecords { get; }
         }
     }
 }

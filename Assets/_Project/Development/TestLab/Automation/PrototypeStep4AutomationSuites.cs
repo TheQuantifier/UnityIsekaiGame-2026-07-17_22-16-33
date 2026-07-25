@@ -36,11 +36,11 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.4.1.save-file-foundation", "Feature 4.1 Save File Foundation", "4.1", 410,
                 Required("PrototypePersistenceServiceBehaviour", "PersistenceService"),
                 Scenario("base-save-load-validate", "Base save, validate, load, and fingerprint", 10,
-                    Step("safe-location", "Move to known test point", context => Operation(context.Service.Teleport(FirstTestPoint(context)), context, "step4-safe-location")),
-                    Step("save", "Save prototype slot", context => Operation(context.Service.Save(), context, "step4-save")),
-                    Step("validate", "Validate prototype slot", context => Operation(context.Service.ValidateSave(), context, "step4-validate")),
-                    Step("load", "Load prototype slot", context => Operation(context.Service.Load(), context, "step4-load")),
-                    Step("fingerprint", "Record runtime fingerprint", context => Operation(context.Service.RecordFingerprint(), context, "step4-fingerprint"))));
+                    Step("safe-location", "Move to known test point", context => Operation(context.Prototype().Teleport(FirstTestPoint(context)), context, "step4-safe-location")),
+                    Step("save", "Save prototype slot", context => Operation(context.Prototype().Save(), context, "step4-save")),
+                    Step("validate", "Validate prototype slot", context => Operation(context.Prototype().ValidateSave(), context, "step4-validate")),
+                    Step("load", "Load prototype slot", context => Operation(context.Prototype().Load(), context, "step4-load")),
+                    Step("fingerprint", "Record runtime fingerprint", context => Operation(context.Prototype().RecordFingerprint(), context, "step4-fingerprint"))));
         }
 
         private static ITestLabAutomationSuite BuildInventoryEquipmentPersistenceSuite()
@@ -48,12 +48,12 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.4.2.inventory-equipment-persistence", "Feature 4.2 Inventory and Equipment Persistence", "4.2", 420,
                 Required("Inventory", "Equipment", "PersistenceService"),
                 Scenario("inventory-equipment-roundtrip", "Inventory and equipment save/load round trip", 10,
-                    Step("clear", "Clear inventory", context => Operation(context.Service.ClearInventory(true), context, "step4-inventory-clear")),
-                    Step("unequip", "Unequip all", context => Operation(context.Service.UnequipAll(true), context, "step4-unequip")),
-                    Step("grant", "Grant equippable item", context => Operation(context.Service.GrantStatefulItem(FirstEquippableItem(context)), context, "step4-grant-equippable")),
-                    Step("equip", "Equip item", context => Operation(context.Service.EquipFirstCompatible(FirstEquippableItem(context)), context, "step4-equip")),
-                    Step("save", "Save equipped state", context => Operation(context.Service.Save(), context, "step4-save-equipped")),
-                    Step("load", "Load equipped state", context => Operation(context.Service.Load(), context, "step4-load-equipped"))));
+                    Step("clear", "Clear inventory", context => Operation(context.Prototype().ClearInventory(true), context, "step4-inventory-clear")),
+                    Step("unequip", "Unequip all", context => Operation(context.Prototype().UnequipAll(true), context, "step4-unequip")),
+                    Step("grant", "Grant equippable item", context => Operation(context.Prototype().GrantStatefulItem(FirstEquippableItem(context)), context, "step4-grant-equippable")),
+                    Step("equip", "Equip item", context => Operation(context.Prototype().EquipFirstCompatible(FirstEquippableItem(context)), context, "step4-equip")),
+                    Step("save", "Save equipped state", context => Operation(context.Prototype().Save(), context, "step4-save-equipped")),
+                    Step("load", "Load equipped state", context => Operation(context.Prototype().Load(), context, "step4-load-equipped"))));
         }
 
         private static ITestLabAutomationSuite BuildVitalsStatusPersistenceSuite()
@@ -61,14 +61,14 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.4.3.vitals-status-persistence", "Feature 4.3 Vitals and Status Persistence", "4.3", 430,
                 Required("Current Resources", "StatusEffectController", "PersistenceService"),
                 Scenario("vitals-status-resources-roundtrip", "Vitals, resources, and statuses save/load round trip", 10,
-                    Step("restore", "Restore vitals", context => Operation(context.Service.RestoreVitals(), context, "step4-restore-vitals")),
-                    Step("damage", "Damage player", context => Operation(context.Service.DamagePlayer(10), context, "step4-damage-player")),
-                    Step("mana", "Drain mana", context => Operation(context.Service.DrainMana(5f), context, "step4-drain-mana")),
-                    Step("stamina", "Drain stamina", context => Operation(context.Service.DrainStamina(5f), context, "step4-drain-stamina")),
-                    Step("status", "Apply status", context => Operation(context.Service.ApplyStatus(First<StatusEffectDefinition>(context), toEnemy: false), context, "step4-apply-status")),
-                    Step("snapshot", "Snapshot resources", context => Operation(context.Service.SnapshotResourcesForPersistence(), context, "step4-resource-snapshot")),
-                    Step("save", "Save vitals/resources/statuses", context => Operation(context.Service.Save(), context, "step4-save-vitals")),
-                    Step("load", "Load vitals/resources/statuses", context => Operation(context.Service.Load(), context, "step4-load-vitals"))));
+                    Step("restore", "Restore vitals", context => Operation(context.Prototype().RestoreVitals(), context, "step4-restore-vitals")),
+                    Step("damage", "Damage player", context => Operation(context.Prototype().DamagePlayer(10), context, "step4-damage-player")),
+                    Step("mana", "Drain mana", context => Operation(context.Prototype().DrainMana(5f), context, "step4-drain-mana")),
+                    Step("stamina", "Drain stamina", context => Operation(context.Prototype().DrainStamina(5f), context, "step4-drain-stamina")),
+                    Step("status", "Apply status", context => Operation(context.Prototype().ApplyStatus(First<StatusEffectDefinition>(context), toEnemy: false), context, "step4-apply-status")),
+                    Step("snapshot", "Snapshot resources", context => Operation(context.Prototype().SnapshotResourcesForPersistence(), context, "step4-resource-snapshot")),
+                    Step("save", "Save vitals/resources/statuses", context => Operation(context.Prototype().Save(), context, "step4-save-vitals")),
+                    Step("load", "Load vitals/resources/statuses", context => Operation(context.Prototype().Load(), context, "step4-load-vitals"))));
         }
 
         private static ITestLabAutomationSuite BuildQuestContractPersistenceSuite()
@@ -76,13 +76,13 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.4.4.quest-contract-persistence", "Feature 4.4 Quest and Contract Persistence", "4.4", 440,
                 Required("QuestLog", "ContractJournal", "PersistenceService"),
                 Scenario("quest-contract-roundtrip", "Quest and contract save/load round trip", 10,
-                    Step("clear-quests", "Clear quest log", context => Operation(context.Service.ClearQuestLog(true), context, "step4-clear-quests")),
-                    Step("clear-contracts", "Clear contract journal", context => Operation(context.Service.ClearContractJournal(true), context, "step4-clear-contracts")),
-                    Step("start-quest", "Start quest", context => Operation(context.Service.StartQuest(First<QuestDefinition>(context)), context, "step4-start-quest")),
-                    Step("accept-contract", "Accept contract", context => Operation(context.Service.AcceptContract(First<ContractDefinition>(context)), context, "step4-accept-contract")),
-                    Step("progress", "Report defeat progress", context => Operation(context.Service.ReportDefeat("prototype_enemy"), context, "step4-report-defeat")),
-                    Step("save", "Save quest and contract state", context => Operation(context.Service.Save(), context, "step4-save-quests")),
-                    Step("load", "Load quest and contract state", context => Operation(context.Service.Load(), context, "step4-load-quests"))));
+                    Step("clear-quests", "Clear quest log", context => Operation(context.Prototype().ClearQuestLog(true), context, "step4-clear-quests")),
+                    Step("clear-contracts", "Clear contract journal", context => Operation(context.Prototype().ClearContractJournal(true), context, "step4-clear-contracts")),
+                    Step("start-quest", "Start quest", context => Operation(context.Prototype().StartQuest(First<QuestDefinition>(context)), context, "step4-start-quest")),
+                    Step("accept-contract", "Accept contract", context => Operation(context.Prototype().AcceptContract(First<ContractDefinition>(context)), context, "step4-accept-contract")),
+                    Step("progress", "Report defeat progress", context => Operation(context.Prototype().ReportDefeat("prototype_enemy"), context, "step4-report-defeat")),
+                    Step("save", "Save quest and contract state", context => Operation(context.Prototype().Save(), context, "step4-save-quests")),
+                    Step("load", "Load quest and contract state", context => Operation(context.Prototype().Load(), context, "step4-load-quests"))));
         }
 
         private static ITestLabAutomationSuite BuildLocationPersistenceSuite()
@@ -90,11 +90,11 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.4.5.location-persistence", "Feature 4.5 Location Persistence", "4.5", 450,
                 Required("PlayerLocationPersistenceParticipant", "CurrentPlaceTracker", "PersistenceService"),
                 Scenario("position-place-roundtrip", "Position and place save/load round trip", 10,
-                    Step("teleport", "Teleport to test point", context => Operation(context.Service.Teleport(FirstTestPoint(context)), context, "step4-teleport")),
-                    Step("reach", "Report reach location", context => Operation(context.Service.ReportReach(First<PlaceDefinition>(context)), context, "step4-report-reach")),
-                    Step("validate-location", "Validate location", context => Operation(context.Service.ValidateCurrentLocation(), context, "step4-location")),
-                    Step("save", "Save location", context => Operation(context.Service.Save(), context, "step4-save-location")),
-                    Step("load", "Load location", context => Operation(context.Service.Load(), context, "step4-load-location"))));
+                    Step("teleport", "Teleport to test point", context => Operation(context.Prototype().Teleport(FirstTestPoint(context)), context, "step4-teleport")),
+                    Step("reach", "Report reach location", context => Operation(context.Prototype().ReportReach(First<PlaceDefinition>(context)), context, "step4-report-reach")),
+                    Step("validate-location", "Validate location", context => Operation(context.Prototype().ValidateCurrentLocation(), context, "step4-location")),
+                    Step("save", "Save location", context => Operation(context.Prototype().Save(), context, "step4-save-location")),
+                    Step("load", "Load location", context => Operation(context.Prototype().Load(), context, "step4-load-location"))));
         }
 
         private static ITestLabAutomationSuite BuildWorldEntityIdentitySuite()
@@ -102,11 +102,11 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.4.6.world-entity-identity", "Feature 4.6 World Entity Identity", "4.6", 460,
                 Required("WorldEntityRegistry", "WorldEntityIdentity"),
                 Scenario("world-entity-identity-flow", "Persistent world entity identity flow", 10,
-                    Step("spawn", "Spawn persistent loot", context => Operation(context.Service.SpawnPersistentWorldLoot(First<ItemDefinition>(context)), context, "step4-spawn-world-loot")),
-                    Step("duplicate", "Reject duplicate entity", context => Operation(context.Service.AttemptDuplicateWorldEntityRegistration(), context, "step4-duplicate-world-entity")),
-                    Step("destroy", "Destroy spawned loot", context => Operation(context.Service.DestroyLastSpawnedWorldLoot(), context, "step4-destroy-world-loot")),
-                    Step("recreate", "Recreate destroyed loot", context => Operation(context.Service.RecreateDestroyedWorldLoot(), context, "step4-recreate-world-loot")),
-                    Step("diagnostics", "Refresh diagnostics", context => Operation(context.Service.RefreshWorldEntityDiagnostics(), context, "step4-world-diagnostics"))));
+                    Step("spawn", "Spawn persistent loot", context => Operation(context.Prototype().SpawnPersistentWorldLoot(First<ItemDefinition>(context)), context, "step4-spawn-world-loot")),
+                    Step("duplicate", "Reject duplicate entity", context => Operation(context.Prototype().AttemptDuplicateWorldEntityRegistration(), context, "step4-duplicate-world-entity")),
+                    Step("destroy", "Destroy spawned loot", context => Operation(context.Prototype().DestroyLastSpawnedWorldLoot(), context, "step4-destroy-world-loot")),
+                    Step("recreate", "Recreate destroyed loot", context => Operation(context.Prototype().RecreateDestroyedWorldLoot(), context, "step4-recreate-world-loot")),
+                    Step("diagnostics", "Refresh diagnostics", context => Operation(context.Prototype().RefreshWorldEntityDiagnostics(), context, "step4-world-diagnostics"))));
         }
 
         private static ITestLabAutomationSuite BuildSaveSlotsRecoverySuite()
@@ -114,13 +114,13 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.4.7.save-slots-autosave-load-ui", "Feature 4.7 Save Slots and Autosave", "4.7", 470,
                 Required("PrototypeSaveSlotCatalog", "PersistenceService"),
                 Scenario("save-slots-autosave-and-recovery", "Save slots, autosave, and recovery scan", 10,
-                    Step("manual-one", "Save manual slot one", context => Operation(context.Service.SaveManualSlotOne(), context, "step4-manual-one")),
-                    Step("manual-two", "Save manual slot one again", context => Operation(context.Service.SaveManualSlotOne(), context, "step4-manual-two")),
-                    Step("validate-backup", "Validate manual backup", context => Operation(context.Service.ValidateManualSlotOneBackup(), context, "step4-validate-backup")),
-                    Step("dirty", "Mark save dirty", context => Operation(context.Service.MarkSaveDirty(), context, "step4-dirty")),
-                    Step("autosave", "Force autosave", context => Operation(context.Service.ForceAutosave(), context, "step4-autosave")),
-                    Step("scan", "Run recovery scan", context => Operation(context.Service.RunRecoveryScan(), context, "step4-recovery-scan")),
-                    Step("cleanup", "Cleanup temporary saves", context => Operation(context.Service.CleanupTemporarySaves(true), context, "step4-cleanup-temporary"))));
+                    Step("manual-one", "Save manual slot one", context => Operation(context.Prototype().SaveManualSlotOne(), context, "step4-manual-one")),
+                    Step("manual-two", "Save manual slot one again", context => Operation(context.Prototype().SaveManualSlotOne(), context, "step4-manual-two")),
+                    Step("validate-backup", "Validate manual backup", context => Operation(context.Prototype().ValidateManualSlotOneBackup(), context, "step4-validate-backup")),
+                    Step("dirty", "Mark save dirty", context => Operation(context.Prototype().MarkSaveDirty(), context, "step4-dirty")),
+                    Step("autosave", "Force autosave", context => Operation(context.Prototype().ForceAutosave(), context, "step4-autosave")),
+                    Step("scan", "Run recovery scan", context => Operation(context.Prototype().RunRecoveryScan(), context, "step4-recovery-scan")),
+                    Step("cleanup", "Cleanup temporary saves", context => Operation(context.Prototype().CleanupTemporarySaves(true), context, "step4-cleanup-temporary"))));
         }
 
         private static ITestLabAutomationSuite BuildFailureHardeningSuite()
@@ -128,10 +128,10 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.4.8.persistence-recovery-hardening", "Feature 4.8 Persistence Recovery Hardening", "4.8", 480,
                 Required("PersistenceService", "PersistenceRecovery"),
                 Scenario("prepare-failure-recovers-cleanly", "Prepare failure is rejected without corrupting current save", 10,
-                    Step("save", "Save baseline", context => Operation(context.Service.Save(), context, "step4-failure-baseline")),
-                    Step("inject", "Inject prepare failure", context => Operation(context.Service.InjectPrepareFailure(), context, "step4-inject-prepare")),
-                    Step("load-fails", "Load rejects injected prepare failure", context => Operation(context.Service.RunExpectedAutomationFailure(() => context.Service.Load()), context, "step4-expected-load-failure", acceptFailure: true)),
-                    Step("validate", "Validate save after rejected load", context => Operation(context.Service.ValidateSave(), context, "step4-validate-after-failure"))));
+                    Step("save", "Save baseline", context => Operation(context.Prototype().Save(), context, "step4-failure-baseline")),
+                    Step("inject", "Inject prepare failure", context => Operation(context.Prototype().InjectPrepareFailure(), context, "step4-inject-prepare")),
+                    Step("load-fails", "Load rejects injected prepare failure", context => Operation(context.Prototype().RunExpectedAutomationFailure(() => context.Prototype().Load()), context, "step4-expected-load-failure", acceptFailure: true)),
+                    Step("validate", "Validate save after rejected load", context => Operation(context.Prototype().ValidateSave(), context, "step4-validate-after-failure"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)
@@ -157,7 +157,11 @@ namespace UnityIsekaiGame.Development.Automation
                 order,
                 order <= 30 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
                 includeInQuickRun: order <= 30,
-                steps: steps);
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.SharedRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Character | TestLabRuntimeArea.Persistence,
+                requiredHostId: PrototypeTestLabAutomationHost.DefaultHostId,
+                requiredHostFeatures: TestLabHostFeature.SharedRuntime | TestLabHostFeature.SceneReset | TestLabHostFeature.FixtureFingerprinting | TestLabHostFeature.Persistence | TestLabHostFeature.AutomatedExecution);
         }
 
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
@@ -173,18 +177,18 @@ namespace UnityIsekaiGame.Development.Automation
         private static T First<T>(TestLabAutomationContext context)
             where T : class, IGameDefinition
         {
-            return context.Service.GetDefinitions<T>().FirstOrDefault();
+            return context.Prototype().GetDefinitions<T>().FirstOrDefault();
         }
 
         private static ItemDefinition FirstEquippableItem(TestLabAutomationContext context)
         {
-            return context.Service.GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.IsEquippable)
-                ?? context.Service.GetDefinitions<ItemDefinition>().FirstOrDefault();
+            return context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.IsEquippable)
+                ?? context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault();
         }
 
         private static PrototypeTestPoint FirstTestPoint(TestLabAutomationContext context)
         {
-            return context.Service.GetTestPoints().FirstOrDefault();
+            return context.Prototype().GetTestPoints().FirstOrDefault();
         }
 
         private static TestLabAutomationStepResult Operation(PrototypeTestLabOperation operation, TestLabAutomationContext context, string operationId, bool acceptFailure = false)

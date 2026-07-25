@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace UnityIsekaiGame.Development.Automation
 {
@@ -27,6 +28,13 @@ namespace UnityIsekaiGame.Development.Automation
         int Order { get; }
         TestLabAutomationCategory Category { get; }
         bool IncludeInQuickRun { get; }
+        TestLabScenarioIsolationMode IsolationMode { get; }
+        TestLabRuntimeArea RequiredRuntimeAreas { get; }
+        bool RequiresSceneHost { get; }
+        string RequiredHostId { get; }
+        TestLabHostFeature RequiredHostFeatures { get; }
+        IReadOnlyList<string> RequiredDefinitionIds { get; }
+        IReadOnlyList<string> RequiredFixtureIds { get; }
         IReadOnlyList<ITestLabScenarioStep> Steps { get; }
         TestLabAutomationStepResult Setup(TestLabAutomationContext context);
         TestLabAutomationStepResult Cleanup(TestLabAutomationContext context);
@@ -52,20 +60,21 @@ namespace UnityIsekaiGame.Development.Automation
         TestLabAutomationResult RunSuite(string suiteId, TestLabAutomationOptions options);
         TestLabAutomationResult RunAll(bool quickOnly, TestLabAutomationOptions options);
         TestLabAutomationResult RerunFailed(TestLabAutomationOptions options);
+        TestLabSuiteCompatibilityReport PreviewCompatibility(string suiteId = "");
         void Cancel();
     }
 
     public sealed class TestLabAutomationContext
     {
         public TestLabAutomationContext(
-            PrototypeTestLabService service,
+            ITestLabAutomationHost host,
             TestLabAutomationRegistry registry,
             ITestLabAutomationResetCoordinator resetCoordinator,
             TestLabAutomationTransactionIds transactionIds,
             TestLabAutomationEventCapture eventCapture,
             string runId)
         {
-            Service = service;
+            Host = host;
             Registry = registry;
             ResetCoordinator = resetCoordinator;
             TransactionIds = transactionIds;
@@ -73,16 +82,41 @@ namespace UnityIsekaiGame.Development.Automation
             RunId = runId ?? string.Empty;
         }
 
-        public PrototypeTestLabService Service { get; }
+        public ITestLabAutomationHost Host { get; private set; }
         public TestLabAutomationRegistry Registry { get; }
         public ITestLabAutomationResetCoordinator ResetCoordinator { get; }
         public TestLabAutomationTransactionIds TransactionIds { get; }
         public TestLabAutomationEventCapture EventCapture { get; }
         public string RunId { get; }
+        public long HostRegistryRevision { get; private set; }
         public string CurrentSuiteId { get; set; }
         public string CurrentScenarioId { get; set; }
         public int CurrentStepIndex { get; set; }
         public bool CancellationRequested { get; set; }
+        public TestLabScenarioContext ScenarioContext { get; private set; }
+
+        public T GetHost<T>() where T : class
+        {
+            return Host as T;
+        }
+
+        internal void SetHost(ITestLabAutomationHost host, long registryRevision = 0L)
+        {
+            Host = host;
+            HostRegistryRevision = registryRevision;
+        }
+
+        internal void BeginScenarioScope(TestLabScenarioContext scenarioContext)
+        {
+            ScenarioContext?.Dispose();
+            ScenarioContext = scenarioContext;
+        }
+
+        internal void EndScenarioScope()
+        {
+            ScenarioContext?.Dispose();
+            ScenarioContext = null;
+        }
     }
 
     public sealed class TestLabAutomationSuite : ITestLabAutomationSuite
@@ -146,7 +180,14 @@ namespace UnityIsekaiGame.Development.Automation
             bool includeInQuickRun,
             IEnumerable<ITestLabScenarioStep> steps,
             Func<TestLabAutomationContext, TestLabAutomationStepResult> setup = null,
-            Func<TestLabAutomationContext, TestLabAutomationStepResult> cleanup = null)
+            Func<TestLabAutomationContext, TestLabAutomationStepResult> cleanup = null,
+            TestLabScenarioIsolationMode isolationMode = TestLabScenarioIsolationMode.FreshRuntime,
+            TestLabRuntimeArea requiredRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory,
+            IEnumerable<string> requiredFixtureIds = null,
+            bool? requiresSceneHost = null,
+            string requiredHostId = "",
+            TestLabHostFeature requiredHostFeatures = TestLabHostFeature.AutomatedExecution,
+            IEnumerable<string> requiredDefinitionIds = null)
         {
             ScenarioId = scenarioId ?? string.Empty;
             DisplayName = displayName ?? string.Empty;
@@ -154,6 +195,13 @@ namespace UnityIsekaiGame.Development.Automation
             Order = order;
             Category = category;
             IncludeInQuickRun = includeInQuickRun;
+            IsolationMode = isolationMode;
+            RequiredRuntimeAreas = requiredRuntimeAreas;
+            RequiresSceneHost = requiresSceneHost ?? RequiresHostByDefault(isolationMode, requiredRuntimeAreas, requiredHostId, requiredHostFeatures);
+            RequiredHostId = requiredHostId ?? string.Empty;
+            RequiredHostFeatures = requiredHostFeatures;
+            RequiredDefinitionIds = (requiredDefinitionIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
+            RequiredFixtureIds = (requiredFixtureIds ?? TestLabScenarioContext.DefaultRequiredFixtureIds).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             this.steps = new List<ITestLabScenarioStep>(steps ?? Array.Empty<ITestLabScenarioStep>()).AsReadOnly();
             this.setup = setup;
             this.cleanup = cleanup;
@@ -165,9 +213,40 @@ namespace UnityIsekaiGame.Development.Automation
         public int Order { get; }
         public TestLabAutomationCategory Category { get; }
         public bool IncludeInQuickRun { get; }
+        public TestLabScenarioIsolationMode IsolationMode { get; }
+        public TestLabRuntimeArea RequiredRuntimeAreas { get; }
+        public bool RequiresSceneHost { get; }
+        public string RequiredHostId { get; }
+        public TestLabHostFeature RequiredHostFeatures { get; }
+        public IReadOnlyList<string> RequiredDefinitionIds { get; }
+        public IReadOnlyList<string> RequiredFixtureIds { get; }
         public IReadOnlyList<ITestLabScenarioStep> Steps => steps;
         public TestLabAutomationStepResult Setup(TestLabAutomationContext context) => setup == null ? TestLabAssertions.Pass("scenario.setup", "Scenario setup") : setup(context);
         public TestLabAutomationStepResult Cleanup(TestLabAutomationContext context) => cleanup == null ? TestLabAssertions.Pass("scenario.cleanup", "Scenario cleanup") : cleanup(context);
+
+        private static bool RequiresHostByDefault(
+            TestLabScenarioIsolationMode isolationMode,
+            TestLabRuntimeArea requiredRuntimeAreas,
+            string requiredHostId,
+            TestLabHostFeature requiredHostFeatures)
+        {
+            if (!string.IsNullOrWhiteSpace(requiredHostId))
+            {
+                return true;
+            }
+
+            if (requiredHostFeatures != TestLabHostFeature.None && requiredHostFeatures != TestLabHostFeature.AutomatedExecution)
+            {
+                return true;
+            }
+
+            if (isolationMode != TestLabScenarioIsolationMode.FreshRuntime)
+            {
+                return true;
+            }
+
+            return (requiredRuntimeAreas & ~TestLabRuntimeArea.KnowledgeHistory) != TestLabRuntimeArea.None;
+        }
     }
 
     public sealed class TestLabScenarioStep : ITestLabScenarioStep

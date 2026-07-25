@@ -30,28 +30,28 @@ namespace UnityIsekaiGame.Development.Automation
             return Suite("feature.3.runtime-taxonomy", "Step 3 Runtime Taxonomy", "3.x", 300,
                 Required("PrototypeTestLabService", "Inventory", "QuestLog", "ContractJournal"),
                 Scenario("item-instance-equipment-flow", "Item instances and equipment flow", 10,
-                    Step("clear-inventory", "Clear inventory", context => Operation(context.Service.ClearInventory(true), context, "step3-clear-inventory")),
-                    Step("grant-stack", "Grant stackable item", context => Operation(context.Service.GrantItem(FirstStackableItem(context), 2), context, "step3-grant-stack")),
-                    Step("grant-instance", "Grant stateful item", context => Operation(context.Service.GrantStatefulItem(FirstStatefulItem(context)), context, "step3-grant-instance")),
-                    Step("grant-equippable", "Grant equippable item", context => Operation(context.Service.GrantStatefulItem(FirstEquippableItem(context)), context, "step3-grant-equippable")),
-                    Step("equip", "Equip compatible item", context => Operation(context.Service.EquipFirstCompatible(FirstEquippableItem(context)), context, "step3-equip")),
-                    Step("unequip", "Unequip all", context => Operation(context.Service.UnequipAll(true), context, "step3-unequip"))),
+                    Step("clear-inventory", "Clear inventory", context => Operation(context.Prototype().ClearInventory(true), context, "step3-clear-inventory")),
+                    Step("grant-stack", "Grant stackable item", context => Operation(context.Prototype().GrantItem(FirstStackableItem(context), 2), context, "step3-grant-stack")),
+                    Step("grant-instance", "Grant stateful item", context => Operation(context.Prototype().GrantStatefulItem(FirstStatefulItem(context)), context, "step3-grant-instance")),
+                    Step("grant-equippable", "Grant equippable item", context => Operation(context.Prototype().GrantStatefulItem(FirstEquippableItem(context)), context, "step3-grant-equippable")),
+                    Step("equip", "Equip compatible item", context => Operation(context.Prototype().EquipFirstCompatible(FirstEquippableItem(context)), context, "step3-equip")),
+                    Step("unequip", "Unequip all", context => Operation(context.Prototype().UnequipAll(true), context, "step3-unequip"))),
                 Scenario("status-damage-and-vitals-flow", "Status, damage type, and vitals flow", 20,
-                    Step("restore", "Restore vitals", context => Operation(context.Service.RestoreVitals(), context, "step3-restore-vitals")),
-                    Step("status", "Apply status", context => Operation(context.Service.ApplyStatus(First<StatusEffectDefinition>(context), toEnemy: false), context, "step3-apply-status")),
-                    Step("damage", "Apply typed damage", context => Operation(context.Service.ApplyTypedDamage(First<DamageTypeDefinition>(context), 5f, targetEnemy: false, sourcePlayer: false), context, "step3-typed-damage")),
-                    Step("remove-status", "Remove status", context => Operation(context.Service.RemoveStatus(First<StatusEffectDefinition>(context), fromEnemy: false), context, "step3-remove-status"))),
+                    Step("restore", "Restore vitals", context => Operation(context.Prototype().RestoreVitals(), context, "step3-restore-vitals")),
+                    Step("status", "Apply status", context => Operation(context.Prototype().ApplyStatus(First<StatusEffectDefinition>(context), toEnemy: false), context, "step3-apply-status")),
+                    Step("damage", "Apply typed damage", context => Operation(context.Prototype().ApplyTypedDamage(First<DamageTypeDefinition>(context), 5f, targetEnemy: false, sourcePlayer: false), context, "step3-typed-damage")),
+                    Step("remove-status", "Remove status", context => Operation(context.Prototype().RemoveStatus(First<StatusEffectDefinition>(context), fromEnemy: false), context, "step3-remove-status"))),
                 Scenario("quest-contract-objective-signals", "Quest and contract objective signals", 30,
-                    Step("clear-quests", "Clear quest log", context => Operation(context.Service.ClearQuestLog(true), context, "step3-clear-quests")),
-                    Step("clear-contracts", "Clear contract journal", context => Operation(context.Service.ClearContractJournal(true), context, "step3-clear-contracts")),
-                    Step("start-quest", "Start quest", context => Operation(context.Service.StartQuest(First<QuestDefinition>(context)), context, "step3-start-quest")),
-                    Step("report-talk", "Report talk", context => Operation(context.Service.ReportTalk(First<PersonDefinition>(context)), context, "step3-report-talk")),
-                    Step("report-reach", "Report reach", context => Operation(context.Service.ReportReach(First<PlaceDefinition>(context)), context, "step3-report-reach")),
-                    Step("accept-contract", "Accept contract", context => Operation(context.Service.AcceptContract(First<ContractDefinition>(context)), context, "step3-accept-contract")),
-                    Step("report-defeat", "Report defeat", context => Operation(context.Service.ReportDefeat("prototype_enemy"), context, "step3-report-defeat"))),
+                    Step("clear-quests", "Clear quest log", context => Operation(context.Prototype().ClearQuestLog(true), context, "step3-clear-quests")),
+                    Step("clear-contracts", "Clear contract journal", context => Operation(context.Prototype().ClearContractJournal(true), context, "step3-clear-contracts")),
+                    Step("start-quest", "Start quest", context => Operation(context.Prototype().StartQuest(First<QuestDefinition>(context)), context, "step3-start-quest")),
+                    Step("report-talk", "Report talk", context => Operation(context.Prototype().ReportTalk(First<PersonDefinition>(context)), context, "step3-report-talk")),
+                    Step("report-reach", "Report reach", context => Operation(context.Prototype().ReportReach(First<PlaceDefinition>(context)), context, "step3-report-reach")),
+                    Step("accept-contract", "Accept contract", context => Operation(context.Prototype().AcceptContract(First<ContractDefinition>(context)), context, "step3-accept-contract")),
+                    Step("report-defeat", "Report defeat", context => Operation(context.Prototype().ReportDefeat("prototype_enemy"), context, "step3-report-defeat"))),
                 Scenario("location-and-world-entity-diagnostics", "Location and world entity diagnostics", 40,
-                    Step("location", "Validate current location", context => Operation(context.Service.ValidateCurrentLocation(), context, "step3-location")),
-                    Step("world-entities", "Refresh world entity diagnostics", context => Operation(context.Service.RefreshWorldEntityDiagnostics(), context, "step3-world-entities"))));
+                    Step("location", "Validate current location", context => Operation(context.Prototype().ValidateCurrentLocation(), context, "step3-location")),
+                    Step("world-entities", "Refresh world entity diagnostics", context => Operation(context.Prototype().RefreshWorldEntityDiagnostics(), context, "step3-world-entities"))));
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)
@@ -77,7 +77,11 @@ namespace UnityIsekaiGame.Development.Automation
                 order,
                 order <= 30 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
                 includeInQuickRun: order <= 30,
-                steps: steps);
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.SharedRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Character | TestLabRuntimeArea.Combat | TestLabRuntimeArea.Persistence,
+                requiredHostId: PrototypeTestLabAutomationHost.DefaultHostId,
+                requiredHostFeatures: TestLabHostFeature.SharedRuntime | TestLabHostFeature.SceneReset | TestLabHostFeature.FixtureFingerprinting | TestLabHostFeature.Persistence | TestLabHostFeature.AutomatedExecution);
         }
 
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
@@ -93,25 +97,25 @@ namespace UnityIsekaiGame.Development.Automation
         private static T First<T>(TestLabAutomationContext context)
             where T : class, IGameDefinition
         {
-            return context.Service.GetDefinitions<T>().FirstOrDefault();
+            return context.Prototype().GetDefinitions<T>().FirstOrDefault();
         }
 
         private static ItemDefinition FirstStackableItem(TestLabAutomationContext context)
         {
-            return context.Service.GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.Stackable)
-                ?? context.Service.GetDefinitions<ItemDefinition>().FirstOrDefault();
+            return context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.Stackable)
+                ?? context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault();
         }
 
         private static ItemDefinition FirstStatefulItem(TestLabAutomationContext context)
         {
-            return context.Service.GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.InstanceMode != ItemInstanceMode.DefinitionOnly)
-                ?? context.Service.GetDefinitions<ItemDefinition>().FirstOrDefault();
+            return context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.InstanceMode != ItemInstanceMode.DefinitionOnly)
+                ?? context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault();
         }
 
         private static ItemDefinition FirstEquippableItem(TestLabAutomationContext context)
         {
-            return context.Service.GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.IsEquippable)
-                ?? context.Service.GetDefinitions<ItemDefinition>().FirstOrDefault();
+            return context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.IsEquippable)
+                ?? context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault();
         }
 
         private static TestLabAutomationStepResult Operation(PrototypeTestLabOperation operation, TestLabAutomationContext context, string operationId, bool acceptFailure = false)

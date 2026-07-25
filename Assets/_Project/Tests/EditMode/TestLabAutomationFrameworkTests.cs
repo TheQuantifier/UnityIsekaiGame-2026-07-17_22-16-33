@@ -3,12 +3,26 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
+using UnityEngine;
 using UnityIsekaiGame.Development.Automation;
+using UnityIsekaiGame.Development.Automation.Fixtures.History;
+using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.History;
+using UnityEditor;
 
 namespace UnityIsekaiGame.Tests
 {
     public sealed class TestLabAutomationFrameworkTests
     {
+        private const string CatalogPath = "Assets/_Project/Prototype/Content/GameData/PrototypeDefinitionCatalog.asset";
+
+        [TearDown]
+        public void TearDown()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
         [Test]
         public void SuiteRegistration_IsDeterministic()
         {
@@ -82,6 +96,40 @@ namespace UnityIsekaiGame.Tests
             runner.RunAll(quickOnly: false, TestLabAutomationOptions.Default);
 
             Assert.That(order, Is.EqualTo(new[] { "a", "b" }));
+        }
+
+        [Test]
+        public void ScenarioOrder_CanRunReverse()
+        {
+            List<string> order = new List<string>();
+            TestLabAutomationRunner runner = Runner(Registry(Suite("suite", 10,
+                Scenario("scenario.a", 10, CountStep("a", () => order.Add("a"))),
+                Scenario("scenario.b", 20, CountStep("b", () => order.Add("b"))))));
+
+            TestLabAutomationResult result = runner.RunSuite("suite", new TestLabAutomationOptions { ScenarioOrder = TestLabAutomationScenarioOrder.Reverse });
+
+            Assert.That(order, Is.EqualTo(new[] { "b", "a" }));
+            Assert.That(result.ScenarioOrder, Is.EqualTo(TestLabAutomationScenarioOrder.Reverse));
+        }
+
+        [Test]
+        public void ScenarioOrder_CanRunSeededShuffleDeterministically()
+        {
+            TestLabAutomationRunner first = Runner(Registry(Suite("suite", 10,
+                Scenario("scenario.a", 10, PassStep("a")),
+                Scenario("scenario.b", 20, PassStep("b")),
+                Scenario("scenario.c", 30, PassStep("c")))));
+            TestLabAutomationRunner second = Runner(Registry(Suite("suite", 10,
+                Scenario("scenario.a", 10, PassStep("a")),
+                Scenario("scenario.b", 20, PassStep("b")),
+                Scenario("scenario.c", 30, PassStep("c")))));
+            TestLabAutomationOptions options = new TestLabAutomationOptions { ScenarioOrder = TestLabAutomationScenarioOrder.Shuffled, ShuffleSeed = 12345 };
+
+            string[] firstOrder = first.RunSuite("suite", options).Scenarios.Select(scenario => scenario.ScenarioId).ToArray();
+            string[] secondOrder = second.RunSuite("suite", options).Scenarios.Select(scenario => scenario.ScenarioId).ToArray();
+
+            Assert.That(firstOrder, Is.EqualTo(secondOrder));
+            Assert.That(first.RunSuite("suite", options).ShuffleSeed, Is.EqualTo(12345));
         }
 
         [Test]
@@ -262,6 +310,219 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void ScenarioScope_IsCreatedForEveryAutomationScenario()
+        {
+            TestLabScenarioContext captured = null;
+            TestLabAutomationRunner runner = Runner(Registry(Suite("suite", 10,
+                Scenario("scenario", 10, new TestLabScenarioStep("capture", "Capture", context =>
+                {
+                    captured = context.ScenarioContext;
+                    return TestLabAssertions.Pass("capture", "Capture");
+                })))));
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured.IsolationMode, Is.EqualTo(TestLabScenarioIsolationMode.FreshRuntime));
+            Assert.That(captured.Namespace, Does.Contain("suite"));
+            Assert.That(captured.Namespace, Does.Contain("scenario"));
+        }
+
+        [Test]
+        public void ScenarioIsolationMode_CanBeDeclaredExplicitly()
+        {
+            TestLabSceneIndependentAutomationHost host = new TestLabSceneIndependentAutomationHost(new DefinitionRegistry(Array.Empty<IGameDefinition>()), "host.test.persistent");
+            Assert.That(TestLabAutomationHostRegistry.Register(host, out string failure), Is.True, failure);
+            TestLabScenarioContext captured = null;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "scenario",
+                "scenario",
+                "scenario",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[]
+                {
+                    new TestLabScenarioStep("capture", "Capture", context =>
+                    {
+                        captured = context.ScenarioContext;
+                        return TestLabAssertions.Pass("capture", "Capture");
+                    })
+                },
+                isolationMode: TestLabScenarioIsolationMode.PersistentFixture,
+                requiredHostId: "host.test.persistent");
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(Registry(Suite("suite", 10, scenario)), new TestLabAutomationHostResetCoordinator());
+
+            runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured.IsolationMode, Is.EqualTo(TestLabScenarioIsolationMode.PersistentFixture));
+        }
+
+        [Test]
+        public void ScopedFixtureIds_AreRunScopedAndDeterministic()
+        {
+            TestLabScenarioContext context = new TestLabScenarioContext("run-0001", "suite.id", "scenario.id", TestLabScenarioIsolationMode.FreshRuntime, null);
+
+            string first = context.ScopedId("memory", "hidden witness");
+            string second = context.ScopedId("memory", "hidden witness");
+
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(first, Does.StartWith("memory.fixture.suite.id.scenario.id.run-0001."));
+            Assert.That(first, Does.EndWith("hidden-witness"));
+        }
+
+        [Test]
+        public void FixtureLedger_ReusesEquivalentRecordsAndRejectsConflicts()
+        {
+            TestLabFixtureOwnershipLedger ledger = new TestLabFixtureOwnershipLedger();
+
+            TestLabFixtureHandle created = ledger.EnsureEquivalent("fixture.one", "record", "record.same", "owner=a;subject=b", exists: false);
+            TestLabFixtureHandle reused = ledger.EnsureEquivalent("fixture.one", "record", "record.same", "owner=a;subject=b", exists: true, actualSignature: "owner=a;subject=b");
+            TestLabFixtureHandle conflict = ledger.EnsureEquivalent("fixture.two", "record", "record.same", "owner=c;subject=d", exists: true, actualSignature: "owner=c;subject=d");
+
+            Assert.That(created.Outcome, Is.EqualTo(TestLabFixtureEnsureOutcome.Created));
+            Assert.That(reused.Outcome, Is.EqualTo(TestLabFixtureEnsureOutcome.ReusedEquivalent));
+            Assert.That(conflict.Outcome, Is.EqualTo(TestLabFixtureEnsureOutcome.Conflict));
+            Assert.That(ledger.HasConflicts, Is.True);
+        }
+
+        [Test]
+        public void FixtureRegistry_PreflightDetectsMissingDependencies()
+        {
+            TestLabScenarioContext context = new TestLabScenarioContext("run-0001", "suite", "scenario", TestLabScenarioIsolationMode.FreshRuntime, null);
+            Assert.That(context.Fixtures.TryRegister(new TestLabFixtureProvider("fixture.owner", new[] { "fixture.missing" }, _ =>
+                new TestLabFixtureHandle("fixture.owner", "record", "record.owner", "signature", TestLabFixtureEnsureOutcome.Created)), out _), Is.True);
+
+            TestLabAutomationStepResult result = context.Preflight();
+
+            Assert.That(result.Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(result.Diagnostics, Does.Contain("fixture.missing"));
+        }
+
+        [Test]
+        public void FixtureRegistry_RejectsDuplicateProvidersAndDetectsCycles()
+        {
+            TestLabScenarioContext context = new TestLabScenarioContext("run-0001", "suite", "scenario", TestLabScenarioIsolationMode.FreshRuntime, null);
+            ITestLabFixtureProvider providerA = new TestLabFixtureProvider("fixture.a", new[] { "fixture.b" }, _ =>
+                new TestLabFixtureHandle("fixture.a", "record", "record.a", "a", TestLabFixtureEnsureOutcome.Created));
+            ITestLabFixtureProvider providerB = new TestLabFixtureProvider("fixture.b", new[] { "fixture.a" }, _ =>
+                new TestLabFixtureHandle("fixture.b", "record", "record.b", "b", TestLabFixtureEnsureOutcome.Created));
+
+            Assert.That(context.Fixtures.TryRegister(providerA, out string firstFailure), Is.True, firstFailure);
+            Assert.That(context.Fixtures.TryRegister(providerA, out string duplicateFailure), Is.False);
+            Assert.That(duplicateFailure, Does.Contain("Duplicate"));
+            Assert.That(context.Fixtures.TryRegister(providerB, out string secondFailure), Is.True, secondFailure);
+
+            TestLabAutomationStepResult result = context.Preflight();
+
+            Assert.That(result.Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(result.Diagnostics, Does.Contain("cycle"));
+        }
+
+        [Test]
+        public void SnapshotRestore_RestoresBeforeIntegrityCheck()
+        {
+            TestLabScenarioContext context = new TestLabScenarioContext("run-0001", "suite", "scenario", TestLabScenarioIsolationMode.SnapshotRestore, null);
+
+            TestLabAutomationStepResult audit = context.AuditMutationsBeforeRestore();
+            TestLabAutomationStepResult restore = context.RestoreIsolation();
+            TestLabAutomationStepResult integrity = context.VerifyRestoredBaseline();
+
+            Assert.That(audit.Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+            Assert.That(restore.Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+            Assert.That(integrity.Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+        }
+
+        [Test]
+        public void SnapshotRestore_AuditsUndeclaredMutationBeforeRestore()
+        {
+            DefinitionRegistry registry = LoadRegistry();
+            TestLabRuntimeBundle bundle = TestLabRuntimeBundle.CreateFresh(
+                registry,
+                "person.prototype.fixture-owner",
+                "world.fixture",
+                new[] { "person.prototype.fixture-owner" },
+                new[] { "body.prototype.fixture-body" },
+                "Snapshot mutation audit test");
+            using TestLabScenarioContext context = new TestLabScenarioContext("run-0001", "suite", "scenario", TestLabScenarioIsolationMode.SnapshotRestore, bundle);
+
+            HistoryOperationResult mutation = bundle.History.RecordEvent(new RecordHistoricalEventRequest
+            {
+                TransactionId = "test.snapshot.undeclared-mutation",
+                EventId = "event.fixture.snapshot.undeclared",
+                EventDefinitionId = "history-event.person-participation",
+                OccurredAtWorldTime = 1d,
+                RecordedAtWorldTime = 1d,
+                PrimaryPersonId = bundle.PersonId,
+                ParticipantPersonIds = new[] { bundle.PersonId },
+                BodyIds = bundle.KnownBodyIds.Take(1).ToArray(),
+                Visibility = KnowledgeVisibility.Private,
+                SourceSystem = "Test",
+                Provenance = "Undeclared direct mutation",
+                Payload = new HistoricalEventPayloadData
+                {
+                    kind = HistoricalEventPayloadKind.Generic,
+                    note = "This mutation is intentionally not fixture-owned."
+                }
+            });
+
+            TestLabAutomationStepResult audit = context.AuditMutationsBeforeRestore();
+            TestLabAutomationStepResult restore = context.RestoreIsolation();
+            TestLabAutomationStepResult integrity = context.VerifyRestoredBaseline();
+
+            Assert.That(mutation.Succeeded, Is.True, mutation.Message);
+            Assert.That(audit.Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(audit.Diagnostics, Does.Contain("Diffs=1"));
+            Assert.That(audit.Diagnostics, Does.Contain("OwnedMutations=0"));
+            Assert.That(restore.Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+            Assert.That(integrity.Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+        }
+
+        [Test]
+        public void HistoryFixtureProvider_CreatesScopedTypedWitnessMemoryAndReusesEquivalent()
+        {
+            DefinitionRegistry registry = LoadRegistry();
+            TestLabRuntimeBundle bundle = TestLabRuntimeBundle.CreateFresh(
+                registry,
+                "person.prototype.fixture-owner",
+                "world.fixture",
+                new[] { "person.prototype.fixture-owner" },
+                new[] { "body.prototype.fixture-body" },
+                "History fixture provider test");
+            using TestLabScenarioContext context = new TestLabScenarioContext("run-0001", "suite", "scenario", TestLabScenarioIsolationMode.FreshRuntime, bundle, bundle);
+
+            TestLabFixtureHandle first = context.Fixtures.Require(TestLabHistoryFixtureProviders.WitnessMemoryFixtureId, context);
+            TestLabFixtureHandle second = context.Fixtures.Require(TestLabHistoryFixtureProviders.WitnessMemoryFixtureId, context);
+
+            Assert.That(first.Succeeded, Is.True, first.Message);
+            Assert.That(second.Succeeded, Is.True, second.Message);
+            Assert.That(context.TryGetFixturePayload(TestLabHistoryFixtureProviders.WitnessMemoryFixtureId, out HiddenHistoryFixtureHandle payload), Is.True);
+            Assert.That(payload.EventId, Does.StartWith("event.fixture.suite.scenario.run-0001."));
+            Assert.That(payload.MemoryId, Does.StartWith("memory.fixture.suite.scenario.run-0001."));
+            Assert.That(bundle.History.TryGetEvent(payload.EventId, out _), Is.True);
+            Assert.That(bundle.Memory.TryGetMemory(payload.MemoryId, out _), Is.True);
+        }
+
+        [Test]
+        public void FixtureMutationAudit_FailsScenarioWhenOwnershipConflictsExist()
+        {
+            TestLabAutomationRunner runner = Runner(Registry(Suite("suite", 10,
+                Scenario("scenario", 10, new TestLabScenarioStep("conflict", "Conflict", context =>
+                {
+                    context.ScenarioContext.Ledger.EnsureEquivalent("fixture.one", "record", "record.same", "signature", exists: false);
+                    context.ScenarioContext.Ledger.EnsureEquivalent("fixture.two", "record", "record.same", "signature", exists: true, actualSignature: "signature");
+                    return TestLabAssertions.Pass("conflict", "Conflict");
+                })))));
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(result.Scenarios.Single().Steps.Any(step => step.StepId == "fixture.audit" && step.Status == TestLabAutomationStatus.Failed), Is.True);
+        }
+
+        [Test]
         public void PreviewAssertions_DetectMutation()
         {
             int before = 1;
@@ -385,6 +646,464 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void Validation_CatchesUnsupportedIsolationMode()
+        {
+            TestLabAutomationRegistry registry = Registry(Suite("suite", 10,
+                new TestLabAutomationScenario("scenario", "scenario", "scenario", 10, TestLabAutomationCategory.Quick, true, new[] { PassStep("pass") }, isolationMode: (TestLabScenarioIsolationMode)999)));
+
+            TestLabAutomationValidationResult result = TestLabAutomationValidation.Validate(registry);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors.Any(error => error.Contains("unsupported isolation mode")), Is.True);
+        }
+
+        [Test]
+        public void Validation_CatchesMissingFixtureRequirements()
+        {
+            TestLabAutomationRegistry registry = Registry(Suite("suite", 10,
+                new TestLabAutomationScenario("scenario", "scenario", "scenario", 10, TestLabAutomationCategory.Quick, true, new[] { PassStep("pass") }, requiredFixtureIds: Array.Empty<string>())));
+
+            TestLabAutomationValidationResult result = TestLabAutomationValidation.Validate(registry);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors.Any(error => error.Contains("no fixture requirements")), Is.True);
+        }
+
+        [Test]
+        public void Validation_CatchesUnsupportedIsolatedRuntimeAreas()
+        {
+            TestLabAutomationRegistry registry = Registry(Suite("suite", 10,
+                new TestLabAutomationScenario(
+                    "combat-runtime",
+                    "combat-runtime",
+                    "combat-runtime",
+                    10,
+                    TestLabAutomationCategory.Quick,
+                    true,
+                    new[] { PassStep("pass") },
+                    isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                    requiredRuntimeAreas: TestLabRuntimeArea.Combat,
+                    requiresSceneHost: false)));
+
+            TestLabAutomationValidationResult result = TestLabAutomationValidation.Validate(registry);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors.Any(error => error.Contains("cannot be isolated automatically")
+                || error.Contains("runtime area", StringComparison.OrdinalIgnoreCase)
+                || error.Contains("scene host", StringComparison.OrdinalIgnoreCase)), Is.True, string.Join(Environment.NewLine, result.Errors));
+        }
+
+        [Test]
+        public void Validation_CatchesUnapprovedSharedRuntimeScenarios()
+        {
+            TestLabAutomationRegistry registry = Registry(Suite("suite", 10,
+                new TestLabAutomationScenario(
+                    "shared",
+                    "shared",
+                    "shared",
+                    10,
+                    TestLabAutomationCategory.Quick,
+                    true,
+                    new[] { PassStep("pass") },
+                    isolationMode: TestLabScenarioIsolationMode.SharedRuntime,
+                    requiredRuntimeAreas: TestLabRuntimeArea.Character)));
+
+            TestLabAutomationValidationResult result = TestLabAutomationValidation.Validate(registry);
+            TestLabAutomationMigrationInventory inventory = TestLabAutomationValidation.BuildMigrationInventory(registry);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors.Any(error => error.Contains("temporary shared-runtime migration allowlist")), Is.True);
+            Assert.That(inventory.LegacySharedFeatureScenarios, Is.EqualTo(1));
+            Assert.That(inventory.LegacySharedScenarioIds.Single(), Is.EqualTo("suite/shared"));
+        }
+
+        [Test]
+        public void HostRegistry_RegistersResolvesRejectsDuplicateAndAmbiguousHosts()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+            DefinitionRegistry definitions = new DefinitionRegistry(Array.Empty<IGameDefinition>());
+            TestLabSceneIndependentAutomationHost first = new TestLabSceneIndependentAutomationHost(definitions, "host.test.one");
+            TestLabSceneIndependentAutomationHost duplicate = new TestLabSceneIndependentAutomationHost(definitions, "host.test.one");
+            TestLabSceneIndependentAutomationHost second = new TestLabSceneIndependentAutomationHost(definitions, "host.test.two");
+
+            Assert.That(TestLabAutomationHostRegistry.Register(first, out string firstFailure), Is.True, firstFailure);
+            TestLabAutomationHostResolution active = TestLabAutomationHostRegistry.ResolveActive();
+            Assert.That(active.Succeeded, Is.True, active.Message);
+            Assert.That(active.Host, Is.SameAs(first));
+
+            Assert.That(TestLabAutomationHostRegistry.Register(duplicate, out string duplicateFailure), Is.False);
+            Assert.That(duplicateFailure, Does.Contain("Duplicate"));
+
+            Assert.That(TestLabAutomationHostRegistry.Register(second, out string secondFailure), Is.True, secondFailure);
+            TestLabAutomationHostResolution ambiguous = TestLabAutomationHostRegistry.ResolveActive();
+            Assert.That(ambiguous.Succeeded, Is.False);
+            Assert.That(ambiguous.FailureCode, Is.EqualTo("AmbiguousHost"));
+
+            TestLabAutomationHostResolution exact = TestLabAutomationHostRegistry.ResolveActive("host.test.two");
+            Assert.That(exact.Succeeded, Is.True, exact.Message);
+            Assert.That(exact.Host, Is.SameAs(second));
+
+            TestLabAutomationHostRegistry.Unregister(first);
+            TestLabAutomationHostRegistry.Unregister(second);
+            Assert.That(TestLabAutomationHostRegistry.ResolveActive().FailureCode, Is.EqualTo("NoHost"));
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void HostRegistry_DoesNotReturnDestroyedSceneHosts()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+            GameObject hostObject = new GameObject("Test Lab Host Registry Lifecycle");
+            TestLabAutomationHostBehaviour host = hostObject.AddComponent<TestLabAutomationHostBehaviour>();
+            Assert.That(TestLabAutomationHostRegistry.Register(host, out string failure), Is.True, failure);
+
+            Assert.That(TestLabAutomationHostRegistry.ResolveActive().Succeeded, Is.True);
+
+            UnityEngine.Object.DestroyImmediate(hostObject);
+
+            TestLabAutomationHostResolution resolution = TestLabAutomationHostRegistry.ResolveActive();
+            Assert.That(resolution.Succeeded, Is.False);
+            Assert.That(resolution.FailureCode, Is.EqualTo("NoHost"));
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void FreshRuntime_CanRunWithoutSceneHost()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+            TestLabRuntimeBundle captured = null;
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(
+                Registry(Suite("suite", 10,
+                    Scenario("fresh", 10, new TestLabScenarioStep("capture", "Capture", context =>
+                    {
+                        captured = context.ScenarioContext.Runtimes;
+                        Assert.That(context.Host, Is.Null);
+                        return TestLabAssertions.Pass("capture", "Capture");
+                    })))),
+                new FakeResetCoordinator(),
+                requiredHostId => TestLabAutomationHostRegistry.ResolveActive(requiredHostId),
+                new TestLabDefinitionContext(new DefinitionRegistry(Array.Empty<IGameDefinition>()), "definitions.test", "Test definitions", catalogAuthored: false, fallbackDefinitionsAvailable: false, revision: 0));
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.HasFailures, Is.False, string.Join(Environment.NewLine, result.Scenarios.SelectMany(scenario => scenario.Steps).Select(step => step.Diagnostics)));
+            Assert.That(captured, Is.Not.Null);
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void NonPrototypeHost_CanRunCompatiblePersistentFreshSuite()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+            DefinitionRegistry definitions = new DefinitionRegistry(Array.Empty<IGameDefinition>());
+            TestLabSceneIndependentAutomationHost host = new TestLabSceneIndependentAutomationHost(definitions, "host.test.generic");
+            Assert.That(TestLabAutomationHostRegistry.Register(host, out string failure), Is.True, failure);
+            TestLabRuntimeBundle first = null;
+            TestLabRuntimeBundle second = null;
+            ITestLabAutomationScenario firstScenario = new TestLabAutomationScenario(
+                "first",
+                "first",
+                "first",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { new TestLabScenarioStep("capture-first", "Capture first", context => { first = context.ScenarioContext.Runtimes; return TestLabAssertions.Pass("capture-first", "Capture first"); }) },
+                isolationMode: TestLabScenarioIsolationMode.PersistentFixture,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiredHostId: "host.test.generic");
+            ITestLabAutomationScenario secondScenario = new TestLabAutomationScenario(
+                "second",
+                "second",
+                "second",
+                20,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { new TestLabScenarioStep("capture-second", "Capture second", context => { second = context.ScenarioContext.Runtimes; return TestLabAssertions.Pass("capture-second", "Capture second"); }) },
+                isolationMode: TestLabScenarioIsolationMode.PersistentFixture,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiredHostId: "host.test.generic");
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(
+                Registry(Suite("suite", 10, firstScenario, secondScenario)),
+                new TestLabAutomationHostResetCoordinator());
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.HasFailures, Is.False, string.Join(Environment.NewLine, result.Scenarios.SelectMany(scenario => scenario.Steps).Select(step => step.Diagnostics)));
+            Assert.That(first, Is.Not.Null);
+            Assert.That(second, Is.SameAs(first));
+            TestLabAutomationHostRegistry.Unregister(host);
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void UnsupportedHost_FailsBeforeScenarioStepRuns()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+            DefinitionRegistry definitions = new DefinitionRegistry(Array.Empty<IGameDefinition>());
+            TestLabSceneIndependentAutomationHost host = new TestLabSceneIndependentAutomationHost(definitions, "host.test.knowledge-only");
+            TestLabAutomationHostRegistry.Register(host, out _);
+            int stepRuns = 0;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "shared-combat",
+                "shared-combat",
+                "shared-combat",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { CountStep("should-not-run", () => stepRuns++) },
+                isolationMode: TestLabScenarioIsolationMode.SharedRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Combat,
+                requiredHostId: "host.test.knowledge-only");
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(Registry(Suite("suite", 10, scenario)), new TestLabAutomationHostResetCoordinator());
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(result.Scenarios.Single().Steps.Any(step => step.StepId == "host.compatibility" && step.Actual == "IncompatibleHost"), Is.True);
+            Assert.That(stepRuns, Is.Zero);
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void SuiteCompatibilityPreview_BlocksUnsupportedBatchBeforeAnyStepRuns()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+            TestLabSceneIndependentAutomationHost host = new TestLabSceneIndependentAutomationHost(new DefinitionRegistry(Array.Empty<IGameDefinition>()), "host.test.knowledge-only");
+            TestLabAutomationHostRegistry.Register(host, out _);
+            int compatibleStepRuns = 0;
+            int incompatibleStepRuns = 0;
+            ITestLabAutomationSuite suite = Suite("suite", 10,
+                new TestLabAutomationScenario(
+                    "compatible",
+                    "compatible",
+                    "compatible",
+                    10,
+                    TestLabAutomationCategory.Quick,
+                    true,
+                    new[] { CountStep("compatible-step", () => compatibleStepRuns++) },
+                    isolationMode: TestLabScenarioIsolationMode.PersistentFixture,
+                    requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                    requiredHostId: "host.test.knowledge-only"),
+                new TestLabAutomationScenario(
+                    "unsupported",
+                    "unsupported",
+                    "unsupported",
+                    20,
+                    TestLabAutomationCategory.Quick,
+                    true,
+                    new[] { CountStep("unsupported-step", () => incompatibleStepRuns++) },
+                    isolationMode: TestLabScenarioIsolationMode.SharedRuntime,
+                    requiredRuntimeAreas: TestLabRuntimeArea.Combat,
+                    requiredHostId: "host.test.knowledge-only"));
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(Registry(suite), new TestLabAutomationHostResetCoordinator());
+
+            TestLabSuiteCompatibilityReport preview = runner.PreviewCompatibility("suite");
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(preview.Compatible, Is.False);
+            Assert.That(preview.UnsupportedCount, Is.EqualTo(1));
+            Assert.That(result.HasFailures, Is.True);
+            Assert.That(result.Scenarios.Single().ScenarioId, Is.EqualTo("unsupported"));
+            Assert.That(result.Scenarios.Single().Steps.Single().StepId, Is.EqualTo("host.compatibility"));
+            Assert.That(compatibleStepRuns, Is.Zero);
+            Assert.That(incompatibleStepRuns, Is.Zero);
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void HostRemovalDuringExecutionFailsClearlyWithoutSelectingReplacement()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+            TestLabSceneIndependentAutomationHost host = new TestLabSceneIndependentAutomationHost(new DefinitionRegistry(Array.Empty<IGameDefinition>()), "host.test.removal");
+            TestLabAutomationHostRegistry.Register(host, out _);
+            int afterRemovalRuns = 0;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "host-removal",
+                "host-removal",
+                "host-removal",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[]
+                {
+                    new TestLabScenarioStep("remove-host", "Remove host", _ =>
+                    {
+                        TestLabAutomationHostRegistry.Unregister(host);
+                        return TestLabAssertions.Pass("remove-host", "Remove host");
+                    }),
+                    CountStep("after-removal", () => afterRemovalRuns++)
+                },
+                isolationMode: TestLabScenarioIsolationMode.PersistentFixture,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiredHostId: "host.test.removal");
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(Registry(Suite("suite", 10, scenario)), new TestLabAutomationHostResetCoordinator());
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(result.Scenarios.Single().Steps.Any(step => step.StepId == "host.continuity" && step.Actual == "HostRemoved"), Is.True);
+            Assert.That(afterRemovalRuns, Is.Zero);
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void HostlessScenarioRequiresExplicitDefinitions()
+        {
+            int stepRuns = 0;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "requires-definition",
+                "requires-definition",
+                "requires-definition",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { CountStep("should-not-run", () => stepRuns++) },
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiresSceneHost: false,
+                requiredDefinitionIds: new[] { "testlab.required-definition" });
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(
+                Registry(Suite("suite", 10, scenario)),
+                new FakeResetCoordinator(),
+                defaultDefinitionContext: DefinitionContext());
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(result.Scenarios.Single().Steps.Single().Actual, Is.EqualTo("MissingDefinitions"));
+            Assert.That(stepRuns, Is.Zero);
+        }
+
+        [Test]
+        public void HostlessScenarioRejectsConflictingDefinitionContext()
+        {
+            int stepRuns = 0;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "conflicting-definitions",
+                "conflicting-definitions",
+                "conflicting-definitions",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { CountStep("should-not-run", () => stepRuns++) },
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiresSceneHost: false);
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(
+                Registry(Suite("suite", 10, scenario)),
+                new FakeResetCoordinator(),
+                defaultDefinitionContext: DefinitionContext(validationErrors: new[] { "Duplicate definition ID 'testlab.conflict'." }));
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(result.Scenarios.Single().Steps.Single().Actual, Is.EqualTo("DefinitionConflict"));
+            Assert.That(stepRuns, Is.Zero);
+        }
+
+        [Test]
+        public void CatalogDefinitionContextSatisfiesRequiredDefinition()
+        {
+            int stepRuns = 0;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "requires-catalog-definition",
+                "requires-catalog-definition",
+                "requires-catalog-definition",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { CountStep("definition-step", () => stepRuns++) },
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiresSceneHost: false,
+                requiredDefinitionIds: new[] { "testlab.catalog-definition" });
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(
+                Registry(Suite("suite", 10, scenario)),
+                new FakeResetCoordinator(),
+                defaultDefinitionContext: DefinitionContext(new FakeDefinition("testlab.catalog-definition", "Catalog Definition")));
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.HasFailures, Is.False, string.Join(Environment.NewLine, result.Scenarios.SelectMany(item => item.Steps).Select(step => step.Diagnostics)));
+            Assert.That(stepRuns, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void HostlessScenarioResolutionIsIndependentOfRegisteredSceneHosts()
+        {
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "hostless",
+                "hostless",
+                "hostless",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { PassStep("hostless-step") },
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiresSceneHost: false);
+            TestLabDefinitionContext definitions = DefinitionContext();
+            TestLabAutomationRunner beforeHostRunner = new TestLabAutomationRunner(
+                Registry(Suite("suite", 10, scenario)),
+                new FakeResetCoordinator(),
+                requiredHostId => TestLabAutomationHostRegistry.ResolveActive(requiredHostId),
+                definitions);
+
+            TestLabAutomationResult beforeHost = beforeHostRunner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            TestLabSceneIndependentAutomationHost host = new TestLabSceneIndependentAutomationHost(new DefinitionRegistry(Array.Empty<IGameDefinition>()), "host.test.unused");
+            TestLabAutomationHostRegistry.Register(host, out _);
+            TestLabAutomationRunner afterHostRunner = new TestLabAutomationRunner(
+                Registry(Suite("suite", 10, scenario)),
+                new FakeResetCoordinator(),
+                requiredHostId => TestLabAutomationHostRegistry.ResolveActive(requiredHostId),
+                definitions);
+
+            TestLabAutomationResult afterHost = afterHostRunner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(beforeHost.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+            Assert.That(afterHost.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+            Assert.That(beforeHost.Scenarios.Single().Steps.Any(step => step.StepId == "hostless-step"), Is.True);
+            Assert.That(afterHost.Scenarios.Single().Steps.Any(step => step.StepId == "hostless-step"), Is.True);
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void AutomationCore_DoesNotReferencePrototypeSceneServiceOrView()
+        {
+            string[] coreFiles =
+            {
+                "Assets/_Project/Development/TestLab/Automation/TestLabAutomationContracts.cs",
+                "Assets/_Project/Development/TestLab/Automation/TestLabAutomationHost.cs",
+                "Assets/_Project/Development/TestLab/Automation/TestLabAutomationRunner.cs",
+                "Assets/_Project/Development/TestLab/Automation/TestLabAutomationTypes.cs",
+                "Assets/_Project/Development/TestLab/Automation/TestLabAutomationValidation.cs",
+                "Assets/_Project/Development/TestLab/Automation/TestLabFixtureSystem.cs"
+            };
+            string joined = string.Join(Environment.NewLine, coreFiles.Select(File.ReadAllText));
+
+            Assert.That(joined, Does.Not.Contain("PrototypeTestLabService"));
+            Assert.That(joined, Does.Not.Contain("PrototypeTestLabView"));
+            Assert.That(joined, Does.Not.Contain("PrototypeScene"));
+        }
+
+        [Test]
+        public void GenericDevelopmentHostScene_IsNonPrototypeAndCatalogBacked()
+        {
+            string scenePath = "Assets/_Project/Scenes/Development/TestLabGenericHostScene.unity";
+            Assert.That(File.Exists(scenePath), Is.True);
+
+            string scene = File.ReadAllText(scenePath);
+            Assert.That(scene, Does.Contain("host.generic-test-lab"));
+            Assert.That(scene, Does.Contain("guid: 3f21ecdbb7904425b456ed3f7fbf5c22"));
+            Assert.That(scene, Does.Contain("guid: 357d3d18865946889262f9bf55802d62"));
+            Assert.That(scene, Does.Contain("freshRuntimeAreas: 1"));
+            Assert.That(scene, Does.Contain("persistentFixtureAreas: 1"));
+            Assert.That(scene, Does.Not.Contain("PrototypeTestLabService"));
+            Assert.That(scene, Does.Not.Contain("PrototypeTestLabView"));
+        }
+
+        [Test]
         public void DefaultPrototypeSuites_RegisterStep3ThroughStep8()
         {
             TestLabAutomationRegistry registry = new TestLabAutomationRegistry();
@@ -397,8 +1116,11 @@ namespace UnityIsekaiGame.Tests
             PrototypeStep8AutomationSuites.RegisterDefaults(registry);
 
             TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(registry);
+            TestLabAutomationMigrationInventory inventory = TestLabAutomationValidation.BuildMigrationInventory(registry);
 
             Assert.That(validation.Succeeded, Is.True, string.Join(Environment.NewLine, validation.Errors));
+            Assert.That(inventory.TotalScenarios, Is.GreaterThan(0), inventory.ToSummary());
+            Assert.That(inventory.LegacySharedFeatureScenarios, Is.Zero, inventory.ToSummary());
             string[] actualSuiteIds = registry.Suites.Select(suite => suite.SuiteId).ToArray();
             Assert.That(actualSuiteIds, Is.EqualTo(new[]
             {
@@ -450,6 +1172,24 @@ namespace UnityIsekaiGame.Tests
                 "step.8.knowledge-history-integration"
             }));
             Assert.That(registry.Suites.Single(suite => suite.SuiteId == "step.8.knowledge-history-integration").IncludeInRunAll, Is.False);
+            Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
+                || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
+            Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);
+            Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).Where(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime || scenario.IsolationMode == TestLabScenarioIsolationMode.SnapshotRestore)
+                .All(scenario => (scenario.RequiredRuntimeAreas & ~TestLabRuntimeArea.KnowledgeHistory) == TestLabRuntimeArea.None), Is.True);
+        }
+
+        [Test]
+        public void AutomationSuites_DoNotUseLegacyMutableFixturePatterns()
+        {
+            string[] suiteFiles = Directory.GetFiles("Assets/_Project/Development/TestLab/Automation", "PrototypeStep*AutomationSuites.cs", SearchOption.AllDirectories);
+            string joined = string.Join(Environment.NewLine, suiteFiles.Select(File.ReadAllText));
+
+            Assert.That(joined, Does.Not.Contain("Guid.NewGuid"));
+            Assert.That(joined, Does.Not.Contain("FormWitnessHistoryMemory"));
+            Assert.That(joined, Does.Not.Contain("memory.prototype."));
+            Assert.That(joined, Does.Not.Contain("event.prototype."));
+            Assert.That(joined, Does.Not.Contain("record.prototype."));
         }
 
         [Test]
@@ -481,9 +1221,36 @@ namespace UnityIsekaiGame.Tests
             return registry;
         }
 
+        private static DefinitionRegistry LoadRegistry()
+        {
+            DefinitionCatalog catalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(CatalogPath);
+            Assert.That(catalog, Is.Not.Null, $"Missing prototype catalog at {CatalogPath}.");
+            return catalog.CreateRegistry();
+        }
+
         private static TestLabAutomationRunner Runner(TestLabAutomationRegistry registry, ITestLabAutomationResetCoordinator reset = null)
         {
-            return new TestLabAutomationRunner(null, registry, reset ?? new FakeResetCoordinator());
+            return new TestLabAutomationRunner(registry, reset ?? new FakeResetCoordinator());
+        }
+
+        private static TestLabDefinitionContext DefinitionContext(params IGameDefinition[] definitions)
+        {
+            return DefinitionContext(definitions, Array.Empty<string>());
+        }
+
+        private static TestLabDefinitionContext DefinitionContext(IEnumerable<string> validationErrors)
+        {
+            return DefinitionContext(Array.Empty<IGameDefinition>(), validationErrors);
+        }
+
+        private static TestLabDefinitionContext DefinitionContext(IEnumerable<IGameDefinition> definitions, IEnumerable<string> validationErrors)
+        {
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            DefinitionRegistry registry = new DefinitionRegistry(definitions ?? Array.Empty<IGameDefinition>(), report);
+            string[] errors = (validationErrors ?? Array.Empty<string>())
+                .Concat(report.Messages.Where(message => message.Severity == DefinitionIdValidationSeverity.Error).Select(message => message.Message))
+                .ToArray();
+            return new TestLabDefinitionContext(registry, "definitions.test", "Test definitions", catalogAuthored: true, fallbackDefinitionsAvailable: false, revision: 1, validationErrors: errors);
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, int order, params ITestLabAutomationScenario[] scenarios)
@@ -513,6 +1280,18 @@ namespace UnityIsekaiGame.Tests
                 action();
                 return TestLabAssertions.Pass(stepId, stepId);
             });
+        }
+
+        private sealed class FakeDefinition : IGameDefinition
+        {
+            public FakeDefinition(string id, string displayName)
+            {
+                Id = id;
+                DisplayName = displayName;
+            }
+
+            public string Id { get; }
+            public string DisplayName { get; }
         }
 
         private sealed class FakeResetCoordinator : ITestLabAutomationResetCoordinator

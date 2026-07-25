@@ -79,6 +79,7 @@ namespace UnityIsekaiGame.Development
 
         private void OnDisable()
         {
+            service?.UnregisterAutomationHost();
             if (menuView != null && registered)
             {
                 menuView.UnregisterMenuExtension(this);
@@ -125,6 +126,7 @@ namespace UnityIsekaiGame.Development
 
         public void Dispose()
         {
+            service?.UnregisterAutomationHost();
         }
 
         private void ResolveMenuReferences()

@@ -32,6 +32,43 @@ namespace UnityIsekaiGame.Development.Automation
         RerunFailed = 4
     }
 
+    public enum TestLabAutomationScenarioOrder
+    {
+        Normal = 0,
+        Reverse = 1,
+        Shuffled = 2
+    }
+
+    [Flags]
+    public enum TestLabRuntimeArea
+    {
+        None = 0,
+        KnowledgeHistory = 1 << 0,
+        Character = 1 << 1,
+        Combat = 1 << 2,
+        Biology = 1 << 3,
+        Persistence = 1 << 4
+    }
+
+    [Flags]
+    public enum TestLabHostFeature
+    {
+        None = 0,
+        DefinitionContext = 1 << 0,
+        SceneReset = 1 << 1,
+        SnapshotRestore = 1 << 2,
+        SharedRuntime = 1 << 3,
+        PersistentFixture = 1 << 4,
+        DeterministicTime = 1 << 5,
+        FixtureFingerprinting = 1 << 6,
+        DirtyStateInspection = 1 << 7,
+        DomainEventInspection = 1 << 8,
+        VisibleUi = 1 << 9,
+        AutomatedExecution = 1 << 10,
+        DevelopmentOnly = 1 << 11,
+        Persistence = 1 << 12
+    }
+
     public sealed class TestLabAutomationOptions
     {
         public static readonly TestLabAutomationOptions Default = new TestLabAutomationOptions();
@@ -39,6 +76,8 @@ namespace UnityIsekaiGame.Development.Automation
         public bool StopOnFirstFailure { get; set; }
         public bool IncludeExtended { get; set; } = true;
         public int MaximumFrameWait { get; set; } = 120;
+        public TestLabAutomationScenarioOrder ScenarioOrder { get; set; } = TestLabAutomationScenarioOrder.Normal;
+        public int ShuffleSeed { get; set; } = 8675309;
     }
 
     public sealed class TestLabAutomationStepResult
@@ -120,7 +159,9 @@ namespace UnityIsekaiGame.Development.Automation
             DateTime startedAtUtc,
             DateTime endedAtUtc,
             bool cancelled,
-            IEnumerable<TestLabScenarioResult> scenarios)
+            IEnumerable<TestLabScenarioResult> scenarios,
+            TestLabAutomationScenarioOrder scenarioOrder = TestLabAutomationScenarioOrder.Normal,
+            int shuffleSeed = 0)
         {
             RunId = string.IsNullOrWhiteSpace(runId) ? "run" : runId;
             RunMode = runMode;
@@ -128,6 +169,8 @@ namespace UnityIsekaiGame.Development.Automation
             EndedAtUtc = endedAtUtc;
             Cancelled = cancelled;
             Scenarios = (scenarios ?? Array.Empty<TestLabScenarioResult>()).ToArray();
+            ScenarioOrder = scenarioOrder;
+            ShuffleSeed = shuffleSeed;
         }
 
         public string RunId { get; }
@@ -136,6 +179,8 @@ namespace UnityIsekaiGame.Development.Automation
         public DateTime EndedAtUtc { get; }
         public TimeSpan Elapsed => EndedAtUtc >= StartedAtUtc ? EndedAtUtc - StartedAtUtc : TimeSpan.Zero;
         public bool Cancelled { get; }
+        public TestLabAutomationScenarioOrder ScenarioOrder { get; }
+        public int ShuffleSeed { get; }
         public IReadOnlyList<TestLabScenarioResult> Scenarios { get; }
         public int TotalScenarios => Scenarios.Count;
         public int PassedScenarios => Scenarios.Count(scenario => scenario.Status == TestLabAutomationStatus.Passed);
