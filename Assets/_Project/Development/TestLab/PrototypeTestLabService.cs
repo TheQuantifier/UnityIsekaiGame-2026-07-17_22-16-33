@@ -9510,13 +9510,7 @@ namespace UnityIsekaiGame.Development
                 return RecordFailure("Grant Stateful Item", "No item definition selected.", "MissingDefinition");
             }
 
-            ItemInstanceCreationResult creation = ItemInstanceFactory.CreateStateful(item, ItemInstanceMetadata.WithoutInstanceState());
-            if (!creation.Succeeded)
-            {
-                return RecordFailure("Grant Stateful Item", creation.Message, creation.Status.ToString());
-            }
-
-            InventoryInstanceOperationResult result = context.Inventory.AddItemInstance(creation.ItemInstance);
+            InventoryInstanceOperationResult result = context.Inventory.AddExistingItemIdentity(item, ItemInstanceId.Generate());
             return Record(result.Succeeded, "Grant Stateful Item", result.Succeeded ? "Added" : "Failed", result.Message);
         }
 
@@ -13516,6 +13510,7 @@ namespace UnityIsekaiGame.Development
                 PrototypeStep6AutomationSuites.RegisterDefaults(automationRegistry);
                 PrototypeStep7AutomationSuites.RegisterDefaults(automationRegistry);
                 PrototypeStep8AutomationSuites.RegisterDefaults(automationRegistry);
+                PrototypeStep9AutomationSuites.RegisterDefaults(automationRegistry);
             }
 
             if (automationRunner == null)
@@ -14473,7 +14468,7 @@ namespace UnityIsekaiGame.Development
             {
                 foreach (InventorySlot slot in context.Inventory.Slots)
                 {
-                    string id = slot == null || !slot.IsStateful || slot.ItemInstance == null ? string.Empty : slot.ItemInstance.InstanceId;
+                    string id = slot == null ? string.Empty : slot.ItemInstanceId;
                     if (!string.IsNullOrWhiteSpace(id) && !ids.Add(id))
                     {
                         duplicates.Add(id);
@@ -14485,7 +14480,7 @@ namespace UnityIsekaiGame.Development
             {
                 foreach (EquipmentSlotState slot in context.Equipment.Slots)
                 {
-                    string id = slot == null || !slot.IsStateful || slot.ItemInstance == null ? string.Empty : slot.ItemInstance.InstanceId;
+                    string id = slot == null ? string.Empty : slot.ItemInstanceId;
                     if (!string.IsNullOrWhiteSpace(id) && !ids.Add(id))
                     {
                         duplicates.Add(id);

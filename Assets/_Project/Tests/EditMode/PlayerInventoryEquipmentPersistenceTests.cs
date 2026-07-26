@@ -48,7 +48,7 @@ namespace UnityIsekaiGame.Tests
         {
             using RuntimeFixture fixture = RuntimeFixture.Create();
             Invoke(fixture.Inventory, "AddItem", fixture.Potion, 4);
-            Invoke(fixture.Inventory, "AddItemInstance", ItemInstance.CreateStateful((IInventoryItemDefinition)fixture.Sword, ItemInstanceMetadata.WithCondition(0.64f), SwordInstanceId));
+            Invoke(fixture.Inventory, "AddExistingItemIdentity", fixture.Sword, SwordInstanceId, 1);
             Assert.That(Get<bool>(Invoke(fixture.Equipment, "EquipFromInventorySlot", 1), "Succeeded"), Is.True);
 
             PersistenceService service = CreateService(fixture);
@@ -63,8 +63,7 @@ namespace UnityIsekaiGame.Tests
             Assert.That(Get<int>(GetSlot(fixture.Inventory, 0), "Quantity"), Is.EqualTo(4));
             Assert.That(Get<bool>(GetSlot(fixture.Inventory, 1), "IsEmpty"), Is.True);
             object mainHand = Invoke(fixture.Equipment, "GetSlot", MainHandValue());
-            Assert.That(Get<string>(Get<object>(mainHand, "ItemInstance"), "InstanceId"), Is.EqualTo(SwordInstanceId));
-            Assert.That(Get<float>(Get<object>(Get<object>(mainHand, "ItemInstance"), "Metadata"), "ConditionNormalized"), Is.EqualTo(0.64f));
+            Assert.That(Get<string>(mainHand, "ItemInstanceId"), Is.EqualTo(SwordInstanceId));
         }
 
         [Test]
@@ -139,10 +138,16 @@ namespace UnityIsekaiGame.Tests
         private static object CreateParticipant(Component inventory, Component equipment, DefinitionRegistry registry)
         {
             Type participantType = RequiredType("UnityIsekaiGame.Persistence.PlayerInventoryEquipmentPersistenceParticipant");
-            Type inventoryType = RequiredType("UnityIsekaiGame.Inventory.PlayerInventory");
-            Type equipmentType = RequiredType("UnityIsekaiGame.Equipment.PlayerEquipment");
             Func<DefinitionRegistry> registryProvider = () => registry;
-            return Activator.CreateInstance(participantType, inventory, equipment, registryProvider, PersistenceService.LocalPlayerId);
+            return Activator.CreateInstance(participantType, new object[]
+            {
+                inventory,
+                equipment,
+                registryProvider,
+                PersistenceService.LocalPlayerId,
+                null,
+                "test.player.inventory-equipment"
+            });
         }
 
         private static object CreatePayload(int slotCapacity)

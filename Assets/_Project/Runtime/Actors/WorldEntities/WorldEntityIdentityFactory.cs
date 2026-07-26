@@ -39,6 +39,10 @@ namespace UnityIsekaiGame.WorldEntities
             {
                 identity = gameObject.AddComponent<WorldEntityIdentity>();
             }
+            else if (identity.IsRegistered)
+            {
+                WorldEntityRegistry.Unregister(identity);
+            }
 
             bool initialized = restored
                 ? identity.TryInitializeRestoredRuntime(entityId, sceneKey, worldId, scope, definitionId, out string failureReason)

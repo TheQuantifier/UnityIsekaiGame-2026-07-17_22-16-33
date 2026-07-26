@@ -360,7 +360,7 @@ namespace UnityIsekaiGame.Development.Automation
 
     public static class TestLabAutomationCompatibility
     {
-        private const TestLabRuntimeArea HostlessFreshRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory;
+        private const TestLabRuntimeArea HostlessFreshRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items;
 
         public static TestLabSuiteCompatibilityReport Preview(
             IEnumerable<(ITestLabAutomationSuite Suite, ITestLabAutomationScenario Scenario)> selections,
@@ -609,11 +609,11 @@ namespace UnityIsekaiGame.Development.Automation
                 HostId,
                 "Scene-Independent Fresh Runtime Host",
                 "scene.none",
-                TestLabRuntimeArea.KnowledgeHistory,
-                TestLabRuntimeArea.KnowledgeHistory,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
                 TestLabRuntimeArea.None,
                 TestLabRuntimeArea.None,
-                TestLabRuntimeArea.KnowledgeHistory,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
                 new[] { TestLabScenarioIsolationMode.FreshRuntime, TestLabScenarioIsolationMode.PersistentFixture },
                 TestLabHostFeature.DefinitionContext
                     | TestLabHostFeature.DeterministicTime

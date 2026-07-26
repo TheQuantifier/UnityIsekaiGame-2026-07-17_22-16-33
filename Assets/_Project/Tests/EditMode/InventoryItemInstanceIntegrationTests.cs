@@ -23,8 +23,8 @@ namespace UnityIsekaiGame.Tests
             Assert.That(Get<bool>(result, "AddedAll"), Is.True);
             Assert.That(Get<bool>(GetSlot(inventory, 0), "IsStateful"), Is.True);
             Assert.That(Get<bool>(GetSlot(inventory, 1), "IsStateful"), Is.True);
-            Assert.That(Get<string>(Get<object>(GetSlot(inventory, 0), "ItemInstance"), "InstanceId"), Is.Not.EqualTo(Get<string>(Get<object>(GetSlot(inventory, 1), "ItemInstance"), "InstanceId")));
-            Assert.That(ItemInstanceId.IsValid(Get<string>(Get<object>(GetSlot(inventory, 0), "ItemInstance"), "InstanceId")), Is.True);
+            Assert.That(Get<string>(GetSlot(inventory, 0), "ItemInstanceId"), Is.Not.EqualTo(Get<string>(GetSlot(inventory, 1), "ItemInstanceId")));
+            Assert.That(ItemInstanceId.IsValid(Get<string>(GetSlot(inventory, 0), "ItemInstanceId")), Is.True);
 
             UnityEngine.Object.DestroyImmediate(inventory.gameObject);
         }
@@ -37,20 +37,19 @@ namespace UnityIsekaiGame.Tests
             Component equipment = inventory.gameObject.AddComponent(RequiredType("UnityIsekaiGame.Equipment.PlayerEquipment"));
             AssignObject(equipment, "inventory", inventory);
 
-            ItemInstance swordInstance = ItemInstance.CreateStateful((IInventoryItemDefinition)sword, ItemInstanceMetadata.WithCondition(0.73f), SwordInstanceId);
-            Invoke(inventory, "AddItemInstance", swordInstance);
+            Invoke(inventory, "AddExistingItemIdentity", sword, SwordInstanceId, 1);
 
             object equipResult = Invoke(equipment, "EquipFromInventorySlot", 0);
             object mainHand = Invoke(equipment, "GetSlot", MainHandValue());
 
             Assert.That(Get<bool>(equipResult, "Succeeded"), Is.True);
-            Assert.That(Get<object>(mainHand, "ItemInstance"), Is.SameAs(swordInstance));
+            Assert.That(Get<string>(mainHand, "ItemInstanceId"), Is.EqualTo(SwordInstanceId));
             Assert.That(Get<bool>(GetSlot(inventory, 0), "IsEmpty"), Is.True);
 
             object unequipResult = Invoke(equipment, "Unequip", MainHandValue());
 
             Assert.That(Get<bool>(unequipResult, "Succeeded"), Is.True);
-            Assert.That(Get<object>(GetSlot(inventory, 0), "ItemInstance"), Is.SameAs(swordInstance));
+            Assert.That(Get<string>(GetSlot(inventory, 0), "ItemInstanceId"), Is.EqualTo(SwordInstanceId));
             Assert.That(Get<bool>(mainHand, "IsEmpty"), Is.True);
 
             UnityEngine.Object.DestroyImmediate(inventory.gameObject);
@@ -63,7 +62,7 @@ namespace UnityIsekaiGame.Tests
             ScriptableObject sword = CreateItem("item.prototype-sword", "Prototype Sword", ItemInstanceMode.AlwaysInstanced, false, 1, true);
             Component inventory = CreateInventory(4);
             Invoke(inventory, "AddItem", potion, 3);
-            Invoke(inventory, "AddItemInstance", ItemInstance.CreateStateful((IInventoryItemDefinition)sword, ItemInstanceMetadata.WithCondition(0.5f), SwordInstanceId));
+            Invoke(inventory, "AddExistingItemIdentity", sword, SwordInstanceId, 1);
             object saveData = Invoke(inventory, "CreateSaveData");
             DefinitionRegistry registry = new DefinitionRegistry(new IGameDefinition[] { (IGameDefinition)potion, (IGameDefinition)sword });
 
@@ -74,8 +73,7 @@ namespace UnityIsekaiGame.Tests
             Assert.That(Get<int>(restored, "SlotCapacity"), Is.EqualTo(4));
             Assert.That(Get<object>(GetSlot(restored, 0), "Item"), Is.SameAs(potion));
             Assert.That(Get<int>(GetSlot(restored, 0), "Quantity"), Is.EqualTo(3));
-            Assert.That(Get<string>(Get<object>(GetSlot(restored, 1), "ItemInstance"), "InstanceId"), Is.EqualTo(SwordInstanceId));
-            Assert.That(Get<float>(Get<object>(Get<object>(GetSlot(restored, 1), "ItemInstance"), "Metadata"), "ConditionNormalized"), Is.EqualTo(0.5f));
+            Assert.That(Get<string>(GetSlot(restored, 1), "ItemInstanceId"), Is.EqualTo(SwordInstanceId));
 
             UnityEngine.Object.DestroyImmediate(inventory.gameObject);
             UnityEngine.Object.DestroyImmediate(restored.gameObject);

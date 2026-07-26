@@ -10,12 +10,13 @@ namespace UnityIsekaiGame.Equipment
     {
         [SerializeField] private EquipmentSlotType slotType;
         [SerializeField] private ItemDefinition item;
-        [NonSerialized] private ItemInstance itemInstance;
+        [SerializeField] private string itemInstanceId;
 
         public EquipmentSlotType SlotType => slotType;
-        public ItemDefinition Item => itemInstance != null ? itemInstance.Definition as ItemDefinition : item;
-        public ItemInstance ItemInstance => itemInstance;
-        public bool IsStateful => itemInstance != null;
+        public ItemDefinition Item => item;
+        public string ItemInstanceId => itemInstanceId ?? string.Empty;
+        public bool HasItemIdentity => !string.IsNullOrWhiteSpace(ItemInstanceId);
+        public bool IsStateful => HasItemIdentity;
         public bool IsEmpty => Item == null;
 
         internal void Initialize(EquipmentSlotType type)
@@ -25,26 +26,19 @@ namespace UnityIsekaiGame.Equipment
 
         internal void SetItem(ItemDefinition newItem)
         {
-            itemInstance = null;
-            item = newItem;
+            SetIdentity(newItem, string.Empty);
         }
 
-        internal void SetInstance(ItemInstance newItemInstance)
+        internal void SetIdentity(ItemDefinition newItem, string newItemInstanceId)
         {
-            if (newItemInstance == null || newItemInstance.Definition is not ItemDefinition)
-            {
-                Clear();
-                return;
-            }
-
-            itemInstance = newItemInstance;
-            item = null;
+            item = newItem;
+            itemInstanceId = newItemInstanceId ?? string.Empty;
         }
 
         internal void Clear()
         {
-            itemInstance = null;
             item = null;
+            itemInstanceId = string.Empty;
         }
     }
 }

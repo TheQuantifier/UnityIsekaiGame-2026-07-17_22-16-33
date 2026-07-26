@@ -306,7 +306,7 @@ namespace UnityIsekaiGame.Combat
                 request.DamageType != null && request.DamageType.IsTrueDamage,
                 DefensiveActionService.ReadBool(request.Metadata, "defense.allow-true-active", true),
                 DefensiveActionService.ReadString(request.Metadata, "defense.expected-state-id"),
-                Time.time,
+                DefensiveActionService.ReadDefenseNow(request.Metadata, Time.time),
                 request.AuthorityValidated);
             return execute ? defensiveActionService.Resolve(defenseRequest) : defensiveActionService.PreviewResolve(defenseRequest);
         }

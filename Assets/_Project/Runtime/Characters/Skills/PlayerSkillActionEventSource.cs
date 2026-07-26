@@ -110,7 +110,7 @@ namespace UnityIsekaiGame.Skills
 
             EquipmentSlotState mainHand = equipment == null ? null : equipment.GetSlot(EquipmentSlotType.MainHand);
             ItemDefinition item = mainHand == null ? null : mainHand.Item;
-            string itemInstanceId = mainHand == null || mainHand.ItemInstance == null ? string.Empty : mainHand.ItemInstance.InstanceId;
+            string itemInstanceId = mainHand == null ? string.Empty : mainHand.ItemInstanceId;
             SkillActionEventCategory category = item == null ? SkillActionEventCategory.UnarmedAttack : SkillActionEventCategory.PhysicalWeaponAction;
 
             skills.RecordQualifyingAction(new SkillActionExecutionEvent

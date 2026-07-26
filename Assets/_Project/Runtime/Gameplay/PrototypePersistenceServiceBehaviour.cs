@@ -11,6 +11,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.Records;
@@ -64,6 +65,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private string defaultSpawnPointId = "spawn.prototype.default";
         [SerializeField] private string defaultPlayerSpeciesId = "species.human";
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
+        [SerializeField] private bool registerPlayerItemIdentities = true;
         [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
@@ -103,6 +105,7 @@ namespace UnityIsekaiGame.Gameplay
         private InformationAccessPersistenceParticipant playerInformationAccessParticipant;
         private KnowledgeRecordPersistenceParticipant playerKnowledgeRecordParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
+        private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
         private PlayerCombatExecutionPersistenceParticipant playerCombatExecutionParticipant;
@@ -116,6 +119,8 @@ namespace UnityIsekaiGame.Gameplay
         private InformationTransferRuntime playerInformationTransfers;
         private InformationAccessRuntime playerInformationAccess;
         private KnowledgeRecordRuntime playerKnowledgeRecords;
+        private ItemInstanceIdentityRuntime playerItemIdentities;
+        private PlayerItemIdentitySynchronizer playerItemIdentitySynchronizer;
         private bool dirtyEventsSubscribed;
 
         public PersistenceService Service => service;
@@ -132,6 +137,7 @@ namespace UnityIsekaiGame.Gameplay
         public InformationTransferRuntime InformationTransfers => playerInformationTransfers ??= new InformationTransferRuntime();
         public InformationAccessRuntime InformationAccess => playerInformationAccess ??= new InformationAccessRuntime();
         public KnowledgeRecordRuntime KnowledgeRecords => playerKnowledgeRecords ??= new KnowledgeRecordRuntime();
+        public ItemInstanceIdentityRuntime ItemIdentities => playerItemIdentities ??= new ItemInstanceIdentityRuntime();
 
         private void Awake()
         {
@@ -150,6 +156,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(inventoryEquipmentParticipant);
                 inventoryEquipmentParticipant = null;
+            }
+
+            if (service != null && itemIdentityParticipant != null)
+            {
+                service.UnregisterParticipant(itemIdentityParticipant);
+                itemIdentityParticipant = null;
             }
 
             if (service != null && identityProgressionParticipant != null)
@@ -307,6 +319,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerInformationTransferParticipant();
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
+            EnsurePlayerItemIdentityParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -598,13 +611,71 @@ namespace UnityIsekaiGame.Gameplay
                 playerInventory,
                 playerEquipment,
                 GetDefinitionRegistry,
-                service.PlayerId);
+                service.PlayerId,
+                registerPlayerItemIdentities ? ItemIdentities : null,
+                "prototype.player.inventory-equipment");
 
             service.RegisterParticipant(inventoryEquipmentParticipant, out string failureReason);
             if (!string.IsNullOrWhiteSpace(failureReason))
             {
                 Debug.LogWarning(failureReason);
                 inventoryEquipmentParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerItemIdentityParticipant()
+        {
+            if (!registerPlayerItemIdentities || itemIdentityParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player item identity persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            EnsurePlayerItemIdentitySynchronizer();
+            itemIdentityParticipant = new ItemInstanceIdentityPersistenceParticipant(
+                ItemIdentities,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(itemIdentityParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                itemIdentityParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerItemIdentitySynchronizer()
+        {
+            ResolvePlayerPersistenceReferences();
+            if (playerInventory == null || playerEquipment == null)
+            {
+                return;
+            }
+
+            playerItemIdentitySynchronizer = playerInventory.GetComponent<PlayerItemIdentitySynchronizer>();
+            if (playerItemIdentitySynchronizer == null)
+            {
+                playerItemIdentitySynchronizer = playerInventory.gameObject.AddComponent<PlayerItemIdentitySynchronizer>();
+            }
+
+            playerItemIdentitySynchronizer.Configure(
+                playerInventory,
+                playerEquipment,
+                ItemIdentities,
+                GetDefinitionRegistry,
+                service.PlayerId,
+                "prototype.player.inventory-equipment");
+            ItemIdentityInventoryBridgeResult synchronization = playerItemIdentitySynchronizer.SynchronizeNow();
+            if (!synchronization.Succeeded)
+            {
+                Debug.LogWarning($"Player item identity synchronization failed: {synchronization.Message}");
             }
         }
 

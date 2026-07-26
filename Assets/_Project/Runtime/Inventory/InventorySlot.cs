@@ -9,21 +9,27 @@ namespace UnityIsekaiGame.Inventory
     {
         [SerializeField] private ItemDefinition item;
         [SerializeField, Min(0)] private int quantity;
-        [NonSerialized] private ItemInstance itemInstance;
+        [SerializeField] private string itemInstanceId;
 
-        public ItemDefinition Item => itemInstance != null ? itemInstance.Definition as ItemDefinition : item;
+        public ItemDefinition Item => item;
         public int Quantity => Mode == InventorySlotMode.StatefulInstance ? 1 : quantity;
-        public ItemInstance ItemInstance => itemInstance;
+        public string ItemInstanceId => itemInstanceId ?? string.Empty;
+        public bool HasItemIdentity => !string.IsNullOrWhiteSpace(ItemInstanceId);
         public InventorySlotMode Mode
         {
             get
             {
-                if (itemInstance != null)
+                if (item == null || quantity <= 0)
+                {
+                    return InventorySlotMode.Empty;
+                }
+
+                if (!item.Stackable && HasItemIdentity)
                 {
                     return InventorySlotMode.StatefulInstance;
                 }
 
-                return item == null || quantity <= 0 ? InventorySlotMode.Empty : InventorySlotMode.DefinitionStack;
+                return InventorySlotMode.DefinitionStack;
             }
         }
         public bool IsStateful => Mode == InventorySlotMode.StatefulInstance;
@@ -61,34 +67,27 @@ namespace UnityIsekaiGame.Inventory
 
         internal void Set(ItemDefinition newItem, int newQuantity)
         {
-            itemInstance = null;
+            SetIdentity(newItem, string.Empty, newQuantity);
+        }
+
+        internal void SetIdentity(ItemDefinition newItem, string newItemInstanceId, int newQuantity)
+        {
             item = newItem;
             quantity = Mathf.Max(0, newQuantity);
+            itemInstanceId = newItemInstanceId ?? string.Empty;
 
             if (quantity == 0)
             {
                 item = null;
+                itemInstanceId = string.Empty;
             }
-        }
-
-        internal void SetInstance(ItemInstance newItemInstance)
-        {
-            if (newItemInstance == null || newItemInstance.Definition is not ItemDefinition)
-            {
-                Clear();
-                return;
-            }
-
-            itemInstance = newItemInstance;
-            item = null;
-            quantity = 0;
         }
 
         internal void Clear()
         {
-            itemInstance = null;
             item = null;
             quantity = 0;
+            itemInstanceId = string.Empty;
         }
 
         internal bool Remove(int amount)

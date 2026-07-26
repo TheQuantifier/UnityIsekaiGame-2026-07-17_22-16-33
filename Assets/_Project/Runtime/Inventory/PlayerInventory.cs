@@ -63,72 +63,28 @@ namespace UnityIsekaiGame.Inventory
             return new InventoryAddResult(status, requestedQuantity, addedQuantity);
         }
 
-        public InventoryInstanceOperationResult AddItemInstance(ItemInstance itemInstance)
+        public InventoryInstanceOperationResult AddExistingItemIdentity(ItemDefinition item, string itemInstanceId, int quantity = 1)
         {
-            if (!CanAddItemInstance(itemInstance, out string failureReason))
+            if (!CanAddItemIdentity(item, itemInstanceId, quantity, out string failureReason))
             {
                 return InventoryInstanceOperationResult.Failure(failureReason);
             }
 
             int emptySlotIndex = FindEmptySlotIndex();
-            slots[emptySlotIndex].SetInstance(itemInstance);
+            slots[emptySlotIndex].SetIdentity(item, itemInstanceId, Mathf.Max(1, quantity));
             InventoryChanged?.Invoke();
 
-            ItemDefinition item = itemInstance.Definition as ItemDefinition;
             return InventoryInstanceOperationResult.Success($"Added {item.DisplayName}.", emptySlotIndex);
         }
 
-        public bool CanAddItemInstance(ItemInstance itemInstance)
+        public bool CanAddExistingItemIdentity(ItemDefinition item, string itemInstanceId, int quantity = 1)
         {
-            return CanAddItemInstance(itemInstance, out _);
+            return CanAddItemIdentity(item, itemInstanceId, quantity, out _);
         }
 
-        public bool CanAddItemInstance(ItemInstance itemInstance, out string failureReason)
+        public bool CanAddExistingItemIdentityAfterRemovingFromSlot(ItemDefinition item, string itemInstanceId, int removeSlotIndex, int quantity = 1)
         {
-            EnsureSlotCapacity();
-            failureReason = string.Empty;
-
-            if (!ValidateItemInstanceForInventory(itemInstance, out failureReason))
-            {
-                return false;
-            }
-
-            if (FindEmptySlotIndex() < 0)
-            {
-                failureReason = "Inventory full.";
-                return false;
-            }
-
-            return true;
-        }
-
-        public bool CanAddItemInstanceAfterRemovingFromSlot(ItemInstance itemInstance, int removeSlotIndex)
-        {
-            return CanAddItemInstanceAfterRemovingFromSlot(itemInstance, removeSlotIndex, out _);
-        }
-
-        public bool CanAddItemInstanceAfterRemovingFromSlot(ItemInstance itemInstance, int removeSlotIndex, out string failureReason)
-        {
-            EnsureSlotCapacity();
-
-            if (!ValidateItemInstanceForInventory(itemInstance, out failureReason))
-            {
-                return false;
-            }
-
-            if (FindEmptySlotIndex() >= 0)
-            {
-                return true;
-            }
-
-            if (removeSlotIndex >= 0 && removeSlotIndex < slots.Count && slots[removeSlotIndex] != null && !slots[removeSlotIndex].IsEmpty)
-            {
-                failureReason = string.Empty;
-                return true;
-            }
-
-            failureReason = "Inventory full.";
-            return false;
+            return CanAddItemIdentityAfterRemovingFromSlot(item, itemInstanceId, removeSlotIndex, quantity, out _);
         }
 
         public InventorySlot GetSlot(int slotIndex)
@@ -137,15 +93,9 @@ namespace UnityIsekaiGame.Inventory
             return slotIndex >= 0 && slotIndex < slots.Count ? slots[slotIndex] : null;
         }
 
-        public bool ContainsInstance(string instanceId)
+        public bool ContainsItemIdentity(string itemInstanceId)
         {
-            return TryGetInstance(instanceId, out _);
-        }
-
-        public bool TryGetInstance(string instanceId, out ItemInstance itemInstance)
-        {
-            itemInstance = null;
-            if (string.IsNullOrWhiteSpace(instanceId))
+            if (string.IsNullOrWhiteSpace(itemInstanceId))
             {
                 return false;
             }
@@ -154,14 +104,8 @@ namespace UnityIsekaiGame.Inventory
             for (int i = 0; i < slots.Count; i++)
             {
                 InventorySlot slot = slots[i];
-                if (slot == null || !slot.IsStateful || slot.ItemInstance == null)
+                if (slot != null && string.Equals(slot.ItemInstanceId, itemInstanceId, StringComparison.Ordinal))
                 {
-                    continue;
-                }
-
-                if (slot.ItemInstance.InstanceId == instanceId)
-                {
-                    itemInstance = slot.ItemInstance;
                     return true;
                 }
             }
@@ -169,50 +113,10 @@ namespace UnityIsekaiGame.Inventory
             return false;
         }
 
-        public InventoryInstanceOperationResult RemoveInstance(string instanceId)
-        {
-            if (!TryRemoveInstance(instanceId, out _, out string failureReason))
-            {
-                return InventoryInstanceOperationResult.Failure(failureReason);
-            }
-
-            InventoryChanged?.Invoke();
-            return InventoryInstanceOperationResult.Success($"Removed item instance '{instanceId}'.", -1);
-        }
-
-        public bool TryRemoveInstance(string instanceId, out ItemInstance removedInstance, out string failureReason)
-        {
-            removedInstance = null;
-            failureReason = string.Empty;
-
-            if (string.IsNullOrWhiteSpace(instanceId))
-            {
-                failureReason = "Cannot remove an item instance without an instance ID.";
-                return false;
-            }
-
-            EnsureSlotCapacity();
-            for (int i = 0; i < slots.Count; i++)
-            {
-                InventorySlot slot = slots[i];
-                if (slot == null || !slot.IsStateful || slot.ItemInstance == null || slot.ItemInstance.InstanceId != instanceId)
-                {
-                    continue;
-                }
-
-                removedInstance = slot.ItemInstance;
-                slot.Clear();
-                return true;
-            }
-
-            failureReason = $"Item instance ID '{instanceId}' was not found in inventory.";
-            return false;
-        }
-
-        public bool TryExtractSlotItem(int slotIndex, out ItemDefinition item, out ItemInstance itemInstance, out string failureReason)
+        public bool TryExtractSlotIdentity(int slotIndex, out ItemDefinition item, out string itemInstanceId, out string failureReason)
         {
             item = null;
-            itemInstance = null;
+            itemInstanceId = string.Empty;
             failureReason = string.Empty;
             EnsureSlotCapacity();
 
@@ -229,22 +133,21 @@ namespace UnityIsekaiGame.Inventory
                 return false;
             }
 
+            item = slot.Item;
+            itemInstanceId = slot.ItemInstanceId;
+            if (item == null)
+            {
+                failureReason = "Selected item identity is invalid.";
+                return false;
+            }
+
             if (slot.IsStateful)
             {
-                itemInstance = slot.ItemInstance;
-                item = itemInstance?.Definition as ItemDefinition;
-                if (item == null)
-                {
-                    failureReason = "Selected item instance is invalid.";
-                    return false;
-                }
-
                 slot.Clear();
                 InventoryChanged?.Invoke();
                 return true;
             }
 
-            item = slot.Item;
             if (!slot.Remove(1))
             {
                 failureReason = item == null ? "Could not remove item from inventory." : $"Could not remove {item.DisplayName} from inventory.";
@@ -274,12 +177,14 @@ namespace UnityIsekaiGame.Inventory
                 else if (slot.IsStateful)
                 {
                     entry.mode = InventoryEntrySaveMode.StatefulInstance;
-                    entry.itemInstance = ItemInstanceSerializationUtility.CreateSaveData(slot.ItemInstance);
+                    entry.definitionId = slot.Item.ItemId;
+                    entry.itemInstanceId = slot.ItemInstanceId;
                 }
                 else
                 {
                     entry.mode = InventoryEntrySaveMode.DefinitionStack;
                     entry.definitionId = slot.Item.ItemId;
+                    entry.itemInstanceId = slot.ItemInstanceId;
                     entry.quantity = slot.Quantity;
                 }
 
@@ -363,8 +268,7 @@ namespace UnityIsekaiGame.Inventory
                     break;
                 }
 
-                ItemInstanceCreationResult creationResult = ItemInstanceFactory.CreateStateful(item, ItemInstanceMetadata.WithoutInstanceState());
-                if (!creationResult.Succeeded || !AddItemInstance(creationResult.ItemInstance).Succeeded)
+                if (!AddExistingItemIdentity(item, ItemInstanceId.Generate()).Succeeded)
                 {
                     break;
                 }
@@ -553,31 +457,76 @@ namespace UnityIsekaiGame.Inventory
             return remainingQuantity;
         }
 
-        private bool ValidateItemInstanceForInventory(ItemInstance itemInstance, out string failureReason)
+        private bool CanAddItemIdentity(ItemDefinition item, string itemInstanceId, int quantity, out string failureReason)
         {
+            if (!ValidateItemIdentityForInventory(item, itemInstanceId, quantity, out failureReason))
+            {
+                return false;
+            }
+
+            if (FindEmptySlotIndex() < 0)
+            {
+                failureReason = "Inventory full.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool CanAddItemIdentityAfterRemovingFromSlot(ItemDefinition item, string itemInstanceId, int removeSlotIndex, int quantity, out string failureReason)
+        {
+            if (!ValidateItemIdentityForInventory(item, itemInstanceId, quantity, out failureReason))
+            {
+                return false;
+            }
+
+            if (FindEmptySlotIndex() >= 0)
+            {
+                return true;
+            }
+
+            if (removeSlotIndex >= 0 && removeSlotIndex < slots.Count && slots[removeSlotIndex] != null && !slots[removeSlotIndex].IsEmpty)
+            {
+                failureReason = string.Empty;
+                return true;
+            }
+
+            failureReason = "Inventory full.";
+            return false;
+        }
+
+        private bool ValidateItemIdentityForInventory(ItemDefinition item, string itemInstanceId, int quantity, out string failureReason)
+        {
+            EnsureSlotCapacity();
             failureReason = string.Empty;
 
-            if (itemInstance == null)
+            if (item == null)
             {
-                failureReason = "Cannot add a missing item instance.";
+                failureReason = "Cannot add an item identity without an item definition.";
                 return false;
             }
 
-            if (itemInstance.Definition is not ItemDefinition)
+            if (string.IsNullOrWhiteSpace(itemInstanceId) || !ItemInstanceId.IsValid(itemInstanceId))
             {
-                failureReason = "Item instance definition is not an ItemDefinition asset.";
+                failureReason = $"Item identity '{itemInstanceId}' is not a canonical item instance ID.";
                 return false;
             }
 
-            if (itemInstance.RequiresPersistentIdentity && !itemInstance.HasPersistentIdentity)
+            if (quantity <= 0)
             {
-                failureReason = $"Item instance '{itemInstance.DefinitionId}' requires a persistent instance ID.";
+                failureReason = "Item identity quantity must be positive.";
                 return false;
             }
 
-            if (itemInstance.HasPersistentIdentity && ContainsInstance(itemInstance.InstanceId))
+            if (quantity > item.MaximumStackSize)
             {
-                failureReason = $"Item instance ID '{itemInstance.InstanceId}' is already present in inventory.";
+                failureReason = $"Item identity quantity {quantity} exceeds stack size {item.MaximumStackSize}.";
+                return false;
+            }
+
+            if (ContainsItemIdentity(itemInstanceId))
+            {
+                failureReason = $"Item identity '{itemInstanceId}' is already present in inventory.";
                 return false;
             }
 
@@ -598,42 +547,75 @@ namespace UnityIsekaiGame.Inventory
 
             if (entry.mode == InventoryEntrySaveMode.DefinitionStack)
             {
-                return TryCreateRestoredDefinitionStack(entry, registry, restoredSlot);
+                return TryCreateRestoredDefinitionStack(entry, registry, instanceIds, restoredSlot);
             }
 
-            if (entry.itemInstance == null)
+            string restoredInstanceId = !string.IsNullOrWhiteSpace(entry.itemInstanceId)
+                ? entry.itemInstanceId
+                : entry.itemInstance?.instanceId;
+            bool hasLegacyPayload = HasLegacyItemInstancePayload(entry.itemInstance);
+            if (!hasLegacyPayload && string.IsNullOrWhiteSpace(restoredInstanceId))
             {
                 return InventoryRestoreResult.Failure(InventoryRestoreStatus.InvalidItemInstance, "Inventory stateful item entry has no item instance save data.");
             }
 
-            ItemInstanceRestoreResult instanceResult = ItemInstanceSerializationUtility.Restore(entry.itemInstance, registry);
-            if (!instanceResult.Succeeded)
+            ItemDefinition item;
+            if (hasLegacyPayload)
             {
-                return InventoryRestoreResult.Failure(InventoryRestoreStatus.InvalidItemInstance, instanceResult.Message);
+                ItemInstanceRestoreResult instanceResult = ItemInstanceSerializationUtility.Restore(entry.itemInstance, registry);
+                if (!instanceResult.Succeeded)
+                {
+                    return InventoryRestoreResult.Failure(InventoryRestoreStatus.InvalidItemInstance, instanceResult.Message);
+                }
+
+                if (instanceResult.ItemInstance.Definition is not ItemDefinition restoredItem)
+                {
+                    return InventoryRestoreResult.Failure(InventoryRestoreStatus.WrongDefinitionType, $"Definition '{instanceResult.ItemInstance.DefinitionId}' is not an ItemDefinition asset.");
+                }
+
+                item = restoredItem;
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(entry.definitionId))
+                {
+                    return InventoryRestoreResult.Failure(InventoryRestoreStatus.MissingDefinitionId, "Inventory stateful entry has no definition ID.");
+                }
+
+                if (registry == null || !registry.TryGet(entry.definitionId, out item))
+                {
+                    return InventoryRestoreResult.Failure(InventoryRestoreStatus.MissingItemDefinition, $"Item definition '{entry.definitionId}' was not found.");
+                }
             }
 
-            if (instanceResult.ItemInstance.Definition is not ItemDefinition)
+            if (!ItemInstanceId.IsValid(restoredInstanceId))
             {
-                return InventoryRestoreResult.Failure(InventoryRestoreStatus.WrongDefinitionType, $"Definition '{instanceResult.ItemInstance.DefinitionId}' is not an ItemDefinition asset.");
+                return InventoryRestoreResult.Failure(InventoryRestoreStatus.InvalidItemInstance, $"Item instance ID '{restoredInstanceId}' is invalid.");
             }
 
-            if (instanceResult.ItemInstance.RequiresPersistentIdentity && !instanceResult.ItemInstance.HasPersistentIdentity)
+            if (!instanceIds.Add(restoredInstanceId))
             {
-                return InventoryRestoreResult.Failure(InventoryRestoreStatus.InvalidItemInstance, $"Item instance '{instanceResult.ItemInstance.DefinitionId}' requires a persistent instance ID.");
+                return InventoryRestoreResult.Failure(InventoryRestoreStatus.DuplicateInstanceId, $"Duplicate item instance ID '{restoredInstanceId}' found in inventory save data.");
             }
 
-            if (instanceResult.ItemInstance.HasPersistentIdentity && !instanceIds.Add(instanceResult.ItemInstance.InstanceId))
-            {
-                return InventoryRestoreResult.Failure(InventoryRestoreStatus.DuplicateInstanceId, $"Duplicate item instance ID '{instanceResult.ItemInstance.InstanceId}' found in inventory save data.");
-            }
-
-            restoredSlot.SetInstance(instanceResult.ItemInstance);
+            restoredSlot.SetIdentity(item, restoredInstanceId, 1);
             return InventoryRestoreResult.Success();
+        }
+
+        private static bool HasLegacyItemInstancePayload(ItemInstanceSaveData itemInstance)
+        {
+            return itemInstance != null
+                && (!string.IsNullOrWhiteSpace(itemInstance.definitionId)
+                    || !string.IsNullOrWhiteSpace(itemInstance.instanceId)
+                    || itemInstance.hasCondition
+                    || itemInstance.hasQuality
+                    || !string.IsNullOrWhiteSpace(itemInstance.qualityId));
         }
 
         private static InventoryRestoreResult TryCreateRestoredDefinitionStack(
             InventoryEntrySaveData entry,
             DefinitionRegistry registry,
+            HashSet<string> instanceIds,
             InventorySlot restoredSlot)
         {
             if (string.IsNullOrWhiteSpace(entry.definitionId))
@@ -656,7 +638,20 @@ namespace UnityIsekaiGame.Inventory
                 return InventoryRestoreResult.Failure(InventoryRestoreStatus.InvalidQuantity, $"Inventory stack '{entry.definitionId}' has invalid quantity {entry.quantity}.");
             }
 
-            restoredSlot.Set(item, entry.quantity);
+            string itemInstanceId = string.IsNullOrWhiteSpace(entry.itemInstanceId)
+                ? ItemInstanceId.Generate()
+                : entry.itemInstanceId;
+            if (!ItemInstanceId.IsValid(itemInstanceId))
+            {
+                return InventoryRestoreResult.Failure(InventoryRestoreStatus.InvalidItemInstance, $"Inventory stack identity '{itemInstanceId}' is invalid.");
+            }
+
+            if (!instanceIds.Add(itemInstanceId))
+            {
+                return InventoryRestoreResult.Failure(InventoryRestoreStatus.DuplicateInstanceId, $"Duplicate item instance ID '{itemInstanceId}' found in inventory save data.");
+            }
+
+            restoredSlot.SetIdentity(item, itemInstanceId, entry.quantity);
             return InventoryRestoreResult.Success();
         }
 
@@ -767,7 +762,7 @@ namespace UnityIsekaiGame.Inventory
                 }
 
                 int quantityForSlot = Mathf.Min(remainingQuantity, item.MaximumStackSize);
-                slot.Set(item, quantityForSlot);
+                slot.SetIdentity(item, ItemInstanceId.Generate(), quantityForSlot);
                 remainingQuantity -= quantityForSlot;
             }
 

@@ -9,6 +9,7 @@ namespace UnityIsekaiGame.Equipment
         public EquipmentSlotType slotType;
         public EquipmentEntrySaveMode mode;
         public string definitionId;
+        public string itemInstanceId;
         public ItemInstanceSaveData itemInstance;
     }
 }

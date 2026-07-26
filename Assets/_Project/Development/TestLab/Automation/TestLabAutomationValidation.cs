@@ -62,12 +62,13 @@ namespace UnityIsekaiGame.Development.Automation
 
     public static class TestLabAutomationValidation
     {
-        private const TestLabRuntimeArea IsolatedRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory;
+        private const TestLabRuntimeArea IsolatedRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items;
         private const TestLabRuntimeArea AllRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory
             | TestLabRuntimeArea.Character
             | TestLabRuntimeArea.Combat
             | TestLabRuntimeArea.Biology
-            | TestLabRuntimeArea.Persistence;
+            | TestLabRuntimeArea.Persistence
+            | TestLabRuntimeArea.Items;
         private const TestLabHostFeature AllHostFeatures = TestLabHostFeature.DefinitionContext
             | TestLabHostFeature.SceneReset
             | TestLabHostFeature.SnapshotRestore

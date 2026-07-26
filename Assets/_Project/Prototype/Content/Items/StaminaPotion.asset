@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 389db4201f024a3895f7c81a530a3538, type: 3}
+  m_Name: StaminaPotion
+  m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Inventory.ItemDefinition
+  itemId: item.stamina-potion
+  displayName: Stamina Potion
+  description: Restores 25 stamina when used.
+  icon: {fileID: 0}
+  worldPickupPrefab: {fileID: 878509783730459159, guid: d219ad4e54284eafa2558f8ee2ea2c6e, type: 3}
+  primaryCategory: {fileID: 11400000, guid: e6d021bd7a30487590cc7fd1b3248878, type: 2}
+  tags:
+  - {fileID: 11400000, guid: bbafd9a5c2184102ba5682e7ed93829e, type: 2}
+  - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
+  rarity: {fileID: 11400000, guid: d4b0d27a07fa46c085d39f87ffff6cbb, type: 2}
+  instanceMode: 0
+  stackable: 1
+  maximumStackSize: 10
+  useEffects:
+  - {fileID: 11400000, guid: d9dbfef2835e4e349070ebd0c4e99e40, type: 2}
