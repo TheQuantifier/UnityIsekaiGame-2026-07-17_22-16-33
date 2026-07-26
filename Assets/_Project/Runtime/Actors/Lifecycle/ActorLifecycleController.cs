@@ -213,6 +213,18 @@ namespace UnityIsekaiGame.ActorLifecycle
             return true;
         }
 
+        public void ResetToActiveForRestore()
+        {
+            ActorLifecycleState previous = lifecycleState;
+            lifecycleState = ActorLifecycleState.Active;
+            processedLifecycleTransactionIds.Clear();
+            processedLifecycleTransactionOrder.Clear();
+            if (previous != ActorLifecycleState.Active)
+            {
+                revision++;
+            }
+        }
+
         private ActorLifecycleResult ResolveDefeat(DefeatResolutionRequest request, bool execute)
         {
             if (!ValidateTarget(request.TargetObject, request.TargetActorId, out string actorId, out ResourceSnapshot health, out ActorLifecycleResult invalid, request.TransactionId, request.SourceActorId, LifecycleTransitionKind.Defeat, request.Trigger))

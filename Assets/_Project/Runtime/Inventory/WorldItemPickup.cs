@@ -14,6 +14,7 @@ namespace UnityIsekaiGame.Inventory
 
         public int Quantity => quantity;
         public ItemDefinition Item => item;
+        public bool DisableOnCollected => disableOnCollected;
 
         private void OnValidate()
         {
@@ -25,6 +26,12 @@ namespace UnityIsekaiGame.Inventory
             item = itemDefinition;
             quantity = Mathf.Max(1, pickupQuantity);
             disableOnCollected = disableWhenCollected;
+        }
+
+        public void ResetPickupState(int pickupQuantity, bool active)
+        {
+            quantity = Mathf.Max(1, pickupQuantity);
+            gameObject.SetActive(active);
         }
 
         public bool CanInteract(in InteractionContext context)

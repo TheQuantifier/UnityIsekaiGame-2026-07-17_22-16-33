@@ -311,6 +311,66 @@ namespace UnityIsekaiGame.ResourceSystem
             }
         }
 
+        public void ResetToDefinitionDefaults(string sourceId = "resource.reset", string reason = "Reset resources.", bool restoration = true)
+        {
+            EnsureConfiguredFromFallback();
+            processedEventIds.Clear();
+            nextRegenerationTick.Clear();
+            nextDegenerationTick.Clear();
+
+            foreach (ResourceDefinition definition in definitionsById.Values.ToList())
+            {
+                float maximum = ResolveMaximum(definition);
+                float current = ResolveInitialValue(definition, definition.InitializationPolicy, maximum, definition.MinimumValue, 0f, false);
+                if (!recordsById.TryGetValue(definition.Id, out RuntimeResourceRecord record))
+                {
+                    record = new RuntimeResourceRecord
+                    {
+                        resourceDefinitionId = definition.Id,
+                        initializedAtUtc = DateTime.UtcNow.ToString("O"),
+                        initialized = true
+                    };
+                    recordsById.Add(definition.Id, record);
+                }
+
+                float oldCurrent = record.currentValue;
+                record.currentValue = current;
+                record.lastKnownMaximum = maximum;
+                record.lastChangedAtUtc = DateTime.UtcNow.ToString("O");
+                record.lastChangedAtPlaytimeSeconds = CurrentPlaytimeSeconds;
+                record.lastChangeSource = sourceId ?? string.Empty;
+                record.lastChangeReason = reason ?? string.Empty;
+                record.lifetimeGained = 0f;
+                record.lifetimeSpent = 0f;
+                record.lifetimeDamaged = 0f;
+                record.lifetimeHealed = 0f;
+                record.becameEmptyAtUtc = current <= definition.MinimumValue + Epsilon ? record.lastChangedAtUtc : string.Empty;
+                record.becameFullAtUtc = current >= maximum - Epsilon ? record.lastChangedAtUtc : string.Empty;
+                record.regenerationBlockedUntil = 0f;
+                record.initialized = true;
+
+                ResourceChangeRequest request = new ResourceChangeRequest(definition.Id, ResourceChangeOperation.Restore, current, ResourceChangeSourceCategory.Development, sourceId, reason, restoration: restoration);
+                RaiseChangeEvents(ResourceChangeResult.Success(
+                    request,
+                    current,
+                    Mathf.Abs(current - oldCurrent),
+                    oldCurrent,
+                    current,
+                    definition.MinimumValue,
+                    maximum,
+                    false,
+                    false,
+                    oldCurrent > definition.MinimumValue + Epsilon && current <= definition.MinimumValue + Epsilon,
+                    oldCurrent <= definition.MinimumValue + Epsilon && current > definition.MinimumValue + Epsilon,
+                    oldCurrent < maximum - Epsilon && current >= maximum - Epsilon,
+                    oldCurrent >= maximum - Epsilon && current < maximum - Epsilon,
+                    $"{definition.DisplayName} reset to definition default."),
+                    restoration);
+            }
+
+            ResourcesRestored?.Invoke(this, restoration);
+        }
+
         public bool ReconcileResource(string resourceId, bool restoring = false)
         {
             if (!definitionsById.TryGetValue(resourceId, out ResourceDefinition definition) || !recordsById.TryGetValue(resourceId, out RuntimeResourceRecord record))

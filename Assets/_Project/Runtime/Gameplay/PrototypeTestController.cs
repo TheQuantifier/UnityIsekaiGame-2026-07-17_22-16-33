@@ -1,10 +1,15 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Dialogue;
+using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Input;
+using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Loot;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.StatusEffects;
 
 namespace UnityIsekaiGame.Gameplay
@@ -19,6 +24,10 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private PlayerMeleeCombat playerMeleeCombat;
         [SerializeField] private PlayerSpellcaster playerSpellcaster;
         [SerializeField] private StatusEffectController playerStatusEffects;
+        [SerializeField] private CharacterResourceCollection playerResources;
+        [SerializeField] private ActorLifecycleController playerLifecycle;
+        [SerializeField] private PlayerInventory playerInventory;
+        [SerializeField] private PlayerEquipment playerEquipment;
         [SerializeField] private DialogueController dialogueController;
         [SerializeField] private MonoBehaviour inventoryScreenController;
         [SerializeField] private Transform playerSpawnPoint;
@@ -29,13 +38,47 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private EnemyContractTargetReporter enemyContractTargetReporter;
         [SerializeField] private EnemyLootDrop enemyLootDrop;
         [SerializeField] private StatusEffectController enemyStatusEffects;
+        [SerializeField] private CharacterResourceCollection enemyResources;
+        [SerializeField] private ActorLifecycleController enemyLifecycle;
 
+        private readonly List<PickupResetState> pickupResetStates = new List<PickupResetState>();
         private Vector3 fallbackPlayerSpawnPosition;
         private Quaternion fallbackPlayerSpawnRotation;
         private Vector3 enemyStartPosition;
         private Quaternion enemyStartRotation;
+        private bool enemyStartActive;
 
         private void Awake()
+        {
+            ResolveRuntimeReferences();
+            CaptureSceneResetState();
+        }
+
+        private void Update()
+        {
+            if (input != null && input.ConsumePrototypeReset())
+            {
+                ResetPrototypeState();
+            }
+        }
+
+        public void ResetPrototypeState()
+        {
+            dialogueController?.EndDialogue();
+            (inventoryScreenController as IPlayerMenuController)?.CloseForPrototypeReset();
+            RestoreSceneResetState();
+            ResolveRuntimeReferences();
+            ResetPlayerPosition();
+            ResetPlayerState();
+            input?.SetDefeatedInputBlocked(false);
+            input?.ClearGameplayActionQueues();
+
+            ResetEnemy();
+            Debug.Log("Prototype reset complete.");
+            PrototypeHudMessageBus.Show("Prototype reset complete");
+        }
+
+        private void ResolveRuntimeReferences()
         {
             if (input == null)
             {
@@ -77,6 +120,26 @@ namespace UnityIsekaiGame.Gameplay
                 playerStatusEffects = player.GetComponent<StatusEffectController>();
             }
 
+            if (playerResources == null && player != null)
+            {
+                playerResources = player.GetComponent<CharacterResourceCollection>();
+            }
+
+            if (playerLifecycle == null && player != null)
+            {
+                playerLifecycle = player.GetComponent<ActorLifecycleController>();
+            }
+
+            if (playerInventory == null && player != null)
+            {
+                playerInventory = player.GetComponent<PlayerInventory>();
+            }
+
+            if (playerEquipment == null && player != null)
+            {
+                playerEquipment = player.GetComponent<PlayerEquipment>();
+            }
+
             if (dialogueController == null)
             {
                 dialogueController = FindAnyObjectByType<DialogueController>();
@@ -90,6 +153,16 @@ namespace UnityIsekaiGame.Gameplay
             if (prototypeEnemy == null && enemyHealth != null)
             {
                 prototypeEnemy = enemyHealth.transform;
+            }
+
+            if (prototypeEnemy == null)
+            {
+                EnemyHealth[] enemies = FindObjectsByType<EnemyHealth>(FindObjectsInactive.Include);
+                if (enemies.Length > 0)
+                {
+                    prototypeEnemy = enemies[0].transform;
+                    enemyHealth = enemies[0];
+                }
             }
 
             if (enemyHealth == null && prototypeEnemy != null)
@@ -122,37 +195,36 @@ namespace UnityIsekaiGame.Gameplay
                 enemyStatusEffects = prototypeEnemy.GetComponent<StatusEffectController>();
             }
 
+            if (enemyResources == null && prototypeEnemy != null)
+            {
+                enemyResources = prototypeEnemy.GetComponent<CharacterResourceCollection>();
+            }
+
+            if (enemyLifecycle == null && prototypeEnemy != null)
+            {
+                enemyLifecycle = prototypeEnemy.GetComponent<ActorLifecycleController>();
+            }
+        }
+
+        private void CaptureSceneResetState()
+        {
             fallbackPlayerSpawnPosition = player == null ? Vector3.zero : player.position;
             fallbackPlayerSpawnRotation = player == null ? Quaternion.identity : player.rotation;
             enemyStartPosition = prototypeEnemy == null ? Vector3.zero : prototypeEnemy.position;
             enemyStartRotation = prototypeEnemy == null ? Quaternion.identity : prototypeEnemy.rotation;
-        }
+            enemyStartActive = prototypeEnemy == null || prototypeEnemy.gameObject.activeSelf;
 
-        private void Update()
-        {
-            if (input != null && input.ConsumePrototypeReset())
+            pickupResetStates.Clear();
+            WorldItemPickup[] pickups = FindObjectsByType<WorldItemPickup>(FindObjectsInactive.Include);
+            for (int i = 0; i < pickups.Length; i++)
             {
-                ResetPrototypeState();
+                if (pickups[i] == null)
+                {
+                    continue;
+                }
+
+                pickupResetStates.Add(new PickupResetState(pickups[i]));
             }
-        }
-
-        public void ResetPrototypeState()
-        {
-            dialogueController?.EndDialogue();
-            (inventoryScreenController as IPlayerMenuController)?.CloseForPrototypeReset();
-            ResetPlayerPosition();
-            playerStatusEffects?.ClearTemporaryStatuses();
-            playerHealth?.ResetToMaximum();
-            playerStamina?.RestoreToMaximum();
-            playerMana?.RestoreToMaximum();
-            playerMeleeCombat?.ResetCooldown();
-            playerSpellcaster?.ResetSpellcasting();
-            input?.SetDefeatedInputBlocked(false);
-            input?.ClearGameplayActionQueues();
-
-            ResetEnemy();
-            Debug.Log("Prototype reset complete.");
-            PrototypeHudMessageBus.Show("Prototype reset complete");
         }
 
         private void ResetPlayerPosition()
@@ -177,6 +249,26 @@ namespace UnityIsekaiGame.Gameplay
             {
                 characterController.enabled = true;
             }
+
+            ClearRigidbodyMotion(player);
+        }
+
+        private void ResetPlayerState()
+        {
+            playerStatusEffects?.ClearAllStatuses();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            playerEquipment?.DevelopmentClearEquipment();
+            playerInventory?.DevelopmentClearInventory();
+#endif
+
+            playerResources?.ResetToDefinitionDefaults("prototype.reset.player", "Prototype reset.", restoration: true);
+            playerLifecycle?.ResetToActiveForRestore();
+            playerHealth?.ResetToMaximum();
+            playerStamina?.RestoreToMaximum();
+            playerMana?.RestoreToMaximum();
+            playerMeleeCombat?.ResetCooldown();
+            playerSpellcaster?.ResetSpellcasting();
         }
 
         private static MonoBehaviour FindMenuController()
@@ -197,15 +289,72 @@ namespace UnityIsekaiGame.Gameplay
         {
             if (prototypeEnemy != null)
             {
+                prototypeEnemy.gameObject.SetActive(enemyStartActive);
                 prototypeEnemy.SetPositionAndRotation(enemyStartPosition, enemyStartRotation);
+                ClearRigidbodyMotion(prototypeEnemy);
             }
 
             enemyAttack?.ResetCooldown();
             enemyController?.ResetControllerState();
             enemyContractTargetReporter?.ResetReporter();
             enemyLootDrop?.ResetLootState();
-            enemyStatusEffects?.ClearTemporaryStatuses();
+            enemyStatusEffects?.ClearAllStatuses();
+            enemyResources?.ResetToDefinitionDefaults("prototype.reset.enemy", "Prototype reset.", restoration: true);
+            enemyLifecycle?.ResetToActiveForRestore();
             enemyHealth?.ResetToMaximum();
+        }
+
+        private void RestoreSceneResetState()
+        {
+            for (int i = 0; i < pickupResetStates.Count; i++)
+            {
+                pickupResetStates[i].Restore();
+            }
+        }
+
+        private static void ClearRigidbodyMotion(Transform target)
+        {
+            if (target == null || !target.TryGetComponent(out Rigidbody body))
+            {
+                return;
+            }
+
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+        }
+
+        private readonly struct PickupResetState
+        {
+            private readonly WorldItemPickup pickup;
+            private readonly Vector3 position;
+            private readonly Quaternion rotation;
+            private readonly Vector3 localScale;
+            private readonly int quantity;
+            private readonly bool activeSelf;
+
+            public PickupResetState(WorldItemPickup pickup)
+            {
+                this.pickup = pickup;
+                Transform pickupTransform = pickup.transform;
+                position = pickupTransform.position;
+                rotation = pickupTransform.rotation;
+                localScale = pickupTransform.localScale;
+                quantity = pickup.Quantity;
+                activeSelf = pickup.gameObject.activeSelf;
+            }
+
+            public void Restore()
+            {
+                if (pickup == null)
+                {
+                    return;
+                }
+
+                Transform pickupTransform = pickup.transform;
+                pickupTransform.SetPositionAndRotation(position, rotation);
+                pickupTransform.localScale = localScale;
+                pickup.ResetPickupState(quantity, activeSelf);
+            }
         }
     }
 }

@@ -112,6 +112,28 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void ResetToActiveForRestoreClearsLifecycleTransactionDedupeWithoutGameplayTransition()
+        {
+            using LifecycleFixture fixture = LifecycleFixture.Create("reset");
+            int recoveryEvents = 0;
+            fixture.Lifecycle.ActorRecovered += _ => recoveryEvents++;
+
+            ActorLifecycleResult first = fixture.Lifecycle.ExecuteDefeat(new DefeatResolutionRequest("tx.lifecycle.reset", "test", null, fixture.ActorId, fixture.Owner, LifecycleTriggerKind.ExplicitDefeat));
+            Assert.That(first.Succeeded, Is.True, first.Message);
+            Assert.That(fixture.Lifecycle.State, Is.EqualTo(ActorLifecycleState.Unconscious));
+
+            fixture.Lifecycle.ResetToActiveForRestore();
+
+            Assert.That(fixture.Lifecycle.State, Is.EqualTo(ActorLifecycleState.Active));
+            Assert.That(recoveryEvents, Is.Zero, "Prototype restore reset must not emit gameplay recovery events.");
+
+            ActorLifecycleResult afterReset = fixture.Lifecycle.ExecuteDefeat(new DefeatResolutionRequest("tx.lifecycle.reset", "test", null, fixture.ActorId, fixture.Owner, LifecycleTriggerKind.ExplicitDefeat));
+            Assert.That(afterReset.Succeeded, Is.True, afterReset.Message);
+            Assert.That(afterReset.Duplicate, Is.False, "Reset must clear processed lifecycle transaction IDs.");
+            Assert.That(fixture.Lifecycle.State, Is.EqualTo(ActorLifecycleState.Unconscious));
+        }
+
+        [Test]
         public void LifecycleSaveData_RestoresStateWithoutHealthReplayAndRejectsWrongActor()
         {
             using LifecycleFixture source = LifecycleFixture.Create("save-source");

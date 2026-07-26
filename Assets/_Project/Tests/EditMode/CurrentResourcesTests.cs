@@ -120,6 +120,41 @@ namespace UnityIsekaiGame.Tests
             }
         }
 
+        [Test]
+        public void ResourceCollection_ResetToDefinitionDefaultsRestoresAllResourcesAndClearsEventDedupe()
+        {
+            DefinitionRegistry registry = LoadCatalog().CreateRegistry();
+            GameObject owner = CreateConfiguredOwner(registry, out _, out _, out Component resources);
+            try
+            {
+                object healthDamage = Invoke(resources, "ApplyDamage", ResourceHealth, 45f, "test", "Damage", "event.reset.health");
+                object manaSpend = Invoke(resources, "TrySpend", ResourceMana, 25f, "test", "Spend", "event.reset.mana", false);
+                object staminaSpend = Invoke(resources, "TrySpend", ResourceStamina, 15f, "test", "Spend", "event.reset.stamina", false);
+
+                Assert.That(GetProperty<bool>(healthDamage, "Succeeded"), Is.True, GetProperty<string>(healthDamage, "Message"));
+                Assert.That(GetProperty<bool>(manaSpend, "Succeeded"), Is.True, GetProperty<string>(manaSpend, "Message"));
+                Assert.That(GetProperty<bool>(staminaSpend, "Succeeded"), Is.True, GetProperty<string>(staminaSpend, "Message"));
+                Assert.That(GetCurrent(resources, ResourceHealth), Is.LessThan(GetMaximum(resources, ResourceHealth)));
+                Assert.That(GetCurrent(resources, ResourceMana), Is.LessThan(GetMaximum(resources, ResourceMana)));
+                Assert.That(GetCurrent(resources, ResourceStamina), Is.LessThan(GetMaximum(resources, ResourceStamina)));
+
+                Invoke(resources, "ResetToDefinitionDefaults", "test.reset", "Reset test.", true);
+
+                Assert.That(GetCurrent(resources, ResourceHealth), Is.EqualTo(GetMaximum(resources, ResourceHealth)).Within(0.001f));
+                Assert.That(GetCurrent(resources, ResourceMana), Is.EqualTo(GetMaximum(resources, ResourceMana)).Within(0.001f));
+                Assert.That(GetCurrent(resources, ResourceStamina), Is.EqualTo(GetMaximum(resources, ResourceStamina)).Within(0.001f));
+
+                object spendAfterReset = Invoke(resources, "TrySpend", ResourceMana, 5f, "test", "Spend after reset", "event.reset.mana", false);
+                Assert.That(GetProperty<bool>(spendAfterReset, "Succeeded"), Is.True, GetProperty<string>(spendAfterReset, "Message"));
+                Assert.That(GetProperty<bool>(spendAfterReset, "DuplicateEvent"), Is.False, "Reset must clear processed resource transaction IDs.");
+                Assert.That(GetCurrent(resources, ResourceMana), Is.EqualTo(GetMaximum(resources, ResourceMana) - 5f).Within(0.001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(owner);
+            }
+        }
+
         private static void AssertResource(DefinitionRegistry registry, string resourceId, string expectedMaximumStatId)
         {
             Assert.That(registry.TryGet(resourceId, out IGameDefinition resource), Is.True, resourceId);
