@@ -719,6 +719,7 @@ namespace UnityIsekaiGame.Tests
                 Assert.That(registry.TryGet(damageTypeId, out DamageTypeDefinition damageType), Is.True, damageTypeId);
                 Dictionary<string, string> metadata = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
+                    ["defense.now"] = "1.1",
                     ["defense.roll"] = defenseRoll.ToString("0.###"),
                     ["defense.blockable"] = blockable.ToString(),
                     ["defense.parryable"] = parryable.ToString(),

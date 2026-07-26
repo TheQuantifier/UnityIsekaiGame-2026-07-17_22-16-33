@@ -16,6 +16,7 @@ MonoBehaviour:
   displayName: Prototype Sword
   description: A test sword for the Main Hand slot.
   icon: {fileID: 0}
+  worldPickupPrefab: {fileID: 5720501375413726723, guid: c03eee57861572046a356059075359f1, type: 3}
   primaryCategory: {fileID: 11400000, guid: 6afd94d3e57d4226a5c8be8ca8000420, type: 2}
   tags:
   - {fileID: 11400000, guid: df0054e4a4374b2f8ed05e4917ae9182, type: 2}
@@ -37,10 +38,10 @@ MonoBehaviour:
       defense: 0
     resistanceModifiers: []
     view:
-      firstPersonPrefab: {fileID: 100000, guid: 508aa1691203aba42889e37ade1826d9, type: 3}
+      firstPersonPrefab: {fileID: 100000, guid: bbbd6c2b9f3c4a018f4b35cbf986b711, type: 3}
       firstPersonLocalPosition: {x: 0, y: 0, z: 0}
       firstPersonLocalEulerAngles: {x: -90, y: 0, z: 0}
-      firstPersonLocalScale: {x: 100, y: 100, z: 100}
+      firstPersonLocalScale: {x: 1, y: 1, z: 1}
     meleeWeapon:
       weapon: 1
       attackName: Prototype Slash

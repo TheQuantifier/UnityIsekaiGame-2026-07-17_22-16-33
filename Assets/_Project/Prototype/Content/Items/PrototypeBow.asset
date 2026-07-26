@@ -16,6 +16,7 @@ MonoBehaviour:
   displayName: Prototype Bow
   description: Prototype ranged weapon for firing Prototype Arrows.
   icon: {fileID: 0}
+  worldPickupPrefab: {fileID: 5131536276511148414, guid: ff316209d562d294dbd9b4ede5287034, type: 3}
   primaryCategory: {fileID: 11400000, guid: 6afd94d3e57d4226a5c8be8ca8000420, type: 2}
   tags:
   - {fileID: 11400000, guid: 83bb71c39a2f49fcb174dc321ca7aa0c, type: 2}
@@ -35,10 +36,10 @@ MonoBehaviour:
       defense: 0
     resistanceModifiers: []
     view:
-      firstPersonPrefab: {fileID: 100000, guid: ac531c281334b154d8dffb2940ca7af4, type: 3}
+      firstPersonPrefab: {fileID: 100000, guid: e7aa6d5b15734af49ace07e9e4284b31, type: 3}
       firstPersonLocalPosition: {x: 0, y: 0, z: 0}
       firstPersonLocalEulerAngles: {x: -90, y: 0, z: 0}
-      firstPersonLocalScale: {x: 100, y: 100, z: 100}
+      firstPersonLocalScale: {x: 1, y: 1, z: 1}
     meleeWeapon:
       weapon: 0
       attackName: Bow Strike
@@ -60,5 +61,5 @@ MonoBehaviour:
       launchOffset: {x: 0.18, y: -0.12, z: 0.55}
       ammoItem: {fileID: 11400000, guid: 7b000000000000000000000000000102, type: 2}
       projectilePrefab: {fileID: 0}
-      projectileVisualPrefab: {fileID: 0}
+      projectileVisualPrefab: {fileID: 100000, guid: 6ad91d9dd5e64a3e94dfe8e1f0d8f901, type: 3}
       damageType: {fileID: 11400000, guid: c71f22a6780f4ef3a8f1d4c6e4c89d01, type: 2}

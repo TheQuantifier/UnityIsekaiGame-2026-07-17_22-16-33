@@ -1104,7 +1104,7 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
-        public void DefaultPrototypeSuites_RegisterStep3ThroughStep8()
+        public void DefaultPrototypeSuites_RegisterStep3ThroughStep9()
         {
             TestLabAutomationRegistry registry = new TestLabAutomationRegistry();
 
@@ -1114,6 +1114,7 @@ namespace UnityIsekaiGame.Tests
             PrototypeStep6AutomationSuites.RegisterDefaults(registry);
             PrototypeStep7AutomationSuites.RegisterDefaults(registry);
             PrototypeStep8AutomationSuites.RegisterDefaults(registry);
+            PrototypeStep9AutomationSuites.RegisterDefaults(registry);
 
             TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(registry);
             TestLabAutomationMigrationInventory inventory = TestLabAutomationValidation.BuildMigrationInventory(registry);
@@ -1169,6 +1170,7 @@ namespace UnityIsekaiGame.Tests
                 "feature.8.8.secrets-visibility-information-access",
                 "feature.8.9.historical-records-journals-codex",
                 "feature.8.10.knowledge-history-integration",
+                "feature.9.1.item-identity-instance-state",
                 "step.8.knowledge-history-integration"
             }));
             Assert.That(registry.Suites.Single(suite => suite.SuiteId == "step.8.knowledge-history-integration").IncludeInRunAll, Is.False);
@@ -1176,7 +1178,7 @@ namespace UnityIsekaiGame.Tests
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).Where(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime || scenario.IsolationMode == TestLabScenarioIsolationMode.SnapshotRestore)
-                .All(scenario => (scenario.RequiredRuntimeAreas & ~TestLabRuntimeArea.KnowledgeHistory) == TestLabRuntimeArea.None), Is.True);
+                .All(scenario => (scenario.RequiredRuntimeAreas & ~(TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items)) == TestLabRuntimeArea.None), Is.True);
         }
 
         [Test]

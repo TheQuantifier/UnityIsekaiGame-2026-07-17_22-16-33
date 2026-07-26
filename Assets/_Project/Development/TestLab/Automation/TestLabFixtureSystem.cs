@@ -7,6 +7,7 @@ using UnityIsekaiGame.Development.Automation.Fixtures.Core;
 using UnityIsekaiGame.Development.Automation.Fixtures.History;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
+using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.History;
@@ -366,6 +367,7 @@ namespace UnityIsekaiGame.Development.Automation
             InformationTransferRuntime transfers,
             InformationAccessRuntime access,
             KnowledgeRecordRuntime records,
+            ItemInstanceIdentityRuntime itemInstances,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -380,6 +382,7 @@ namespace UnityIsekaiGame.Development.Automation
             Transfers = transfers;
             Access = access;
             Records = records;
+            ItemInstances = itemInstances;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -396,6 +399,7 @@ namespace UnityIsekaiGame.Development.Automation
         public InformationTransferRuntime Transfers { get; }
         public InformationAccessRuntime Access { get; }
         public KnowledgeRecordRuntime Records { get; }
+        public ItemInstanceIdentityRuntime ItemInstances { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -410,9 +414,10 @@ namespace UnityIsekaiGame.Development.Automation
             InformationSourceRuntime sources,
             InformationTransferRuntime transfers,
             InformationAccessRuntime access,
-            KnowledgeRecordRuntime records)
+            KnowledgeRecordRuntime records,
+            ItemInstanceIdentityRuntime itemInstances = null)
         {
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, null);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -432,6 +437,7 @@ namespace UnityIsekaiGame.Development.Automation
             InformationTransferRuntime transfers = new InformationTransferRuntime();
             InformationAccessRuntime access = new InformationAccessRuntime();
             KnowledgeRecordRuntime records = new KnowledgeRecordRuntime();
+            ItemInstanceIdentityRuntime itemInstances = new ItemInstanceIdentityRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -443,7 +449,7 @@ namespace UnityIsekaiGame.Development.Automation
             access.Configure(definitionRegistry, personId);
             records.Configure(definitionRegistry, personId);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -474,7 +480,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Sources?.CreateSaveData(),
                 Transfers?.CreateSaveData(),
                 Access?.CreateSaveData(),
-                Records?.CreateSaveData());
+                Records?.CreateSaveData(),
+                ItemInstances?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -487,7 +494,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Sources", Sources?.SourceRevision ?? 0L, Sources?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Transfers", Transfers?.TransferRevision ?? 0L, Transfers?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Access", Access?.AccessRevision ?? 0L, Access?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("Records", Records?.RecordRevision ?? 0L, Records?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("Records", Records?.RecordRevision ?? 0L, Records?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Items", ItemInstances?.Revision ?? 0L, ItemInstances?.CreateSaveData())
             });
         }
 
@@ -569,6 +577,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (ItemInstances != null && snapshot.ItemInstances != null)
+            {
+                ItemInstanceOperationResult result = ItemInstances.RestoreFromSaveData(snapshot.ItemInstances, DefinitionRegistry);
+                if (!result.Succeeded)
+                {
+                    failure = $"Item instance restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -599,7 +617,8 @@ namespace UnityIsekaiGame.Development.Automation
             InformationSourceSaveData sources,
             InformationTransferSaveData transfers,
             InformationAccessSaveData access,
-            KnowledgeRecordSaveData records)
+            KnowledgeRecordSaveData records,
+            ItemInstanceRuntimeSaveData itemInstances)
         {
             Knowledge = knowledge;
             History = history;
@@ -608,6 +627,7 @@ namespace UnityIsekaiGame.Development.Automation
             Transfers = transfers;
             Access = access;
             Records = records;
+            ItemInstances = itemInstances;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -617,6 +637,7 @@ namespace UnityIsekaiGame.Development.Automation
         public InformationTransferSaveData Transfers { get; }
         public InformationAccessSaveData Access { get; }
         public KnowledgeRecordSaveData Records { get; }
+        public ItemInstanceRuntimeSaveData ItemInstances { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
@@ -966,7 +987,7 @@ namespace UnityIsekaiGame.Development.Automation
             return new string(chars).Trim('.', '-');
         }
 
-        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory;
+        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items;
 
         private static bool CanIsolate(TestLabRuntimeArea supported, TestLabRuntimeArea required)
         {

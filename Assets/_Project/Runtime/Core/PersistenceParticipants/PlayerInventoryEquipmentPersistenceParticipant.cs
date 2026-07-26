@@ -5,6 +5,7 @@ using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Inventory.Identity;
 
 namespace UnityIsekaiGame.Persistence
 {
@@ -17,17 +18,23 @@ namespace UnityIsekaiGame.Persistence
         private readonly PlayerEquipment equipment;
         private readonly Func<DefinitionRegistry> registryProvider;
         private readonly string ownerId;
+        private readonly ItemInstanceIdentityRuntime itemIdentityRuntime;
+        private readonly string itemIdentitySynchronizationNamespace;
 
         public PlayerInventoryEquipmentPersistenceParticipant(
             PlayerInventory inventory,
             PlayerEquipment equipment,
             Func<DefinitionRegistry> registryProvider,
-            string ownerId = PersistenceService.LocalPlayerId)
+            string ownerId = PersistenceService.LocalPlayerId,
+            ItemInstanceIdentityRuntime itemIdentityRuntime = null,
+            string itemIdentitySynchronizationNamespace = "persistence.player.inventory-equipment")
         {
             this.inventory = inventory;
             this.equipment = equipment;
             this.registryProvider = registryProvider;
             this.ownerId = string.IsNullOrWhiteSpace(ownerId) ? PersistenceService.LocalPlayerId : ownerId;
+            this.itemIdentityRuntime = itemIdentityRuntime;
+            this.itemIdentitySynchronizationNamespace = string.IsNullOrWhiteSpace(itemIdentitySynchronizationNamespace) ? "persistence.player.inventory-equipment" : itemIdentitySynchronizationNamespace;
         }
 
         public string ParticipantKey => Key;
@@ -56,6 +63,21 @@ namespace UnityIsekaiGame.Persistence
                 inventory = inventory.CreateSaveData(),
                 equipment = equipment.CreateSaveData()
             };
+
+            DefinitionRegistry registry = registryProvider?.Invoke();
+            if (itemIdentityRuntime != null)
+            {
+                ItemIdentityInventoryBridgeResult synchronization = ItemIdentityInventoryBridge.SynchronizeInventoryEquipmentRuntime(
+                    itemIdentityRuntime,
+                    saveData,
+                    registry,
+                    ownerId,
+                    itemIdentitySynchronizationNamespace);
+                if (!synchronization.Succeeded)
+                {
+                    return PersistenceParticipantSaveResult.Failure($"Item identity synchronization failed: {synchronization.Message}");
+                }
+            }
 
             PersistenceParticipantPrepareResult validation = PreparePayload(JsonUtility.ToJson(saveData), CurrentParticipantSchemaVersion);
             if (validation == null || !validation.Succeeded)
@@ -115,6 +137,20 @@ namespace UnityIsekaiGame.Persistence
                 return PersistenceParticipantPrepareResult.Failure(failureReason);
             }
 
+            if (itemIdentityRuntime != null)
+            {
+                ItemIdentityInventoryBridgeResult projection = ItemIdentityInventoryBridge.ValidateSynchronizedProjection(
+                    saveData,
+                    itemIdentityRuntime.CreateSaveData(),
+                    registry,
+                    ownerId,
+                    itemIdentitySynchronizationNamespace);
+                if (!projection.Succeeded)
+                {
+                    return PersistenceParticipantPrepareResult.Failure($"Inventory/equipment item identity projection failed: {projection.Message}");
+                }
+            }
+
             return PersistenceParticipantPrepareResult.Success(new PreparedPayload(saveData));
         }
 
@@ -153,6 +189,22 @@ namespace UnityIsekaiGame.Persistence
             EquipmentRestoreResult equipmentResult = equipment.TryRestoreFromSaveData(prepared.SaveData.equipment, registry);
             if (equipmentResult.Succeeded)
             {
+                if (itemIdentityRuntime != null)
+                {
+                    ItemIdentityInventoryBridgeResult synchronization = ItemIdentityInventoryBridge.SynchronizeInventoryEquipmentRuntime(
+                        itemIdentityRuntime,
+                        prepared.SaveData,
+                        registry,
+                        ownerId,
+                        itemIdentitySynchronizationNamespace);
+                    if (!synchronization.Succeeded)
+                    {
+                        inventory.TryRestoreFromSaveData(rollbackInventory, registry);
+                        equipment.TryRestoreFromSaveData(rollbackEquipment, registry);
+                        return PersistenceParticipantCommitResult.Failure($"Item identity synchronization failed after inventory/equipment commit; rollback attempted: {synchronization.Message}");
+                    }
+                }
+
                 return PersistenceParticipantCommitResult.Success("Player inventory and equipment restored.");
             }
 
@@ -236,7 +288,9 @@ namespace UnityIsekaiGame.Persistence
             for (int i = 0; i < inventorySaveData.entries.Count; i++)
             {
                 InventoryEntrySaveData entry = inventorySaveData.entries[i];
-                string instanceId = entry?.mode == InventoryEntrySaveMode.StatefulInstance ? entry.itemInstance?.instanceId : null;
+                string instanceId = entry == null || entry.mode == InventoryEntrySaveMode.Empty
+                    ? null
+                    : !string.IsNullOrWhiteSpace(entry.itemInstanceId) ? entry.itemInstanceId : entry.itemInstance?.instanceId;
                 if (!string.IsNullOrWhiteSpace(instanceId))
                 {
                     instanceIds.Add(instanceId);
@@ -254,7 +308,9 @@ namespace UnityIsekaiGame.Persistence
             for (int i = 0; i < equipmentSaveData.slots.Count; i++)
             {
                 EquipmentSlotSaveData entry = equipmentSaveData.slots[i];
-                string instanceId = entry?.mode == EquipmentEntrySaveMode.StatefulInstance ? entry.itemInstance?.instanceId : null;
+                string instanceId = entry == null || entry.mode == EquipmentEntrySaveMode.Empty
+                    ? null
+                    : !string.IsNullOrWhiteSpace(entry.itemInstanceId) ? entry.itemInstanceId : entry.itemInstance?.instanceId;
                 if (!string.IsNullOrWhiteSpace(instanceId))
                 {
                     instanceIds.Add(instanceId);

@@ -190,6 +190,11 @@ namespace UnityIsekaiGame.Combat.Defense
             return defaultValue ?? string.Empty;
         }
 
+        public static float ReadDefenseNow(IReadOnlyList<KeyValuePair<string, string>> metadata, float defaultValue)
+        {
+            return TryReadFloat(metadata, "defense.now", out float now) && IsFinite(now) ? now : defaultValue;
+        }
+
         private DefenseActivationResult ResolveActivation(DefenseActivationRequest request, bool execute)
         {
             if (request.DefenderObject == null)
@@ -604,7 +609,7 @@ namespace UnityIsekaiGame.Combat.Defense
                 ItemDefinition item = slot.Item;
                 sawCandidate = true;
                 string itemId = item == null ? string.Empty : item.Id;
-                string instanceId = slot.ItemInstance == null ? string.Empty : slot.ItemInstance.InstanceId;
+                string instanceId = slot.ItemInstanceId;
                 if (!string.IsNullOrWhiteSpace(requestedEquipmentId)
                     && !string.Equals(requestedEquipmentId, itemId, StringComparison.Ordinal)
                     && !string.Equals(requestedEquipmentId, instanceId, StringComparison.Ordinal))
@@ -659,7 +664,7 @@ namespace UnityIsekaiGame.Combat.Defense
 
                 ItemDefinition item = slot.Item;
                 string itemId = item == null ? string.Empty : item.Id;
-                string instanceId = slot.ItemInstance == null ? string.Empty : slot.ItemInstance.InstanceId;
+                string instanceId = slot.ItemInstanceId;
                 bool sameDefinition = string.Equals(itemId, snapshot.SourceEquipmentId, StringComparison.Ordinal);
                 bool sameInstance = string.IsNullOrWhiteSpace(snapshot.SourceEquipmentInstanceId)
                     ? string.IsNullOrWhiteSpace(instanceId) && sameDefinition

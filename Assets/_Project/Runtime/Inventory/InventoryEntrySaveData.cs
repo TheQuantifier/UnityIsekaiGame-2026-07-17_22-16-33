@@ -8,6 +8,7 @@ namespace UnityIsekaiGame.Inventory
     {
         public InventoryEntrySaveMode mode;
         public string definitionId;
+        public string itemInstanceId;
         public int quantity;
         public ItemInstanceSaveData itemInstance;
     }

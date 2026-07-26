@@ -6,8 +6,10 @@ using UnityEngine;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Tests
 {
@@ -69,20 +71,33 @@ namespace UnityIsekaiGame.Tests
         {
             DefinitionRegistry registry = LoadCatalog().CreateRegistry();
 
+            IGameDefinition healthPotion = Required(registry, "item.health-potion");
+            Assert.That(Get<WorldItemPickup>(healthPotion, "WorldPickupPrefab"), Is.Not.Null);
+
             IGameDefinition sword = Required(registry, "item.prototype-sword");
+            Assert.That(Get<WorldItemPickup>(sword, "WorldPickupPrefab"), Is.Not.Null);
             object equipment = Get<object>(sword, "Equipment");
+            object swordView = Get<object>(equipment, "View");
+            Assert.That(Get<GameObject>(swordView, "FirstPersonPrefab"), Is.Not.Null);
+            Assert.That(Get<Vector3>(swordView, "FirstPersonLocalScale"), Is.EqualTo(Vector3.one));
             object meleeWeapon = Get<object>(equipment, "MeleeWeapon");
             Assert.That(Get<bool>(meleeWeapon, "IsWeapon"), Is.True);
             Assert.That(Get<IGameDefinition>(meleeWeapon, "DamageType").Id, Is.EqualTo("damage.physical.slashing"));
 
             IGameDefinition bow = Required(registry, "item.prototype-bow");
+            Assert.That(Get<WorldItemPickup>(bow, "WorldPickupPrefab"), Is.Not.Null);
             object bowEquipment = Get<object>(bow, "Equipment");
+            object bowView = Get<object>(bowEquipment, "View");
+            Assert.That(Get<GameObject>(bowView, "FirstPersonPrefab"), Is.Not.Null);
+            Assert.That(Get<Vector3>(bowView, "FirstPersonLocalScale"), Is.EqualTo(Vector3.one));
             object rangedWeapon = Get<object>(bowEquipment, "RangedWeapon");
             Assert.That(Get<bool>(rangedWeapon, "IsWeapon"), Is.True);
             Assert.That(Get<IGameDefinition>(rangedWeapon, "AmmoItem").Id, Is.EqualTo("item.prototype-arrow"));
             Assert.That(Get<IGameDefinition>(rangedWeapon, "DamageType").Id, Is.EqualTo("damage.physical.piercing"));
+            Assert.That(Get<UnityEngine.GameObject>(rangedWeapon, "ProjectileVisualPrefab"), Is.Not.Null);
 
             IGameDefinition arrow = Required(registry, "item.prototype-arrow");
+            Assert.That(Get<WorldItemPickup>(arrow, "WorldPickupPrefab"), Is.Not.Null);
             Assert.That(Get<IGameDefinition>(arrow, "PrimaryCategory").Id, Is.EqualTo("item.ammunition"));
 
             IGameDefinition arcaneEffect = Required(registry, "effect.arcane-damage");
@@ -111,6 +126,44 @@ namespace UnityIsekaiGame.Tests
             Assert.That(Get<IGameDefinition>(quest, "QuestGiver").Id, Is.EqualTo("person.prototype-npc"));
             Assert.That(Get<IGameDefinition>(quest, "QuestSourceFaction").Id, Is.EqualTo("faction.guild.adventurers"));
             Assert.That(Get<IGameDefinition>(quest, "RelatedFaction").Id, Is.EqualTo("faction.guild.adventurers"));
+        }
+
+        [Test]
+        public void WorldPickupFactory_UsesItemPickupPrefabAndRuntimeDropIdentity()
+        {
+            WorldEntityRegistry.ClearForTests();
+            DefinitionRegistry registry = LoadCatalog().CreateRegistry();
+            ItemDefinition sword = Required<ItemDefinition>(registry, "item.prototype-sword");
+
+            WorldItemPickup pickup = null;
+            try
+            {
+                pickup = WorldItemPickupFactory.Create(sword, 2, new Vector3(1f, 0f, 2f), Quaternion.identity);
+
+                Assert.That(pickup, Is.Not.Null);
+                Assert.That(pickup.Item, Is.SameAs(sword));
+                Assert.That(pickup.Quantity, Is.EqualTo(2));
+                Assert.That(pickup.transform.Find("Longsword"), Is.Not.Null, "The item pickup prefab visual should be reused instead of spawning the cube fallback.");
+
+                WorldEntitySpawnResult identityResult = WorldEntityIdentityFactory.CreateRuntimeIdentity(
+                    pickup.gameObject,
+                    "scene.prototype",
+                    PersistenceService.LocalWorldId,
+                    sword.Id);
+
+                Assert.That(identityResult.Succeeded, Is.True, identityResult.Message);
+                Assert.That(identityResult.Identity.IdentityKind, Is.EqualTo(WorldEntityIdentityKind.RuntimeSpawned));
+                Assert.That(identityResult.Identity.EntityId, Does.StartWith("entity.local-world.runtime."));
+            }
+            finally
+            {
+                if (pickup != null)
+                {
+                    Object.DestroyImmediate(pickup.gameObject);
+                }
+
+                WorldEntityRegistry.ClearForTests();
+            }
         }
 
         [Test]

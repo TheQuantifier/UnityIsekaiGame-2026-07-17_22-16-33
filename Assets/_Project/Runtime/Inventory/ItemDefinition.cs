@@ -13,6 +13,7 @@ namespace UnityIsekaiGame.Inventory
         [SerializeField] private string displayName;
         [SerializeField, TextArea] private string description;
         [SerializeField] private Sprite icon;
+        [SerializeField] private WorldItemPickup worldPickupPrefab;
         [SerializeField] private CategoryDefinition primaryCategory;
         [SerializeField] private TagDefinition[] tags;
         [SerializeField] private RarityDefinition rarity;
@@ -27,6 +28,7 @@ namespace UnityIsekaiGame.Inventory
         public string DisplayName => displayName;
         public string Description => description;
         public Sprite Icon => icon;
+        public WorldItemPickup WorldPickupPrefab => worldPickupPrefab;
         public CategoryDefinition PrimaryCategory => primaryCategory;
         public CategoryDomain ClassificationDomain => CategoryDomain.Item;
         public IReadOnlyList<TagDefinition> Tags => tags ?? System.Array.Empty<TagDefinition>();
@@ -68,7 +70,17 @@ namespace UnityIsekaiGame.Inventory
 
         public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
         {
-            if (report == null || equipment == null || !equipment.Equippable)
+            if (report == null)
+            {
+                return;
+            }
+
+            if (worldPickupPrefab != null && worldPickupPrefab.Item != null && worldPickupPrefab.Item != this)
+            {
+                report.AddError($"Item definition '{DisplayName}' world pickup prefab is configured for '{worldPickupPrefab.Item.Id}', not '{Id}'.");
+            }
+
+            if (equipment == null || !equipment.Equippable)
             {
                 return;
             }

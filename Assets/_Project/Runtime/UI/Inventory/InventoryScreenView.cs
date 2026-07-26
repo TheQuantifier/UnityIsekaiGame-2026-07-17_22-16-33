@@ -13,7 +13,6 @@ using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.Traits;
 using UnityIsekaiGame.UI;
 using CategoryDefinition = UnityIsekaiGame.GameData.CategoryDefinition;
-using ItemInstance = UnityIsekaiGame.GameData.ItemInstance;
 using InventorySlot = UnityIsekaiGame.Inventory.InventorySlot;
 using ItemDefinition = UnityIsekaiGame.Inventory.ItemDefinition;
 using TagDefinition = UnityIsekaiGame.GameData.TagDefinition;
@@ -1150,13 +1149,13 @@ namespace UnityIsekaiGame.UI.Inventory
             AppendLine(builder, "Stack", item.Stackable ? $"Stackable, max {item.MaximumStackSize}" : "Not stackable");
             AppendLine(builder, "Instance Mode", slot.IsStateful ? "Stateful instance" : item.InstanceMode.ToString());
             AppendLine(builder, "Capability", FormatCapabilities(item));
-            AppendInstanceDetails(builder, slot.ItemInstance, item);
+            AppendInstanceDetails(builder, slot.ItemInstanceId, item);
 
             if (includeDescription && !string.IsNullOrWhiteSpace(item.Description))
             {
                 builder.AppendLine();
                 builder.AppendLine(item.Description);
-                AppendDescriptionInstanceId(builder, slot.ItemInstance);
+                AppendDescriptionInstanceId(builder, slot.ItemInstanceId);
             }
 
             AppendUseDetails(builder, item);
@@ -1165,9 +1164,9 @@ namespace UnityIsekaiGame.UI.Inventory
             return builder.ToString().TrimEnd();
         }
 
-        private static void AppendInstanceDetails(StringBuilder builder, ItemInstance itemInstance, ItemDefinition item)
+        private static void AppendInstanceDetails(StringBuilder builder, string itemInstanceId, ItemDefinition item)
         {
-            if (itemInstance == null)
+            if (string.IsNullOrWhiteSpace(itemInstanceId))
             {
                 if (item != null && item.InstanceMode != UnityIsekaiGame.GameData.ItemInstanceMode.DefinitionOnly)
                 {
@@ -1177,33 +1176,18 @@ namespace UnityIsekaiGame.UI.Inventory
                 return;
             }
 
-            AppendLine(builder, "Unique Instance ID", itemInstance.HasPersistentIdentity ? itemInstance.InstanceId : "Runtime only");
-
-            if (itemInstance.Metadata == null || !itemInstance.Metadata.HasAnyState)
-            {
-                return;
-            }
-
-            if (itemInstance.Metadata.HasQuality)
-            {
-                AppendLine(builder, "Quality", itemInstance.Metadata.Quality == null ? "Unassigned" : itemInstance.Metadata.Quality.DisplayName);
-            }
-
-            if (itemInstance.Metadata.HasCondition)
-            {
-                AppendLine(builder, "Condition", $"{Mathf.RoundToInt(itemInstance.Metadata.ConditionNormalized * 100f)}%");
-            }
+            AppendLine(builder, "Unique Instance ID", itemInstanceId);
         }
 
-        private static void AppendDescriptionInstanceId(StringBuilder builder, ItemInstance itemInstance)
+        private static void AppendDescriptionInstanceId(StringBuilder builder, string itemInstanceId)
         {
-            if (itemInstance == null)
+            if (string.IsNullOrWhiteSpace(itemInstanceId))
             {
                 return;
             }
 
             builder.AppendLine();
-            AppendLine(builder, "Unique Instance ID", itemInstance.HasPersistentIdentity ? itemInstance.InstanceId : "Runtime only");
+            AppendLine(builder, "Unique Instance ID", itemInstanceId);
         }
 
         private static void AppendUseDetails(StringBuilder builder, ItemDefinition item)

@@ -281,36 +281,52 @@ MonoBehaviour:
   slots:
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
   - item: {fileID: 0}
     quantity: 0
+    itemInstanceId: 
 --- !u!114 &100007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3124,16 +3140,22 @@ MonoBehaviour:
   slots:
   - slotType: 0
     item: {fileID: 0}
+    itemInstanceId: 
   - slotType: 1
     item: {fileID: 0}
+    itemInstanceId: 
   - slotType: 2
     item: {fileID: 0}
+    itemInstanceId: 
   - slotType: 3
     item: {fileID: 0}
+    itemInstanceId: 
   - slotType: 4
     item: {fileID: 0}
+    itemInstanceId: 
   - slotType: 5
     item: {fileID: 0}
+    itemInstanceId: 
 --- !u!114 &343134189
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3185,6 +3207,10 @@ MonoBehaviour:
   playerMeleeCombat: {fileID: 343134189}
   playerSpellcaster: {fileID: 343134191}
   playerStatusEffects: {fileID: 343134196}
+  playerResources: {fileID: 0}
+  playerLifecycle: {fileID: 0}
+  playerInventory: {fileID: 0}
+  playerEquipment: {fileID: 0}
   dialogueController: {fileID: 604495670}
   inventoryScreenController: {fileID: 0}
   playerSpawnPoint: {fileID: 438627171}
@@ -3195,6 +3221,8 @@ MonoBehaviour:
   enemyContractTargetReporter: {fileID: 0}
   enemyLootDrop: {fileID: 0}
   enemyStatusEffects: {fileID: 0}
+  enemyResources: {fileID: 0}
+  enemyLifecycle: {fileID: 0}
 --- !u!114 &343134191
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5198,6 +5226,7 @@ MonoBehaviour:
   defaultSpawnPointId: spawn.prototype.default
   defaultPlayerSpeciesId: species.human
   registerPlayerInventoryEquipment: 1
+  registerPlayerItemIdentities: 1
   registerPlayerIdentityProgression: 1
   registerPlayerAttributes: 1
   registerPlayerSkills: 1
@@ -6373,6 +6402,10 @@ MonoBehaviour:
   playerMeleeCombat: {fileID: 343134189}
   playerSpellcaster: {fileID: 343134191}
   playerStatusEffects: {fileID: 343134196}
+  playerResources: {fileID: 0}
+  playerLifecycle: {fileID: 0}
+  playerInventory: {fileID: 0}
+  playerEquipment: {fileID: 0}
   dialogueController: {fileID: 604495670}
   inventoryScreenController: {fileID: 0}
   playerSpawnPoint: {fileID: 0}
@@ -6383,6 +6416,8 @@ MonoBehaviour:
   enemyContractTargetReporter: {fileID: 0}
   enemyLootDrop: {fileID: 1036834149}
   enemyStatusEffects: {fileID: 1036834142}
+  enemyResources: {fileID: 0}
+  enemyLifecycle: {fileID: 0}
 --- !u!1 &721426222
 GameObject:
   m_ObjectHideFlags: 0
@@ -8549,7 +8584,7 @@ Transform:
   m_GameObject: {fileID: 1036834136}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -6, y: 0, z: 0}
+  m_LocalPosition: {x: -12, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -8762,6 +8797,7 @@ MonoBehaviour:
   enemyHealth: {fileID: 1036834141}
   lootTable: {fileID: 11400000, guid: b6924978040045c5b51ca558680169cb, type: 2}
   dropOrigin: {fileID: 0}
+  dropParent: {fileID: 0}
   spawnRadius: 1.25
   colliderClearance: 0.5
   spawnHeightOffset: 0.25
@@ -9053,6 +9089,11 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1055995008}
   m_CullTransparentMesh: 1
+--- !u!4 &1059349647 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+  m_PrefabInstance: {fileID: 225050648910309310}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1076797025
 GameObject:
   m_ObjectHideFlags: 0
@@ -18883,6 +18924,7 @@ Transform:
   - {fileID: 485847848}
   - {fileID: 6609177511048775264}
   - {fileID: 1297720723}
+  - {fileID: 1059349647}
   m_Father: {fileID: 3001000201}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!64 &3001000212
@@ -19246,6 +19288,75 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ff316209d562d294dbd9b4ede5287034, type: 3}
+--- !u!1001 &225050648910309310
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 3001000211}
+    m_Modifications:
+    - target: {fileID: 6265566405495295351, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_Name
+      value: Pickup - Prototype Health Potion
+      objectReference: {fileID: 0}
+    - target: {fileID: 6959114921788379055, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 6959114921788379055, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 6959114921788379055, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -3
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8293717222366909141, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: e1ef9b97f55d54f40be96023a30e13e4, type: 3}
 --- !u!4 &4853542942457030681
 Transform:
   m_ObjectHideFlags: 0

@@ -14,6 +14,7 @@ namespace UnityIsekaiGame.Loot
         [SerializeField] private EnemyHealth enemyHealth;
         [SerializeField] private LootTable lootTable;
         [SerializeField] private Transform dropOrigin;
+        [SerializeField] private Transform dropParent;
         [SerializeField, Min(0f)] private float spawnRadius = 1.25f;
         [SerializeField, Min(0f)] private float colliderClearance = 0.5f;
         [SerializeField, Min(0f)] private float spawnHeightOffset = 0.25f;
@@ -123,18 +124,19 @@ namespace UnityIsekaiGame.Loot
                 return string.Empty;
             }
 
-            GameObject pickup = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            pickup.name = $"Dropped {roll.Item.DisplayName}";
-            pickup.transform.SetPositionAndRotation(GetSpawnPosition(index, totalCount), Quaternion.identity);
-            pickup.transform.localScale = Vector3.one * 0.35f;
-
-            if (pickupMaterial != null && pickup.TryGetComponent(out MeshRenderer renderer))
+            WorldItemPickup worldPickup = WorldItemPickupFactory.Create(
+                roll.Item,
+                roll.Quantity,
+                GetSpawnPosition(index, totalCount),
+                Quaternion.identity,
+                dropParent,
+                pickupMaterial);
+            if (worldPickup == null)
             {
-                renderer.sharedMaterial = pickupMaterial;
+                return string.Empty;
             }
 
-            WorldItemPickup worldPickup = pickup.AddComponent<WorldItemPickup>();
-            worldPickup.Configure(roll.Item, roll.Quantity);
+            GameObject pickup = worldPickup.gameObject;
             if (assignPersistentWorldEntityIdsToDrops)
             {
                 WorldEntitySpawnResult identityResult = WorldEntityIdentityFactory.CreateRuntimeIdentity(pickup, sceneKey, worldId, roll.Item.Id);
