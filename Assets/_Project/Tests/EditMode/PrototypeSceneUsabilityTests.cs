@@ -10,7 +10,7 @@ namespace UnityIsekaiGame.Tests
         private const string ScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
 
         [Test]
-        public void PrototypeSceneKeepsOnlyMenuAndTestingShell()
+        public void PrototypeSceneKeepsCleanPlayableTestingShell()
         {
             string scene = File.ReadAllText(ScenePath);
 
@@ -46,7 +46,6 @@ namespace UnityIsekaiGame.Tests
             AssertSceneDoesNotContain(scene, "Systems World Safety Floor");
             AssertSceneDoesNotContain(scene, "Hub - Systems World");
             AssertSceneDoesNotContain(scene, "Zone - ");
-            AssertSceneDoesNotContain(scene, "Pickup - ");
             AssertSceneDoesNotContain(scene, "Prototype Enemy");
             AssertSceneDoesNotContain(scene, "Prototype Damage Dummy");
             AssertSceneDoesNotContain(scene, "Prototype Dialogue NPC");

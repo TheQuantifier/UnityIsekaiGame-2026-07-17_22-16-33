@@ -16,6 +16,8 @@ namespace UnityIsekaiGame.Combat
 
         private Coroutine swingRoutine;
         private Quaternion restingRotation;
+        private GameObject generatedWeaponView;
+        private ItemDefinition visibleItem;
 
         private void Awake()
         {
@@ -64,6 +66,9 @@ namespace UnityIsekaiGame.Combat
             {
                 combat.AttackResolved -= OnAttackResolved;
             }
+
+            ClearGeneratedWeaponView();
+            visibleItem = null;
         }
 
         private void RefreshVisibility()
@@ -78,10 +83,108 @@ namespace UnityIsekaiGame.Combat
             bool shouldShow = item != null
                 && item.IsEquippable
                 && item.Equipment.SlotType == EquipmentSlotType.MainHand
-                && item.Equipment.MeleeWeapon != null
-                && item.Equipment.MeleeWeapon.IsWeapon;
+                && IsWeapon(item);
+
+            if (!shouldShow)
+            {
+                ClearGeneratedWeaponView();
+                visibleItem = null;
+                weaponRoot.SetActive(false);
+                return;
+            }
+
+            EquipmentViewData itemView = item.Equipment.View;
+            bool generatedViewMissing = itemView != null && itemView.HasFirstPersonPrefab && generatedWeaponView == null;
+            if (visibleItem != item || generatedViewMissing)
+            {
+                RebuildGeneratedWeaponView(item);
+                visibleItem = item;
+            }
 
             weaponRoot.SetActive(shouldShow);
+        }
+
+        private static bool IsWeapon(ItemDefinition item)
+        {
+            return (item.Equipment.MeleeWeapon != null && item.Equipment.MeleeWeapon.IsWeapon)
+                || (item.Equipment.RangedWeapon != null && item.Equipment.RangedWeapon.IsWeapon);
+        }
+
+        private void RebuildGeneratedWeaponView(ItemDefinition item)
+        {
+            ClearGeneratedWeaponView();
+
+            EquipmentViewData view = item.Equipment.View;
+            if (view == null || !view.HasFirstPersonPrefab)
+            {
+                SetExistingWeaponViewEnabled(true);
+                return;
+            }
+
+            SetExistingWeaponViewEnabled(false);
+            generatedWeaponView = Instantiate(view.FirstPersonPrefab, weaponRoot.transform);
+            generatedWeaponView.name = $"{item.DisplayName} View";
+            Transform viewTransform = generatedWeaponView.transform;
+            viewTransform.localPosition = view.FirstPersonLocalPosition;
+            viewTransform.localRotation = Quaternion.Euler(view.FirstPersonLocalEulerAngles);
+            viewTransform.localScale = CompensateForMountScale(view.FirstPersonLocalScale);
+            RemoveRuntimePhysics(generatedWeaponView);
+        }
+
+        private void ClearGeneratedWeaponView()
+        {
+            if (generatedWeaponView == null)
+            {
+                return;
+            }
+
+            Destroy(generatedWeaponView);
+            generatedWeaponView = null;
+        }
+
+        private static void RemoveRuntimePhysics(GameObject viewObject)
+        {
+            foreach (Collider collider in viewObject.GetComponentsInChildren<Collider>())
+            {
+                Destroy(collider);
+            }
+
+            foreach (Rigidbody rigidbody in viewObject.GetComponentsInChildren<Rigidbody>())
+            {
+                Destroy(rigidbody);
+            }
+        }
+
+        private Vector3 CompensateForMountScale(Vector3 authoredScale)
+        {
+            Vector3 mountScale = weaponRoot.transform.localScale;
+            return new Vector3(
+                Mathf.Approximately(mountScale.x, 0f) ? authoredScale.x : authoredScale.x / mountScale.x,
+                Mathf.Approximately(mountScale.y, 0f) ? authoredScale.y : authoredScale.y / mountScale.y,
+                Mathf.Approximately(mountScale.z, 0f) ? authoredScale.z : authoredScale.z / mountScale.z);
+        }
+
+        private void SetExistingWeaponViewEnabled(bool enabled)
+        {
+            foreach (Renderer renderer in weaponRoot.GetComponentsInChildren<Renderer>(true))
+            {
+                if (generatedWeaponView != null && renderer.transform.IsChildOf(generatedWeaponView.transform))
+                {
+                    continue;
+                }
+
+                renderer.enabled = enabled;
+            }
+
+            foreach (Collider collider in weaponRoot.GetComponentsInChildren<Collider>(true))
+            {
+                if (generatedWeaponView != null && collider.transform.IsChildOf(generatedWeaponView.transform))
+                {
+                    continue;
+                }
+
+                collider.enabled = enabled;
+            }
         }
 
         private void OnAttackResolved(MeleeAttackResult result)

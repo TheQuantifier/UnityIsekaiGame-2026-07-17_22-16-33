@@ -25,6 +25,8 @@ namespace UnityIsekaiGame.Magic
         private float baseDamage;
         private DamageTypeDefinition directDamageType;
         private AbilityDefinition ability;
+        private string impactTransactionPrefix = "spell-projectile.direct";
+        private string impactActionName = "Spell projectile impact";
         private float expireAtTime;
         private bool initialized;
         private bool completed;
@@ -68,12 +70,27 @@ namespace UnityIsekaiGame.Magic
 
         public void Initialize(GameObject spellCaster, Vector3 travelDirection, float projectileSpeed, float damage, float lifetime)
         {
+            Initialize(spellCaster, travelDirection, projectileSpeed, damage, null, lifetime, "spell-projectile.direct", "Spell projectile impact");
+        }
+
+        public void Initialize(
+            GameObject spellCaster,
+            Vector3 travelDirection,
+            float projectileSpeed,
+            float damage,
+            DamageTypeDefinition damageType,
+            float lifetime,
+            string transactionPrefix,
+            string actionName)
+        {
             caster = spellCaster;
             ability = null;
             direction = travelDirection.sqrMagnitude > 0f ? travelDirection.normalized : transform.forward;
             speed = Mathf.Max(0.1f, projectileSpeed);
             baseDamage = Mathf.Max(0f, damage);
-            directDamageType = null;
+            directDamageType = damageType;
+            impactTransactionPrefix = string.IsNullOrWhiteSpace(transactionPrefix) ? "spell-projectile.direct" : transactionPrefix;
+            impactActionName = string.IsNullOrWhiteSpace(actionName) ? "Spell projectile impact" : actionName;
             expireAtTime = Time.time + Mathf.Max(0.1f, lifetime);
             initialized = true;
             completed = false;
@@ -121,13 +138,14 @@ namespace UnityIsekaiGame.Magic
                     ? DamageComponent.Legacy(DamageType.Magic, baseDamage)
                     : new DamageComponent(directDamageType, baseDamage);
                 DamagePacket packet = DamagePacket.Single(caster, component);
-                DamageInfo damageInfo = new DamageInfo(baseDamage, caster, hit.point, hitDirection, DamageType.Magic, packet);
+                DamageType legacyDamageType = directDamageType == null ? DamageType.Magic : DamageType.Physical;
+                DamageInfo damageInfo = new DamageInfo(baseDamage, caster, hit.point, hitDirection, legacyDamageType, packet);
                 DamageResult damageResult = SceneCombatDamageBridge.ApplyDamage(
                     hit.collider.gameObject,
                     in damageInfo,
-                    "spell-projectile.direct",
-                    "Spell projectile impact");
-                Debug.Log(damageResult.Applied ? $"Spell hit for {damageResult.AppliedAmount:0.#} damage." : damageResult.Message);
+                    impactTransactionPrefix,
+                    impactActionName);
+                Debug.Log(damageResult.Applied ? $"{impactActionName} hit for {damageResult.AppliedAmount:0.#} damage." : damageResult.Message);
             }
 
             Complete();

@@ -128,6 +128,7 @@ namespace UnityIsekaiGame.Development
         private float combatStateClockSeconds;
         private float combatExecutionClockSeconds;
         private float ongoingEffectClockSeconds;
+        private GameObject automationEnemyTarget;
         private readonly Dictionary<string, GameObject> combatStateTestActors = new Dictionary<string, GameObject>(StringComparer.Ordinal);
         private readonly AuthoritativeHistoryRuntime authoritativeHistory = new AuthoritativeHistoryRuntime();
         private readonly PersonMemoryRuntime playerMemory = new PersonMemoryRuntime();
@@ -179,6 +180,7 @@ namespace UnityIsekaiGame.Development
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
+            EnsureAutomationEnemyTarget();
             EnsureLifecycleRuntime(context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject, ref context.EnemyLifecycle, needsResource: true);
             EnsureCombatStateRuntime();
             EnsureOngoingEffectRuntime(targetEnemy: false);
@@ -11628,11 +11630,64 @@ namespace UnityIsekaiGame.Development
             return combatRuntimeFacade;
         }
 
+        private GameObject EnsureAutomationEnemyTarget()
+        {
+            if (context == null)
+            {
+                return null;
+            }
+
+            if (context.EnemyTransform != null)
+            {
+                GameObject sceneEnemy = context.EnemyTransform.gameObject;
+                EnsureEnemyContextComponents(sceneEnemy);
+                return sceneEnemy;
+            }
+
+            if (automationEnemyTarget == null)
+            {
+                automationEnemyTarget = new GameObject("Automation Enemy Target");
+                Transform parent = context.PlayerTransform == null ? null : context.PlayerTransform.root;
+                if (parent != null)
+                {
+                    automationEnemyTarget.transform.SetParent(parent, worldPositionStays: true);
+                    automationEnemyTarget.transform.position = context.PlayerTransform.position + context.PlayerTransform.forward * 3f;
+                }
+            }
+
+            EnsureEnemyContextComponents(automationEnemyTarget);
+            return automationEnemyTarget;
+        }
+
+        private void EnsureEnemyContextComponents(GameObject enemy)
+        {
+            if (context == null || enemy == null)
+            {
+                return;
+            }
+
+            context.EnemyTransform = enemy.transform;
+            context.EnemyHealth = enemy.GetComponent<EnemyHealth>() ?? enemy.AddComponent<EnemyHealth>();
+            context.EnemyController = enemy.GetComponent<PrototypeEnemyController>();
+            context.EnemyAttack = enemy.GetComponent<EnemyMeleeAttack>();
+            context.EnemyStatuses = enemy.GetComponent<StatusEffectController>() ?? enemy.AddComponent<StatusEffectController>();
+
+            WorldEntityIdentity identity = enemy.GetComponent<WorldEntityIdentity>();
+            if (identity == null)
+            {
+                identity = enemy.AddComponent<WorldEntityIdentity>();
+                identity.TryInitializeRuntime("entity.local-world.runtime.test-lab.enemy-target", "scene.prototype", PersistenceService.LocalWorldId, PersistenceScope.SessionOnly, "development.test-lab.enemy-target", out _);
+            }
+
+            EnsureLifecycleRuntime(enemy, ref context.EnemyLifecycle, needsResource: true);
+            context.EnemyHealth.RefreshResourceRuntime();
+        }
+
         private void EnsureCombatStateTestParticipants()
         {
             EnsureCombatStateRuntime();
             RegisterCombatStateTestActor("A", context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject);
-            RegisterCombatStateTestActor("B", context?.EnemyTransform == null ? null : context.EnemyTransform.gameObject);
+            RegisterCombatStateTestActor("B", EnsureAutomationEnemyTarget());
             EnsureCombatStateMockActor("C");
             EnsureCombatStateMockActor("D");
         }

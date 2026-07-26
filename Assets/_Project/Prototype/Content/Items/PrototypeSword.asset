@@ -36,6 +36,11 @@ MonoBehaviour:
       attackPower: 5
       defense: 0
     resistanceModifiers: []
+    view:
+      firstPersonPrefab: {fileID: 100000, guid: 508aa1691203aba42889e37ade1826d9, type: 3}
+      firstPersonLocalPosition: {x: 0, y: 0, z: 0}
+      firstPersonLocalEulerAngles: {x: -90, y: 0, z: 0}
+      firstPersonLocalScale: {x: 100, y: 100, z: 100}
     meleeWeapon:
       weapon: 1
       attackName: Prototype Slash

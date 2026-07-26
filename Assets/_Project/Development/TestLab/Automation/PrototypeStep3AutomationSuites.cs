@@ -49,6 +49,11 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("report-reach", "Report reach", context => Operation(context.Prototype().ReportReach(First<PlaceDefinition>(context)), context, "step3-report-reach")),
                     Step("accept-contract", "Accept contract", context => Operation(context.Prototype().AcceptContract(First<ContractDefinition>(context)), context, "step3-accept-contract")),
                     Step("report-defeat", "Report defeat", context => Operation(context.Prototype().ReportDefeat("prototype_enemy"), context, "step3-report-defeat"))),
+                Scenario("ranged-weapon-ammo-flow", "Bow, arrow, and ranged weapon flow", 35,
+                    Step("validate-ranged-definitions", "Validate ranged item definitions", ValidatePrototypeRangedDefinitions),
+                    Step("grant-arrows", "Grant ammunition", context => Operation(context.Prototype().GrantItem(RequiredItem(context, "item.prototype-arrow"), 2), context, "step3-grant-arrows")),
+                    Step("grant-bow", "Grant bow", context => Operation(context.Prototype().GrantStatefulItem(RequiredItem(context, "item.prototype-bow")), context, "step3-grant-bow")),
+                    Step("equip-bow", "Equip bow", context => Operation(context.Prototype().EquipFirstCompatible(RequiredItem(context, "item.prototype-bow")), context, "step3-equip-bow"))),
                 Scenario("location-and-world-entity-diagnostics", "Location and world entity diagnostics", 40,
                     Step("location", "Validate current location", context => Operation(context.Prototype().ValidateCurrentLocation(), context, "step3-location")),
                     Step("world-entities", "Refresh world entity diagnostics", context => Operation(context.Prototype().RefreshWorldEntityDiagnostics(), context, "step3-world-entities"))));
@@ -116,6 +121,26 @@ namespace UnityIsekaiGame.Development.Automation
         {
             return context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && item.IsEquippable)
                 ?? context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault();
+        }
+
+        private static ItemDefinition RequiredItem(TestLabAutomationContext context, string id)
+        {
+            return context.Prototype().GetDefinitions<ItemDefinition>().FirstOrDefault(item => item != null && string.Equals(item.Id, id, StringComparison.Ordinal));
+        }
+
+        private static TestLabAutomationStepResult ValidatePrototypeRangedDefinitions(TestLabAutomationContext context)
+        {
+            ItemDefinition bow = RequiredItem(context, "item.prototype-bow");
+            ItemDefinition arrow = RequiredItem(context, "item.prototype-arrow");
+            bool valid = bow != null
+                && arrow != null
+                && bow.IsEquippable
+                && bow.Equipment?.RangedWeapon != null
+                && bow.Equipment.RangedWeapon.AmmoItem == arrow
+                && bow.Equipment.RangedWeapon.DamageType != null
+                && !arrow.IsEquippable;
+            string diagnostics = $"Bow={(bow == null ? "missing" : bow.Id)} Equippable={bow?.IsEquippable.ToString() ?? "False"} Ranged={bow?.Equipment?.RangedWeapon != null} Ammo={bow?.Equipment?.RangedWeapon?.AmmoItem?.Id ?? "missing"} Damage={bow?.Equipment?.RangedWeapon?.DamageType?.Id ?? "missing"} ArrowEquippable={arrow?.IsEquippable.ToString() ?? "False"}.";
+            return TestLabAssertions.True("step3-ranged-definitions", "Validate ranged item definitions", valid, diagnostics);
         }
 
         private static TestLabAutomationStepResult Operation(PrototypeTestLabOperation operation, TestLabAutomationContext context, string operationId, bool acceptFailure = false)

@@ -74,6 +74,8 @@ namespace UnityIsekaiGame.Inventory
             }
 
             ValidateDamageTypeReference(equipment.MeleeWeapon?.DamageType, "melee weapon", definitionsById, report);
+            ValidateDamageTypeReference(equipment.RangedWeapon?.DamageType, "ranged weapon", definitionsById, report);
+            ValidateAmmoReference(equipment.RangedWeapon?.AmmoItem, definitionsById, report);
             IReadOnlyList<ResistanceModifierDefinition> resistanceModifiers = equipment.ResistanceModifiers;
             HashSet<string> seenResistanceTypes = new HashSet<string>();
             for (int i = 0; i < resistanceModifiers.Count; i++)
@@ -117,6 +119,21 @@ namespace UnityIsekaiGame.Inventory
                 || found is not DamageTypeDefinition)
             {
                 report.AddError($"Item definition '{DisplayName}' {label} references damage type '{damageTypeDefinition.Id}', which is not in the configured catalog.");
+            }
+        }
+
+        private void ValidateAmmoReference(ItemDefinition ammoItem, IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            if (ammoItem == null)
+            {
+                return;
+            }
+
+            if (definitionsById == null
+                || !definitionsById.TryGetValue(ammoItem.Id, out IGameDefinition found)
+                || found is not ItemDefinition)
+            {
+                report.AddError($"Item definition '{DisplayName}' ranged weapon references ammo item '{ammoItem.Id}', which is not in the configured catalog.");
             }
         }
     }

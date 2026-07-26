@@ -1,8 +1,13 @@
 ﻿using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Magic;
 
 namespace UnityIsekaiGame.Tests
 {
@@ -23,8 +28,11 @@ namespace UnityIsekaiGame.Tests
 
             AssertRegistered(registry, "item.health-potion", "UnityIsekaiGame.Inventory.ItemDefinition");
             AssertRegistered(registry, "item.prototype-sword", "UnityIsekaiGame.Inventory.ItemDefinition");
+            AssertRegistered(registry, "item.prototype-bow", "UnityIsekaiGame.Inventory.ItemDefinition");
+            AssertRegistered(registry, "item.prototype-arrow", "UnityIsekaiGame.Inventory.ItemDefinition");
             AssertRegistered(registry, "item.prototype-iron-ore", "UnityIsekaiGame.Inventory.ItemDefinition");
             AssertRegistered(registry, "item.weapon", "UnityIsekaiGame.GameData.CategoryDefinition");
+            AssertRegistered(registry, "item.ammunition", "UnityIsekaiGame.GameData.CategoryDefinition");
             AssertRegistered(registry, "tag.arcane", "UnityIsekaiGame.GameData.TagDefinition");
             AssertRegistered(registry, "rarity.common", "UnityIsekaiGame.GameData.RarityDefinition");
             AssertRegistered(registry, "quality.standard", "UnityIsekaiGame.GameData.QualityDefinition");
@@ -67,6 +75,16 @@ namespace UnityIsekaiGame.Tests
             Assert.That(Get<bool>(meleeWeapon, "IsWeapon"), Is.True);
             Assert.That(Get<IGameDefinition>(meleeWeapon, "DamageType").Id, Is.EqualTo("damage.physical.slashing"));
 
+            IGameDefinition bow = Required(registry, "item.prototype-bow");
+            object bowEquipment = Get<object>(bow, "Equipment");
+            object rangedWeapon = Get<object>(bowEquipment, "RangedWeapon");
+            Assert.That(Get<bool>(rangedWeapon, "IsWeapon"), Is.True);
+            Assert.That(Get<IGameDefinition>(rangedWeapon, "AmmoItem").Id, Is.EqualTo("item.prototype-arrow"));
+            Assert.That(Get<IGameDefinition>(rangedWeapon, "DamageType").Id, Is.EqualTo("damage.physical.piercing"));
+
+            IGameDefinition arrow = Required(registry, "item.prototype-arrow");
+            Assert.That(Get<IGameDefinition>(arrow, "PrimaryCategory").Id, Is.EqualTo("item.ammunition"));
+
             IGameDefinition arcaneEffect = Required(registry, "effect.arcane-damage");
             Assert.That(Get<IGameDefinition>(arcaneEffect, "TypedDamageType").Id, Is.EqualTo("damage.magic.arcane"));
 
@@ -95,6 +113,60 @@ namespace UnityIsekaiGame.Tests
             Assert.That(Get<IGameDefinition>(quest, "RelatedFaction").Id, Is.EqualTo("faction.guild.adventurers"));
         }
 
+        [Test]
+        public void PrototypeBow_EquipsThroughInventoryAndFiresArrowProjectile()
+        {
+            DefinitionRegistry registry = LoadCatalog().CreateRegistry();
+            ItemDefinition bow = Required<ItemDefinition>(registry, "item.prototype-bow");
+            ItemDefinition arrow = Required<ItemDefinition>(registry, "item.prototype-arrow");
+
+            GameObject player = new GameObject("Prototype Bow Test Player");
+            GameObject origin = new GameObject("Prototype Bow Test Origin");
+            try
+            {
+                origin.transform.SetParent(player.transform);
+                origin.transform.localPosition = Vector3.zero;
+                origin.transform.localRotation = Quaternion.identity;
+
+                PlayerInventory inventory = player.AddComponent<PlayerInventory>();
+                PlayerEquipment equipment = player.AddComponent<PlayerEquipment>();
+                PlayerMeleeCombat combat = player.AddComponent<PlayerMeleeCombat>();
+                SetPrivateField(equipment, "inventory", inventory);
+                SetPrivateField(combat, "equipment", equipment);
+                SetPrivateField(combat, "inventory", inventory);
+                SetPrivateField(combat, "attackOrigin", origin.transform);
+
+                Assert.That(inventory.AddItemOrInstances(bow, 1).AddedAll, Is.True);
+                Assert.That(inventory.AddItem(arrow, 2).AddedAll, Is.True);
+
+                int bowSlot = FindSlot(inventory, bow);
+                Assert.That(bowSlot, Is.GreaterThanOrEqualTo(0), "Bow should be present in inventory before equipping.");
+                Assert.That(equipment.EquipFromInventorySlot(bowSlot).Succeeded, Is.True);
+                Assert.That(inventory.CountItem(arrow), Is.EqualTo(2));
+
+                int beforeProjectiles = CountSceneProjectiles();
+                MeleeAttackResult result = combat.TryAttack();
+                int afterProjectiles = CountSceneProjectiles();
+
+                Assert.That(result.Started, Is.True, result.Message);
+                Assert.That(result.AttackName, Is.EqualTo("Prototype Arrow Shot"));
+                Assert.That(inventory.CountItem(arrow), Is.EqualTo(1), "Firing the bow should consume one Prototype Arrow.");
+                Assert.That(afterProjectiles, Is.EqualTo(beforeProjectiles + 1), "Firing the bow should spawn one projectile.");
+            }
+            finally
+            {
+                foreach (SpellProjectile projectile in Object.FindObjectsByType<SpellProjectile>())
+                {
+                    if (projectile.gameObject.scene.IsValid())
+                    {
+                        Object.DestroyImmediate(projectile.gameObject);
+                    }
+                }
+
+                Object.DestroyImmediate(player);
+            }
+        }
+
         private static DefinitionCatalog LoadCatalog()
         {
             DefinitionCatalog catalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(CatalogPath);
@@ -114,12 +186,46 @@ namespace UnityIsekaiGame.Tests
             return definition;
         }
 
+        private static TDefinition Required<TDefinition>(DefinitionRegistry registry, string id)
+            where TDefinition : class, IGameDefinition
+        {
+            IGameDefinition definition = Required(registry, id);
+            Assert.That(definition, Is.TypeOf<TDefinition>());
+            return (TDefinition)definition;
+        }
+
         private static T Get<T>(object target, string propertyName)
         {
             Assert.That(target, Is.Not.Null, $"Cannot read '{propertyName}' from a null target.");
             object value = target.GetType().GetProperty(propertyName).GetValue(target);
             Assert.That(value, Is.Not.Null, $"Expected '{target.GetType().Name}.{propertyName}' to be assigned.");
             return (T)value;
+        }
+
+        private static int FindSlot(PlayerInventory inventory, ItemDefinition item)
+        {
+            for (int i = 0; i < inventory.Slots.Count; i++)
+            {
+                InventorySlot slot = inventory.GetSlot(i);
+                if (slot != null && !slot.IsEmpty && slot.Item == item)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static int CountSceneProjectiles()
+        {
+            return Object.FindObjectsByType<SpellProjectile>().Count(projectile => projectile.gameObject.scene.IsValid());
+        }
+
+        private static void SetPrivateField<TTarget>(TTarget target, string fieldName, object value)
+        {
+            FieldInfo field = typeof(TTarget).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, $"Expected private field '{fieldName}' on {typeof(TTarget).Name}.");
+            field.SetValue(target, value);
         }
     }
 }

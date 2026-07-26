@@ -59,6 +59,23 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void ConfigureCreatesAutomationEnemyWhenSceneHasNoAuthoredEnemy()
+        {
+            using RuntimeFixture fixture = RuntimeFixture.Create();
+            object service = CreateService(fixture);
+            object context = Get<object>(service, "context");
+
+            Assert.That(Get<object>(context, "EnemyTransform"), Is.Not.Null);
+            Assert.That(Get<object>(context, "EnemyHealth"), Is.Not.Null);
+            Assert.That(Get<object>(context, "EnemyLifecycle"), Is.Not.Null);
+            Assert.That(Get<object>(context, "EnemyStatuses"), Is.Not.Null);
+
+            object damageType = First(InvokeGeneric(service, "GetDefinitions", RequiredType("UnityIsekaiGame.Combat.DamageTypeDefinition")));
+            object attack = Invoke(service, "ExecuteAttackResolution", damageType, 5f, 0.95f, 0.1f, 0f, 0.99f, 1.5f, 1f, 2f, true, true, false);
+            Assert.That(Get<bool>(attack, "Succeeded"), Is.True, Get<string>(attack, "Message"));
+        }
+
+        [Test]
         public void DuplicateWorldEntityProofRejectsCurrentSpawnedEntityAfterMultipleSpawns()
         {
             using RuntimeFixture fixture = RuntimeFixture.Create();
@@ -206,6 +223,17 @@ namespace UnityIsekaiGame.Tests
             }
 
             return count;
+        }
+
+        private static object First(object value)
+        {
+            foreach (object entry in (IEnumerable)value)
+            {
+                return entry;
+            }
+
+            Assert.Fail("Expected at least one value.");
+            return null;
         }
 
         private static void DestroyTestLabWorldLoot()

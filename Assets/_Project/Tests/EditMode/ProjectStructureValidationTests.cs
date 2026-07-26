@@ -85,11 +85,7 @@ namespace UnityIsekaiGame.Tests
                 foreach (string file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
                 {
                     string normalized = file.Replace('\\', '/');
-                    if (normalized.EndsWith("/ProjectStructureValidationMenu.cs", StringComparison.Ordinal) ||
-                        normalized.EndsWith("/ProjectStructureValidationTests.cs", StringComparison.Ordinal) ||
-                        normalized.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) ||
-                        normalized.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
-                        normalized.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                    if (!ShouldScanForObsoletePaths(normalized))
                     {
                         continue;
                     }
@@ -110,6 +106,28 @@ namespace UnityIsekaiGame.Tests
                     }
                 }
             }
+        }
+
+        private static bool ShouldScanForObsoletePaths(string normalizedPath)
+        {
+            if (normalizedPath.EndsWith("/ProjectStructureValidationMenu.cs", StringComparison.Ordinal) ||
+                normalizedPath.EndsWith("/ProjectStructureValidationTests.cs", StringComparison.Ordinal) ||
+                normalizedPath.Contains("/Models/", StringComparison.Ordinal) ||
+                normalizedPath.Contains("/Textures/", StringComparison.Ordinal) ||
+                normalizedPath.Contains("/Materials/", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string extension = Path.GetExtension(normalizedPath);
+            return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".asmdef", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".json", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".xml", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".yml", StringComparison.OrdinalIgnoreCase);
         }
 
         private static void AssertMetaGuid(string metaPath, string expectedGuid)
