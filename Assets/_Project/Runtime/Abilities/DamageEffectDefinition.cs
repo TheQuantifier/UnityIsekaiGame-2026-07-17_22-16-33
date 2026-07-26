@@ -46,7 +46,9 @@ namespace UnityIsekaiGame.Abilities
                 return EffectExecutionResult.Failure(EffectExecutionStatus.UnsupportedTarget, $"{DisplayName} requires a source with attack power.");
             }
 
-            return CanUseDamagePipeline(in context) || context.Target.GetComponentInParent<IDamageable>() != null
+            return CanUseDamagePipeline(in context)
+                || SceneCombatDamageBridge.CanUseCurrentResourcePipeline(context.Target, new DamageInfo(baseAmount, context.Source, context.TargetPosition, context.Direction, damageType, CreateDamagePacket(in context, out _)))
+                || context.Target.GetComponentInParent<IDamageable>() != null
                 ? EffectExecutionResult.Success($"{DisplayName} can damage target.")
                 : EffectExecutionResult.Failure(EffectExecutionStatus.UnsupportedTarget, $"{context.Target.name} cannot take damage.");
         }
@@ -66,7 +68,11 @@ namespace UnityIsekaiGame.Abilities
 
             DamagePacket packet = CreateDamagePacket(in context, out float amount);
             DamageInfo damageInfo = new DamageInfo(amount, context.Source, context.TargetPosition, context.Direction, damageType, packet);
-            DamageResult damageResult = context.Target.GetComponentInParent<IDamageable>().ApplyDamage(in damageInfo);
+            DamageResult damageResult = SceneCombatDamageBridge.ApplyDamage(
+                context.Target,
+                in damageInfo,
+                $"ability-effect.{Id}",
+                DisplayName);
             return damageResult.Applied
                 ? EffectExecutionResult.Success(damageResult.Message, damageResult.AppliedAmount)
                 : EffectExecutionResult.Failure(EffectExecutionStatus.BlockedOrImmune, damageResult.Message);

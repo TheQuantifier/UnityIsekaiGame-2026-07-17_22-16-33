@@ -83,7 +83,7 @@ namespace UnityIsekaiGame.Combat
                 damageable = target.GetComponentInChildren<IDamageable>();
             }
 
-            if (damageable == null)
+            if (damageable == null && target.GetComponentInParent<UnityIsekaiGame.ResourceSystem.CharacterResourceCollection>() == null)
             {
                 return Resolve(DamageResult.Failure(damage, "Enemy target is not damageable."));
             }
@@ -96,7 +96,11 @@ namespace UnityIsekaiGame.Combat
                 : new DamageComponent(damageType, preMitigationDamage, attackPowerScaling);
             DamagePacket packet = DamagePacket.Single(gameObject, component);
             DamageInfo damageInfo = new DamageInfo(preMitigationDamage, gameObject, target.position, direction, DamageType.Physical, packet);
-            DamageResult result = damageable.ApplyDamage(in damageInfo);
+            DamageResult result = SceneCombatDamageBridge.ApplyDamage(
+                target.gameObject,
+                in damageInfo,
+                $"enemy-melee.{name}",
+                $"{name} melee attack");
             Debug.Log(result.Applied ? $"{name} attacked {target.name} for {result.AppliedAmount:0.#} damage." : result.Message);
             return Resolve(result);
         }

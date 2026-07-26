@@ -79,6 +79,7 @@ namespace UnityIsekaiGame.Development
 
         private void OnDisable()
         {
+            PrototypeTestLabServiceLocator.Unregister(service);
             service?.UnregisterAutomationHost();
             if (menuView != null && registered)
             {
@@ -93,6 +94,7 @@ namespace UnityIsekaiGame.Development
             ResolveMenuReferences();
 
             service ??= new PrototypeTestLabService();
+            PrototypeTestLabServiceLocator.Register(service);
             if (context != null && context.ContentRoot != null)
             {
                 testLabView = context.ContentRoot.GetComponent<PrototypeTestLabView>();
@@ -126,6 +128,7 @@ namespace UnityIsekaiGame.Development
 
         public void Dispose()
         {
+            PrototypeTestLabServiceLocator.Unregister(service);
             service?.UnregisterAutomationHost();
         }
 
@@ -149,69 +152,8 @@ namespace UnityIsekaiGame.Development
                 return;
             }
 
-            DefinitionCatalog catalog = menuController.RuntimeDefinitionCatalog;
-            PrototypePersistenceServiceBehaviour persistence = menuController.ResolveRuntimePersistence();
-            EnemyHealth enemyHealth = Object.FindAnyObjectByType<EnemyHealth>();
-            Transform playerTransform = menuController.ItemUser == null
-                ? menuController.Inventory == null ? null : menuController.Inventory.transform
-                : menuController.ItemUser.transform;
-            Transform enemyTransform = enemyHealth == null ? null : enemyHealth.transform;
-            CombatStateService combatState = playerTransform == null ? Object.FindAnyObjectByType<CombatStateService>() : playerTransform.GetComponentInParent<CombatStateService>(includeInactive: true);
-            if (combatState == null && playerTransform != null && playerTransform.gameObject.activeInHierarchy)
-            {
-                combatState = playerTransform.gameObject.AddComponent<CombatStateService>();
-            }
-
-            OngoingEffectService playerOngoingEffects = playerTransform == null ? null : playerTransform.GetComponent<OngoingEffectService>() ?? playerTransform.GetComponentInParent<OngoingEffectService>(includeInactive: true);
-            if (playerOngoingEffects == null && playerTransform != null && playerTransform.gameObject.activeInHierarchy)
-            {
-                playerOngoingEffects = playerTransform.gameObject.AddComponent<OngoingEffectService>();
-            }
-
-            OngoingEffectService enemyOngoingEffects = enemyTransform == null ? null : enemyTransform.GetComponent<OngoingEffectService>() ?? enemyTransform.GetComponentInParent<OngoingEffectService>(includeInactive: true);
-            if (enemyOngoingEffects == null && enemyTransform != null && enemyTransform.gameObject.activeInHierarchy)
-            {
-                enemyOngoingEffects = enemyTransform.gameObject.AddComponent<OngoingEffectService>();
-            }
-
-            service.Configure(new PrototypeTestLabContext
-            {
-                DefinitionCatalog = catalog,
-                Inventory = menuController.Inventory,
-                Equipment = menuController.Equipment,
-                PlayerStats = menuController.PlayerStats,
-                PlayerHealth = menuController.PlayerHealth,
-                PlayerMana = menuController.PlayerMana,
-                PlayerStamina = menuController.PlayerStamina,
-                PlayerAttributes = menuController.PlayerStats == null ? null : menuController.PlayerStats.CharacterAttributes,
-                PlayerCalculatedStats = menuController.PlayerStats == null ? null : menuController.PlayerStats.CalculatedStats,
-                PlayerResources = playerTransform == null ? null : playerTransform.GetComponentInParent<CharacterResourceCollection>(),
-                PlayerLifecycle = playerTransform == null ? null : playerTransform.GetComponentInParent<ActorLifecycleController>(),
-                CombatState = combatState,
-                PlayerOngoingEffects = playerOngoingEffects,
-                PlayerSkills = menuController.RuntimeSkills,
-                PlayerTraits = menuController.RuntimeTraits,
-                PlayerKnowledge = playerTransform == null ? null : playerTransform.GetComponentInParent<PersonKnowledgeRuntime>(),
-                InformationAccess = persistence?.InformationAccess,
-                KnowledgeRecords = persistence?.KnowledgeRecords,
-                CharacterSystem = menuController.RuntimeCharacterSystem,
-                PlayerStatuses = menuController.StatusEffects,
-                IdentityProgression = menuController.IdentityProgression,
-                Spellcaster = playerTransform == null ? null : playerTransform.GetComponentInParent<PlayerSpellcaster>(),
-                SpellLoadout = menuController.SpellLoadout,
-                QuestLog = menuController.QuestLog,
-                ContractJournal = menuController.ContractJournal,
-                TestController = Object.FindAnyObjectByType<PrototypeTestController>(),
-                Persistence = persistence,
-                PlayerTransform = playerTransform,
-                EnemyHealth = enemyHealth,
-                EnemyController = enemyTransform == null ? null : enemyTransform.GetComponent<PrototypeEnemyController>(),
-                EnemyAttack = enemyTransform == null ? null : enemyTransform.GetComponent<EnemyMeleeAttack>(),
-                EnemyLifecycle = enemyTransform == null ? null : enemyTransform.GetComponent<ActorLifecycleController>(),
-                EnemyOngoingEffects = enemyOngoingEffects,
-                EnemyStatuses = enemyTransform == null ? null : enemyTransform.GetComponent<StatusEffectController>(),
-                EnemyTransform = enemyTransform
-            });
+            service.Configure(PrototypeTestLabSceneContextResolver.Resolve(menuController));
+            PrototypeTestLabServiceLocator.Register(service);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
@@ -10,36 +10,51 @@ namespace UnityIsekaiGame.Tests
         private const string ScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
 
         [Test]
-        public void PrototypeSceneContainsRequiredUsabilityZones()
+        public void PrototypeSceneKeepsOnlyMenuAndTestingShell()
         {
             string scene = File.ReadAllText(ScenePath);
 
-            AssertSceneContains(scene, "Sign - Central Hub");
-            AssertSceneContains(scene, "Zone - Inventory and Items");
-            AssertSceneContains(scene, "Zone - Equipment");
-            AssertSceneContains(scene, "Zone - Combat");
-            AssertSceneContains(scene, "Zone - Magic and Status");
-            AssertSceneContains(scene, "Zone - Dialogue and Quests");
-            AssertSceneContains(scene, "Zone - Contracts");
-            AssertSceneContains(scene, "Zone - Investigation Area");
-            AssertSceneContains(scene, "Zone - Persistence and Test Lab");
-            AssertSceneContains(scene, "Prototype Layout Collision Floor");
-        }
+            AssertSceneContains(scene, "EventSystem");
+            AssertSceneContains(scene, "HUD Canvas");
+            AssertSceneContains(scene, "Inventory Canvas");
+            AssertSceneContains(scene, "Interaction Prompt Canvas");
+            AssertSceneContains(scene, "PrototypeScene");
+            AssertSceneContains(scene, "Environment");
+            AssertSceneContains(scene, "Ground");
+            AssertSceneContains(scene, "Boundaries");
+            AssertSceneContains(scene, "Lighting");
+            AssertSceneContains(scene, "Landmarks");
+            AssertSceneContains(scene, "Player");
+            AssertSceneContains(scene, "Prototype Player");
+            AssertSceneContains(scene, "Spawn Points");
+            AssertSceneContains(scene, "Prototype Player Spawn");
+            AssertSceneContains(scene, "Gameplay");
+            AssertSceneContains(scene, "Items");
+            AssertSceneContains(scene, "Combat");
+            AssertSceneContains(scene, "NPCs");
+            AssertSceneContains(scene, "Quests");
+            AssertSceneContains(scene, "Knowledge");
+            AssertSceneContains(scene, "Biology");
+            AssertSceneContains(scene, "UI");
+            AssertSceneContains(scene, "Test Infrastructure");
+            AssertSceneContains(scene, "Prototype Persistence Service");
+            AssertSceneContains(scene, "Ground - Main Prototype");
+            Assert.That(scene, Does.Contain("guid: e3dc3f70f41944be9ee51eac14956a39"), "Ground should use PrototypeGround material.");
 
-        [Test]
-        public void PrototypeSceneContainsRequiredPickupGroups()
-        {
-            string scene = File.ReadAllText(ScenePath);
-
-            AssertSceneContains(scene, "Pickup - Health Potion Single A");
-            AssertSceneContains(scene, "Pickup - Health Potion Bundle");
-            AssertSceneContains(scene, "Pickup - Health Potion Full Inventory Set");
-            AssertSceneContains(scene, "Pickup - Prototype Iron Ore A");
-            AssertSceneContains(scene, "Pickup - Prototype Iron Ore Stack");
-            AssertSceneContains(scene, "Pickup - Prototype Sword Instance A");
-            AssertSceneContains(scene, "Pickup - Prototype Sword Instance B");
-            AssertSceneContains(scene, "Pickup - Prototype Helmet Instance A");
-            AssertSceneContains(scene, "Pickup - Prototype Helmet Instance B");
+            AssertSceneDoesNotContain(scene, "Prototype Ground");
+            AssertSceneDoesNotContain(scene, "Prototype Systems World");
+            AssertSceneDoesNotContain(scene, "Systems World Safety Floor");
+            AssertSceneDoesNotContain(scene, "Hub - Systems World");
+            AssertSceneDoesNotContain(scene, "Zone - ");
+            AssertSceneDoesNotContain(scene, "Pickup - ");
+            AssertSceneDoesNotContain(scene, "Prototype Enemy");
+            AssertSceneDoesNotContain(scene, "Prototype Damage Dummy");
+            AssertSceneDoesNotContain(scene, "Prototype Dialogue NPC");
+            AssertSceneDoesNotContain(scene, "Prototype Quest Investigation Area");
+            AssertSceneDoesNotContain(scene, "Prototype Contract Board");
+            AssertSceneDoesNotContain(scene, "Prototype Delivery Crate");
+            AssertSceneDoesNotContain(scene, "Status Applicator - ");
+            AssertSceneDoesNotContain(scene, "Sign - ");
         }
 
         [Test]
@@ -76,6 +91,11 @@ namespace UnityIsekaiGame.Tests
         private static void AssertSceneContains(string scene, string expectedName)
         {
             Assert.That(scene, Does.Contain($"m_Name: {expectedName}"), expectedName);
+        }
+
+        private static void AssertSceneDoesNotContain(string scene, string removedName)
+        {
+            Assert.That(scene, Does.Not.Contain($"m_Name: {removedName}"), removedName);
         }
     }
 }

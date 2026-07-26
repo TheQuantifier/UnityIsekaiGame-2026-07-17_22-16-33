@@ -96,6 +96,17 @@ namespace UnityIsekaiGame.Combat
                 damageInfo.DamagePacket,
                 GetConfiguredDefense(),
                 GetComponentInParent<IDamageResistanceReceiver>());
+            if (UseResourceRuntime && SceneCombatDamageBridge.TryApplyCurrentResourceDamage(gameObject, in damageInfo, "enemy-health.compat", "Legacy damage endpoint bridge", out DamageResult pipelineResult))
+            {
+                if (pipelineResult.Defeated)
+                {
+                    MarkDefeated();
+                }
+
+                Debug.Log(pipelineResult.Message);
+                return pipelineResult;
+            }
+
             float previousHealth = CurrentHealth;
             float changedAmount;
             float resultingHealth;

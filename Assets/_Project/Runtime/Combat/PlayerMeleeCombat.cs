@@ -136,7 +136,7 @@ namespace UnityIsekaiGame.Combat
                 }
 
                 IDamageable damageable = hit.collider.GetComponentInParent<IDamageable>();
-                if (damageable == null)
+                if (damageable == null && hit.collider.GetComponentInParent<UnityIsekaiGame.ResourceSystem.CharacterResourceCollection>() == null)
                 {
                     continue;
                 }
@@ -147,7 +147,11 @@ namespace UnityIsekaiGame.Combat
                     : new DamageComponent(weapon.DamageType, damageAmount, AttackPowerScalingPolicy.AddSourceAttackPower);
                 DamagePacket packet = DamagePacket.Single(gameObject, component);
                 DamageInfo damageInfo = new DamageInfo(damageAmount, gameObject, hit.point, hitDirection, DamageType.Physical, packet);
-                DamageResult damageResult = damageable.ApplyDamage(in damageInfo);
+                DamageResult damageResult = SceneCombatDamageBridge.ApplyDamage(
+                    hit.collider.gameObject,
+                    in damageInfo,
+                    $"player-melee.{weapon.AttackName}",
+                    weapon.AttackName);
                 string message = damageResult.Applied
                     ? $"{weapon.AttackName} hit {hit.collider.name} for {damageResult.AppliedAmount:0.#} damage."
                     : damageResult.Message;

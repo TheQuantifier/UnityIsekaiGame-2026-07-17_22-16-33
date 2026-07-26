@@ -122,7 +122,11 @@ namespace UnityIsekaiGame.Magic
                     : new DamageComponent(directDamageType, baseDamage);
                 DamagePacket packet = DamagePacket.Single(caster, component);
                 DamageInfo damageInfo = new DamageInfo(baseDamage, caster, hit.point, hitDirection, DamageType.Magic, packet);
-                DamageResult damageResult = damageable.ApplyDamage(in damageInfo);
+                DamageResult damageResult = SceneCombatDamageBridge.ApplyDamage(
+                    hit.collider.gameObject,
+                    in damageInfo,
+                    "spell-projectile.direct",
+                    "Spell projectile impact");
                 Debug.Log(damageResult.Applied ? $"Spell hit for {damageResult.AppliedAmount:0.#} damage." : damageResult.Message);
             }
 
