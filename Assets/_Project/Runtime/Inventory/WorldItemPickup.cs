@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.Inventory.Durability;
+using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Interaction;
 
@@ -89,16 +91,50 @@ namespace UnityIsekaiGame.Inventory
 
         private bool TryCollectSceneAuthoredInstance(in InteractionContext context, PlayerInventory inventory)
         {
-            WorldItemQualityAffixPreset preset = GetComponent<WorldItemQualityAffixPreset>();
-            if (preset == null || quantity != 1)
+            WorldItemQualityAffixPreset qualityPreset = GetComponent<WorldItemQualityAffixPreset>();
+            WorldItemDurabilityPreset durabilityPreset = GetComponent<WorldItemDurabilityPreset>();
+            if ((qualityPreset == null && durabilityPreset == null) || quantity != 1)
             {
                 return false;
             }
 
-            IItemQualityAffixRuntimeProvider provider = FindQualityProvider(context.Interactor);
-            if (!preset.TryPreparePickupInstance(item, provider, out string itemInstanceId, out string failureReason))
+            IItemDurabilityRuntimeProvider provider = FindItemRuntimeProvider(context.Interactor);
+            if (provider == null)
             {
+                Debug.LogWarning($"{name} could not prepare scene-authored item instance because no item runtime provider was found.");
+                return false;
+            }
+
+            ItemInstanceRuntimeSaveData identityRollback = provider.ItemIdentities?.CreateSaveData();
+            ItemQualityAffixRuntimeSaveData qualityRollback = provider.ItemQualityAffixes?.CreateSaveData();
+            ItemDurabilityRuntimeSaveData durabilityRollback = provider.ItemDurability?.CreateSaveData();
+            string itemInstanceId = string.Empty;
+            if (qualityPreset != null && !qualityPreset.TryPreparePickupInstance(item, provider, out itemInstanceId, out string failureReason))
+            {
+                RestorePickupRollback(provider, identityRollback, qualityRollback, durabilityRollback);
                 Debug.LogWarning($"{name} could not prepare scene-authored item quality: {failureReason}");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(itemInstanceId) && qualityPreset == null)
+            {
+                itemInstanceId = ResolveSceneAuthoredItemInstanceId();
+                if (!provider.ItemIdentities.TryGetSnapshot(itemInstanceId, out _))
+                {
+                    ItemInstanceOperationResult create = provider.ItemIdentities.CreateItem(item, ItemInstanceClassification.WorldFixture, itemInstanceId, creationSourceId: $"scene-authored.pickup.{name}");
+                    if (!create.Succeeded)
+                    {
+                        RestorePickupRollback(provider, identityRollback, qualityRollback, durabilityRollback);
+                        Debug.LogWarning($"{name} could not prepare scene-authored item identity: {create.Message}");
+                        return false;
+                    }
+                }
+            }
+
+            if (durabilityPreset != null && !durabilityPreset.TryPreparePickupInstance(item, provider, itemInstanceId, out string durabilityFailure))
+            {
+                RestorePickupRollback(provider, identityRollback, qualityRollback, durabilityRollback);
+                Debug.LogWarning($"{name} could not prepare scene-authored item durability: {durabilityFailure}");
                 return false;
             }
 
@@ -123,17 +159,17 @@ namespace UnityIsekaiGame.Inventory
             return true;
         }
 
-        private static IItemQualityAffixRuntimeProvider FindQualityProvider(GameObject interactor)
+        private static IItemDurabilityRuntimeProvider FindItemRuntimeProvider(GameObject interactor)
         {
             if (interactor != null)
             {
-                IItemQualityAffixRuntimeProvider provider = interactor.GetComponentInParent<IItemQualityAffixRuntimeProvider>();
+                IItemDurabilityRuntimeProvider provider = interactor.GetComponentInParent<IItemDurabilityRuntimeProvider>();
                 if (provider != null)
                 {
                     return provider;
                 }
 
-                provider = interactor.GetComponentInChildren<IItemQualityAffixRuntimeProvider>();
+                provider = interactor.GetComponentInChildren<IItemDurabilityRuntimeProvider>();
                 if (provider != null)
                 {
                     return provider;
@@ -143,13 +179,33 @@ namespace UnityIsekaiGame.Inventory
             MonoBehaviour[] behaviours = Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include);
             for (int i = 0; i < behaviours.Length; i++)
             {
-                if (behaviours[i] is IItemQualityAffixRuntimeProvider found)
+                if (behaviours[i] is IItemDurabilityRuntimeProvider found)
                 {
                     return found;
                 }
             }
 
             return null;
+        }
+
+        private string ResolveSceneAuthoredItemInstanceId()
+        {
+            string itemId = item == null ? "item.unknown" : item.Id;
+            string stable = $"{gameObject.scene.name}.{transform.GetSiblingIndex()}.{name}.{itemId}";
+            using System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create();
+            byte[] hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(stable));
+            return new System.Guid(hash).ToString("D");
+        }
+
+        private static void RestorePickupRollback(
+            IItemDurabilityRuntimeProvider provider,
+            ItemInstanceRuntimeSaveData identityRollback,
+            ItemQualityAffixRuntimeSaveData qualityRollback,
+            ItemDurabilityRuntimeSaveData durabilityRollback)
+        {
+            provider?.ItemDurability?.RestoreFromSaveData(durabilityRollback, provider.ItemDurabilityDefinitionRegistry, provider.ItemIdentities, provider.ItemCompositions);
+            provider?.ItemQualityAffixes?.RestoreFromSaveData(qualityRollback, provider.ItemQualityDefinitionRegistry, provider.ItemIdentities);
+            provider?.ItemIdentities?.RestoreFromSaveData(identityRollback, provider.ItemDurabilityDefinitionRegistry);
         }
 
         private void CompletePickup()

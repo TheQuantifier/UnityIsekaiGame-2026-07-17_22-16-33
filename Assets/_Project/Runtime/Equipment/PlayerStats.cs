@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Stats;
 
@@ -16,6 +17,7 @@ namespace UnityIsekaiGame.Equipment
 
         private readonly HashSet<StatModifierSource> appliedAffixModifierSources = new HashSet<StatModifierSource>();
         private IItemQualityAffixRuntimeProvider qualityAffixProvider;
+        private IItemDurabilityRuntimeProvider durabilityProvider;
 
         private void Reset()
         {
@@ -50,11 +52,13 @@ namespace UnityIsekaiGame.Equipment
             }
 
             SubscribeQualityAffixRuntime();
+            SubscribeDurabilityRuntime();
         }
 
         protected override void OnDisable()
         {
             UnsubscribeQualityAffixRuntime();
+            UnsubscribeDurabilityRuntime();
 
             if (equipment != null)
             {
@@ -71,6 +75,16 @@ namespace UnityIsekaiGame.Equipment
         }
 
         private void OnAffixStateChanged(string itemInstanceId)
+        {
+            RefreshIfEquipped(itemInstanceId);
+        }
+
+        private void OnDurabilityStateChanged(string itemInstanceId)
+        {
+            RefreshIfEquipped(itemInstanceId);
+        }
+
+        private void RefreshIfEquipped(string itemInstanceId)
         {
             if (equipment == null || string.IsNullOrWhiteSpace(itemInstanceId))
             {
@@ -137,14 +151,24 @@ namespace UnityIsekaiGame.Equipment
 
         private void RegisterEquipmentModifiers(EquipmentSlotState slot)
         {
+            float durabilityFactor = GetDurabilityContributionFactor(slot);
+            if (durabilityFactor <= 0f)
+            {
+                return;
+            }
+
             StatModifierSource source = CreateEquipmentSource(slot.SlotType);
             StatModifiers modifiers = slot.Item.Equipment.StatModifiers;
-            AddFlatEquipmentModifier(source, StatType.MaximumHealth, modifiers.MaximumHealth);
-            AddFlatEquipmentModifier(source, StatType.MaximumStamina, modifiers.MaximumStamina);
-            AddFlatEquipmentModifier(source, StatType.MaximumMana, modifiers.MaximumMana);
-            AddFlatEquipmentModifier(source, StatType.AttackPower, modifiers.AttackPower);
-            AddFlatEquipmentModifier(source, StatType.Defense, modifiers.Defense);
-            RegisterEquipmentResistanceModifiers(source, slot.Item.Equipment.ResistanceModifiers);
+            AddFlatEquipmentModifier(source, StatType.MaximumHealth, modifiers.MaximumHealth * durabilityFactor);
+            AddFlatEquipmentModifier(source, StatType.MaximumStamina, modifiers.MaximumStamina * durabilityFactor);
+            AddFlatEquipmentModifier(source, StatType.MaximumMana, modifiers.MaximumMana * durabilityFactor);
+            AddFlatEquipmentModifier(source, StatType.AttackPower, modifiers.AttackPower * durabilityFactor);
+            AddFlatEquipmentModifier(source, StatType.Defense, modifiers.Defense * durabilityFactor);
+            if (durabilityFactor >= 0.999f)
+            {
+                RegisterEquipmentResistanceModifiers(source, slot.Item.Equipment.ResistanceModifiers);
+            }
+
             RegisterAffixModifiers(slot);
         }
 
@@ -223,7 +247,9 @@ namespace UnityIsekaiGame.Equipment
             if (itemQualityAffixRuntimeProvider is IItemQualityAffixRuntimeProvider configured)
             {
                 qualityAffixProvider = configured;
+                durabilityProvider = configured as IItemDurabilityRuntimeProvider;
                 SubscribeQualityAffixRuntime();
+                SubscribeDurabilityRuntime();
                 return qualityAffixProvider;
             }
 
@@ -239,6 +265,8 @@ namespace UnityIsekaiGame.Equipment
             }
 
             SubscribeQualityAffixRuntime();
+            durabilityProvider = qualityAffixProvider as IItemDurabilityRuntimeProvider;
+            SubscribeDurabilityRuntime();
             return qualityAffixProvider;
         }
 
@@ -261,6 +289,40 @@ namespace UnityIsekaiGame.Equipment
             {
                 runtime.ItemAffixStateChanged -= OnAffixStateChanged;
             }
+        }
+
+        private void SubscribeDurabilityRuntime()
+        {
+            IItemDurabilityRuntimeProvider provider = durabilityProvider ?? qualityAffixProvider as IItemDurabilityRuntimeProvider;
+            ItemDurabilityRuntime runtime = provider?.ItemDurability;
+            if (runtime == null)
+            {
+                return;
+            }
+
+            durabilityProvider = provider;
+            runtime.ItemDurabilityStateChanged -= OnDurabilityStateChanged;
+            runtime.ItemDurabilityStateChanged += OnDurabilityStateChanged;
+        }
+
+        private void UnsubscribeDurabilityRuntime()
+        {
+            ItemDurabilityRuntime runtime = durabilityProvider?.ItemDurability;
+            if (runtime != null)
+            {
+                runtime.ItemDurabilityStateChanged -= OnDurabilityStateChanged;
+            }
+        }
+
+        private float GetDurabilityContributionFactor(EquipmentSlotState slot)
+        {
+            if (slot == null || string.IsNullOrWhiteSpace(slot.ItemInstanceId))
+            {
+                return 1f;
+            }
+
+            IItemDurabilityRuntimeProvider provider = durabilityProvider ?? ResolveQualityAffixProvider() as IItemDurabilityRuntimeProvider;
+            return Mathf.Clamp01(provider?.ItemDurability?.GetEquipmentContributionFactor(slot.ItemInstanceId) ?? 1f);
         }
     }
 }

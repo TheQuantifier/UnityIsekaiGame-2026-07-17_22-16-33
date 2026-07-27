@@ -6,6 +6,7 @@ using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Composition;
+using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Knowledge.Access;
@@ -29,6 +30,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildItemIdentitySuite());
             TryRegister(registry, BuildMaterialsCompositionSuite());
             TryRegister(registry, BuildQualityAffixSuite());
+            TryRegister(registry, BuildDurabilitySuite());
         }
 
         private static ITestLabAutomationSuite BuildItemIdentitySuite()
@@ -91,6 +93,24 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("step9-quality-modifiers", "Apply source-safe affix modifier", AffixModifierContribution)),
                 Scenario("persistence-and-migration", "Feature 9.1/9.2 items migrate without rerolling affixes", 60,
                     Step("step9-quality-persistence", "Save and restore quality and affixes", QualityPersistenceAndMigration)));
+        }
+
+        private static ITestLabAutomationSuite BuildDurabilitySuite()
+        {
+            return Suite("feature.9.4.durability-wear-repair-salvage", "Feature 9.4 Durability Wear Repair and Salvage", "9.4", 940,
+                Required("ItemDurabilityRuntime", "ItemInstanceIdentityRuntime", "ItemCompositionRuntime", "ItemQualityAffixRuntime"),
+                Scenario("condition-migration-defaults", "Identity condition migrates into authoritative durability", 10,
+                    Step("step9-durability-migration", "Migrate legacy condition", DurabilityMigration)),
+                Scenario("damage-and-components", "Damage applies to items and components deterministically", 20,
+                    Step("step9-durability-damage", "Apply component damage", DurabilityDamage)),
+                Scenario("repair-capacity-loss", "Repair restores durability with permanent capacity loss", 30,
+                    Step("step9-durability-repair", "Repair damaged item", DurabilityRepair)),
+                Scenario("salvage-and-persistence", "Salvage outputs and persistence remain deterministic", 40,
+                    Step("step9-durability-salvage-save", "Salvage and restore durability", DurabilitySalvagePersistence)),
+                Scenario("projection-and-stack", "Durability projections redact details and block unsafe stacks", 50,
+                    Step("step9-durability-project-stack", "Project and compare stack signatures", DurabilityProjectionStack)),
+                Scenario("broken-equipment-contribution", "Broken equipped items do not contribute stats", 60,
+                    Step("step9-durability-equipment", "Gate equipment stat contribution", DurabilityEquipmentContribution)));
         }
 
         private static TestLabAutomationStepResult DistinctInstances(TestLabAutomationContext context)
@@ -689,6 +709,138 @@ namespace UnityIsekaiGame.Development.Automation
                 : Fail(context, "step9-quality-persistence", $"Migrated={migrated.Status} Affix={affix.Status} Restore={restore.Status} Count={restored.GetAffixesForItem(legacy).Count} Corrupt={corruptRejected}");
         }
 
+        private static TestLabAutomationStepResult DurabilityMigration(TestLabAutomationContext context)
+        {
+            if (!TryCreateDurabilityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out ItemDurabilityRuntime durability, out DefinitionRegistry registry, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-durability-migration", failure);
+            }
+
+            string item = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "durability-migration"), creationSourceId: "feature.9.1").Snapshot.ItemInstanceId;
+            itemRuntime.SetCondition(item, ItemConditionState.Damaged, 0.42f, "legacy.condition", "migration-test");
+            compositions.SetComposition(itemRuntime, registry, Composition(item, "material.prototype.iron"));
+            ItemDurabilityOperationResult ensured = durability.EnsureDefaultDurability(itemRuntime, compositions, quality, registry, item);
+            bool valid = ensured.Succeeded
+                && ensured.Snapshot.ConditionCategory == ItemDurabilityConditionCategory.Damaged
+                && ensured.Snapshot.Data.source == ItemDurabilityRecordSource.Migration
+                && ensured.Snapshot.Data.relatedItemRevision > 0L;
+            return valid
+                ? Pass(context, "step9-durability-migration", $"Condition={ensured.Snapshot.ConditionCategory} Current={ensured.Snapshot.CurrentDurability:0.###}/{ensured.Snapshot.MaximumDurability:0.###}")
+                : Fail(context, "step9-durability-migration", $"Ensure={ensured.Status}:{ensured.Message} Condition={ensured.Snapshot?.ConditionCategory}");
+        }
+
+        private static TestLabAutomationStepResult DurabilityDamage(TestLabAutomationContext context)
+        {
+            if (!TryCreateDurabilityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out ItemDurabilityRuntime durability, out DefinitionRegistry registry, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-durability-damage", failure);
+            }
+
+            string item = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "durability-damage");
+            durability.EnsureDefaultDurability(itemRuntime, compositions, quality, registry, item);
+            ItemDurabilityOperationResult preview = durability.ApplyDamage(itemRuntime, compositions, quality, registry, item, 30f, ItemDamageChannel.Impact, "component.blade", "preview", preview: true);
+            ItemDurabilityOperationResult apply = durability.ApplyDamage(itemRuntime, compositions, quality, registry, item, 30f, ItemDamageChannel.Impact, "component.blade", "impact");
+            ItemDurabilityOperationResult componentMissing = durability.ApplyDamage(itemRuntime, compositions, quality, registry, item, 1f, ItemDamageChannel.Impact, "component.missing", "bad");
+            bool valid = preview.Preview
+                && apply.Succeeded
+                && !componentMissing.Succeeded
+                && apply.Snapshot.Data.damageChannels.Any(channel => channel.channel == ItemDamageChannel.Impact && channel.accumulatedDamage >= 30f)
+                && apply.Snapshot.Components.Any(component => component.componentEntryId == "component.blade" && component.currentDurability < component.maximumDurability);
+            return valid
+                ? Pass(context, "step9-durability-damage", $"Preview={preview.Status} Apply={apply.Status} Component={apply.Snapshot.Components[0].functionalState}")
+                : Fail(context, "step9-durability-damage", $"Preview={preview.Status}:{preview.Message} Apply={apply.Status}:{apply.Message} Missing={componentMissing.Status}:{componentMissing.Message}");
+        }
+
+        private static TestLabAutomationStepResult DurabilityRepair(TestLabAutomationContext context)
+        {
+            if (!TryCreateDurabilityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out ItemDurabilityRuntime durability, out DefinitionRegistry registry, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-durability-repair", failure);
+            }
+
+            string item = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "durability-repair");
+            ItemDurabilityOperationResult damaged = durability.ApplyDamage(itemRuntime, compositions, quality, registry, item, 70f, ItemDamageChannel.Cutting, "component.blade", "damage", permanent: true);
+            float before = damaged.Snapshot.CurrentDurability;
+            ItemDurabilityOperationResult repaired = durability.Repair(itemRuntime, compositions, quality, registry, item, 35f, ItemRepairQuality.Adequate, "component.blade", "repair.test", "person.smith", "repair");
+            bool valid = repaired.Succeeded
+                && repaired.Snapshot.CurrentDurability > before
+                && repaired.Snapshot.Data.maximumDurability < repaired.Snapshot.Data.originalMaximumDurability
+                && repaired.Snapshot.Data.repairHistory.Any(record => record.repairId == "repair.test");
+            return valid
+                ? Pass(context, "step9-durability-repair", $"Before={before:0.###} After={repaired.Snapshot.CurrentDurability:0.###} Max={repaired.Snapshot.MaximumDurability:0.###}/{repaired.Snapshot.Data.originalMaximumDurability:0.###}")
+                : Fail(context, "step9-durability-repair", $"Damaged={damaged.Status}:{damaged.Message} Repaired={repaired.Status}:{repaired.Message}");
+        }
+
+        private static TestLabAutomationStepResult DurabilitySalvagePersistence(TestLabAutomationContext context)
+        {
+            if (!TryCreateDurabilityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out ItemDurabilityRuntime durability, out DefinitionRegistry registry, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-durability-salvage-save", failure);
+            }
+
+            string item = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "durability-salvage");
+            durability.ApplyDamage(itemRuntime, compositions, quality, registry, item, 999f, ItemDamageChannel.Crushing, "component.blade", "break");
+            ItemDurabilityOperationResult preview = durability.PreviewSalvage(item);
+            ItemDurabilityOperationResult salvage = durability.ExecuteSalvage(itemRuntime, compositions, quality, registry, item, "salvage");
+            ItemDurabilityRuntimeSaveData save = durability.CreateSaveData();
+            ItemDurabilityRuntime restored = new ItemDurabilityRuntime();
+            ItemDurabilityOperationResult restore = restored.RestoreFromSaveData(save, registry, itemRuntime, compositions);
+            ItemDurabilityRuntimeSaveData corrupt = save.Clone();
+            corrupt.records[0].itemInstanceId = RunGuid(context, "missing-durability-item");
+            bool corruptRejected = !ItemDurabilityRuntime.ValidateSaveData(corrupt, registry, itemRuntime, compositions, out _);
+            bool valid = preview.Preview
+                && preview.SalvageOutputs.Count > 0
+                && salvage.Succeeded
+                && salvage.Snapshot.Data.salvageState == ItemSalvageState.Salvaged
+                && restore.Succeeded
+                && restored.TryGetDurabilityForItem(item, out ItemDurabilitySnapshot restoredSnapshot)
+                && restoredSnapshot.Data.salvageOutputs.Count == salvage.SalvageOutputs.Count
+                && corruptRejected;
+            return valid
+                ? Pass(context, "step9-durability-salvage-save", $"Outputs={salvage.SalvageOutputs.Count} Restore={restore.Status} CorruptRejected={corruptRejected}")
+                : Fail(context, "step9-durability-salvage-save", $"Preview={preview.Status} Salvage={salvage.Status}:{salvage.Message} Restore={restore.Status}:{restore.Message} Corrupt={corruptRejected}");
+        }
+
+        private static TestLabAutomationStepResult DurabilityProjectionStack(TestLabAutomationContext context)
+        {
+            if (!TryCreateDurabilityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out ItemDurabilityRuntime durability, out DefinitionRegistry registry, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-durability-project-stack", failure);
+            }
+
+            string first = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "durability-stack-a");
+            string second = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "durability-stack-b");
+            durability.EnsureDefaultDurability(itemRuntime, compositions, quality, registry, first);
+            durability.EnsureDefaultDurability(itemRuntime, compositions, quality, registry, second);
+            bool stackSame = durability.CanShareDurabilityStack(first, second);
+            durability.ApplyDamage(itemRuntime, compositions, quality, registry, second, 50f, ItemDamageChannel.Cutting, "component.blade", "stack-different");
+            bool stackDifferent = !durability.CanShareDurabilityStack(first, second);
+            InformationAccessDecision decision = new InformationAccessDecision("person.viewer", ItemDurabilityInformationSubject.Create(first, $"item-durability.{first}", SwordId), InformationAccessMode.Inspect, InformationAccessDecisionKind.RedactedAccess, InformationAccessDenialCode.None, true, InformationResharingPolicy.NoResharing, Array.Empty<string>(), ItemDurabilityInformationSubject.ProtectedFields, Array.Empty<string>(), new[] { "policy.prototype.durability" }, 0d, "Redacted", "Test Lab redaction", false);
+            ItemDurabilityProjection projection = durability.Project(first, decision);
+            bool valid = stackSame && stackDifferent && projection.Redacted && projection.Snapshot.CreateInformationSubject().tags.Contains(ItemDurabilityInformationSubject.DurabilitySubjectTag);
+            return valid
+                ? Pass(context, "step9-durability-project-stack", $"StackSame={stackSame} StackDifferent={stackDifferent} Redacted={projection.Redacted}")
+                : Fail(context, "step9-durability-project-stack", $"StackSame={stackSame} StackDifferent={stackDifferent} Redacted={projection.Redacted}");
+        }
+
+        private static TestLabAutomationStepResult DurabilityEquipmentContribution(TestLabAutomationContext context)
+        {
+            if (!TryCreateDurabilityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out ItemDurabilityRuntime durability, out DefinitionRegistry registry, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-durability-equipment", failure);
+            }
+
+            string item = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "durability-equipped");
+            ItemDurabilityOperationResult healthy = durability.EnsureDefaultDurability(itemRuntime, compositions, quality, registry, item);
+            float healthyFactor = durability.GetEquipmentContributionFactor(item);
+            durability.ApplyDamage(itemRuntime, compositions, quality, registry, item, 999f, ItemDamageChannel.Impact, "component.blade", "break");
+            float brokenFactor = durability.GetEquipmentContributionFactor(item);
+            bool valid = healthy.Succeeded && Math.Abs(healthyFactor - 1f) < 0.001f && Math.Abs(brokenFactor) < 0.001f;
+            return valid
+                ? Pass(context, "step9-durability-equipment", $"Healthy={healthyFactor:0.###} Broken={brokenFactor:0.###}")
+                : Fail(context, "step9-durability-equipment", $"Healthy={healthy.Status}:{healthyFactor} Broken={brokenFactor}");
+        }
+
         private static bool TryCreateRuntime(TestLabAutomationContext context, out ItemInstanceIdentityRuntime runtime, out ItemDefinition sword, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.ItemInstances;
@@ -783,6 +935,40 @@ namespace UnityIsekaiGame.Development.Automation
             }
 
             registry = CreateQualityRegistry(context, out failure, out masterwork, out keen);
+            if (registry == null || !registry.TryGet(SwordId, out sword))
+            {
+                failure = string.IsNullOrWhiteSpace(failure) ? $"Item definition '{SwordId}' is missing." : failure;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryCreateDurabilityRuntime(
+            TestLabAutomationContext context,
+            out ItemInstanceIdentityRuntime itemRuntime,
+            out ItemCompositionRuntime compositions,
+            out ItemQualityAffixRuntime quality,
+            out ItemDurabilityRuntime durability,
+            out DefinitionRegistry registry,
+            out ItemDefinition sword,
+            out string failure)
+        {
+            itemRuntime = context?.ScenarioContext?.Runtimes?.ItemInstances;
+            compositions = context?.ScenarioContext?.Runtimes?.ItemCompositions;
+            quality = context?.ScenarioContext?.Runtimes?.ItemQualityAffixes;
+            durability = context?.ScenarioContext?.Runtimes?.ItemDurability;
+            sword = null;
+            registry = null;
+            failure = string.Empty;
+
+            if (itemRuntime == null || compositions == null || quality == null || durability == null)
+            {
+                failure = "Item identity, composition, quality, or durability runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            registry = CreateQualityRegistry(context, out failure, out _, out _);
             if (registry == null || !registry.TryGet(SwordId, out sword))
             {
                 failure = string.IsNullOrWhiteSpace(failure) ? $"Item definition '{SwordId}' is missing." : failure;

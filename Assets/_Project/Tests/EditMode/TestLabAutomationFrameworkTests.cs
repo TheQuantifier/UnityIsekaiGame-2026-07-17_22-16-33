@@ -1172,7 +1172,8 @@ namespace UnityIsekaiGame.Tests
                 "feature.8.10.knowledge-history-integration",
                 "feature.9.1.item-identity-instance-state",
                 "feature.9.2.materials-item-composition",
-                "feature.9.3.item-quality-affixes"
+                "feature.9.3.item-quality-affixes",
+                "feature.9.4.durability-wear-repair-salvage"
             }));
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
