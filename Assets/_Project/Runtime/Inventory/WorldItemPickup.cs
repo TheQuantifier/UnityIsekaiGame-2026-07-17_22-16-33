@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Interaction;
 
 namespace UnityIsekaiGame.Inventory
@@ -48,6 +49,11 @@ namespace UnityIsekaiGame.Inventory
                 return;
             }
 
+            if (TryCollectSceneAuthoredInstance(context, inventory))
+            {
+                return;
+            }
+
             InventoryAddResult result = inventory.AddItemOrInstances(item, quantity);
 
             if (result.AddedAll)
@@ -79,6 +85,71 @@ namespace UnityIsekaiGame.Inventory
 
             PlayerInventory inventory = interactor.GetComponentInParent<PlayerInventory>();
             return inventory != null ? inventory : interactor.GetComponentInChildren<PlayerInventory>();
+        }
+
+        private bool TryCollectSceneAuthoredInstance(in InteractionContext context, PlayerInventory inventory)
+        {
+            WorldItemQualityAffixPreset preset = GetComponent<WorldItemQualityAffixPreset>();
+            if (preset == null || quantity != 1)
+            {
+                return false;
+            }
+
+            IItemQualityAffixRuntimeProvider provider = FindQualityProvider(context.Interactor);
+            if (!preset.TryPreparePickupInstance(item, provider, out string itemInstanceId, out string failureReason))
+            {
+                Debug.LogWarning($"{name} could not prepare scene-authored item quality: {failureReason}");
+                return false;
+            }
+
+            if (!inventory.CanAddExistingItemIdentity(item, itemInstanceId))
+            {
+                Debug.Log($"Inventory full. {name} remains in the world with {quantity} x {item.ItemId}.");
+                PrototypeHudMessageBus.Show("Inventory full");
+                return true;
+            }
+
+            InventoryInstanceOperationResult result = inventory.AddExistingItemIdentity(item, itemInstanceId);
+            if (!result.Succeeded)
+            {
+                Debug.LogWarning($"{name} could not add scene-authored item instance '{itemInstanceId}' to inventory: {result.Message}");
+                PrototypeHudMessageBus.Show("Inventory full");
+                return true;
+            }
+
+            Debug.Log($"Collected scene-authored {item.ItemId} instance {itemInstanceId} from {name}.");
+            PrototypeHudMessageBus.Show($"Picked up {item.DisplayName}");
+            CompletePickup();
+            return true;
+        }
+
+        private static IItemQualityAffixRuntimeProvider FindQualityProvider(GameObject interactor)
+        {
+            if (interactor != null)
+            {
+                IItemQualityAffixRuntimeProvider provider = interactor.GetComponentInParent<IItemQualityAffixRuntimeProvider>();
+                if (provider != null)
+                {
+                    return provider;
+                }
+
+                provider = interactor.GetComponentInChildren<IItemQualityAffixRuntimeProvider>();
+                if (provider != null)
+                {
+                    return provider;
+                }
+            }
+
+            MonoBehaviour[] behaviours = Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include);
+            for (int i = 0; i < behaviours.Length; i++)
+            {
+                if (behaviours[i] is IItemQualityAffixRuntimeProvider found)
+                {
+                    return found;
+                }
+            }
+
+            return null;
         }
 
         private void CompletePickup()

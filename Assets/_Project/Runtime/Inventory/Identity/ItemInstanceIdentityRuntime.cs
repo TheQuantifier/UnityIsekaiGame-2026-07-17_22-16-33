@@ -241,6 +241,41 @@ namespace UnityIsekaiGame.Inventory.Identity
             return SetLocation(itemInstanceId, new ItemLocationStateData { kind = ItemLocationKind.Equipped, equipmentHolderId = equipmentHolderId, equipmentSlotId = slotId });
         }
 
+        public ItemInstanceOperationResult ReserveAsComponent(string itemInstanceId, string parentItemInstanceId, string componentEntryId)
+        {
+            if (string.IsNullOrWhiteSpace(parentItemInstanceId) || string.IsNullOrWhiteSpace(componentEntryId))
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.InvalidLocation, "Component reservation requires parent item and component entry IDs.");
+            }
+
+            if (string.Equals(itemInstanceId, parentItemInstanceId, StringComparison.Ordinal))
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.InvalidLocation, "An item cannot be reserved as a component of itself.");
+            }
+
+            return SetLocation(itemInstanceId, new ItemLocationStateData
+            {
+                kind = ItemLocationKind.ProductionReserved,
+                containerId = parentItemInstanceId,
+                transitId = componentEntryId
+            });
+        }
+
+        public ItemInstanceOperationResult ReleaseComponentToInventory(string itemInstanceId, string inventoryOwnerId)
+        {
+            if (string.IsNullOrWhiteSpace(inventoryOwnerId))
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.InvalidLocation, "Detached component inventory location requires an owner ID.");
+            }
+
+            return SetInventoryLocation(itemInstanceId, inventoryOwnerId);
+        }
+
+        public ItemInstanceOperationResult ReleaseComponentToWorld(string itemInstanceId, string placementId, string worldEntityId, string sceneKey)
+        {
+            return SetWorldPlacement(itemInstanceId, placementId, worldEntityId, sceneKey);
+        }
+
         public ItemInstanceOperationResult SetWorldPlacement(string itemInstanceId, string placementId, string worldEntityId, string sceneKey)
         {
             if (string.IsNullOrWhiteSpace(placementId) || string.IsNullOrWhiteSpace(worldEntityId))
@@ -669,7 +704,7 @@ namespace UnityIsekaiGame.Inventory.Identity
             }
 
             int populated = CountPopulated(location.containerId, location.inventoryOwnerId, location.equipmentHolderId, location.worldPlacementId, location.transitId);
-            if (populated > 1 && location.kind != ItemLocationKind.Equipped)
+            if (populated > 1 && location.kind != ItemLocationKind.Equipped && location.kind != ItemLocationKind.ProductionReserved)
             {
                 failureReason = "Item has multiple incompatible location references.";
                 return false;
@@ -684,6 +719,12 @@ namespace UnityIsekaiGame.Inventory.Identity
             if (location.kind == ItemLocationKind.WorldPlacement && (string.IsNullOrWhiteSpace(location.worldPlacementId) || string.IsNullOrWhiteSpace(location.worldEntityId)))
             {
                 failureReason = "World-placed item requires placement and world entity references.";
+                return false;
+            }
+
+            if (location.kind == ItemLocationKind.ProductionReserved && (string.IsNullOrWhiteSpace(location.containerId) || string.IsNullOrWhiteSpace(location.transitId)))
+            {
+                failureReason = "Component-reserved item location requires parent and component references.";
                 return false;
             }
 

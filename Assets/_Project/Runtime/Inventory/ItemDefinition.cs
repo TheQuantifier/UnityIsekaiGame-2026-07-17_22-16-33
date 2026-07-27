@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Inventory.Composition;
 
 namespace UnityIsekaiGame.Inventory
 {
@@ -22,6 +23,7 @@ namespace UnityIsekaiGame.Inventory
         [SerializeField, Min(1)] private int maximumStackSize = 1;
         [SerializeField] private ItemUseEffect[] useEffects;
         [SerializeField] private EquipmentData equipment;
+        [SerializeField] private ItemCompositionTemplateData defaultCompositionTemplate = new ItemCompositionTemplateData();
 
         public string ItemId => itemId;
         public string Id => itemId;
@@ -61,11 +63,13 @@ namespace UnityIsekaiGame.Inventory
         }
         public EquipmentData Equipment => equipment;
         public bool IsEquippable => equipment != null && equipment.Equippable;
+        public ItemCompositionTemplateData DefaultCompositionTemplate => defaultCompositionTemplate ?? new ItemCompositionTemplateData();
 
         private void OnValidate()
         {
             maximumStackSize = Mathf.Max(1, maximumStackSize);
             equipment?.Validate();
+            defaultCompositionTemplate ??= new ItemCompositionTemplateData();
         }
 
         public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
@@ -79,6 +83,8 @@ namespace UnityIsekaiGame.Inventory
             {
                 report.AddError($"Item definition '{DisplayName}' world pickup prefab is configured for '{worldPickupPrefab.Item.Id}', not '{Id}'.");
             }
+
+            ValidateDefaultCompositionTemplate(definitionsById, report);
 
             if (equipment == null || !equipment.Equippable)
             {
@@ -116,6 +122,41 @@ namespace UnityIsekaiGame.Inventory
                 }
 
                 ValidateDamageTypeReference(modifier.DamageType, "equipment resistance", definitionsById, report);
+            }
+        }
+
+        private void ValidateDefaultCompositionTemplate(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
+        {
+            ItemCompositionTemplateData template = DefaultCompositionTemplate;
+            if (template == null || template.IsEmpty)
+            {
+                if (template != null && template.required)
+                {
+                    report.AddError($"Item definition '{DisplayName}' requires a default composition but the template is empty.");
+                }
+
+                return;
+            }
+
+            if (!System.Enum.IsDefined(typeof(ItemCompositionMassAuthority), template.massAuthority))
+            {
+                report.AddError($"Item definition '{DisplayName}' default composition has an invalid mass authority policy.");
+                return;
+            }
+
+            DefinitionRegistry registry = definitionsById == null ? null : new DefinitionRegistry(definitionsById.Values);
+            ItemCompositionRuntimeSaveData saveData = new ItemCompositionRuntimeSaveData
+            {
+                schemaVersion = ItemCompositionRuntimeSaveData.CurrentSchemaVersion,
+                revision = 1L,
+                records =
+                {
+                    template.Instantiate($"definition-template.{Id}", Id)
+                }
+            };
+            if (!ItemCompositionRuntime.ValidateSaveData(saveData, registry, null, out string failure))
+            {
+                report.AddError($"Item definition '{DisplayName}' default composition is invalid: {failure}");
             }
         }
 

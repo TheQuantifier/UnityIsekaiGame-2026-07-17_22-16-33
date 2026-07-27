@@ -23,7 +23,6 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildInformationAccessSuite());
             TryRegister(registry, BuildKnowledgeRecordsSuite());
             TryRegister(registry, BuildKnowledgeHistoryIntegrationSuite());
-            TryRegister(registry, BuildStep8MasterIntegrationSuite());
         }
 
         private static ITestLabAutomationSuite BuildKnowledgeSuite()
@@ -457,46 +456,6 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("prepare", "Prepare integration fixtures", context => Operation(context.Prototype().PrepareKnowledgeHistoryIntegrationFixtures(), context, "step8-integration-prepare")),
                     Step("access", "Run access projection", context => Operation(context.Prototype().RunKnowledgeHistoryAccessProjectionFlow(), context, "step8-integration-access")),
                     Step("step9", "Preview Step 9 contracts", context => Operation(context.Prototype().PreviewStep9KnowledgeContracts(), context, "step8-integration-step9"))));
-        }
-
-        private static ITestLabAutomationSuite BuildStep8MasterIntegrationSuite()
-        {
-            return new TestLabAutomationSuite(
-                "step.8.knowledge-history-integration",
-                "Step 8 Knowledge and History Integration Master",
-                "Step 8",
-                "Runs Feature 8.1 through 8.10 in dependency order, then performs final Step 8 integration hardening checks.",
-                910,
-                TestLabAutomationCategory.Standard,
-                includeInRunAll: false,
-                requiredServices: Required("PersonKnowledgeRuntime", "AuthoritativeHistoryRuntime", "PersonMemoryRuntime", "InformationSourceRuntime", "InformationTransferRuntime", "InformationAccessRuntime", "KnowledgeRecordRuntime", "KnowledgeHistoryFacade"),
-                scenarios: new[]
-                {
-                    ScenarioWithIsolation("feature-suites-in-order", "Run Step 8 feature suites in dependency order", 10, TestLabScenarioIsolationMode.FreshRuntime,
-                        Step("feature-8-1", "Run Feature 8.1 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.1.knowledge-facts-beliefs", stopOnFirstFailure: true), context, "step8-master-8-1")),
-                        Step("feature-8-2", "Run Feature 8.2 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.2.observation-examination-identification-diagnosis", stopOnFirstFailure: true), context, "step8-master-8-2")),
-                        Step("feature-8-3", "Run Feature 8.3 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.3.character-history-memory-timelines", stopOnFirstFailure: true), context, "step8-master-8-3")),
-                        Step("feature-8-4", "Run Feature 8.4 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.4.memory-recall-forgetting-alteration", stopOnFirstFailure: true), context, "step8-master-8-4")),
-                        Step("feature-8-5", "Run Feature 8.5 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.5.character-history-life-events", stopOnFirstFailure: true), context, "step8-master-8-5")),
-                        Step("feature-8-6", "Run Feature 8.6 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.6.information-sources-reliability", stopOnFirstFailure: true), context, "step8-master-8-6")),
-                        Step("feature-8-7", "Run Feature 8.7 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.7.information-sharing-teaching", stopOnFirstFailure: true), context, "step8-master-8-7")),
-                        Step("feature-8-8", "Run Feature 8.8 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.8.secrets-visibility-information-access", stopOnFirstFailure: true), context, "step8-master-8-8")),
-                        Step("feature-8-9", "Run Feature 8.9 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.9.historical-records-journals-codex", stopOnFirstFailure: true), context, "step8-master-8-9")),
-                        Step("feature-8-10", "Run Feature 8.10 suite", context => Operation(context.Prototype().RunAutomationSuite("feature.8.10.knowledge-history-integration", stopOnFirstFailure: true), context, "step8-master-8-10"))),
-                    ScenarioWithIsolation("final-hardening", "Run final cross-runtime integration hardening checks", 20, TestLabScenarioIsolationMode.PersistentFixture,
-                        Step("prepare", "Prepare integration fixtures", context => Operation(context.Prototype().PrepareKnowledgeHistoryIntegrationFixtures(), context, "step8-master-prepare")),
-                        Step("cross-runtime", "Cross-runtime workflows", context => Operation(context.Prototype().RunKnowledgeHistoryEventMemoryFlow(), context, "step8-master-cross-runtime")),
-                        Step("save-capture", "Full save capture graph", context => Operation(context.Prototype().ValidateKnowledgeHistorySaveCapture(), context, "step8-master-save-capture")),
-                        Step("save-restore", "Full save restore", context => Operation(context.Prototype().ValidateKnowledgeHistoryFullSaveRestore(), context, "step8-master-save-restore")),
-                        Step("corrupt-restore", "Corrupt restore rollback", context => Operation(context.Prototype().ValidateKnowledgeHistoryCorruptRestoreRollback(), context, "step8-master-corrupt-restore")),
-                        Step("definitions", "Definition registry consistency", context => Operation(context.Prototype().ShowKnowledgeHistoryFallbackDiagnostics(), context, "step8-master-definitions")),
-                        Step("access", "Access and redaction safety", context => Operation(context.Prototype().ValidateKnowledgeHistoryAccessSafety(), context, "step8-master-access")),
-                        Step("snapshot", "Snapshot immutability", context => Operation(context.Prototype().ValidateKnowledgeHistorySnapshotImmutability(), context, "step8-master-snapshot")),
-                        Step("ordering", "Deterministic ordering", context => Operation(context.Prototype().ValidateKnowledgeHistoryDeterministicOrdering(), context, "step8-master-ordering")),
-                        Step("dirty-events", "Dirty state and restore event behavior", context => Operation(context.Prototype().ValidateKnowledgeHistoryDirtyAndEventBoundaries(), context, "step8-master-dirty-events"))),
-                    Scenario("step9-contracts", "Step 9 contracts remain present and non-authoritative", 30,
-                        Step("contracts", "Preview Step 9 contracts", context => Operation(context.Prototype().PreviewStep9KnowledgeContracts(), context, "step8-master-step9")))
-                });
         }
 
         private static ITestLabAutomationSuite Suite(string suiteId, string displayName, string feature, int order, System.Collections.Generic.IReadOnlyList<string> required, params ITestLabAutomationScenario[] scenarios)

@@ -6,10 +6,12 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Inventory.Composition;
+using UnityIsekaiGame.Inventory.Quality;
 
 namespace UnityIsekaiGame.Persistence
 {
-    public sealed class PlayerInventoryEquipmentPersistenceParticipant : IPersistenceParticipant
+    public sealed class PlayerInventoryEquipmentPersistenceParticipant : IPersistenceParticipant, IPersistenceParticipantDependencies
     {
         public const string Key = "player.inventory-equipment";
         public const int CurrentParticipantSchemaVersion = 1;
@@ -44,6 +46,17 @@ namespace UnityIsekaiGame.Persistence
         public string OwnerId => ownerId;
         public PersistenceLoadPhase LoadPhase => PersistenceLoadPhase.Inventory;
         public int LoadPriority => 0;
+        public IReadOnlyList<string> RequiredDependencies => Array.Empty<string>();
+        public IReadOnlyList<string> OptionalDependencies => new[]
+        {
+            ItemInstanceIdentityPersistenceParticipant.Key,
+            ItemCompositionPersistenceParticipant.Key,
+            ItemQualityAffixPersistenceParticipant.Key
+        };
+        public bool SupportsRollback => true;
+        public bool RequiresSceneReadiness => false;
+        public bool RequiresDefinitionRegistry => true;
+        public bool RequiresWorldEntityRegistry => false;
 
         public PersistenceParticipantSaveResult CapturePayload()
         {

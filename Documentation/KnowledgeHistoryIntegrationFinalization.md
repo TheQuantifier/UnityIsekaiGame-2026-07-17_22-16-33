@@ -127,9 +127,8 @@ The Test Lab now includes a Step 8 `Integration 8.10` page with:
 - representative discovery, history-memory, record-reading, and access projection flows;
 - Step 9 contract preview;
 - 8.10 automation suite execution.
-- Step 8 master automation suite execution through `step.8.knowledge-history-integration`.
 
-The feature suite `feature.8.10.knowledge-history-integration` tests the 8.10 facade and representative workflows. The master suite `step.8.knowledge-history-integration` runs Step 8 feature suites in dependency order and then runs final integration hardening checks. The master suite is intentionally not included in ordinary Run All because it recursively runs the Step 8 feature suites.
+The feature suite `feature.8.10.knowledge-history-integration` tests the 8.10 facade and representative workflows. Step 8 no longer registers a separate master suite; use the ordinary Step 8 feature suites when you want full Step 8 coverage.
 
 ## Performance and Save Size
 
@@ -149,13 +148,12 @@ Save-size growth is expected to come from authoritative records, evidence, memor
 6. Run `Discovery`, `Event Memory`, `Record Read`, and `Access`.
 7. Run `Step 9 API`.
 8. Run `Run 8.10 Auto`.
-9. Run `Run Step 8 Master`.
-10. Run all Step 8 automation and confirm no failures.
-11. Run definition validation and confirm no new Step 8 errors or warnings.
+9. Run all Step 8 automation and confirm no failures.
+10. Run definition validation and confirm no new Step 8 errors or warnings.
 
 ## Limitations
 
 - The facade does not implement NPC disclosure decisions, espionage, legal permission systems, organization authority, or final UI visibility.
 - Step 9 contracts are intentionally non-authoritative placeholders until item, recipe, production, and crafting systems are implemented.
 - Existing privileged debug projections remain available for development and persistence, but ordinary gameplay-facing callers should use access-aware projection paths.
-- Implementation, documentation, and automated-test authoring are complete for the current pass. Final closure remains conditional on successful Unity Edit Mode execution, Feature 8.10 automation, Step 8 master automation, definition validation, and manual Test Lab verification in Unity.
+- Implementation, documentation, and automated-test authoring are complete for the current pass. Final closure remains conditional on successful Unity Edit Mode execution, Feature 8.10 automation, ordinary Step 8 feature automation, definition validation, and manual Test Lab verification in Unity.

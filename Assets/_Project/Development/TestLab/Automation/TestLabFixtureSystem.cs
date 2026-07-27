@@ -7,7 +7,9 @@ using UnityIsekaiGame.Development.Automation.Fixtures.Core;
 using UnityIsekaiGame.Development.Automation.Fixtures.History;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
+using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.History;
@@ -368,6 +370,8 @@ namespace UnityIsekaiGame.Development.Automation
             InformationAccessRuntime access,
             KnowledgeRecordRuntime records,
             ItemInstanceIdentityRuntime itemInstances,
+            ItemCompositionRuntime itemCompositions,
+            ItemQualityAffixRuntime itemQualityAffixes,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -383,6 +387,8 @@ namespace UnityIsekaiGame.Development.Automation
             Access = access;
             Records = records;
             ItemInstances = itemInstances;
+            ItemCompositions = itemCompositions;
+            ItemQualityAffixes = itemQualityAffixes;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -400,6 +406,8 @@ namespace UnityIsekaiGame.Development.Automation
         public InformationAccessRuntime Access { get; }
         public KnowledgeRecordRuntime Records { get; }
         public ItemInstanceIdentityRuntime ItemInstances { get; }
+        public ItemCompositionRuntime ItemCompositions { get; }
+        public ItemQualityAffixRuntime ItemQualityAffixes { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -415,9 +423,11 @@ namespace UnityIsekaiGame.Development.Automation
             InformationTransferRuntime transfers,
             InformationAccessRuntime access,
             KnowledgeRecordRuntime records,
-            ItemInstanceIdentityRuntime itemInstances = null)
+            ItemInstanceIdentityRuntime itemInstances = null,
+            ItemCompositionRuntime itemCompositions = null,
+            ItemQualityAffixRuntime itemQualityAffixes = null)
         {
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), null);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -438,6 +448,8 @@ namespace UnityIsekaiGame.Development.Automation
             InformationAccessRuntime access = new InformationAccessRuntime();
             KnowledgeRecordRuntime records = new KnowledgeRecordRuntime();
             ItemInstanceIdentityRuntime itemInstances = new ItemInstanceIdentityRuntime();
+            ItemCompositionRuntime itemCompositions = new ItemCompositionRuntime();
+            ItemQualityAffixRuntime itemQualityAffixes = new ItemQualityAffixRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -449,7 +461,7 @@ namespace UnityIsekaiGame.Development.Automation
             access.Configure(definitionRegistry, personId);
             records.Configure(definitionRegistry, personId);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -481,7 +493,9 @@ namespace UnityIsekaiGame.Development.Automation
                 Transfers?.CreateSaveData(),
                 Access?.CreateSaveData(),
                 Records?.CreateSaveData(),
-                ItemInstances?.CreateSaveData());
+                ItemInstances?.CreateSaveData(),
+                ItemCompositions?.CreateSaveData(),
+                ItemQualityAffixes?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -495,7 +509,9 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Transfers", Transfers?.TransferRevision ?? 0L, Transfers?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Access", Access?.AccessRevision ?? 0L, Access?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Records", Records?.RecordRevision ?? 0L, Records?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("Items", ItemInstances?.Revision ?? 0L, ItemInstances?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("Items", ItemInstances?.Revision ?? 0L, ItemInstances?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("ItemCompositions", ItemCompositions?.Revision ?? 0L, ItemCompositions?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("ItemQualityAffixes", ItemQualityAffixes?.Revision ?? 0L, ItemQualityAffixes?.CreateSaveData())
             });
         }
 
@@ -587,6 +603,26 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (ItemCompositions != null && snapshot.ItemCompositions != null)
+            {
+                ItemCompositionOperationResult result = ItemCompositions.RestoreFromSaveData(snapshot.ItemCompositions, DefinitionRegistry, ItemInstances);
+                if (!result.Succeeded)
+                {
+                    failure = $"Item composition restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
+            if (ItemQualityAffixes != null && snapshot.ItemQualityAffixes != null)
+            {
+                ItemQualityAffixOperationResult result = ItemQualityAffixes.RestoreFromSaveData(snapshot.ItemQualityAffixes, DefinitionRegistry, ItemInstances);
+                if (!result.Succeeded)
+                {
+                    failure = $"Item quality restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -618,7 +654,9 @@ namespace UnityIsekaiGame.Development.Automation
             InformationTransferSaveData transfers,
             InformationAccessSaveData access,
             KnowledgeRecordSaveData records,
-            ItemInstanceRuntimeSaveData itemInstances)
+            ItemInstanceRuntimeSaveData itemInstances,
+            ItemCompositionRuntimeSaveData itemCompositions,
+            ItemQualityAffixRuntimeSaveData itemQualityAffixes)
         {
             Knowledge = knowledge;
             History = history;
@@ -628,6 +666,8 @@ namespace UnityIsekaiGame.Development.Automation
             Access = access;
             Records = records;
             ItemInstances = itemInstances;
+            ItemCompositions = itemCompositions;
+            ItemQualityAffixes = itemQualityAffixes;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -638,6 +678,8 @@ namespace UnityIsekaiGame.Development.Automation
         public InformationAccessSaveData Access { get; }
         public KnowledgeRecordSaveData Records { get; }
         public ItemInstanceRuntimeSaveData ItemInstances { get; }
+        public ItemCompositionRuntimeSaveData ItemCompositions { get; }
+        public ItemQualityAffixRuntimeSaveData ItemQualityAffixes { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint

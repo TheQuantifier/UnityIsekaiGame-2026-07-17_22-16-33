@@ -1171,9 +1171,9 @@ namespace UnityIsekaiGame.Tests
                 "feature.8.9.historical-records-journals-codex",
                 "feature.8.10.knowledge-history-integration",
                 "feature.9.1.item-identity-instance-state",
-                "step.8.knowledge-history-integration"
+                "feature.9.2.materials-item-composition",
+                "feature.9.3.item-quality-affixes"
             }));
-            Assert.That(registry.Suites.Single(suite => suite.SuiteId == "step.8.knowledge-history-integration").IncludeInRunAll, Is.False);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);

@@ -1007,8 +1007,6 @@ namespace UnityIsekaiGame.Development
                 ("Access", () => service.RunKnowledgeHistoryAccessProjectionFlow()),
                 ("Step 9 API", () => service.PreviewStep9KnowledgeContracts()),
                 ("Run 8.10 Auto", () => service.RunAutomationSuite("feature.8.10.knowledge-history-integration", automationStopOnFirstFailure)));
-            AddButtonRow(parent, font,
-                ("Run Step 8 Master", () => service.RunAutomationSuite("step.8.knowledge-history-integration", automationStopOnFirstFailure)));
             knowledgeHistoryIntegrationText = AddText(parent, font, "Knowledge and History Integration runtime not available.", 12, 980);
         }
 

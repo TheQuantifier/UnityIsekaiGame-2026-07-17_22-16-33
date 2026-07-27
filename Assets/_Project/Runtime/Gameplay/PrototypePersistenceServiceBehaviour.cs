@@ -11,7 +11,9 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.Records;
@@ -32,7 +34,7 @@ using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Gameplay
 {
-    public sealed class PrototypePersistenceServiceBehaviour : MonoBehaviour
+    public sealed class PrototypePersistenceServiceBehaviour : MonoBehaviour, IItemQualityAffixRuntimeProvider
     {
         [SerializeField] private PrototypePersistenceState prototypeState;
         [SerializeField] private DefinitionCatalog definitionCatalog;
@@ -66,6 +68,8 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private string defaultPlayerSpeciesId = "species.human";
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
         [SerializeField] private bool registerPlayerItemIdentities = true;
+        [SerializeField] private bool registerPlayerItemCompositions = true;
+        [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
@@ -106,6 +110,8 @@ namespace UnityIsekaiGame.Gameplay
         private KnowledgeRecordPersistenceParticipant playerKnowledgeRecordParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
+        private ItemCompositionPersistenceParticipant itemCompositionParticipant;
+        private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
         private PlayerCombatExecutionPersistenceParticipant playerCombatExecutionParticipant;
@@ -120,6 +126,8 @@ namespace UnityIsekaiGame.Gameplay
         private InformationAccessRuntime playerInformationAccess;
         private KnowledgeRecordRuntime playerKnowledgeRecords;
         private ItemInstanceIdentityRuntime playerItemIdentities;
+        private ItemCompositionRuntime playerItemCompositions;
+        private ItemQualityAffixRuntime playerItemQualityAffixes;
         private PlayerItemIdentitySynchronizer playerItemIdentitySynchronizer;
         private bool dirtyEventsSubscribed;
 
@@ -138,6 +146,9 @@ namespace UnityIsekaiGame.Gameplay
         public InformationAccessRuntime InformationAccess => playerInformationAccess ??= new InformationAccessRuntime();
         public KnowledgeRecordRuntime KnowledgeRecords => playerKnowledgeRecords ??= new KnowledgeRecordRuntime();
         public ItemInstanceIdentityRuntime ItemIdentities => playerItemIdentities ??= new ItemInstanceIdentityRuntime();
+        public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
+        public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
+        public DefinitionRegistry ItemQualityDefinitionRegistry => GetDefinitionRegistry();
 
         private void Awake()
         {
@@ -162,6 +173,18 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(itemIdentityParticipant);
                 itemIdentityParticipant = null;
+            }
+
+            if (service != null && itemCompositionParticipant != null)
+            {
+                service.UnregisterParticipant(itemCompositionParticipant);
+                itemCompositionParticipant = null;
+            }
+
+            if (service != null && itemQualityAffixParticipant != null)
+            {
+                service.UnregisterParticipant(itemQualityAffixParticipant);
+                itemQualityAffixParticipant = null;
             }
 
             if (service != null && identityProgressionParticipant != null)
@@ -320,6 +343,8 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
+            EnsurePlayerItemCompositionParticipant();
+            EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -648,6 +673,74 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 itemIdentityParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerItemCompositionParticipant()
+        {
+            if (!registerPlayerItemCompositions || itemCompositionParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (!registerPlayerItemIdentities)
+            {
+                Debug.LogWarning("Player item composition persistence participant was not registered because item identity persistence is disabled.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player item composition persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            itemCompositionParticipant = new ItemCompositionPersistenceParticipant(
+                ItemCompositions,
+                ItemIdentities,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(itemCompositionParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                itemCompositionParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerItemQualityAffixParticipant()
+        {
+            if (!registerPlayerItemQualityAffixes || itemQualityAffixParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (!registerPlayerItemIdentities)
+            {
+                Debug.LogWarning("Player item quality persistence participant was not registered because item identity persistence is disabled.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player item quality persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            itemQualityAffixParticipant = new ItemQualityAffixPersistenceParticipant(
+                ItemQualityAffixes,
+                ItemIdentities,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(itemQualityAffixParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                itemQualityAffixParticipant = null;
             }
         }
 

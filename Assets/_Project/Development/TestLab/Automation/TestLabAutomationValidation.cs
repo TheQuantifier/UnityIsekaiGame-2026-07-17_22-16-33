@@ -122,7 +122,6 @@ namespace UnityIsekaiGame.Development.Automation
         };
         private static readonly HashSet<string> PersistentRuntimeSuiteIds = new HashSet<string>(StringComparer.Ordinal)
         {
-            "step.8.knowledge-history-integration"
         };
 
         public static TestLabAutomationValidationResult Validate(TestLabAutomationRegistry registry)

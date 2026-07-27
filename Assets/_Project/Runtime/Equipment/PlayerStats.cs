@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.Combat;
+using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Stats;
 
 namespace UnityIsekaiGame.Equipment
@@ -10,6 +12,10 @@ namespace UnityIsekaiGame.Equipment
         private const float DefaultPlayerAttackPower = 5f;
 
         [SerializeField] private PlayerEquipment equipment;
+        [SerializeField] private MonoBehaviour itemQualityAffixRuntimeProvider;
+
+        private readonly HashSet<StatModifierSource> appliedAffixModifierSources = new HashSet<StatModifierSource>();
+        private IItemQualityAffixRuntimeProvider qualityAffixProvider;
 
         private void Reset()
         {
@@ -22,6 +28,8 @@ namespace UnityIsekaiGame.Equipment
             {
                 equipment = GetComponent<PlayerEquipment>();
             }
+
+            ResolveQualityAffixProvider();
 
             if (Mathf.Approximately(baseAttackPower, 0f))
             {
@@ -40,10 +48,14 @@ namespace UnityIsekaiGame.Equipment
             {
                 equipment.EquipmentChanged += OnEquipmentChanged;
             }
+
+            SubscribeQualityAffixRuntime();
         }
 
         protected override void OnDisable()
         {
+            UnsubscribeQualityAffixRuntime();
+
             if (equipment != null)
             {
                 equipment.EquipmentChanged -= OnEquipmentChanged;
@@ -56,6 +68,26 @@ namespace UnityIsekaiGame.Equipment
         {
             RecalculateEquipmentModifiers();
             NotifyStatsChanged();
+        }
+
+        private void OnAffixStateChanged(string itemInstanceId)
+        {
+            if (equipment == null || string.IsNullOrWhiteSpace(itemInstanceId))
+            {
+                return;
+            }
+
+            foreach (EquipmentSlotState slot in equipment.Slots)
+            {
+                if (slot != null
+                    && !slot.IsEmpty
+                    && string.Equals(slot.ItemInstanceId, itemInstanceId, StringComparison.Ordinal))
+                {
+                    RecalculateEquipmentModifiers();
+                    NotifyStatsChanged();
+                    return;
+                }
+            }
         }
 
         public void RefreshEquipmentModifiers()
@@ -94,6 +126,13 @@ namespace UnityIsekaiGame.Equipment
                 RemoveModifiersFromSource(source);
                 RemoveResistanceModifiersFromSource(source);
             }
+
+            foreach (StatModifierSource source in appliedAffixModifierSources)
+            {
+                RemoveModifiersFromSource(source);
+            }
+
+            appliedAffixModifierSources.Clear();
         }
 
         private void RegisterEquipmentModifiers(EquipmentSlotState slot)
@@ -106,6 +145,7 @@ namespace UnityIsekaiGame.Equipment
             AddFlatEquipmentModifier(source, StatType.AttackPower, modifiers.AttackPower);
             AddFlatEquipmentModifier(source, StatType.Defense, modifiers.Defense);
             RegisterEquipmentResistanceModifiers(source, slot.Item.Equipment.ResistanceModifiers);
+            RegisterAffixModifiers(slot);
         }
 
         private void AddFlatEquipmentModifier(StatModifierSource source, StatType statType, float value)
@@ -139,6 +179,87 @@ namespace UnityIsekaiGame.Equipment
                 }
 
                 AddResistanceModifier(modifier.CreateRuntimeModifier(source));
+            }
+        }
+
+        private void RegisterAffixModifiers(EquipmentSlotState slot)
+        {
+            if (slot == null || string.IsNullOrWhiteSpace(slot.ItemInstanceId))
+            {
+                return;
+            }
+
+            IItemQualityAffixRuntimeProvider provider = ResolveQualityAffixProvider();
+            ItemQualityAffixRuntime qualityRuntime = provider?.ItemQualityAffixes;
+            if (qualityRuntime == null)
+            {
+                return;
+            }
+
+            ItemQualityAffixOperationResult result = qualityRuntime.ApplyActiveAffixModifiers(
+                slot.ItemInstanceId,
+                provider.ItemQualityDefinitionRegistry,
+                this,
+                out IReadOnlyList<StatModifierSource> sources);
+            if (!result.Succeeded)
+            {
+                Debug.LogWarning($"Equipped item affix modifiers were not applied for '{slot.ItemInstanceId}': {result.Message}");
+                return;
+            }
+
+            foreach (StatModifierSource affixSource in sources)
+            {
+                appliedAffixModifierSources.Add(affixSource);
+            }
+        }
+
+        private IItemQualityAffixRuntimeProvider ResolveQualityAffixProvider()
+        {
+            if (qualityAffixProvider != null)
+            {
+                return qualityAffixProvider;
+            }
+
+            if (itemQualityAffixRuntimeProvider is IItemQualityAffixRuntimeProvider configured)
+            {
+                qualityAffixProvider = configured;
+                SubscribeQualityAffixRuntime();
+                return qualityAffixProvider;
+            }
+
+            qualityAffixProvider = GetComponent<IItemQualityAffixRuntimeProvider>();
+            if (qualityAffixProvider == null)
+            {
+                qualityAffixProvider = GetComponentInParent<IItemQualityAffixRuntimeProvider>();
+            }
+
+            if (qualityAffixProvider is MonoBehaviour behaviour)
+            {
+                itemQualityAffixRuntimeProvider = behaviour;
+            }
+
+            SubscribeQualityAffixRuntime();
+            return qualityAffixProvider;
+        }
+
+        private void SubscribeQualityAffixRuntime()
+        {
+            ItemQualityAffixRuntime runtime = qualityAffixProvider?.ItemQualityAffixes;
+            if (runtime == null)
+            {
+                return;
+            }
+
+            runtime.ItemAffixStateChanged -= OnAffixStateChanged;
+            runtime.ItemAffixStateChanged += OnAffixStateChanged;
+        }
+
+        private void UnsubscribeQualityAffixRuntime()
+        {
+            ItemQualityAffixRuntime runtime = qualityAffixProvider?.ItemQualityAffixes;
+            if (runtime != null)
+            {
+                runtime.ItemAffixStateChanged -= OnAffixStateChanged;
             }
         }
     }

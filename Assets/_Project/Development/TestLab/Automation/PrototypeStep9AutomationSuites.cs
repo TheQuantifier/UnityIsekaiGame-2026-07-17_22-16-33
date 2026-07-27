@@ -1,12 +1,16 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Persistence;
+using UnityIsekaiGame.Stats;
 
 namespace UnityIsekaiGame.Development.Automation
 {
@@ -23,6 +27,8 @@ namespace UnityIsekaiGame.Development.Automation
             }
 
             TryRegister(registry, BuildItemIdentitySuite());
+            TryRegister(registry, BuildMaterialsCompositionSuite());
+            TryRegister(registry, BuildQualityAffixSuite());
         }
 
         private static ITestLabAutomationSuite BuildItemIdentitySuite()
@@ -43,6 +49,48 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("step9-items-sync", "Synchronize inventory and equipment graph", InventoryEquipmentSynchronization)),
                 Scenario("access-subject", "Item projections expose stable Step 8 subject references", 60,
                     Step("step9-items-access", "Project item information subject", AccessSubject)));
+        }
+
+        private static ITestLabAutomationSuite BuildMaterialsCompositionSuite()
+        {
+            return Suite("feature.9.2.materials-item-composition", "Feature 9.2 Materials and Item Composition", "9.2", 920,
+                Required("ItemCompositionRuntime", "MaterialDefinition", "MaterialCompatibilityRuleDefinition", "ItemInstanceIdentityRuntime"),
+                Scenario("material-definition-runtime", "Materials and composite definitions resolve deterministically", 10,
+                    Step("step9-materials-resolve", "Resolve material definitions", MaterialDefinitionsResolve)),
+                Scenario("composition-graph-validation", "Item composition validates item, material, and component graphs", 20,
+                    Step("step9-composition-graph", "Validate composition graph", CompositionGraphValidation)),
+                Scenario("default-composition", "Item creation can resolve default or unknown composition", 25,
+                    Step("step9-composition-default", "Ensure default composition", DefaultComposition)),
+                Scenario("atomic-creation", "Required item composition commits atomically with item identity", 28,
+                    Step("step9-composition-atomic", "Create required composition atomically", AtomicCompositionCreation)),
+                Scenario("derived-properties", "Derived physical properties and compatibility remain deterministic", 30,
+                    Step("step9-composition-properties", "Compute derived properties", DerivedProperties)),
+                Scenario("tracked-components", "Tracked components require reserved item ownership", 35,
+                    Step("step9-composition-tracked", "Attach tracked component", TrackedComponents)),
+                Scenario("composite-expansion", "Composite material expansion is deterministic", 38,
+                    Step("step9-composition-composite", "Expand composite material", CompositeExpansion)),
+                Scenario("stack-equivalence", "Composition differences block stack equivalence", 40,
+                    Step("step9-composition-stack", "Evaluate composition stack equivalence", StackEquivalence)),
+                Scenario("projection-and-persistence", "Composition projections and persistence are atomic", 50,
+                    Step("step9-composition-project-save", "Project and persist composition", ProjectionAndPersistence)));
+        }
+
+        private static ITestLabAutomationSuite BuildQualityAffixSuite()
+        {
+            return Suite("feature.9.3.item-quality-affixes", "Feature 9.3 Item Quality and Affixes", "9.3", 930,
+                Required("ItemQualityAffixRuntime", "QualityTierDefinition", "ItemAffixDefinition", "ItemCompositionRuntime", "ItemInstanceIdentityRuntime"),
+                Scenario("quality-workmanship", "Workmanship and quality tiers are authoritative and deterministic", 10,
+                    Step("step9-quality-workmanship", "Create default and masterwork quality", QualityWorkmanship)),
+                Scenario("defects-and-redaction", "Visible and hidden defects project through access-aware views", 20,
+                    Step("step9-quality-defects", "Add defects and redact hidden entries", DefectsAndRedaction)),
+                Scenario("affix-generation-deterministic", "Affix preview and execution are deterministic by seed", 30,
+                    Step("step9-quality-generation", "Generate deterministic affixes", AffixGenerationDeterministic)),
+                Scenario("affix-conflict-and-stack", "Conflicts and quality differences block unsafe merges", 40,
+                    Step("step9-quality-conflict-stack", "Reject conflict and compare stack signatures", AffixConflictAndStack)),
+                Scenario("modifier-contribution", "Equipped affix modifiers apply and remove exactly once", 50,
+                    Step("step9-quality-modifiers", "Apply source-safe affix modifier", AffixModifierContribution)),
+                Scenario("persistence-and-migration", "Feature 9.1/9.2 items migrate without rerolling affixes", 60,
+                    Step("step9-quality-persistence", "Save and restore quality and affixes", QualityPersistenceAndMigration)));
         }
 
         private static TestLabAutomationStepResult DistinctInstances(TestLabAutomationContext context)
@@ -257,6 +305,390 @@ namespace UnityIsekaiGame.Development.Automation
                 : Fail(context, "step9-items-sync", $"First={first.Status}:{first.Message} Second={second.Status}:{second.Message} Audit={audit.Status}:{audit.Message}");
         }
 
+        private static TestLabAutomationStepResult MaterialDefinitionsResolve(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: false, out string failure);
+            if (registry == null)
+            {
+                return Fail(context, "step9-materials-resolve", failure);
+            }
+
+            ItemCompositionRuntime runtime = context.ScenarioContext.Runtimes.ItemCompositions;
+            IReadOnlyList<string> expanded = runtime.ExpandCompositeMaterial("material.prototype.steel", registry);
+            bool valid = registry.TryGet("material.prototype.iron", out MaterialDefinition _)
+                && registry.TryGet("material.prototype.steel", out MaterialDefinition steel)
+                && steel.IsComposite
+                && expanded.Contains("material.prototype.iron");
+            return valid
+                ? Pass(context, "step9-materials-resolve", $"Materials={registry.DefinitionsById.Values.OfType<MaterialDefinition>().Count()} Steel=[{string.Join(",", expanded)}]")
+                : Fail(context, "step9-materials-resolve", "Material definitions did not resolve.");
+        }
+
+        private static TestLabAutomationStepResult CompositionGraphValidation(TestLabAutomationContext context)
+        {
+            if (!TryCreateRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-composition-graph", failure);
+            }
+
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: false, out failure);
+            ItemCompositionRuntime compositions = context.ScenarioContext.Runtimes.ItemCompositions;
+            string itemId = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "composition"), ownerPersonId: "person.prototype.player").Snapshot.ItemInstanceId;
+            ItemCompositionOperationResult valid = compositions.SetComposition(itemRuntime, registry, Composition(itemId, "material.prototype.iron"));
+            ItemCompositionRecordData invalid = Composition(itemId, "material.prototype.missing");
+            invalid.compositionId = $"item-composition.{itemId}.invalid";
+            invalid.itemInstanceId = RunGuid(context, "missing-item");
+            ItemCompositionOperationResult rejected = compositions.SetComposition(itemRuntime, registry, invalid);
+            bool ok = valid.Succeeded && !rejected.Succeeded && compositions.TryGetSnapshotForItem(itemId, out _);
+            return ok
+                ? Pass(context, "step9-composition-graph", $"Valid={valid.Status} Rejected={rejected.Status}")
+                : Fail(context, "step9-composition-graph", $"Valid={valid.Status}:{valid.Message} Rejected={rejected.Status}:{rejected.Message}");
+        }
+
+        private static TestLabAutomationStepResult DefaultComposition(TestLabAutomationContext context)
+        {
+            if (!TryCreateRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-composition-default", failure);
+            }
+
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: false, out failure);
+            ItemCompositionRuntime compositions = context.ScenarioContext.Runtimes.ItemCompositions;
+            string itemId = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "default-composition")).Snapshot.ItemInstanceId;
+            ItemCompositionOperationResult ensured = compositions.EnsureCompositionForItem(itemRuntime, registry, itemId);
+            bool valid = ensured.Succeeded
+                && ensured.Snapshot.ItemInstanceId == itemId
+                && ensured.Snapshot.Completeness == ItemCompositionCompleteness.Unknown;
+            return valid
+                ? Pass(context, "step9-composition-default", $"Composition={ensured.Snapshot.CompositionId} Completeness={ensured.Snapshot.Completeness}")
+                : Fail(context, "step9-composition-default", $"Ensure={ensured.Status}:{ensured.Message}");
+        }
+
+        private static TestLabAutomationStepResult AtomicCompositionCreation(TestLabAutomationContext context)
+        {
+            if (!TryCreateRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-composition-atomic", failure);
+            }
+
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: false, out failure);
+            ItemCompositionRuntime compositions = context.ScenarioContext.Runtimes.ItemCompositions;
+            ItemCompositionCreationResult rejected = ItemCompositionCoordinator.CreateItem(itemRuntime, compositions, registry, new ItemCompositionCreationRequest
+            {
+                Definition = sword,
+                ItemInstanceId = RunGuid(context, "atomic-rejected"),
+                RequireComposition = true,
+                ExplicitComposition = Composition("placeholder", "material.prototype.missing"),
+                Purpose = ItemCompositionMutationPurpose.AuthoredSetup
+            });
+            ItemCompositionCreationResult committed = ItemCompositionCoordinator.CreateItem(itemRuntime, compositions, registry, new ItemCompositionCreationRequest
+            {
+                Definition = sword,
+                ItemInstanceId = RunGuid(context, "atomic-committed"),
+                RequireComposition = true,
+                ExplicitComposition = Composition("placeholder", "material.prototype.iron"),
+                Purpose = ItemCompositionMutationPurpose.AuthoredSetup
+            });
+
+            bool valid = !rejected.Succeeded
+                && itemRuntime.QueryByDefinition(SwordId).Count == 1
+                && committed.Succeeded
+                && compositions.TryGetSnapshotForItem(committed.Item.ItemInstanceId, out _);
+            return valid
+                ? Pass(context, "step9-composition-atomic", $"Rejected={rejected.Status} Committed={committed.Item.ItemInstanceId}")
+                : Fail(context, "step9-composition-atomic", $"Rejected={rejected.Status}:{rejected.Message} Committed={committed.Status}:{committed.Message} Items={itemRuntime.Count} Compositions={compositions.Count}");
+        }
+
+        private static TestLabAutomationStepResult DerivedProperties(TestLabAutomationContext context)
+        {
+            if (!TryCreateRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-composition-properties", failure);
+            }
+
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: true, out failure);
+            ItemCompositionRuntime compositions = context.ScenarioContext.Runtimes.ItemCompositions;
+            string itemId = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "properties")).Snapshot.ItemInstanceId;
+            ItemCompositionRecordData record = Composition(itemId, "material.prototype.iron");
+            record.materials.Add(MaterialEntry("entry.oil", "material.prototype.oil", MaterialEntryRole.Coating, 100f, MaterialQuantityUnit.Milliliter));
+            ItemCompositionOperationResult set = compositions.SetComposition(itemRuntime, registry, record);
+            compositions.TryGetSnapshotForItem(itemId, out ItemCompositionSnapshot snapshot);
+            DerivedItemMaterialProperties properties = compositions.ComputeDerivedProperties(snapshot, registry);
+            MaterialCompatibilityEvaluation compatibility = compositions.EvaluateCompatibility(snapshot.Materials[0], snapshot.Materials[1], registry);
+            bool valid = set.Succeeded && properties.KnownMassKg > 0f && compatibility.Outcome == MaterialCompatibilityOutcome.Degrades;
+            return valid
+                ? Pass(context, "step9-composition-properties", $"Mass={properties.KnownMassKg:0.###} Compatibility={compatibility.RuleId}:{compatibility.Outcome}")
+                : Fail(context, "step9-composition-properties", $"Set={set.Status}:{set.Message} Mass={properties.KnownMassKg} Compatibility={compatibility.Outcome}");
+        }
+
+        private static TestLabAutomationStepResult TrackedComponents(TestLabAutomationContext context)
+        {
+            if (!TryCreateRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-composition-tracked", failure);
+            }
+
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: false, out failure);
+            ItemCompositionRuntime compositions = context.ScenarioContext.Runtimes.ItemCompositions;
+            ItemDefinition potion = registry.TryGet(PotionId, out ItemDefinition foundPotion) ? foundPotion : sword;
+            string parent = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "tracked-parent")).Snapshot.ItemInstanceId;
+            string child = itemRuntime.CreateItem(potion, itemInstanceId: RunGuid(context, "tracked-child"), ownerPersonId: "person.prototype.player", custodianPersonId: "person.prototype.player").Snapshot.ItemInstanceId;
+            ItemCompositionRecordData invalid = Composition(parent, "material.prototype.iron");
+            invalid.components.Add(new ItemComponentEntryData { componentEntryId = "component.socketed-gem", kind = ItemComponentKind.TrackedItemInstance, componentItemInstanceId = child });
+            ItemCompositionOperationResult rejected = compositions.SetComposition(itemRuntime, registry, invalid);
+            ItemCompositionOperationResult attached = ItemCompositionCoordinator.AttachTrackedComponent(itemRuntime, compositions, registry, parent, child, new ItemComponentEntryData { componentEntryId = "component.socketed-gem" }, ItemCompositionMutationPurpose.DebugTestLab);
+            ItemCompositionOperationResult duplicate = ItemCompositionCoordinator.AttachTrackedComponent(itemRuntime, compositions, registry, RunGuid(context, "missing-parent"), child, new ItemComponentEntryData { componentEntryId = "component.other" }, ItemCompositionMutationPurpose.DebugTestLab);
+            itemRuntime.TryGetSnapshot(child, out ItemInstanceSnapshot childSnapshot);
+            bool valid = rejected.Status == ItemCompositionOperationStatus.InvalidComponentLocation
+                && attached.Succeeded
+                && !duplicate.Succeeded
+                && childSnapshot != null
+                && childSnapshot.LocationKind == ItemLocationKind.ProductionReserved;
+            return valid
+                ? Pass(context, "step9-composition-tracked", $"Rejected={rejected.Status} Attached={attached.Status} Child={childSnapshot.LocationKind}")
+                : Fail(context, "step9-composition-tracked", $"Rejected={rejected.Status}:{rejected.Message} Attached={attached.Status}:{attached.Message} Duplicate={duplicate.Status}:{duplicate.Message}");
+        }
+
+        private static TestLabAutomationStepResult CompositeExpansion(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: false, out string failure, includeComposite: true);
+            if (registry == null)
+            {
+                return Fail(context, "step9-composition-composite", failure);
+            }
+
+            ItemCompositionRuntime compositions = context.ScenarioContext.Runtimes.ItemCompositions;
+            CompositeMaterialExpansionResult expanded = compositions.ExpandCompositeMaterialConstituents("material.prototype.pattern-weld", registry);
+            CompositeMaterialExpansionResult shallow = compositions.ExpandCompositeMaterialConstituents("material.prototype.pattern-weld", registry, expandNested: false);
+            bool valid = expanded.Succeeded
+                && expanded.Entries.Any(entry => entry.MaterialDefinitionId == "material.prototype.iron" && Math.Abs(entry.Ratio - 1f) < 0.0001f)
+                && shallow.Succeeded
+                && shallow.Entries.Any(entry => entry.MaterialDefinitionId == "material.prototype.pattern-weld");
+            return valid
+                ? Pass(context, "step9-composition-composite", $"Expanded=[{string.Join(",", expanded.Entries.Select(entry => $"{entry.MaterialDefinitionId}:{entry.Ratio:0.###}"))}]")
+                : Fail(context, "step9-composition-composite", $"Expanded={expanded.Succeeded}:{expanded.Message} Shallow={shallow.Succeeded}:{shallow.Message}");
+        }
+
+        private static TestLabAutomationStepResult StackEquivalence(TestLabAutomationContext context)
+        {
+            if (!TryCreateRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-composition-stack", failure);
+            }
+
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: false, out failure);
+            ItemCompositionRuntime compositions = context.ScenarioContext.Runtimes.ItemCompositions;
+            string first = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "stack-a")).Snapshot.ItemInstanceId;
+            string second = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "stack-b")).Snapshot.ItemInstanceId;
+            compositions.SetComposition(itemRuntime, registry, Composition(first, "material.prototype.iron"));
+            compositions.SetComposition(itemRuntime, registry, Composition(second, "material.prototype.wood"));
+            bool differentRejected = !compositions.CanShareStack(first, second);
+            ItemCompositionRecordData equivalent = Composition(second, "material.prototype.iron");
+            equivalent.materials[0].quantity = new MaterialQuantityData { value = 1200f, unit = MaterialQuantityUnit.Gram };
+            compositions.SetComposition(itemRuntime, registry, equivalent);
+            bool sameAccepted = compositions.CanShareStack(first, second);
+            return differentRejected && sameAccepted
+                ? Pass(context, "step9-composition-stack", $"DifferentRejected={differentRejected} SameAccepted={sameAccepted}")
+                : Fail(context, "step9-composition-stack", $"DifferentRejected={differentRejected} SameAccepted={sameAccepted}");
+        }
+
+        private static TestLabAutomationStepResult ProjectionAndPersistence(TestLabAutomationContext context)
+        {
+            if (!TryCreateRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemDefinition sword, out string failure))
+            {
+                return Fail(context, "step9-composition-project-save", failure);
+            }
+
+            DefinitionRegistry registry = CreateCompositionRegistry(context, includeRule: false, out failure);
+            ItemCompositionRuntime compositions = context.ScenarioContext.Runtimes.ItemCompositions;
+            string itemId = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "persist-composition")).Snapshot.ItemInstanceId;
+            ItemCompositionRecordData record = Composition(itemId, "material.prototype.iron");
+            record.materials[0].purity = 0.5f;
+            ItemCompositionOperationResult set = compositions.SetComposition(itemRuntime, registry, record);
+            InformationAccessDecision decision = new InformationAccessDecision("person.viewer", ItemCompositionInformationSubject.Create(itemId, record.compositionId, SwordId), InformationAccessMode.Inspect, InformationAccessDecisionKind.RedactedAccess, InformationAccessDenialCode.None, true, InformationResharingPolicy.NoResharing, Array.Empty<string>(), ItemCompositionInformationSubject.ProtectedFields, Array.Empty<string>(), new[] { "policy.prototype.materials" }, 0d, "Redacted", "Test Lab redaction", false);
+            ItemCompositionProjection projection = compositions.Project(itemId, decision);
+            ItemCompositionRuntimeSaveData saveData = compositions.CreateSaveData();
+            ItemCompositionRuntime restored = new ItemCompositionRuntime();
+            ItemCompositionOperationResult restore = restored.RestoreFromSaveData(saveData, registry, itemRuntime);
+            ItemCompositionRuntimeSaveData corrupt = saveData.Clone();
+            corrupt.records[0].materials[0].materialDefinitionId = "material.prototype.missing";
+            bool corruptRejected = !ItemCompositionRuntime.ValidateSaveData(corrupt, registry, itemRuntime, out _);
+            bool noLeak = projection.Snapshot != null
+                && projection.Snapshot.Data.revisionHistory.Count == 0
+                && projection.Snapshot.Data.provenanceIds.Length == 0
+                && projection.VisibleMaterials.All(material => !material.hidden && material.purity <= 0f);
+            bool valid = set.Succeeded && projection.Redacted && noLeak && restore.Succeeded && restored.TryGetSnapshotForItem(itemId, out _) && corruptRejected;
+            return valid
+                ? Pass(context, "step9-composition-project-save", $"ProjectionRedacted={projection.Redacted} NoLeak={noLeak} Restore={restore.Status} CorruptRejected={corruptRejected}")
+                : Fail(context, "step9-composition-project-save", $"Set={set.Status}:{set.Message} Projection={projection.Redacted} NoLeak={noLeak} Restore={restore.Status}:{restore.Message} CorruptRejected={corruptRejected}");
+        }
+
+        private static TestLabAutomationStepResult QualityWorkmanship(TestLabAutomationContext context)
+        {
+            if (!TryCreateQualityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out DefinitionRegistry registry, out ItemDefinition sword, out _, out ItemAffixDefinition _, out string failure))
+            {
+                return Fail(context, "step9-quality-workmanship", failure);
+            }
+
+            string ordinary = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "ordinary");
+            string masterwork = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "masterwork");
+            ItemQualityAffixOperationResult defaultQuality = quality.EnsureDefaultQuality(itemRuntime, compositions, registry, ordinary);
+            ItemQualityAffixOperationResult masterworkQuality = quality.SetQualityRecord(itemRuntime, compositions, registry, new ItemQualityRecordData
+            {
+                itemInstanceId = masterwork,
+                itemDefinitionId = SwordId,
+                overallQuality = 0.95f,
+                source = ItemQualityRecordSource.Authored,
+                workmanship =
+                {
+                    Workmanship("workmanship.overall", WorkmanshipDimension.Overall, 0.95f),
+                    Workmanship("workmanship.balance", WorkmanshipDimension.Balance, 0.9f),
+                    new ItemWorkmanshipEntryData { entryId = "workmanship.decoration.na", dimension = WorkmanshipDimension.Decoration, value = new ItemQualityValueData { state = QualityValueState.NotApplicable, value = -1f } }
+                },
+                dimensions =
+                {
+                    Dimension("quality.structural", ItemQualityDimension.Structural, 0.92f, 1f),
+                    Dimension("quality.functional", ItemQualityDimension.Functional, 0.96f, 1f)
+                }
+            });
+
+            bool valid = defaultQuality.Succeeded
+                && masterworkQuality.Succeeded
+                && masterworkQuality.Quality.QualityTierId == "quality-tier.masterwork"
+                && masterworkQuality.Quality.Data.workmanship.Any(entry => entry.value.state == QualityValueState.NotApplicable);
+            return valid
+                ? Pass(context, "step9-quality-workmanship", $"Default={defaultQuality.Quality.QualityTierId} Masterwork={masterworkQuality.Quality.QualityTierId}")
+                : Fail(context, "step9-quality-workmanship", $"Default={defaultQuality.Status} Masterwork={masterworkQuality.Status}/{masterworkQuality.Quality?.QualityTierId}");
+        }
+
+        private static TestLabAutomationStepResult DefectsAndRedaction(TestLabAutomationContext context)
+        {
+            if (!TryCreateQualityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out DefinitionRegistry registry, out ItemDefinition sword, out _, out ItemAffixDefinition _, out string failure))
+            {
+                return Fail(context, "step9-quality-defects", failure);
+            }
+
+            string item = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "defects");
+            quality.EnsureDefaultQuality(itemRuntime, compositions, registry, item);
+            ItemQualityAffixOperationResult visible = quality.AddDefect(itemRuntime, compositions, registry, item, new ItemDefectEntryData { defectId = RunGuid(context, "defect.visible"), category = ItemDefectCategory.Dull, severity = 0.2f, hidden = false });
+            ItemQualityAffixOperationResult hidden = quality.AddDefect(itemRuntime, compositions, registry, item, new ItemDefectEntryData { defectId = RunGuid(context, "defect.hidden"), category = ItemDefectCategory.HiddenDefect, severity = 0.4f, hidden = true });
+            InformationAccessDecision decision = new InformationAccessDecision("person.viewer", ItemQualityAffixInformationSubject.Quality(item, $"item-quality.{item}", SwordId), InformationAccessMode.Inspect, InformationAccessDecisionKind.RedactedAccess, InformationAccessDenialCode.None, true, InformationResharingPolicy.NoResharing, Array.Empty<string>(), ItemQualityAffixInformationSubject.ProtectedFields, Array.Empty<string>(), new[] { "policy.prototype.quality" }, 0d, "Redacted", "Test Lab redaction", false);
+            ItemQualityProjection projection = quality.Project(item, decision);
+            bool hasAuthoritative = quality.TryGetQualityForItem(item, out ItemQualitySnapshot reread);
+
+            bool valid = visible.Succeeded
+                && hidden.Succeeded
+                && projection.Redacted
+                && projection.Snapshot.Data.defects.Count == 1
+                && !projection.Snapshot.Data.defects[0].hidden
+                && hasAuthoritative
+                && reread.Data.defects.Count == 2;
+            return valid
+                ? Pass(context, "step9-quality-defects", $"ProjectionDefects={projection.Snapshot.Data.defects.Count} Authoritative={reread.Data.defects.Count}")
+                : Fail(context, "step9-quality-defects", $"Visible={visible.Status} Hidden={hidden.Status} Projection={projection.Redacted}/{projection.Snapshot?.Data.defects.Count}");
+        }
+
+        private static TestLabAutomationStepResult AffixGenerationDeterministic(TestLabAutomationContext context)
+        {
+            if (!TryCreateQualityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out DefinitionRegistry registry, out ItemDefinition sword, out _, out ItemAffixDefinition _, out string failure))
+            {
+                return Fail(context, "step9-quality-generation", failure);
+            }
+
+            string item = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "generated");
+            quality.SetQualityRecord(itemRuntime, compositions, registry, QualityRecord(item, 0.8f));
+            ItemAffixGenerationRequest request = new ItemAffixGenerationRequest { ItemInstanceId = item, Seed = "seed.prototype.fixed", RequestedAffixCount = 1, Preview = true };
+            ItemQualityAffixOperationResult preview = quality.GenerateAffixes(itemRuntime, compositions, registry, request);
+            request.Preview = false;
+            ItemQualityAffixOperationResult execute = quality.GenerateAffixes(itemRuntime, compositions, registry, request);
+            ItemQualityAffixRuntimeSaveData save = quality.CreateSaveData();
+            ItemQualityAffixOperationResult duplicate = quality.GenerateAffixes(itemRuntime, compositions, registry, request);
+
+            bool same = preview.Succeeded
+                && execute.Succeeded
+                && preview.Affixes[0].AffixDefinitionId == execute.Affixes[0].AffixDefinitionId
+                && Math.Abs(preview.Affixes[0].Data.rolledValues[0].value - execute.Affixes[0].Data.rolledValues[0].value) < 0.0001f
+                && !duplicate.Succeeded
+                && save.affixInstances.Count == 1;
+            return same
+                ? Pass(context, "step9-quality-generation", $"Affix={execute.Affixes[0].AffixDefinitionId} Value={execute.Affixes[0].Data.rolledValues[0].value:0.###}")
+                : Fail(context, "step9-quality-generation", $"Preview={preview.Status} Execute={execute.Status} Duplicate={duplicate.Status} Count={save.affixInstances.Count}");
+        }
+
+        private static TestLabAutomationStepResult AffixConflictAndStack(TestLabAutomationContext context)
+        {
+            if (!TryCreateQualityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out DefinitionRegistry registry, out ItemDefinition sword, out _, out ItemAffixDefinition keen, out string failure))
+            {
+                return Fail(context, "step9-quality-conflict-stack", failure);
+            }
+
+            string first = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "stack-a");
+            string second = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "stack-b");
+            quality.SetQualityRecord(itemRuntime, compositions, registry, QualityRecord(first, 0.8f));
+            quality.SetQualityRecord(itemRuntime, compositions, registry, QualityRecord(second, 0.4f));
+            ItemQualityAffixOperationResult applied = quality.ApplyAffix(itemRuntime, compositions, registry, first, keen, seed: "same");
+            ItemQualityAffixOperationResult conflict = quality.ApplyAffix(itemRuntime, compositions, registry, first, keen, seed: "same");
+            bool stackDifferent = !quality.CanShareQualityAffixStack(first, second);
+
+            bool valid = applied.Succeeded && !conflict.Succeeded && stackDifferent;
+            return valid
+                ? Pass(context, "step9-quality-conflict-stack", $"Applied={applied.Status} Conflict={conflict.Status} StackDifferent={stackDifferent}")
+                : Fail(context, "step9-quality-conflict-stack", $"Applied={applied.Status} Conflict={conflict.Status} StackDifferent={stackDifferent}");
+        }
+
+        private static TestLabAutomationStepResult AffixModifierContribution(TestLabAutomationContext context)
+        {
+            if (!TryCreateQualityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out DefinitionRegistry registry, out ItemDefinition sword, out _, out ItemAffixDefinition keen, out string failure))
+            {
+                return Fail(context, "step9-quality-modifiers", failure);
+            }
+
+            string item = CreateComposedItem(context, itemRuntime, compositions, registry, sword, "modifier");
+            quality.SetQualityRecord(itemRuntime, compositions, registry, QualityRecord(item, 0.8f));
+            ItemQualityAffixOperationResult applied = quality.ApplyAffix(itemRuntime, compositions, registry, item, keen, seed: "modifier");
+            RuntimeStatCollection stats = new RuntimeStatCollection();
+            stats.SetBaseValue(StatType.AttackPower, 10f);
+            ItemQualityAffixOperationResult first = quality.ApplyActiveAffixModifiers(item, registry, stats);
+            ItemQualityAffixOperationResult second = quality.ApplyActiveAffixModifiers(item, registry, stats);
+            float afterApply = stats.GetValue(StatType.AttackPower);
+            quality.RemoveActiveAffixModifiers(item, stats);
+            float afterRemove = stats.GetValue(StatType.AttackPower);
+
+            bool valid = applied.Succeeded && first.Succeeded && second.Succeeded && Math.Abs(afterApply - 12f) < 0.001f && Math.Abs(afterRemove - 10f) < 0.001f;
+            return valid
+                ? Pass(context, "step9-quality-modifiers", $"Apply={afterApply} Remove={afterRemove}")
+                : Fail(context, "step9-quality-modifiers", $"Applied={applied.Status} First={first.Status} Second={second.Status} Apply={afterApply} Remove={afterRemove}");
+        }
+
+        private static TestLabAutomationStepResult QualityPersistenceAndMigration(TestLabAutomationContext context)
+        {
+            if (!TryCreateQualityRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ItemCompositionRuntime compositions, out ItemQualityAffixRuntime quality, out DefinitionRegistry registry, out ItemDefinition sword, out _, out ItemAffixDefinition keen, out string failure))
+            {
+                return Fail(context, "step9-quality-persistence", failure);
+            }
+
+            string legacy = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "legacy"), creationSourceId: "feature.9.1").Snapshot.ItemInstanceId;
+            itemRuntime.SetQuality(legacy, ItemQualityTier.Fine, ItemQualitySource.Authored, 0.82f);
+            ItemQualityAffixOperationResult migrated = quality.EnsureDefaultQuality(itemRuntime, compositions, registry, legacy);
+            ItemQualityAffixOperationResult affix = quality.ApplyAffix(itemRuntime, compositions, registry, legacy, keen, seed: "restore");
+            ItemQualityAffixRuntimeSaveData save = quality.CreateSaveData();
+            ItemQualityAffixRuntime restored = new ItemQualityAffixRuntime();
+            ItemQualityAffixOperationResult restore = restored.RestoreFromSaveData(save, registry, itemRuntime);
+            ItemQualityAffixRuntimeSaveData corrupt = save.Clone();
+            corrupt.affixInstances[0].affixDefinitionId = "affix.prototype.missing";
+            bool corruptRejected = !ItemQualityAffixRuntime.ValidateSaveData(corrupt, registry, itemRuntime, out _);
+
+            bool valid = migrated.Succeeded
+                && affix.Succeeded
+                && restore.Succeeded
+                && restored.GetAffixesForItem(legacy).Count == 1
+                && Math.Abs(restored.GetAffixesForItem(legacy)[0].Data.rolledValues[0].value - affix.Affixes[0].Data.rolledValues[0].value) < 0.0001f
+                && corruptRejected;
+            return valid
+                ? Pass(context, "step9-quality-persistence", $"Migrated={migrated.Quality.QualityTierId} Restore={restore.Status} CorruptRejected={corruptRejected}")
+                : Fail(context, "step9-quality-persistence", $"Migrated={migrated.Status} Affix={affix.Status} Restore={restore.Status} Count={restored.GetAffixesForItem(legacy).Count} Corrupt={corruptRejected}");
+        }
+
         private static bool TryCreateRuntime(TestLabAutomationContext context, out ItemInstanceIdentityRuntime runtime, out ItemDefinition sword, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.ItemInstances;
@@ -282,6 +714,265 @@ namespace UnityIsekaiGame.Development.Automation
             }
 
             return true;
+        }
+
+        private static DefinitionRegistry CreateCompositionRegistry(TestLabAutomationContext context, bool includeRule, out string failure, bool includeComposite = false)
+        {
+            failure = string.Empty;
+            DefinitionRegistry existing = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (existing == null || !existing.TryGet(SwordId, out ItemDefinition sword))
+            {
+                failure = $"Item definition '{SwordId}' is missing.";
+                return null;
+            }
+
+            MaterialDefinition iron = Material("material.prototype.iron", MaterialCategory.Metal, 7.8f, 0.8f, 0.75f);
+            MaterialDefinition wood = Material("material.prototype.wood", MaterialCategory.Wood, 0.7f, 0.25f, 0.45f);
+            MaterialDefinition oil = Material("material.prototype.oil", MaterialCategory.Liquid, 0.9f, 0.02f, 0.1f);
+            MaterialDefinition steel = Material("material.prototype.steel", MaterialCategory.Composite, 7.7f, 0.9f, 0.9f);
+            MaterialDefinition pattern = Material("material.prototype.pattern-weld", MaterialCategory.Composite, 7.75f, 0.9f, 0.95f);
+            SetPrivate(steel, "constituents", new[] { Constituent(iron, 1f) });
+            SetPrivate(pattern, "constituents", new[] { Constituent(steel, 0.5f), Constituent(iron, 0.5f) });
+            System.Collections.Generic.List<IGameDefinition> definitions = existing.DefinitionsById.Values
+                .Where(definition => definition != null && definition.Id != iron.Id && definition.Id != wood.Id && definition.Id != oil.Id && definition.Id != steel.Id && definition.Id != pattern.Id)
+                .Concat(new IGameDefinition[] { iron, wood, oil, steel })
+                .ToList();
+            if (includeComposite)
+            {
+                definitions.Add(pattern);
+            }
+            if (includeRule)
+            {
+                MaterialCompatibilityRuleDefinition rule = UnityEngine.ScriptableObject.CreateInstance<MaterialCompatibilityRuleDefinition>();
+                SetPrivate(rule, "ruleId", "material-rule.prototype.oil-on-iron");
+                SetPrivate(rule, "displayName", "Oil on Iron");
+                SetPrivate(rule, "sourceMaterial", iron);
+                SetPrivate(rule, "targetMaterial", oil);
+                SetPrivate(rule, "outcome", MaterialCompatibilityOutcome.Degrades);
+                SetPrivate(rule, "priority", 100);
+                definitions.Add(rule);
+            }
+
+            return new DefinitionRegistry(definitions);
+        }
+
+        private static bool TryCreateQualityRuntime(
+            TestLabAutomationContext context,
+            out ItemInstanceIdentityRuntime itemRuntime,
+            out ItemCompositionRuntime compositions,
+            out ItemQualityAffixRuntime quality,
+            out DefinitionRegistry registry,
+            out ItemDefinition sword,
+            out QualityTierDefinition masterwork,
+            out ItemAffixDefinition keen,
+            out string failure)
+        {
+            itemRuntime = context?.ScenarioContext?.Runtimes?.ItemInstances;
+            compositions = context?.ScenarioContext?.Runtimes?.ItemCompositions;
+            quality = context?.ScenarioContext?.Runtimes?.ItemQualityAffixes;
+            sword = null;
+            masterwork = null;
+            keen = null;
+            registry = null;
+            failure = string.Empty;
+
+            if (itemRuntime == null || compositions == null || quality == null)
+            {
+                failure = "Item identity, composition, or quality runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            registry = CreateQualityRegistry(context, out failure, out masterwork, out keen);
+            if (registry == null || !registry.TryGet(SwordId, out sword))
+            {
+                failure = string.IsNullOrWhiteSpace(failure) ? $"Item definition '{SwordId}' is missing." : failure;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static DefinitionRegistry CreateQualityRegistry(TestLabAutomationContext context, out string failure, out QualityTierDefinition masterwork, out ItemAffixDefinition keen)
+        {
+            DefinitionRegistry compositionRegistry = CreateCompositionRegistry(context, includeRule: false, out failure, includeComposite: true);
+            masterwork = QualityTier("quality-tier.masterwork", "Masterwork", 0.85f, 0.98f, 80);
+            QualityTierDefinition common = QualityTier("quality-tier.common", "Common", 0.35f, 0.65f, 30);
+            QualityTierDefinition fine = QualityTier("quality-tier.fine", "Fine", 0.65f, 0.85f, 60);
+            QualityTierDefinition legendary = QualityTier("quality-tier.legendary-foundation", "Legendary Quality Foundation", 0.98f, 1f, 100);
+            keen = Affix("affix.prototype.keen-edge", "Keen Edge", ItemAffixClassification.Prefix, "affix-tier.prototype.keen.fine", 0.55f, 1f, 1f, 1f, 0.08f, 2f, exclusiveGroup: "affix-group.edge-sharpness");
+            ItemAffixDefinition precise = Affix("affix.prototype.precise", "Precise", ItemAffixClassification.Suffix, "affix-tier.prototype.precise.fine", 0.45f, 1f, 0.5f, 0.5f, 0.04f, 1f, exclusiveGroup: "affix-group.precision");
+
+            List<IGameDefinition> definitions = compositionRegistry?.DefinitionsById.Values.ToList() ?? new List<IGameDefinition>();
+            definitions.RemoveAll(definition => definition is QualityTierDefinition || definition is ItemAffixDefinition);
+            definitions.AddRange(new IGameDefinition[] { common, fine, masterwork, legendary, keen, precise });
+            return new DefinitionRegistry(definitions);
+        }
+
+        private static string CreateComposedItem(TestLabAutomationContext context, ItemInstanceIdentityRuntime itemRuntime, ItemCompositionRuntime compositions, DefinitionRegistry registry, ItemDefinition sword, string slug)
+        {
+            string itemId = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, slug)).Snapshot.ItemInstanceId;
+            compositions.SetComposition(itemRuntime, registry, Composition(itemId, "material.prototype.iron"));
+            return itemId;
+        }
+
+        private static ItemQualityRecordData QualityRecord(string itemInstanceId, float quality)
+        {
+            return new ItemQualityRecordData
+            {
+                itemInstanceId = itemInstanceId,
+                itemDefinitionId = SwordId,
+                overallQuality = quality,
+                source = ItemQualityRecordSource.TestLab,
+                workmanship =
+                {
+                    Workmanship("workmanship.overall", WorkmanshipDimension.Overall, quality)
+                },
+                dimensions =
+                {
+                    Dimension("quality.functional", ItemQualityDimension.Functional, quality, 1f)
+                }
+            };
+        }
+
+        private static ItemWorkmanshipEntryData Workmanship(string id, WorkmanshipDimension dimension, float value)
+        {
+            return new ItemWorkmanshipEntryData
+            {
+                entryId = id,
+                dimension = dimension,
+                value = new ItemQualityValueData { state = QualityValueState.Known, value = value }
+            };
+        }
+
+        private static ItemQualityDimensionEntryData Dimension(string id, ItemQualityDimension dimension, float value, float weight)
+        {
+            return new ItemQualityDimensionEntryData
+            {
+                entryId = id,
+                dimension = dimension,
+                value = new ItemQualityValueData { state = QualityValueState.Known, value = value },
+                weight = weight
+            };
+        }
+
+        private static QualityTierDefinition QualityTier(string id, string name, float min, float max, int order)
+        {
+            QualityTierDefinition tier = UnityEngine.ScriptableObject.CreateInstance<QualityTierDefinition>();
+            SetPrivate(tier, "tierId", id);
+            SetPrivate(tier, "displayName", name);
+            SetPrivate(tier, "minimumQuality", min);
+            SetPrivate(tier, "maximumQuality", max);
+            SetPrivate(tier, "sortOrder", order);
+            return tier;
+        }
+
+        private static ItemAffixDefinition Affix(string id, string name, ItemAffixClassification classification, string tierId, float minQuality, float maxQuality, float minValue, float maxValue, float rarityContribution, float modifierValue, string exclusiveGroup)
+        {
+            ItemAffixDefinition definition = UnityEngine.ScriptableObject.CreateInstance<ItemAffixDefinition>();
+            SetPrivate(definition, "affixId", id);
+            SetPrivate(definition, "displayName", name);
+            SetPrivate(definition, "classification", classification);
+            SetPrivate(definition, "maximumOccurrences", 1);
+            SetPrivate(definition, "maximumPrefixCount", 3);
+            SetPrivate(definition, "maximumSuffixCount", 3);
+            SetPrivate(definition, "maximumTotalAffixCount", 6);
+            SetPrivate(definition, "exclusiveGroups", new[] { exclusiveGroup });
+            SetPrivate(definition, "rarityContribution", rarityContribution);
+            SetPrivate(definition, "generationWeight", 1f);
+            SetPrivate(definition, "tiers", new[]
+            {
+                new ItemAffixTierData
+                {
+                    tierId = tierId,
+                    sortOrder = 10,
+                    minimumItemQuality = minQuality,
+                    maximumItemQuality = maxQuality,
+                    valueMinimum = minValue,
+                    valueMaximum = maxValue,
+                    rarityContribution = rarityContribution,
+                    modifierTemplates = new[] { StatModifier(StatType.AttackPower, StatModifierOperation.FlatAdd, modifierValue) }
+                }
+            });
+            return definition;
+        }
+
+        private static StatModifierDefinition StatModifier(StatType statType, StatModifierOperation operation, float value)
+        {
+            StatModifierDefinition modifier = new StatModifierDefinition();
+            SetPrivate(modifier, "statType", statType);
+            SetPrivate(modifier, "operation", operation);
+            SetPrivate(modifier, "value", value);
+            SetPrivate(modifier, "scaleWithStacks", false);
+            return modifier;
+        }
+
+        private static ItemCompositionRecordData Composition(string itemInstanceId, string materialId)
+        {
+            return new ItemCompositionRecordData
+            {
+                compositionId = $"item-composition.{itemInstanceId}",
+                itemInstanceId = itemInstanceId,
+                sourceItemDefinitionId = SwordId,
+                completeness = ItemCompositionCompleteness.Complete,
+                source = "test-lab.automation",
+                materials =
+                {
+                    MaterialEntry("entry.blade", materialId, MaterialEntryRole.PrimaryStructure, 1.2f, MaterialQuantityUnit.Kilogram)
+                },
+                components =
+                {
+                    new ItemComponentEntryData
+                    {
+                        componentEntryId = "component.blade",
+                        kind = ItemComponentKind.AbstractComponent,
+                        materialEntryIds = new[] { "entry.blade" }
+                    }
+                }
+            };
+        }
+
+        private static ItemMaterialEntryData MaterialEntry(string entryId, string materialId, MaterialEntryRole role, float value, MaterialQuantityUnit unit)
+        {
+            return new ItemMaterialEntryData
+            {
+                entryId = entryId,
+                materialDefinitionId = materialId,
+                role = role,
+                quantity = new MaterialQuantityData { value = value, unit = unit },
+                purity = 1f
+            };
+        }
+
+        private static MaterialDefinition Material(string id, MaterialCategory category, float density, float hardness, float durability)
+        {
+            MaterialDefinition material = UnityEngine.ScriptableObject.CreateInstance<MaterialDefinition>();
+            SetPrivate(material, "materialId", id);
+            SetPrivate(material, "displayName", id);
+            SetPrivate(material, "category", category);
+            SetPrivate(material, "physicalProperties", new MaterialPhysicalPropertySet
+            {
+                densityKgPerLiter = density,
+                hardness = hardness,
+                durability = durability,
+                flexibility = 0.2f,
+                conductivity = 0.2f,
+                flammability = 0.1f,
+                biologicalCompatibility = 0.5f
+            });
+            return material;
+        }
+
+        private static CompositeMaterialConstituentDefinition Constituent(MaterialDefinition material, float ratio)
+        {
+            CompositeMaterialConstituentDefinition constituent = new CompositeMaterialConstituentDefinition();
+            SetPrivate(constituent, "material", material);
+            SetPrivate(constituent, "ratio", ratio);
+            return constituent;
+        }
+
+        private static void SetPrivate(object target, string fieldName, object value)
+        {
+            target.GetType().GetField(fieldName, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.SetValue(target, value);
         }
 
         private static string RunGuid(TestLabAutomationContext context, string slug)

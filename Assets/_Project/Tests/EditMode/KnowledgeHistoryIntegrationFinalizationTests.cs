@@ -95,18 +95,15 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
-        public void Step8MasterSuite_IsRegisteredSeparatelyFromFeatureSuite()
+        public void Step8MasterSuite_IsNotRegisteredWhenFeatureSuitesAreRunnableDirectly()
         {
             TestLabAutomationRegistry registry = new TestLabAutomationRegistry();
 
             PrototypeStep8AutomationSuites.RegisterDefaults(registry);
 
             ITestLabAutomationSuite feature = registry.Suites.Single(suite => suite.SuiteId == "feature.8.10.knowledge-history-integration");
-            ITestLabAutomationSuite master = registry.Suites.Single(suite => suite.SuiteId == "step.8.knowledge-history-integration");
             Assert.That(feature.IncludeInRunAll, Is.True);
-            Assert.That(master.IncludeInRunAll, Is.False);
-            Assert.That(master.Order, Is.GreaterThan(feature.Order));
-            Assert.That(master.Scenarios.Any(scenario => scenario.ScenarioId == "final-hardening"), Is.True);
+            Assert.That(registry.Suites.Any(suite => suite.SuiteId == "step.8.knowledge-history-integration"), Is.False);
         }
 
         [Test]
