@@ -42,6 +42,7 @@ using UnityIsekaiGame.Knowledge.Observation;
 using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
+using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
 using UnityIsekaiGame.Places;
@@ -14342,6 +14343,15 @@ namespace UnityIsekaiGame.Development
                 if (!definitions.Any(existing => string.Equals(existing.Id, definition.Id, StringComparison.Ordinal)))
                 {
                     definitions.Add(definition);
+                }
+            }
+
+            foreach (ScriptableObject definition in PrototypeProfessionDefinitionFactory.CreateDefinitions())
+            {
+                if (definition is IGameDefinition gameDefinition
+                    && !definitions.Any(existing => string.Equals(existing.Id, gameDefinition.Id, StringComparison.Ordinal)))
+                {
+                    definitions.Add(gameDefinition);
                 }
             }
 

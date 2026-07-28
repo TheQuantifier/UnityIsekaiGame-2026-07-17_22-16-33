@@ -27,6 +27,7 @@ using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Places;
+using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.ResourceSystem;
@@ -87,6 +88,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerTraits = true;
         [SerializeField] private bool registerPlayerBody = true;
         [SerializeField] private bool registerPlayerKnowledge = true;
+        [SerializeField] private bool registerPlayerProfessions = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -119,6 +121,7 @@ namespace UnityIsekaiGame.Gameplay
         private InformationTransferPersistenceParticipant playerInformationTransferParticipant;
         private InformationAccessPersistenceParticipant playerInformationAccessParticipant;
         private KnowledgeRecordPersistenceParticipant playerKnowledgeRecordParticipant;
+        private PersonProfessionPersistenceParticipant playerProfessionParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
@@ -142,6 +145,7 @@ namespace UnityIsekaiGame.Gameplay
         private InformationTransferRuntime playerInformationTransfers;
         private InformationAccessRuntime playerInformationAccess;
         private KnowledgeRecordRuntime playerKnowledgeRecords;
+        private PersonProfessionRuntime playerProfessions;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
@@ -168,6 +172,19 @@ namespace UnityIsekaiGame.Gameplay
         public InformationTransferRuntime InformationTransfers => playerInformationTransfers ??= new InformationTransferRuntime();
         public InformationAccessRuntime InformationAccess => playerInformationAccess ??= new InformationAccessRuntime();
         public KnowledgeRecordRuntime KnowledgeRecords => playerKnowledgeRecords ??= new KnowledgeRecordRuntime();
+        public PersonProfessionRuntime Professions
+        {
+            get
+            {
+                if (playerProfessions == null)
+                {
+                    playerProfessions = new PersonProfessionRuntime();
+                    playerProfessions.Configure(GetDefinitionRegistry(), new[] { service == null ? PersistenceService.LocalPlayerId : service.PlayerId });
+                }
+
+                return playerProfessions;
+            }
+        }
         public ItemInstanceIdentityRuntime ItemIdentities => playerItemIdentities ??= new ItemInstanceIdentityRuntime();
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
@@ -404,6 +421,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerTraitsParticipant();
             EnsurePlayerBodyParticipant();
             EnsurePlayerKnowledgeParticipant();
+            EnsurePlayerProfessionParticipant();
             EnsurePlayerInformationSourceParticipant();
             EnsurePlayerInformationTransferParticipant();
             EnsurePlayerInformationAccessParticipant();
@@ -1299,6 +1317,38 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerKnowledgeParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerProfessionParticipant()
+        {
+            if (!registerPlayerProfessions || playerProfessionParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Person Profession persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            Professions.Configure(GetDefinitionRegistry(), new[] { personId, service.PlayerId });
+            playerProfessionParticipant = new PersonProfessionPersistenceParticipant(
+                Professions,
+                GetDefinitionRegistry,
+                () => new[] { personId, service.PlayerId },
+                service.PlayerId);
+
+            service.RegisterParticipant(playerProfessionParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerProfessionParticipant = null;
             }
         }
 

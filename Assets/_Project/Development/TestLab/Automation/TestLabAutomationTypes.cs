@@ -61,7 +61,8 @@ namespace UnityIsekaiGame.Development.Automation
         Combat = 1 << 2,
         Biology = 1 << 3,
         Persistence = 1 << 4,
-        Items = 1 << 5
+        Items = 1 << 5,
+        Professions = 1 << 6
     }
 
     [Flags]
