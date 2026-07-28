@@ -227,6 +227,11 @@ namespace UnityIsekaiGame.Development.Automation
                     errors.Add($"Scenario '{suite.SuiteId}/{scenario.ScenarioId}' declares unsupported isolation mode '{scenario.IsolationMode}'.");
                 }
 
+                if (!Enum.IsDefined(typeof(TestLabCommandLineSupport), scenario.CommandLineSupport))
+                {
+                    errors.Add($"Scenario '{suite.SuiteId}/{scenario.ScenarioId}' declares unsupported command-line support mode '{scenario.CommandLineSupport}'.");
+                }
+
                 if (scenario.RequiredRuntimeAreas == TestLabRuntimeArea.None)
                 {
                     errors.Add($"Scenario '{suite.SuiteId}/{scenario.ScenarioId}' declares no required runtime areas.");

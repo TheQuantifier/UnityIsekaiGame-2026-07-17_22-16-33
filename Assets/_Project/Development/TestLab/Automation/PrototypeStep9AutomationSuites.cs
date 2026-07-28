@@ -4,12 +4,14 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Inventory.Production;
 using UnityIsekaiGame.Inventory.Quality;
+using UnityIsekaiGame.Inventory.Recipes;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Stats;
@@ -34,6 +36,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildQualityAffixSuite());
             TryRegister(registry, BuildDurabilitySuite());
             TryRegister(registry, BuildProductionRequirementsSuite());
+            TryRegister(registry, BuildRecipesCraftingKnowledgeSuite());
         }
 
         private static ITestLabAutomationSuite BuildItemIdentitySuite()
@@ -128,6 +131,20 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("step9-production-reservations", "Reserve and invalidate production plans", ProductionReservationsInvalidation)),
                 Scenario("wear-and-persistence", "Tool wear and persistence preserve production plans", 40,
                     Step("step9-production-wear-save", "Apply tool wear and restore production runtime", ProductionWearPersistence)));
+        }
+
+        private static ITestLabAutomationSuite BuildRecipesCraftingKnowledgeSuite()
+        {
+            return Suite("feature.9.6.recipes-crafting-knowledge", "Feature 9.6 Recipes and Crafting Knowledge", "9.6", 960,
+                Required("RecipeDefinition", "RecipeRuntime", "RecipeKnowledgeRuntime", "ProductionRequirementRuntime"),
+                Scenario("definition-resolution", "Recipes validate versions, variants, inputs, outputs, and procedures", 10,
+                    Step("step9-recipes-definition", "Validate recipe definition", RecipeDefinitionResolution)),
+                Scenario("preview-and-reservation", "Recipe preview is read-only and reservation is explicit", 20,
+                    Step("step9-recipes-preview", "Preview and reserve recipe", RecipePreviewReservation)),
+                Scenario("knowledge-projection", "Person recipe knowledge projects partial and privileged views", 30,
+                    Step("step9-recipes-knowledge", "Project recipe knowledge", RecipeKnowledgeProjection)),
+                Scenario("persistence-round-trip", "Recipe knowledge persistence validates before commit", 40,
+                    Step("step9-recipes-persistence", "Persist recipe knowledge", RecipeKnowledgePersistence)));
         }
 
         private static TestLabAutomationStepResult DistinctInstances(TestLabAutomationContext context)
@@ -1014,6 +1031,116 @@ namespace UnityIsekaiGame.Development.Automation
                 : Fail(context, "step9-production-wear-save", $"Plan={plan.Status} Wear={wear.Status} Durable={beforeWear}->{afterWear} Reserve={reserve.Status} Restore={restore.Status}");
         }
 
+        private static TestLabAutomationStepResult RecipeDefinitionResolution(TestLabAutomationContext context)
+        {
+            if (!TryCreateRecipeRuntime(context, out _, out _, out DefinitionRegistry registry, out RecipeDefinition recipe, out _, out string failure))
+            {
+                return Fail(context, "step9-recipes-definition", failure);
+            }
+
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            _ = new DefinitionRegistry(registry.DefinitionsById.Values, report);
+            bool valid = report.ErrorCount == 0 && recipe.Versions.Count >= 2 && recipe.Variants.Count == 1 && recipe.ProcedureSteps.Count == 3;
+            return valid
+                ? Pass(context, "step9-recipes-definition", $"Recipe={recipe.Id} Versions={recipe.Versions.Count} Variants={recipe.Variants.Count} Steps={recipe.ProcedureSteps.Count}")
+                : Fail(context, "step9-recipes-definition", string.Join(" | ", report.Messages.Select(message => message.Message)));
+        }
+
+        private static TestLabAutomationStepResult RecipePreviewReservation(TestLabAutomationContext context)
+        {
+            if (!TryCreateRecipeRuntime(context, out RecipeRuntime runtime, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out RecipeDefinition recipe, out MaterialDefinition iron, out string failure))
+            {
+                return Fail(context, "step9-recipes-preview", failure);
+            }
+
+            ProductionContextData productionContext = new ProductionContextData
+            {
+                actorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                locationId = "location.prototype.smithy",
+                materialQuantities =
+                {
+                    new ProductionQuantityData { definitionId = iron.Id, sourceContainerId = "container.prototype.materials", quantity = 6f, sourceTotalQuantity = 6f, unit = ProductionQuantityUnit.Kilogram }
+                }
+            };
+            RecipeResolutionResult preview = runtime.Resolve(new RecipeResolutionRequest
+            {
+                recipeId = recipe.Id,
+                productionContext = productionContext,
+                reservePlan = false
+            }, registry, production, context.ScenarioContext.Runtimes.ItemInstances, context.ScenarioContext.Runtimes.ItemDurability);
+            int plansAfterPreview = production.PlanCount;
+            RecipeResolutionResult reserve = runtime.Resolve(new RecipeResolutionRequest
+            {
+                recipeId = recipe.Id,
+                productionContext = productionContext,
+                reservePlan = true,
+                productionJobId = context.ScenarioContext.ScopedId("recipe-job", "sword")
+            }, registry, production, context.ScenarioContext.Runtimes.ItemInstances, context.ScenarioContext.Runtimes.ItemDurability);
+
+            bool valid = preview.Succeeded && preview.Preview && plansAfterPreview == 0 && reserve.Succeeded && !reserve.Preview && production.PlanCount == 1 && production.ReservationCount >= 1;
+            return valid
+                ? Pass(context, "step9-recipes-preview", $"Preview={preview.Status} Reserve={reserve.Status} Plans={production.PlanCount} Reservations={production.ReservationCount}")
+                : Fail(context, "step9-recipes-preview", $"Preview={preview.Status} {preview.Message} Reserve={reserve.Status} {reserve.Message} Plans={production.PlanCount}");
+        }
+
+        private static TestLabAutomationStepResult RecipeKnowledgeProjection(TestLabAutomationContext context)
+        {
+            if (!TryCreateRecipeRuntime(context, out RecipeRuntime runtime, out _, out DefinitionRegistry registry, out RecipeDefinition recipe, out _, out string failure))
+            {
+                return Fail(context, "step9-recipes-knowledge", failure);
+            }
+
+            RecipeKnowledgeRuntime knowledge = context.ScenarioContext.Runtimes.RecipeKnowledge;
+            RecipeResolvedSnapshot truth = runtime.Resolve(new RecipeResolutionRequest { recipeId = recipe.Id, buildRequirementPlan = false }, registry).Snapshot;
+            RecipeKnowledgeRecordData record = knowledge.LearnOrUpdate(new RecipeKnowledgeRecordData
+            {
+                recordId = context.ScenarioContext.ScopedId("recipe-knowledge", "sword"),
+                personId = context.ScenarioContext.Runtimes.PersonId,
+                recipeId = recipe.Id,
+                versionId = "recipe-version.prototype.sword.v1",
+                completeness = RecipeKnowledgeCompleteness.Partial,
+                knownInputIds = new[] { "recipe-input.prototype.iron" },
+                knownOutputIds = new[] { "recipe-output.prototype.sword" },
+                knownStepIds = new[] { "recipe-step.prototype.prepare" },
+                sourceIds = new[] { "information-source.prototype.recipe-manual" }
+            });
+            RecipeResolvedSnapshot partial = knowledge.ProjectKnownRecipe(truth, record, RecipeProjectionAccessLevel.Ordinary);
+            RecipeResolvedSnapshot privileged = knowledge.ProjectKnownRecipe(truth, record, RecipeProjectionAccessLevel.Privileged);
+            bool valid = partial != null && privileged != null && partial.Redacted && partial.Inputs.Count < privileged.Inputs.Count && knowledge.RecordCount == 1;
+            return valid
+                ? Pass(context, "step9-recipes-knowledge", $"PartialInputs={partial.Inputs.Count} PrivilegedInputs={privileged.Inputs.Count} Records={knowledge.RecordCount}")
+                : Fail(context, "step9-recipes-knowledge", "Recipe knowledge projection mismatch.");
+        }
+
+        private static TestLabAutomationStepResult RecipeKnowledgePersistence(TestLabAutomationContext context)
+        {
+            if (!TryCreateRecipeRuntime(context, out _, out _, out DefinitionRegistry registry, out RecipeDefinition recipe, out _, out string failure))
+            {
+                return Fail(context, "step9-recipes-persistence", failure);
+            }
+
+            RecipeKnowledgeRuntime knowledge = context.ScenarioContext.Runtimes.RecipeKnowledge;
+            RecipeKnowledgeRecordData record = knowledge.LearnOrUpdate(new RecipeKnowledgeRecordData
+            {
+                recordId = context.ScenarioContext.ScopedId("recipe-knowledge", "persist"),
+                personId = context.ScenarioContext.Runtimes.PersonId,
+                recipeId = recipe.Id,
+                versionId = "recipe-version.prototype.sword.v1",
+                completeness = RecipeKnowledgeCompleteness.Complete
+            });
+            RecipeKnowledgeSaveData save = knowledge.CreateSaveData();
+            RecipeKnowledgeRuntime restored = new RecipeKnowledgeRuntime();
+            bool restore = restored.RestoreFromSaveData(save, registry, out string restoreFailure);
+            RecipeKnowledgePersistenceParticipant participant = new RecipeKnowledgePersistenceParticipant(knowledge, () => registry, context.ScenarioContext.Runtimes.PersonId);
+            RecipeKnowledgeSaveData bad = save.Clone();
+            bad.records[0].recipeId = "recipe.prototype.missing";
+            PersistenceParticipantPrepareResult prepare = participant.PreparePayload(UnityEngine.JsonUtility.ToJson(bad), RecipeKnowledgePersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = record != null && restore && restored.RecordCount == 1 && !prepare.Succeeded && knowledge.RecordCount == 1;
+            return valid
+                ? Pass(context, "step9-recipes-persistence", $"Restore={restore} Reject={prepare.Succeeded} Records={knowledge.RecordCount}")
+                : Fail(context, "step9-recipes-persistence", $"Restore={restore} {restoreFailure} Prepare={prepare.Message}");
+        }
+
         private static bool TryCreateRuntime(TestLabAutomationContext context, out ItemInstanceIdentityRuntime runtime, out ItemDefinition sword, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.ItemInstances;
@@ -1038,6 +1165,41 @@ namespace UnityIsekaiGame.Development.Automation
                 return false;
             }
 
+            return true;
+        }
+
+        private static bool TryCreateRecipeRuntime(
+            TestLabAutomationContext context,
+            out RecipeRuntime recipeRuntime,
+            out ProductionRequirementRuntime production,
+            out DefinitionRegistry registry,
+            out RecipeDefinition recipe,
+            out MaterialDefinition iron,
+            out string failure)
+        {
+            recipeRuntime = new RecipeRuntime();
+            production = context?.ScenarioContext?.Runtimes?.ProductionRequirements;
+            registry = null;
+            recipe = null;
+            iron = null;
+            failure = string.Empty;
+
+            if (production == null || context?.ScenarioContext?.Runtimes?.RecipeKnowledge == null)
+            {
+                failure = "Recipe automation requires production and recipe knowledge runtimes from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            DefinitionRegistry existing = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            if (existing == null || !existing.TryGet(SwordId, out ItemDefinition sword))
+            {
+                failure = $"Item definition '{SwordId}' is missing.";
+                return false;
+            }
+
+            iron = Material("material.prototype.recipe-iron", MaterialCategory.Metal, 7.8f, 0.8f, 0.8f);
+            recipe = PrototypeRecipe(sword, iron);
+            registry = ExtendRegistry(existing, iron, recipe);
             return true;
         }
 
@@ -1477,6 +1639,81 @@ namespace UnityIsekaiGame.Development.Automation
             SetPrivate(constituent, "material", material);
             SetPrivate(constituent, "ratio", ratio);
             return constituent;
+        }
+
+        private static RecipeDefinition PrototypeRecipe(ItemDefinition sword, MaterialDefinition iron)
+        {
+            RecipeDefinition recipe = UnityEngine.ScriptableObject.CreateInstance<RecipeDefinition>();
+            SetPrivate(recipe, "recipeId", "recipe.prototype.sword");
+            SetPrivate(recipe, "displayName", "Prototype Sword Recipe");
+            SetPrivate(recipe, "category", RecipeCategory.Smithing);
+            SetPrivate(recipe, "currentVersionId", "recipe-version.prototype.sword.v1");
+            SetPrivate(recipe, "versions", new[]
+            {
+                new RecipeVersionData { versionId = "recipe-version.prototype.sword.v0", versionLabel = "Old", state = RecipeLifecycleState.Deprecated },
+                new RecipeVersionData { versionId = "recipe-version.prototype.sword.v1", versionLabel = "Current", priorVersionId = "recipe-version.prototype.sword.v0" }
+            });
+            SetPrivate(recipe, "variants", new[]
+            {
+                new RecipeVariantData
+                {
+                    variantId = "recipe-variant.prototype.decorated",
+                    baseVersionId = "recipe-version.prototype.sword.v1",
+                    additionalInputs = new[] { RecipeInput("recipe-input.prototype.trim", RecipeInputRole.DecorativeComponent, iron.Id, 0.25f, false, RecipeRequirementState.Optional) }
+                }
+            });
+            SetPrivate(recipe, "inputs", new[]
+            {
+                RecipeInput("recipe-input.prototype.iron", RecipeInputRole.PrimaryMaterial, iron.Id, 2f, false, RecipeRequirementState.Required),
+                RecipeInput("recipe-input.prototype.hidden-technique", RecipeInputRole.Catalyst, iron.Id, 0.1f, true, RecipeRequirementState.Required)
+            });
+            SetPrivate(recipe, "outputs", new[]
+            {
+                new RecipeOutputSpecificationData { outputId = "recipe-output.prototype.sword", role = RecipeOutputRole.PrimaryOutput, itemDefinitionId = sword.Id, quantity = 1f },
+                new RecipeOutputSpecificationData { outputId = "recipe-output.prototype.scrap", role = RecipeOutputRole.Scrap, materialDefinitionId = iron.Id, quantity = 0.1f, conditional = true }
+            });
+            SetPrivate(recipe, "procedureSteps", new[]
+            {
+                RecipeStep("recipe-step.prototype.prepare", RecipeProcedureStepKind.PrepareInput),
+                RecipeStep("recipe-step.prototype.shape", RecipeProcedureStepKind.Shape, "recipe-step.prototype.prepare"),
+                RecipeStep("recipe-step.prototype.finish", RecipeProcedureStepKind.Finish, "recipe-step.prototype.shape")
+            });
+            SetPrivate(recipe, "transferMappings", new[]
+            {
+                new RecipeTransferMappingData { mappingId = "recipe-transfer.prototype.iron-to-sword", sourceInputId = "recipe-input.prototype.iron", targetOutputId = "recipe-output.prototype.sword", quantityTransferPolicy = RecipeTransferPolicy.InputDerived }
+            });
+            SetPrivate(recipe, "batchPolicy", new RecipeBatchPolicyData { scalingPolicy = RecipeBatchScalingPolicy.Discrete, baseBatchSize = 1f, minimumBatchSize = 1f, maximumBatchSize = 5f, batchIncrement = 1f });
+            SetPrivate(recipe, "compositionTransferPolicyId", "recipe-policy.prototype.composition");
+            SetPrivate(recipe, "qualityGenerationPolicyId", "recipe-policy.prototype.quality");
+            SetPrivate(recipe, "affixGenerationPolicyId", "recipe-policy.prototype.affix");
+            SetPrivate(recipe, "durabilityInitializationPolicyId", "recipe-policy.prototype.durability");
+            return recipe;
+        }
+
+        private static RecipeInputSpecificationData RecipeInput(string id, RecipeInputRole role, string materialId, float quantity, bool hidden, RecipeRequirementState state)
+        {
+            return new RecipeInputSpecificationData
+            {
+                inputId = id,
+                role = role,
+                materialDefinitionId = materialId,
+                quantity = quantity,
+                unit = ProductionQuantityUnit.Kilogram,
+                hidden = hidden,
+                requirementState = state,
+                classification = role == RecipeInputRole.Catalyst ? RecipeInputClassification.Catalyst : RecipeInputClassification.Consumable
+            };
+        }
+
+        private static RecipeProcedureStepData RecipeStep(string id, RecipeProcedureStepKind kind, params string[] dependencies)
+        {
+            return new RecipeProcedureStepData
+            {
+                stepId = id,
+                stepKind = kind,
+                displayName = id,
+                dependsOnStepIds = dependencies ?? Array.Empty<string>()
+            };
         }
 
         private static void SetPrivate(object target, string fieldName, object value)

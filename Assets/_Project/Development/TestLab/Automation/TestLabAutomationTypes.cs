@@ -39,6 +39,19 @@ namespace UnityIsekaiGame.Development.Automation
         Shuffled = 2
     }
 
+    public enum TestLabAutomationRunSurface
+    {
+        InGame = 0,
+        CommandLine = 1
+    }
+
+    public enum TestLabCommandLineSupport
+    {
+        Supported = 0,
+        RequiresScene = 1,
+        Unsupported = 2
+    }
+
     [Flags]
     public enum TestLabRuntimeArea
     {
@@ -79,6 +92,8 @@ namespace UnityIsekaiGame.Development.Automation
         public int MaximumFrameWait { get; set; } = 120;
         public TestLabAutomationScenarioOrder ScenarioOrder { get; set; } = TestLabAutomationScenarioOrder.Normal;
         public int ShuffleSeed { get; set; } = 8675309;
+        public TestLabAutomationRunSurface RunSurface { get; set; } = TestLabAutomationRunSurface.InGame;
+        public bool CommandLineSceneAvailable { get; set; }
     }
 
     public sealed class TestLabAutomationStepResult

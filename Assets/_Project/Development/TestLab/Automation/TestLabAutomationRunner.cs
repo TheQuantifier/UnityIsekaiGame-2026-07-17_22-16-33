@@ -129,7 +129,21 @@ namespace UnityIsekaiGame.Development.Automation
             try
             {
                 (ITestLabAutomationSuite Suite, ITestLabAutomationScenario Scenario)[] orderedSelections = ApplyScenarioOrder(selections, options).ToArray();
-                TestLabSuiteCompatibilityReport compatibility = TestLabAutomationCompatibility.Preview(orderedSelections, hostResolver, defaultDefinitionContext);
+                List<(ITestLabAutomationSuite Suite, ITestLabAutomationScenario Scenario)> runnableSelections = new List<(ITestLabAutomationSuite Suite, ITestLabAutomationScenario Scenario)>();
+                foreach ((ITestLabAutomationSuite suite, ITestLabAutomationScenario scenario) in orderedSelections)
+                {
+                    TestLabScenarioResult skipped = CommandLineSkippedScenarioResult(suite, scenario, options);
+                    if (skipped != null)
+                    {
+                        results.Add(skipped);
+                    }
+                    else
+                    {
+                        runnableSelections.Add((suite, scenario));
+                    }
+                }
+
+                TestLabSuiteCompatibilityReport compatibility = TestLabAutomationCompatibility.Preview(runnableSelections, hostResolver, defaultDefinitionContext);
                 if (!compatibility.Compatible)
                 {
                     results.AddRange(compatibility.Scenarios.Where(scenario => !scenario.Compatible).Select(IncompatibleScenarioResult));
@@ -138,7 +152,7 @@ namespace UnityIsekaiGame.Development.Automation
 
                 if (!compatibilityFailed)
                 {
-                    foreach ((ITestLabAutomationSuite suite, ITestLabAutomationScenario scenario) in orderedSelections)
+                    foreach ((ITestLabAutomationSuite suite, ITestLabAutomationScenario scenario) in runnableSelections)
                     {
                         if (IsCancellationRequested)
                         {
@@ -531,6 +545,52 @@ namespace UnityIsekaiGame.Development.Automation
             {
                 TestLabAssertions.Cancelled("cancelled", "Scenario not run", "Run cancellation requested before scenario started.")
             });
+        }
+
+        private static TestLabScenarioResult CommandLineSkippedScenarioResult(ITestLabAutomationSuite suite, ITestLabAutomationScenario scenario, TestLabAutomationOptions options)
+        {
+            if (options == null || options.RunSurface != TestLabAutomationRunSurface.CommandLine || scenario == null)
+            {
+                return null;
+            }
+
+            string reason = string.Empty;
+            switch (scenario.CommandLineSupport)
+            {
+                case TestLabCommandLineSupport.Supported:
+                    return null;
+                case TestLabCommandLineSupport.RequiresScene:
+                    if (options.CommandLineSceneAvailable)
+                    {
+                        return null;
+                    }
+
+                    reason = string.IsNullOrWhiteSpace(scenario.CommandLineUnsupportedReason)
+                        ? "Scenario requires -testLabScene for command-line execution."
+                        : scenario.CommandLineUnsupportedReason;
+                    break;
+                case TestLabCommandLineSupport.Unsupported:
+                    reason = string.IsNullOrWhiteSpace(scenario.CommandLineUnsupportedReason)
+                        ? "Scenario is not supported from command-line automation."
+                        : scenario.CommandLineUnsupportedReason;
+                    break;
+                default:
+                    reason = $"Scenario declares unsupported command-line support mode '{scenario.CommandLineSupport}'.";
+                    break;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            return new TestLabScenarioResult(
+                suite?.SuiteId ?? string.Empty,
+                scenario.ScenarioId,
+                scenario.DisplayName,
+                TestLabAutomationStatus.Skipped,
+                now,
+                now,
+                new[]
+                {
+                    TestLabAssertions.Skip("command-line.support", "Command-line support", reason)
+                });
         }
     }
 }

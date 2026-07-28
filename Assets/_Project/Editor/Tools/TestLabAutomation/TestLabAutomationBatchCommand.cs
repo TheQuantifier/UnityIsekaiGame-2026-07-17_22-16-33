@@ -13,6 +13,7 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
     public static class TestLabAutomationBatchCommand
     {
         private const string BatchHostId = "host.batch.scene-independent";
+        private const string DefaultAutomationScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
 
         public static void Run()
         {
@@ -50,17 +51,6 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
             PrototypeTestLabService sceneService = null;
             try
             {
-                if (!string.IsNullOrWhiteSpace(options.ScenePath))
-                {
-                    if (AssetDatabase.LoadAssetAtPath<SceneAsset>(options.ScenePath) == null)
-                    {
-                        return TestLabAutomationBatchCommandResult.Fail(2, $"Test Lab automation scene was not found at '{options.ScenePath}'.", Array.Empty<string>(), null);
-                    }
-
-                    EditorSceneManager.OpenScene(options.ScenePath);
-                    sceneService = CreateSceneService();
-                }
-
                 PrototypeTestLabAutomationCatalogValidationResult catalogValidation = PrototypeTestLabAutomationCatalog.Validate();
                 if (!catalogValidation.Succeeded)
                 {
@@ -68,6 +58,23 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
                 }
 
                 TestLabAutomationRegistry registry = PrototypeTestLabAutomationCatalog.CreateDefaultRegistry(options.StepFilter);
+                string scenePath = ResolveAutomationScenePath(options, registry);
+                if (!string.IsNullOrWhiteSpace(scenePath))
+                {
+                    if (AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath) == null)
+                    {
+                        if (!string.IsNullOrWhiteSpace(options.ScenePath))
+                        {
+                            return TestLabAutomationBatchCommandResult.Fail(2, $"Test Lab automation scene was not found at '{options.ScenePath}'.", Array.Empty<string>(), null);
+                        }
+                    }
+                    else
+                    {
+                        EditorSceneManager.OpenScene(scenePath);
+                        sceneService = CreateSceneService();
+                    }
+                }
+
                 TestLabDefinitionContext definitions = PrototypeTestLabService.CreateDefaultAutomationDefinitionContext();
                 string batchHostId = $"{BatchHostId}.{Guid.NewGuid():N}";
                 TestLabSceneIndependentAutomationHost batchHost = new TestLabSceneIndependentAutomationHost(definitions.Registry, batchHostId);
@@ -99,7 +106,7 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
                         : TestLabAutomationBatchCommandResult.Fail(1, message, compatibilityPaths, null);
                 }
 
-                TestLabAutomationResult result = Execute(runner, options);
+                TestLabAutomationResult result = Execute(runner, options, sceneService != null);
                 IReadOnlyList<string> reportPaths = exporter.Export(result, options.ReportFormat, options.OutputDirectory, options.OutputPath);
                 LogFailures(result);
 
@@ -123,9 +130,10 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
             }
         }
 
-        private static TestLabAutomationResult Execute(TestLabAutomationRunner runner, TestLabAutomationCommandLineOptions options)
+        private static TestLabAutomationResult Execute(TestLabAutomationRunner runner, TestLabAutomationCommandLineOptions options, bool sceneAvailable)
         {
             TestLabAutomationOptions automationOptions = options.ToAutomationOptions();
+            automationOptions.CommandLineSceneAvailable = sceneAvailable;
             return options.RunMode switch
             {
                 TestLabAutomationRunMode.SelectedScenario => runner.RunScenario(options.SuiteId, options.ScenarioId, automationOptions),
@@ -153,6 +161,71 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
 
             TestLabAutomationHostCapabilities capabilities = batchHost.GetCapabilities();
             return TestLabAutomationHostResolution.Success(batchHost, capabilities, TestLabAutomationHostRegistry.Revision);
+        }
+
+        private static string ResolveAutomationScenePath(TestLabAutomationCommandLineOptions options, TestLabAutomationRegistry registry)
+        {
+            if (!string.IsNullOrWhiteSpace(options.ScenePath))
+            {
+                return options.ScenePath;
+            }
+
+            return ShouldOpenDefaultScene(options, registry) ? DefaultAutomationScenePath : string.Empty;
+        }
+
+        private static bool ShouldOpenDefaultScene(TestLabAutomationCommandLineOptions options, TestLabAutomationRegistry registry)
+        {
+            if (options == null || registry == null || options.Action == TestLabAutomationCommandAction.List)
+            {
+                return false;
+            }
+
+            return SelectedScenarios(registry, options)
+                .Any(scenario => scenario != null && scenario.CommandLineSupport == TestLabCommandLineSupport.RequiresScene);
+        }
+
+        private static IEnumerable<ITestLabAutomationScenario> SelectedScenarios(TestLabAutomationRegistry registry, TestLabAutomationCommandLineOptions options)
+        {
+            if (registry == null || options == null)
+            {
+                yield break;
+            }
+
+            switch (options.RunMode)
+            {
+                case TestLabAutomationRunMode.SelectedScenario:
+                    if (registry.TryGetScenario(options.SuiteId, options.ScenarioId, out _, out ITestLabAutomationScenario selected))
+                    {
+                        yield return selected;
+                    }
+                    break;
+                case TestLabAutomationRunMode.CurrentSuite:
+                    if (registry.TryGetSuite(options.SuiteId, out ITestLabAutomationSuite suite))
+                    {
+                        foreach (ITestLabAutomationScenario scenario in suite.Scenarios)
+                        {
+                            yield return scenario;
+                        }
+                    }
+                    break;
+                case TestLabAutomationRunMode.AllSuites:
+                    foreach (ITestLabAutomationScenario scenario in registry.Suites
+                        .Where(suite => suite.IncludeInRunAll)
+                        .SelectMany(suite => suite.Scenarios))
+                    {
+                        yield return scenario;
+                    }
+                    break;
+                default:
+                    foreach (ITestLabAutomationScenario scenario in registry.Suites
+                        .Where(suite => suite.IncludeInRunAll)
+                        .SelectMany(suite => suite.Scenarios)
+                        .Where(scenario => scenario.IncludeInQuickRun || scenario.Category == TestLabAutomationCategory.Quick))
+                    {
+                        yield return scenario;
+                    }
+                    break;
+            }
         }
 
         private static PrototypeTestLabService CreateSceneService()

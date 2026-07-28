@@ -262,6 +262,8 @@ namespace UnityIsekaiGame.Development.Automation
                     AppendJsonProperty(builder, "category", scenario.Category.ToString(), 5, comma: true);
                     AppendJsonProperty(builder, "includeInQuickRun", scenario.IncludeInQuickRun ? "true" : "false", 5, comma: true, quoteValue: false);
                     AppendJsonProperty(builder, "requiresSceneHost", scenario.RequiresSceneHost ? "true" : "false", 5, comma: true, quoteValue: false);
+                    AppendJsonProperty(builder, "commandLineSupport", scenario.CommandLineSupport.ToString(), 5, comma: true);
+                    AppendJsonProperty(builder, "commandLineUnsupportedReason", scenario.CommandLineUnsupportedReason, 5, comma: true);
                     AppendJsonProperty(builder, "requiredRuntimeAreas", scenario.RequiredRuntimeAreas.ToString(), 5, comma: false);
                     builder.Append(scenarioIndex == suite.Scenarios.Count - 1 ? "        }" : "        },").AppendLine();
                 }
@@ -293,7 +295,7 @@ namespace UnityIsekaiGame.Development.Automation
                 builder.AppendLine($"{suite.DisplayName} - {suite.Scenarios.Count} scenario(s)");
                 foreach (ITestLabAutomationScenario scenario in suite.Scenarios)
                 {
-                    builder.AppendLine($"- `{scenario.ScenarioId}` {scenario.DisplayName} [{scenario.Category}] Host={scenario.RequiresSceneHost} Areas={scenario.RequiredRuntimeAreas}");
+                    builder.AppendLine($"- `{scenario.ScenarioId}` {scenario.DisplayName} [{scenario.Category}] Host={scenario.RequiresSceneHost} CLI={scenario.CommandLineSupport} Areas={scenario.RequiredRuntimeAreas}");
                 }
 
                 builder.AppendLine();
