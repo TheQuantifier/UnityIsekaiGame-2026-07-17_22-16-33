@@ -13,6 +13,7 @@ using UnityIsekaiGame.StatusEffects;
 
 namespace UnityIsekaiGame.Development.Automation
 {
+    [PrototypeTestLabAutomationProvider(3, "Runtime Taxonomy", 300)]
     public static class PrototypeStep3AutomationSuites
     {
         public static void RegisterDefaults(TestLabAutomationRegistry registry)

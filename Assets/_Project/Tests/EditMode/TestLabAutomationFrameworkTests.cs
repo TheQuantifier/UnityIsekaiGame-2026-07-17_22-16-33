@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityIsekaiGame.Development.Automation;
 using UnityIsekaiGame.Development.Automation.Fixtures.History;
+using UnityIsekaiGame.Editor.Tools.TestLabAutomation;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.History;
@@ -568,6 +569,153 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void ReportExport_CanWriteBatchJsonAndMarkdownToExplicitPath()
+        {
+            TestLabAutomationResult result = new TestLabAutomationResult("run-command", TestLabAutomationRunMode.CurrentSuite, DateTime.UtcNow, DateTime.UtcNow, false, new[]
+            {
+                new TestLabScenarioResult("suite", "scenario", "Scenario", TestLabAutomationStatus.Passed, DateTime.UtcNow, DateTime.UtcNow, new[] { TestLabAssertions.Pass("step", "Step") })
+            });
+            string outputPath = Path.Combine("Temp", "TestLabAutomation", "command-report");
+            TestLabAutomationReportExporter exporter = new TestLabAutomationReportExporter();
+
+            IReadOnlyList<string> paths = exporter.Export(result, TestLabAutomationReportFormat.Both, outputPath: outputPath);
+
+            Assert.That(paths.Select(path => path.Replace('\\', '/')), Is.EquivalentTo(new[]
+            {
+                "Temp/TestLabAutomation/command-report.json",
+                "Temp/TestLabAutomation/command-report.md"
+            }));
+            Assert.That(paths.All(File.Exists), Is.True);
+            Assert.That(File.ReadAllText(paths.Single(path => path.EndsWith(".json", StringComparison.Ordinal))), Does.Contain("\"runId\": \"run-command\""));
+            Assert.That(File.ReadAllText(paths.Single(path => path.EndsWith(".md", StringComparison.Ordinal))), Does.Contain("run-command"));
+        }
+
+        [Test]
+        public void ReportExport_ProducesJUnitXmlForCommandRuns()
+        {
+            TestLabAutomationResult result = new TestLabAutomationResult("run-junit", TestLabAutomationRunMode.AllSuites, DateTime.UtcNow, DateTime.UtcNow, false, new[]
+            {
+                new TestLabScenarioResult("suite", "pass", "Pass", TestLabAutomationStatus.Passed, DateTime.UtcNow, DateTime.UtcNow, new[] { TestLabAssertions.Pass("step", "Step") }),
+                new TestLabScenarioResult("suite", "fail", "Fail", TestLabAutomationStatus.Failed, DateTime.UtcNow, DateTime.UtcNow, new[] { TestLabAssertions.Fail("step", "Step", "Succeeded", "Succeeded", "Failed", "Failure details.") })
+            });
+            TestLabAutomationReportExporter exporter = new TestLabAutomationReportExporter();
+
+            string xml = exporter.BuildJUnitXml(result);
+
+            Assert.That(xml, Does.Contain("<testsuite"));
+            Assert.That(xml, Does.Contain("tests=\"2\""));
+            Assert.That(xml, Does.Contain("<failure"));
+            Assert.That(xml, Does.Contain("Failure details."));
+        }
+
+        [Test]
+        public void ReportExport_ProducesCatalogAndCompatibilityReports()
+        {
+            TestLabAutomationRegistry registry = PrototypeTestLabAutomationCatalog.CreateDefaultRegistry(9);
+            TestLabSuiteCompatibilityReport compatibility = new TestLabSuiteCompatibilityReport(new[]
+            {
+                new TestLabScenarioCompatibilityResult("suite", "scenario", "Scenario", true, true, "host", string.Empty, "Ready")
+            });
+            TestLabAutomationReportExporter exporter = new TestLabAutomationReportExporter();
+
+            string catalog = exporter.BuildCatalogJson(registry);
+            string compatibilityJson = exporter.BuildCompatibilityJson(compatibility);
+
+            Assert.That(catalog, Does.Contain("\"providers\""));
+            Assert.That(catalog, Does.Contain("feature.9.1.item-identity-instance-state"));
+            Assert.That(catalog, Does.Not.Contain("feature.8.1.knowledge-facts-beliefs"));
+            Assert.That(compatibilityJson, Does.Contain("\"compatible\": true"));
+            Assert.That(compatibilityJson, Does.Contain("\"scenarioId\": \"scenario\""));
+        }
+
+        [Test]
+        public void CommandLineOptions_ParseSuiteModeReportAndDeterminismOptions()
+        {
+            TestLabAutomationCommandLineOptions options = TestLabAutomationCommandLineOptions.Parse(new[]
+            {
+                "-testLabMode", "suite",
+                "-testLabStep", "9",
+                "-testLabSuite", "feature.9.4.item-durability-wear-repair-salvage",
+                "-testLabFormat", "junit",
+                "-testLabOutput", "Logs/TestLabAutomation/feature-9-4",
+                "-testLabOrder", "shuffled",
+                "-testLabSeed", "123",
+                "-testLabStopOnFail", "true",
+                "-testLabExit", "false"
+            });
+
+            Assert.That(options.Valid, Is.True);
+            Assert.That(options.RunMode, Is.EqualTo(TestLabAutomationRunMode.CurrentSuite));
+            Assert.That(options.StepFilter, Is.EqualTo(9));
+            Assert.That(options.SuiteId, Is.EqualTo("feature.9.4.item-durability-wear-repair-salvage"));
+            Assert.That(options.ReportFormat, Is.EqualTo(TestLabAutomationReportFormat.JUnit));
+            Assert.That(options.OutputPath.Replace('\\', '/'), Is.EqualTo("Logs/TestLabAutomation/feature-9-4"));
+            Assert.That(options.ScenarioOrder, Is.EqualTo(TestLabAutomationScenarioOrder.Shuffled));
+            Assert.That(options.ShuffleSeed, Is.EqualTo(123));
+            Assert.That(options.StopOnFirstFailure, Is.True);
+            Assert.That(options.ExitUnity, Is.False);
+        }
+
+        [Test]
+        public void CommandLineOptions_ParseListAndCompatibilityModes()
+        {
+            TestLabAutomationCommandLineOptions list = TestLabAutomationCommandLineOptions.Parse(new[] { "-testLabMode", "list", "-testLabStep", "8" });
+            TestLabAutomationCommandLineOptions compatibility = TestLabAutomationCommandLineOptions.Parse(new[] { "-testLabMode", "compatibility", "-testLabSuite", "feature.9.1.item-identity-instance-state" });
+
+            Assert.That(list.Valid, Is.True);
+            Assert.That(list.Action, Is.EqualTo(TestLabAutomationCommandAction.List));
+            Assert.That(list.StepFilter, Is.EqualTo(8));
+            Assert.That(compatibility.Valid, Is.True);
+            Assert.That(compatibility.Action, Is.EqualTo(TestLabAutomationCommandAction.Compatibility));
+            Assert.That(compatibility.SuiteId, Is.EqualTo("feature.9.1.item-identity-instance-state"));
+        }
+
+        [Test]
+        public void CommandLineOptions_RejectScenarioModeWithoutScenario()
+        {
+            TestLabAutomationCommandLineOptions options = TestLabAutomationCommandLineOptions.Parse(new[]
+            {
+                "-testLabMode", "scenario",
+                "-testLabSuite", "feature.9.4.item-durability-wear-repair-salvage"
+            });
+
+            Assert.That(options.Valid, Is.False);
+            Assert.That(options.Error, Does.Contain("-testLabScenario"));
+        }
+
+        [Test]
+        public void BatchCommand_HelpDoesNotRunAutomation()
+        {
+            TestLabAutomationCommandLineOptions options = TestLabAutomationCommandLineOptions.Parse(new[] { "-testLabHelp" });
+
+            TestLabAutomationBatchCommandResult result = TestLabAutomationBatchCommand.Run(options);
+
+            Assert.That(result.ExitCode, Is.EqualTo(0));
+            Assert.That(result.AutomationResult, Is.Null);
+            Assert.That(result.Message, Does.Contain("-executeMethod"));
+        }
+
+        [Test]
+        public void BatchCommand_ListModeExportsCatalogWithoutRunningAutomation()
+        {
+            string outputPath = Path.Combine("Temp", "TestLabAutomation", "catalog-step9");
+            TestLabAutomationCommandLineOptions options = TestLabAutomationCommandLineOptions.Parse(new[]
+            {
+                "-testLabMode", "list",
+                "-testLabStep", "9",
+                "-testLabFormat", "json",
+                "-testLabOutput", outputPath
+            });
+
+            TestLabAutomationBatchCommandResult result = TestLabAutomationBatchCommand.Run(options);
+
+            Assert.That(result.ExitCode, Is.EqualTo(0));
+            Assert.That(result.AutomationResult, Is.Null);
+            Assert.That(result.ReportPaths.Single().Replace('\\', '/'), Does.EndWith("catalog-step9.json"));
+            Assert.That(File.ReadAllText(result.ReportPaths.Single()), Does.Contain("feature.9.4.durability-wear-repair-salvage"));
+        }
+
+        [Test]
         public void ImmutableResults_ExposeNoMutableCollections()
         {
             List<TestLabAutomationStepResult> steps = new List<TestLabAutomationStepResult> { TestLabAssertions.Pass("one", "One") };
@@ -1106,15 +1254,7 @@ namespace UnityIsekaiGame.Tests
         [Test]
         public void DefaultPrototypeSuites_RegisterStep3ThroughStep9()
         {
-            TestLabAutomationRegistry registry = new TestLabAutomationRegistry();
-
-            PrototypeStep3AutomationSuites.RegisterDefaults(registry);
-            PrototypeStep4AutomationSuites.RegisterDefaults(registry);
-            PrototypeStep5AutomationSuites.RegisterDefaults(registry);
-            PrototypeStep6AutomationSuites.RegisterDefaults(registry);
-            PrototypeStep7AutomationSuites.RegisterDefaults(registry);
-            PrototypeStep8AutomationSuites.RegisterDefaults(registry);
-            PrototypeStep9AutomationSuites.RegisterDefaults(registry);
+            TestLabAutomationRegistry registry = PrototypeTestLabAutomationCatalog.CreateDefaultRegistry();
 
             TestLabAutomationValidationResult validation = TestLabAutomationValidation.Validate(registry);
             TestLabAutomationMigrationInventory inventory = TestLabAutomationValidation.BuildMigrationInventory(registry);
@@ -1123,63 +1263,59 @@ namespace UnityIsekaiGame.Tests
             Assert.That(inventory.TotalScenarios, Is.GreaterThan(0), inventory.ToSummary());
             Assert.That(inventory.LegacySharedFeatureScenarios, Is.Zero, inventory.ToSummary());
             string[] actualSuiteIds = registry.Suites.Select(suite => suite.SuiteId).ToArray();
-            Assert.That(actualSuiteIds, Is.EqualTo(new[]
-            {
-                "feature.3.runtime-taxonomy",
-                "feature.4.1.save-file-foundation",
-                "feature.4.2.inventory-equipment-persistence",
-                "feature.4.3.vitals-status-persistence",
-                "feature.4.4.quest-contract-persistence",
-                "feature.4.5.location-persistence",
-                "feature.4.6.world-entity-identity",
-                "feature.4.7.save-slots-autosave-load-ui",
-                "feature.4.8.persistence-recovery-hardening",
-                "feature.5.1.identity-origin-progression",
-                "feature.5.2-5.4a.attributes-calculated-stats",
-                "feature.5.3.skills-progression",
-                "feature.5.4b.current-resources",
-                "feature.5.5.traits-requirements",
-                "feature.5.6.character-integration",
-                "feature.6.1.damage-healing",
-                "feature.6.2.attack-resolution",
-                "feature.6.3.lifecycle",
-                "feature.6.4.ongoing-effects",
-                "feature.6.5.combat-state",
-                "feature.6.6.defensive-actions",
-                "feature.6.7.combat-execution",
-                "feature.6.8.combat-reactions",
-                "feature.6.9.combat-contribution",
-                "feature.6.10.combat-integration",
-                "feature.7.1.body-species",
-                "feature.7.2.body-anatomy",
-                "feature.7.3.body-condition",
-                "feature.7.4.vital-processes",
-                "feature.7.5.biological-hazards",
-                "feature.7.6.biological-compatibility",
-                "feature.7.7.natural-recovery-repair",
-                "feature.7.8.transformation-body-replacement",
-                "feature.7.9.diseases-biological-conditions",
-                "feature.7.10.biological-integration",
-                "feature.8.1.knowledge-facts-beliefs",
-                "feature.8.2.observation-examination-identification-diagnosis",
-                "feature.8.3.character-history-memory-timelines",
-                "feature.8.4.memory-recall-forgetting-alteration",
-                "feature.8.5.character-history-life-events",
-                "feature.8.6.information-sources-reliability",
-                "feature.8.7.information-sharing-teaching",
-                "feature.8.8.secrets-visibility-information-access",
-                "feature.8.9.historical-records-journals-codex",
-                "feature.8.10.knowledge-history-integration",
-                "feature.9.1.item-identity-instance-state",
-                "feature.9.2.materials-item-composition",
-                "feature.9.3.item-quality-affixes",
-                "feature.9.4.durability-wear-repair-salvage"
-            }));
+            Assert.That(actualSuiteIds, Is.EqualTo(PrototypeTestLabAutomationCatalog.SuiteIds()));
+            Assert.That(actualSuiteIds.First(), Is.EqualTo("feature.3.runtime-taxonomy"));
+            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.9.4.durability-wear-repair-salvage"));
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).Where(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime || scenario.IsolationMode == TestLabScenarioIsolationMode.SnapshotRestore)
                 .All(scenario => (scenario.RequiredRuntimeAreas & ~(TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items)) == TestLabRuntimeArea.None), Is.True);
+        }
+
+        [Test]
+        public void PrototypeAutomationCatalog_DiscoversStepProvidersInOrder()
+        {
+            PrototypeTestLabAutomationProviderDescriptor[] providers = PrototypeTestLabAutomationCatalog.Providers.ToArray();
+
+            Assert.That(providers.Select(provider => provider.Step), Is.EqualTo(new[] { 3, 4, 5, 6, 7, 8, 9 }));
+            Assert.That(providers.Select(provider => provider.Label), Is.EqualTo(new[] { "Runtime Taxonomy", "World Data", "Character", "Combat", "Body", "Knowledge", "Items" }));
+            Assert.That(providers.Select(provider => provider.Name), Is.EqualTo(new[]
+            {
+                nameof(PrototypeStep3AutomationSuites),
+                nameof(PrototypeStep4AutomationSuites),
+                nameof(PrototypeStep5AutomationSuites),
+                nameof(PrototypeStep6AutomationSuites),
+                nameof(PrototypeStep7AutomationSuites),
+                nameof(PrototypeStep8AutomationSuites),
+                nameof(PrototypeStep9AutomationSuites)
+            }));
+        }
+
+        [Test]
+        public void PrototypeAutomationCatalog_ValidatesProvidersAndSupportsStepFiltering()
+        {
+            PrototypeTestLabAutomationCatalogValidationResult validation = PrototypeTestLabAutomationCatalog.Validate();
+            TestLabAutomationRegistry step9 = PrototypeTestLabAutomationCatalog.CreateDefaultRegistry(9);
+
+            Assert.That(validation.Succeeded, Is.True, string.Join(Environment.NewLine, validation.Errors));
+            Assert.That(step9.Suites.All(suite => suite.SuiteId.StartsWith("feature.9.", StringComparison.Ordinal)), Is.True);
+            Assert.That(step9.Suites.Count, Is.GreaterThan(0));
+            Assert.That(PrototypeTestLabAutomationCatalog.DescribeSuites(9).All(suite => suite.Step == 9 && suite.Label == "Items"), Is.True);
+        }
+
+        [Test]
+        public void AutomationProviderRegistration_OnlyFlowsThroughCatalogOutsideProviders()
+        {
+            string forbiddenRegistrationCall = ".RegisterDefaults" + "(registry)";
+            string[] files = Directory.GetFiles("Assets/_Project", "*.cs", SearchOption.AllDirectories);
+            string[] offenders = files
+                .Where(path => !path.Replace('\\', '/').EndsWith("PrototypeTestLabAutomationCatalog.cs", StringComparison.Ordinal)
+                    && !Path.GetFileName(path).StartsWith("PrototypeStep", StringComparison.Ordinal))
+                .Where(path => File.ReadAllText(path).Contains(forbiddenRegistrationCall))
+                .ToArray();
+
+            Assert.That(offenders, Is.Empty);
         }
 
         [Test]

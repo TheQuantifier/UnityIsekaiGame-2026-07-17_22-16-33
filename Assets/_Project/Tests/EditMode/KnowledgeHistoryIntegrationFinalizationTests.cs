@@ -97,13 +97,12 @@ namespace UnityIsekaiGame.Tests
         [Test]
         public void Step8MasterSuite_IsNotRegisteredWhenFeatureSuitesAreRunnableDirectly()
         {
-            TestLabAutomationRegistry registry = new TestLabAutomationRegistry();
+            TestLabAutomationRegistry registry = PrototypeTestLabAutomationCatalog.CreateDefaultRegistry();
+            ITestLabAutomationSuite[] step8Suites = registry.Suites.Where(suite => suite.SuiteId.StartsWith("feature.8.", StringComparison.Ordinal)).ToArray();
 
-            PrototypeStep8AutomationSuites.RegisterDefaults(registry);
-
-            ITestLabAutomationSuite feature = registry.Suites.Single(suite => suite.SuiteId == "feature.8.10.knowledge-history-integration");
+            ITestLabAutomationSuite feature = step8Suites.Single(suite => suite.SuiteId == "feature.8.10.knowledge-history-integration");
             Assert.That(feature.IncludeInRunAll, Is.True);
-            Assert.That(registry.Suites.Any(suite => suite.SuiteId == "step.8.knowledge-history-integration"), Is.False);
+            Assert.That(step8Suites.Any(suite => suite.SuiteId == "step.8.knowledge-history-integration"), Is.False);
         }
 
         [Test]
