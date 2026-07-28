@@ -78,6 +78,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerProductionRequirements = true;
         [SerializeField] private bool registerPlayerRecipeKnowledge = true;
         [SerializeField] private bool registerPlayerCraftingExecution = true;
+        [SerializeField] private bool registerPlayerProductionWorkflow = true;
         [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
@@ -124,6 +125,7 @@ namespace UnityIsekaiGame.Gameplay
         private ProductionRequirementPersistenceParticipant productionRequirementParticipant;
         private RecipeKnowledgePersistenceParticipant recipeKnowledgeParticipant;
         private CraftingExecutionPersistenceParticipant craftingExecutionParticipant;
+        private ProductionWorkflowPersistenceParticipant productionWorkflowParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
         private PlayerCombatExecutionPersistenceParticipant playerCombatExecutionParticipant;
@@ -144,6 +146,7 @@ namespace UnityIsekaiGame.Gameplay
         private ProductionRequirementRuntime playerProductionRequirements;
         private RecipeKnowledgeRuntime playerRecipeKnowledge;
         private CraftingExecutionRuntime playerCraftingExecution;
+        private ProductionWorkflowRuntime playerProductionWorkflow;
         private PlayerItemIdentitySynchronizer playerItemIdentitySynchronizer;
         private bool dirtyEventsSubscribed;
 
@@ -168,6 +171,7 @@ namespace UnityIsekaiGame.Gameplay
         public ProductionRequirementRuntime ProductionRequirements => playerProductionRequirements ??= new ProductionRequirementRuntime();
         public RecipeKnowledgeRuntime RecipeKnowledge => playerRecipeKnowledge ??= new RecipeKnowledgeRuntime();
         public CraftingExecutionRuntime CraftingExecution => playerCraftingExecution ??= new CraftingExecutionRuntime();
+        public ProductionWorkflowRuntime ProductionWorkflow => playerProductionWorkflow ??= new ProductionWorkflowRuntime();
         public DefinitionRegistry ItemQualityDefinitionRegistry => GetDefinitionRegistry();
         public DefinitionRegistry ItemDurabilityDefinitionRegistry => GetDefinitionRegistry();
 
@@ -214,10 +218,28 @@ namespace UnityIsekaiGame.Gameplay
                 itemDurabilityParticipant = null;
             }
 
+            if (service != null && productionRequirementParticipant != null)
+            {
+                service.UnregisterParticipant(productionRequirementParticipant);
+                productionRequirementParticipant = null;
+            }
+
             if (service != null && recipeKnowledgeParticipant != null)
             {
                 service.UnregisterParticipant(recipeKnowledgeParticipant);
                 recipeKnowledgeParticipant = null;
+            }
+
+            if (service != null && craftingExecutionParticipant != null)
+            {
+                service.UnregisterParticipant(craftingExecutionParticipant);
+                craftingExecutionParticipant = null;
+            }
+
+            if (service != null && productionWorkflowParticipant != null)
+            {
+                service.UnregisterParticipant(productionWorkflowParticipant);
+                productionWorkflowParticipant = null;
             }
 
             if (service != null && identityProgressionParticipant != null)
@@ -382,6 +404,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerProductionRequirementParticipant();
             EnsurePlayerRecipeKnowledgeParticipant();
             EnsurePlayerCraftingExecutionParticipant();
+            EnsurePlayerProductionWorkflowParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -899,6 +922,39 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 craftingExecutionParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerProductionWorkflowParticipant()
+        {
+            if (!registerPlayerProductionWorkflow || productionWorkflowParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (!registerPlayerItemIdentities || !registerPlayerProductionRequirements || !registerPlayerCraftingExecution)
+            {
+                Debug.LogWarning("Player production workflow persistence participant was not registered because item identity, production requirement, or crafting execution persistence is disabled.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player production workflow persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            productionWorkflowParticipant = new ProductionWorkflowPersistenceParticipant(
+                ProductionWorkflow,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(productionWorkflowParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                productionWorkflowParticipant = null;
             }
         }
 

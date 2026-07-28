@@ -39,6 +39,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildProductionRequirementsSuite());
             TryRegister(registry, BuildRecipesCraftingKnowledgeSuite());
             TryRegister(registry, BuildCraftingExecutionSuite());
+            TryRegister(registry, BuildProductionWorkflowSuite());
         }
 
         private static ITestLabAutomationSuite BuildItemIdentitySuite()
@@ -163,6 +164,24 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("step9-crafting-rollback", "Rollback failed crafting operation", CraftingFailureRollback)),
                 Scenario("persistence-round-trip", "Crafting execution persistence preserves completed operations without replay", 50,
                     Step("step9-crafting-persistence", "Persist crafting execution", CraftingPersistence)));
+        }
+
+        private static ITestLabAutomationSuite BuildProductionWorkflowSuite()
+        {
+            return Suite("feature.9.8.production-chains-batch-work", "Feature 9.8 Production Chains and Batch Work", "9.8", 980,
+                Required("ProductionWorkflowRuntime", "ProductionChainDefinition", "ProductionRequirementRuntime", "CraftingExecutionRuntime", "ItemInstanceIdentityRuntime"),
+                Scenario("chain-validation", "Production chain stage graph validation catches cycles and preserves snapshots", 10,
+                    Step("step9-production-chain-validate", "Validate production chain graph", ProductionChainValidation)),
+                Scenario("work-order-job-queue", "Work orders create stable queued production jobs", 20,
+                    Step("step9-production-work-order", "Create queued work order and job", ProductionWorkOrderJobQueue)),
+                Scenario("progress-idempotent", "Explicit world-time progression is deterministic and idempotent", 30,
+                    Step("step9-production-progress", "Advance production by world time", ProductionProgressIdempotent)),
+                Scenario("stage-output-lineage", "Stage completion creates batch, lot, intermediate, and output lineage once", 40,
+                    Step("step9-production-lineage", "Complete production stage lineage", ProductionStageOutputLineage)),
+                Scenario("pause-interrupt-recover-cancel", "Pause, resume, interruption, recovery, and cancellation preserve boundaries", 50,
+                    Step("step9-production-lifecycle", "Exercise production lifecycle boundaries", ProductionLifecycleBoundaries)),
+                Scenario("persistence-and-projection", "Production workflow persistence and projections preserve access-safe state", 60,
+                    Step("step9-production-save-project", "Persist and project production workflow", ProductionPersistenceProjection)));
         }
 
         private static TestLabAutomationStepResult DistinctInstances(TestLabAutomationContext context)
@@ -1272,6 +1291,181 @@ namespace UnityIsekaiGame.Development.Automation
                 : Fail(context, "step9-crafting-persistence", $"Execute={result.Status}:{result.Message} Restore={restore.Status}:{restore.Message} Reject={rejected.Message}");
         }
 
+        private static TestLabAutomationStepResult ProductionChainValidation(TestLabAutomationContext context)
+        {
+            if (!TryProductionWorkflowFixture(context, out _, out DefinitionRegistry registry, out ProductionChainDefinition chain, out _, out string failure))
+            {
+                return Fail(context, "step9-production-chain-validate", failure);
+            }
+
+            DefinitionValidationReport validReport = new DefinitionValidationReport();
+            chain.ValidateCatalogDefinition(registry.DefinitionsById, validReport);
+            ProductionChainVersionData snapshot = chain.Versions.Single(version => version.versionId == "production-chain-version.prototype.sword.v1");
+            string originalStage = snapshot.stages[0].stageId;
+            snapshot.stages[0].stageId = "mutated";
+            bool immutable = chain.Versions.Single(version => version.versionId == "production-chain-version.prototype.sword.v1").stages[0].stageId == originalStage;
+
+            ProductionChainDefinition cyclic = PrototypeProductionChain("production-chain.prototype.cyclic", "production-chain-version.prototype.cyclic.v1", "recipe.prototype.sword", cyclic: true);
+            DefinitionValidationReport cyclicReport = new DefinitionValidationReport();
+            Dictionary<string, IGameDefinition> cyclicDefinitions = registry.DefinitionsById.Values
+                .Where(definition => definition != null && !string.Equals(definition.Id, cyclic.Id, StringComparison.Ordinal))
+                .Concat(new IGameDefinition[] { cyclic })
+                .ToDictionary(definition => definition.Id, definition => definition, StringComparer.Ordinal);
+            cyclic.ValidateCatalogDefinition(cyclicDefinitions, cyclicReport);
+
+            bool valid = validReport.ErrorCount == 0 && cyclicReport.ErrorCount > 0 && immutable;
+            return valid
+                ? Pass(context, "step9-production-chain-validate", $"ValidErrors={validReport.ErrorCount} CycleErrors={cyclicReport.ErrorCount} Immutable={immutable}")
+                : Fail(context, "step9-production-chain-validate", $"ValidErrors={validReport.ErrorCount} CycleErrors={cyclicReport.ErrorCount} Immutable={immutable}");
+        }
+
+        private static TestLabAutomationStepResult ProductionWorkOrderJobQueue(TestLabAutomationContext context)
+        {
+            if (!TryProductionWorkflowFixture(context, out ProductionWorkflowRuntime workflow, out DefinitionRegistry registry, out ProductionChainDefinition chain, out _, out string failure))
+            {
+                return Fail(context, "step9-production-work-order", failure);
+            }
+
+            string queueId = $"production-queue.test.{RunGuid(context, "queue")}";
+            ProductionWorkflowResult queue = workflow.EnsureQueue(queueId);
+            ProductionWorkflowResult lowOrder = workflow.CreateWorkOrder(WorkOrder(context, "low", chain.Id, chain.CurrentVersionId, priority: 1), registry);
+            ProductionWorkflowResult highOrder = workflow.CreateWorkOrder(WorkOrder(context, "high", chain.Id, chain.CurrentVersionId, priority: 10), registry);
+            workflow.TransitionWorkOrder(lowOrder.WorkOrder.workOrderId, ProductionWorkOrderState.Approved);
+            workflow.TransitionWorkOrder(highOrder.WorkOrder.workOrderId, ProductionWorkOrderState.Approved);
+            ProductionWorkflowResult lowJob = workflow.CreateJobFromWorkOrder($"production-job.test.{RunGuid(context, "low-job")}", lowOrder.WorkOrder.workOrderId, registry, queueId);
+            ProductionWorkflowResult highJob = workflow.CreateJobFromWorkOrder($"production-job.test.{RunGuid(context, "high-job")}", highOrder.WorkOrder.workOrderId, registry, queueId);
+
+            ProductionQueueData queued = workflow.Queues.Single(entry => entry.queueId == queueId);
+            bool valid = queue.Succeeded
+                && lowOrder.Succeeded
+                && highOrder.Succeeded
+                && lowJob.Succeeded
+                && highJob.Succeeded
+                && queued.jobIds.Count == 2
+                && queued.jobIds.First() == highJob.Job.jobId
+                && workflow.BatchCount == 2;
+
+            return valid
+                ? Pass(context, "step9-production-work-order", $"Queue={queueId} First={queued.jobIds.First()} Jobs={workflow.JobCount} Batches={workflow.BatchCount}")
+                : Fail(context, "step9-production-work-order", $"Queue={queue.Status} Low={lowJob.Status}:{lowJob.Job?.priority} High={highJob.Status}:{highJob.Job?.priority} Order=[{string.Join(",", queued.jobIds)}] Priorities=[{string.Join(",", workflow.Jobs.Select(job => $"{job.jobId}:{job.priority}"))}] ExpectedFirst={highJob.Job?.jobId} Jobs={workflow.JobCount} Batches={workflow.BatchCount}");
+        }
+
+        private static TestLabAutomationStepResult ProductionProgressIdempotent(TestLabAutomationContext context)
+        {
+            if (!TryStartedProductionJob(context, out ProductionWorkflowRuntime workflow, out _, out string jobId, out string stageId, out string failure))
+            {
+                return Fail(context, "step9-production-progress", failure);
+            }
+
+            ProductionWorkflowResult first = workflow.EvaluateJobToWorldTime(jobId, "1");
+            long revAfterFirst = workflow.Revision;
+            ProductionWorkflowResult duplicate = workflow.EvaluateJobToWorldTime(jobId, "1");
+            long revAfterDuplicate = workflow.Revision;
+            ProductionWorkflowResult second = workflow.EvaluateJobToWorldTime(jobId, "2");
+            workflow.TryGetJob(jobId, out ProductionJobData job);
+            ProductionStageProgressData stage = job.stages.Single(value => value.stageId == stageId);
+
+            bool valid = first.Succeeded
+                && duplicate.Succeeded
+                && duplicate.Duplicate
+                && second.Succeeded
+                && Math.Abs(stage.completedWork - stage.requiredWork) < 0.0001f
+                && stage.state == ProductionStageRuntimeState.ReadyToComplete
+                && revAfterFirst == revAfterDuplicate;
+            return valid
+                ? Pass(context, "step9-production-progress", $"Progress={stage.completedWork}/{stage.requiredWork} Rev={revAfterFirst}->{revAfterDuplicate}->{workflow.Revision}")
+                : Fail(context, "step9-production-progress", $"First={first.Status} Duplicate={duplicate.Status} Second={second.Status} State={stage.state}");
+        }
+
+        private static TestLabAutomationStepResult ProductionStageOutputLineage(TestLabAutomationContext context)
+        {
+            if (!TryStartedProductionJob(context, out ProductionWorkflowRuntime workflow, out DefinitionRegistry registry, out string jobId, out string stageId, out string failure))
+            {
+                return Fail(context, "step9-production-lineage", failure);
+            }
+
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            workflow.EvaluateJobToWorldTime(jobId, "2");
+            ProductionWorkflowResult complete = workflow.CompleteStage(jobId, stageId, registry, new RecipeRuntime(), runtimes.ProductionRequirements, runtimes.ItemInstances, runtimes.ItemCompositions, runtimes.ItemQualityAffixes, runtimes.ItemDurability, runtimes.CraftingExecution, ProductionContext(context, "lineage"), "2");
+            ProductionWorkflowResult duplicate = workflow.CompleteStage(jobId, stageId, registry, new RecipeRuntime(), runtimes.ProductionRequirements, runtimes.ItemInstances, runtimes.ItemCompositions, runtimes.ItemQualityAffixes, runtimes.ItemDurability, runtimes.CraftingExecution, ProductionContext(context, "lineage"), "2");
+            workflow.TryGetJob(jobId, out ProductionJobData job);
+
+            bool valid = complete.Succeeded
+                && duplicate.Succeeded
+                && duplicate.Duplicate
+                && workflow.BatchCount == 1
+                && workflow.LotCount == 1
+                && workflow.IntermediateCount == 1
+                && job.outputItemIds.Length > 0
+                && runtimes.ItemInstances.TryGetSnapshot(job.outputItemIds[0], out _);
+
+            return valid
+                ? Pass(context, "step9-production-lineage", $"Batch={job.batchId} Lots={workflow.LotCount} Intermediates={workflow.IntermediateCount} Outputs={job.outputItemIds.Length}")
+                : Fail(context, "step9-production-lineage", $"Complete={complete.Status} Duplicate={duplicate.Status} Batches={workflow.BatchCount} Lots={workflow.LotCount} Intermediates={workflow.IntermediateCount}");
+        }
+
+        private static TestLabAutomationStepResult ProductionLifecycleBoundaries(TestLabAutomationContext context)
+        {
+            if (!TryStartedProductionJob(context, out ProductionWorkflowRuntime workflow, out _, out string jobId, out string stageId, out string failure))
+            {
+                return Fail(context, "step9-production-lifecycle", failure);
+            }
+
+            ProductionWorkflowResult pause = workflow.PauseJob(jobId, "manual", "1");
+            long pausedRevision = workflow.Revision;
+            ProductionWorkflowResult pausedProgress = workflow.EvaluateJobToWorldTime(jobId, "4");
+            long afterPausedProgress = workflow.Revision;
+            ProductionWorkflowResult resume = workflow.ResumeJob(jobId, "4");
+            ProductionWorkflowResult interrupt = workflow.InterruptJob(jobId, "tool-break", "5");
+            ProductionWorkflowResult recover = workflow.ResumeJob(jobId, "6");
+            ProductionWorkflowResult cancel = workflow.CancelJob(jobId, "user-cancelled", "7");
+            ProductionWorkflowResult duplicateCancel = workflow.CancelJob(jobId, "user-cancelled", "7");
+            workflow.TryGetJob(jobId, out ProductionJobData job);
+
+            bool valid = pause.Succeeded
+                && pausedProgress.Succeeded
+                && pausedRevision == afterPausedProgress
+                && resume.Succeeded
+                && interrupt.Succeeded
+                && recover.Succeeded
+                && cancel.Succeeded
+                && duplicateCancel.Succeeded
+                && duplicateCancel.Duplicate
+                && job.state == ProductionJobState.Cancelled
+                && job.stages.Single(stage => stage.stageId == stageId).state == ProductionStageRuntimeState.Cancelled;
+            return valid
+                ? Pass(context, "step9-production-lifecycle", $"State={job.state} PauseRev={pausedRevision}->{afterPausedProgress}")
+                : Fail(context, "step9-production-lifecycle", $"Pause={pause.Status} Resume={resume.Status} Interrupt={interrupt.Status} Recover={recover.Status} Cancel={cancel.Status}");
+        }
+
+        private static TestLabAutomationStepResult ProductionPersistenceProjection(TestLabAutomationContext context)
+        {
+            if (!TryStartedProductionJob(context, out ProductionWorkflowRuntime workflow, out DefinitionRegistry registry, out string jobId, out _, out string failure))
+            {
+                return Fail(context, "step9-production-save-project", failure);
+            }
+
+            ProductionWorkflowRuntimeSaveData save = workflow.CreateSaveData();
+            ProductionWorkflowRuntime restored = new ProductionWorkflowRuntime();
+            ProductionWorkflowResult restore = restored.RestoreFromSaveData(save, registry);
+            ProductionProjectionData publicProjection = restored.ProjectJob(jobId, ProductionProjectionAudience.PublicObserver);
+            ProductionProjectionData privilegedProjection = restored.ProjectJob(jobId, ProductionProjectionAudience.PrivilegedDebug);
+            ProductionWorkflowRuntimeSaveData corrupt = save.Clone();
+            corrupt.jobs[0].batchId = "production-batch.missing";
+            ProductionWorkflowResult rejected = restored.RestoreFromSaveData(corrupt, registry);
+
+            bool valid = restore.Succeeded
+                && restored.JobCount == workflow.JobCount
+                && restored.Revision == workflow.Revision
+                && publicProjection.Decision == ProductionProjectionDecision.RedactedAccess
+                && privilegedProjection.Decision == ProductionProjectionDecision.FullAccess
+                && !rejected.Succeeded
+                && restored.JobCount == workflow.JobCount;
+            return valid
+                ? Pass(context, "step9-production-save-project", $"Restore={restore.Status} Public={publicProjection.Decision} Privileged={privilegedProjection.Decision}")
+                : Fail(context, "step9-production-save-project", $"Restore={restore.Status} Public={publicProjection.Decision} Rejected={rejected.Status}");
+        }
+
         private static bool TryCreateRuntime(TestLabAutomationContext context, out ItemInstanceIdentityRuntime runtime, out ItemDefinition sword, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.ItemInstances;
@@ -1357,6 +1551,116 @@ namespace UnityIsekaiGame.Development.Automation
             }
 
             return TryCreateRecipeRuntime(context, out recipeRuntime, out production, out registry, out recipe, out iron, out failure);
+        }
+
+        private static bool TryProductionWorkflowFixture(
+            TestLabAutomationContext context,
+            out ProductionWorkflowRuntime workflow,
+            out DefinitionRegistry registry,
+            out ProductionChainDefinition chain,
+            out RecipeDefinition recipe,
+            out string failure)
+        {
+            workflow = context?.ScenarioContext?.Runtimes?.ProductionWorkflow;
+            chain = null;
+            recipe = null;
+            if (workflow == null)
+            {
+                registry = null;
+                failure = "Production workflow runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            if (!TryCreateCraftingRuntime(context, out _, out _, out _, out registry, out recipe, out _, out failure))
+            {
+                return false;
+            }
+
+            chain = PrototypeProductionChain("production-chain.prototype.sword", "production-chain-version.prototype.sword.v1", recipe.Id);
+            registry = ExtendRegistry(registry, chain);
+            return true;
+        }
+
+        private static bool TryStartedProductionJob(
+            TestLabAutomationContext context,
+            out ProductionWorkflowRuntime workflow,
+            out DefinitionRegistry registry,
+            out string jobId,
+            out string stageId,
+            out string failure)
+        {
+            jobId = string.Empty;
+            stageId = string.Empty;
+            if (!TryProductionWorkflowFixture(context, out workflow, out registry, out ProductionChainDefinition chain, out _, out failure))
+            {
+                return false;
+            }
+
+            ProductionWorkOrderData order = WorkOrder(context, "started", chain.Id, chain.CurrentVersionId, priority: 5);
+            ProductionWorkflowResult created = workflow.CreateWorkOrder(order, registry);
+            if (!created.Succeeded)
+            {
+                failure = created.Message;
+                return false;
+            }
+
+            workflow.TransitionWorkOrder(order.workOrderId, ProductionWorkOrderState.Approved);
+            jobId = $"production-job.test.{RunGuid(context, "started-job")}";
+            ProductionWorkflowResult job = workflow.CreateJobFromWorkOrder(jobId, order.workOrderId, registry);
+            if (!job.Succeeded)
+            {
+                failure = job.Message;
+                return false;
+            }
+
+            stageId = job.Job.readyStageIds.FirstOrDefault() ?? job.Job.currentStageId;
+            ProductionWorkflowResult start = workflow.StartStage(jobId, stageId, context.ScenarioContext.Runtimes.ProductionRequirements, registry, ProductionContext(context, "started"), "station.prototype.workflow", 1, "0");
+            if (!start.Succeeded)
+            {
+                failure = start.Message;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static ProductionWorkOrderData WorkOrder(TestLabAutomationContext context, string slug, string chainId, string versionId, int priority)
+        {
+            return new ProductionWorkOrderData
+            {
+                workOrderId = $"production-work-order.test.{RunGuid(context, slug)}",
+                requesterPersonId = context?.ScenarioContext?.Runtimes?.PersonId ?? "person.prototype.crafter",
+                chainDefinitionId = chainId,
+                versionId = versionId,
+                requestedQuantity = 1,
+                priority = priority,
+                ownerPersonId = context?.ScenarioContext?.Runtimes?.PersonId ?? "person.prototype.crafter",
+                custodianPersonId = context?.ScenarioContext?.Runtimes?.PersonId ?? "person.prototype.crafter",
+                earliestStartWorldTime = "0",
+                destinationId = "container.prototype.output",
+                provenance = $"testlab={context?.RunId}"
+            };
+        }
+
+        private static ProductionContextData ProductionContext(TestLabAutomationContext context, string slug)
+        {
+            return new ProductionContextData
+            {
+                actorPersonId = context?.ScenarioContext?.Runtimes?.PersonId ?? "person.prototype.crafter",
+                locationId = "location.prototype.production",
+                worldTime = "0",
+                materialQuantities =
+                {
+                    new ProductionQuantityData
+                    {
+                        definitionId = "material.prototype.recipe-iron",
+                        sourceContainerId = $"container.production.{RunGuid(context, slug)}",
+                        quantity = 20f,
+                        sourceTotalQuantity = 20f,
+                        unit = ProductionQuantityUnit.Kilogram
+                    }
+                }
+            };
         }
 
         private static bool TryCreateProductionRuntime(
@@ -1871,6 +2175,56 @@ namespace UnityIsekaiGame.Development.Automation
             });
             SetPrivate(recipe, "batchPolicy", new RecipeBatchPolicyData { scalingPolicy = RecipeBatchScalingPolicy.Fixed, baseBatchSize = 1f, minimumBatchSize = 1f, maximumBatchSize = 1f, batchIncrement = 1f });
             return recipe;
+        }
+
+        private static ProductionChainDefinition PrototypeProductionChain(string chainId, string versionId, string recipeId, bool cyclic = false)
+        {
+            ProductionChainDefinition chain = UnityEngine.ScriptableObject.CreateInstance<ProductionChainDefinition>();
+            SetPrivate(chain, "chainId", chainId);
+            SetPrivate(chain, "displayName", "Prototype Sword Production Chain");
+            SetPrivate(chain, "category", "smithing");
+            SetPrivate(chain, "currentVersionId", versionId);
+            SetPrivate(chain, "state", ProductionChainLifecycleState.Active);
+            SetPrivate(chain, "batchConsistencyPolicy", ProductionBatchConsistencyPolicy.IdenticalAuthoritativeState);
+            SetPrivate(chain, "partialBatchPolicy", ProductionPartialBatchPolicy.AllOrNothing);
+            SetPrivate(chain, "inputPolicy", ProductionInputConsumptionPolicy.ReservedAtStartConsumedAtCompletion);
+            ProductionStageDefinitionData prepare = new ProductionStageDefinitionData
+            {
+                stageId = "production-stage.prototype.prepare",
+                displayName = "Prepare Materials",
+                category = ProductionStageCategory.Preparation,
+                recipeDefinitionId = recipeId,
+                recipeVersionId = "recipe-version.prototype.sword.v1",
+                requiredWorkUnits = 2f,
+                estimatedDuration = 2f,
+                progressModel = ProductionProgressModel.TimeBased,
+                priority = 10,
+                dependencyStageIds = cyclic ? new[] { "production-stage.prototype.finish" } : Array.Empty<string>()
+            };
+            ProductionStageDefinitionData finish = new ProductionStageDefinitionData
+            {
+                stageId = "production-stage.prototype.finish",
+                displayName = "Finish Sword",
+                category = ProductionStageCategory.QualityControl,
+                recipeDefinitionId = recipeId,
+                recipeVersionId = "recipe-version.prototype.sword.v1",
+                requiredWorkUnits = 1f,
+                estimatedDuration = 1f,
+                progressModel = ProductionProgressModel.TimeBased,
+                priority = 20,
+                dependencyStageIds = new[] { "production-stage.prototype.prepare" }
+            };
+            SetPrivate(chain, "versions", new[]
+            {
+                new ProductionChainVersionData
+                {
+                    versionId = versionId,
+                    chainDefinitionId = chainId,
+                    state = ProductionChainLifecycleState.Active,
+                    stages = new[] { prepare, finish }
+                }
+            });
+            return chain;
         }
 
         private static CraftingExecutionRequest CraftingRequest(TestLabAutomationContext context, RecipeDefinition recipe, MaterialDefinition iron, string slug)

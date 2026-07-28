@@ -380,6 +380,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProductionRequirementRuntime productionRequirements,
             RecipeKnowledgeRuntime recipeKnowledge,
             CraftingExecutionRuntime craftingExecution,
+            ProductionWorkflowRuntime productionWorkflow,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -401,6 +402,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProductionRequirements = productionRequirements;
             RecipeKnowledge = recipeKnowledge;
             CraftingExecution = craftingExecution;
+            ProductionWorkflow = productionWorkflow;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -424,6 +426,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ProductionRequirementRuntime ProductionRequirements { get; }
         public RecipeKnowledgeRuntime RecipeKnowledge { get; }
         public CraftingExecutionRuntime CraftingExecution { get; }
+        public ProductionWorkflowRuntime ProductionWorkflow { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -445,9 +448,10 @@ namespace UnityIsekaiGame.Development.Automation
             ItemDurabilityRuntime itemDurability = null,
             ProductionRequirementRuntime productionRequirements = null,
             RecipeKnowledgeRuntime recipeKnowledge = null,
-            CraftingExecutionRuntime craftingExecution = null)
+            CraftingExecutionRuntime craftingExecution = null,
+            ProductionWorkflowRuntime productionWorkflow = null)
         {
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), null);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -474,6 +478,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProductionRequirementRuntime productionRequirements = new ProductionRequirementRuntime();
             RecipeKnowledgeRuntime recipeKnowledge = new RecipeKnowledgeRuntime();
             CraftingExecutionRuntime craftingExecution = new CraftingExecutionRuntime();
+            ProductionWorkflowRuntime productionWorkflow = new ProductionWorkflowRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -485,7 +490,7 @@ namespace UnityIsekaiGame.Development.Automation
             access.Configure(definitionRegistry, personId);
             records.Configure(definitionRegistry, personId);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -523,7 +528,8 @@ namespace UnityIsekaiGame.Development.Automation
                 ItemDurability?.CreateSaveData(),
                 ProductionRequirements?.CreateSaveData(),
                 RecipeKnowledge?.CreateSaveData(),
-                CraftingExecution?.CreateSaveData());
+                CraftingExecution?.CreateSaveData(),
+                ProductionWorkflow?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -543,7 +549,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("ItemDurability", ItemDurability?.Revision ?? 0L, ItemDurability?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("ProductionRequirements", ProductionRequirements?.Revision ?? 0L, ProductionRequirements?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("RecipeKnowledge", RecipeKnowledge?.Revision ?? 0L, RecipeKnowledge?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("CraftingExecution", CraftingExecution?.Revision ?? 0L, CraftingExecution?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("CraftingExecution", CraftingExecution?.Revision ?? 0L, CraftingExecution?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("ProductionWorkflow", ProductionWorkflow?.Revision ?? 0L, ProductionWorkflow?.CreateSaveData())
             });
         }
 
@@ -694,6 +701,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (ProductionWorkflow != null && snapshot.ProductionWorkflow != null)
+            {
+                ProductionWorkflowResult result = ProductionWorkflow.RestoreFromSaveData(snapshot.ProductionWorkflow, DefinitionRegistry);
+                if (!result.Succeeded)
+                {
+                    failure = $"Production workflow restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -731,7 +748,8 @@ namespace UnityIsekaiGame.Development.Automation
             ItemDurabilityRuntimeSaveData itemDurability,
             ProductionRequirementRuntimeSaveData productionRequirements,
             RecipeKnowledgeSaveData recipeKnowledge,
-            CraftingExecutionRuntimeSaveData craftingExecution)
+            CraftingExecutionRuntimeSaveData craftingExecution,
+            ProductionWorkflowRuntimeSaveData productionWorkflow)
         {
             Knowledge = knowledge;
             History = history;
@@ -747,6 +765,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProductionRequirements = productionRequirements;
             RecipeKnowledge = recipeKnowledge;
             CraftingExecution = craftingExecution;
+            ProductionWorkflow = productionWorkflow;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -763,6 +782,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ProductionRequirementRuntimeSaveData ProductionRequirements { get; }
         public RecipeKnowledgeSaveData RecipeKnowledge { get; }
         public CraftingExecutionRuntimeSaveData CraftingExecution { get; }
+        public ProductionWorkflowRuntimeSaveData ProductionWorkflow { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
