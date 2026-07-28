@@ -9,10 +9,12 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Crafting;
 using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
+using UnityIsekaiGame.Inventory.Experimentation;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Inventory.Production;
 using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Inventory.Recipes;
+using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Stats;
@@ -40,6 +42,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildRecipesCraftingKnowledgeSuite());
             TryRegister(registry, BuildCraftingExecutionSuite());
             TryRegister(registry, BuildProductionWorkflowSuite());
+            TryRegister(registry, BuildExperimentationDiscoverySuite());
         }
 
         private static ITestLabAutomationSuite BuildItemIdentitySuite()
@@ -182,6 +185,429 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("step9-production-lifecycle", "Exercise production lifecycle boundaries", ProductionLifecycleBoundaries)),
                 Scenario("persistence-and-projection", "Production workflow persistence and projections preserve access-safe state", 60,
                     Step("step9-production-save-project", "Persist and project production workflow", ProductionPersistenceProjection)));
+        }
+
+        private static ITestLabAutomationSuite BuildExperimentationDiscoverySuite()
+        {
+            return Suite("feature.9.9.experimentation-discovery", "Feature 9.9 Experimentation and Discovery", "9.9", 990,
+                Required("ExperimentationRuntime", "ExperimentDefinition", "PersonKnowledgeRuntime", "CraftingExecutionRuntime", "ProductionWorkflowRuntime"),
+                Scenario("definitions-and-hypotheses", "Experiment definitions and hypotheses remain typed", 10,
+                    Step("step9-experiment-hypothesis", "Create experiment hypothesis", ExperimentHypothesisFoundation)),
+                Scenario("controlled-plan-preview", "Controlled experiment plans preview without mutating runtime state", 20,
+                    Step("step9-experiment-plan-preview", "Preview controlled experiment plan", ExperimentControlledPlanPreview)),
+                Scenario("crafting-trial-evidence", "Crafting trial output creates explicit evidence and inference", 30,
+                    Step("step9-experiment-crafting-evidence", "Run crafting trial and record evidence", ExperimentCraftingEvidence)),
+                Scenario("reproducibility-claim-registration", "Reproduction confirms claims without mutating authoritative recipes", 40,
+                    Step("step9-experiment-claim-registration", "Confirm discovery claim and propose registration", ExperimentClaimRegistration)),
+                Scenario("access-and-persistence", "Experiment projections and save restore preserve access-safe state", 50,
+                    Step("step9-experiment-access-persistence", "Project and persist experimentation", ExperimentAccessPersistence)));
+        }
+
+        private static TestLabAutomationStepResult ExperimentHypothesisFoundation(TestLabAutomationContext context)
+        {
+            if (!TryExperimentationFixture(context, out ExperimentationRuntime experimentation, out DefinitionRegistry registry, out ExperimentDefinition experiment, out _, out string failure))
+            {
+                return Fail(context, "step9-experiment-hypothesis", failure);
+            }
+
+            ExperimentHypothesisData hypothesis = PrototypeHypothesis(context, "foundation");
+            ExperimentationResult create = experimentation.CreateHypothesis(hypothesis);
+            ExperimentationResult duplicate = experimentation.CreateHypothesis(hypothesis);
+            bool valid = create.Succeeded
+                && duplicate.Duplicate
+                && create.Hypothesis.claim.claimType == HypothesisClaimType.MaterialSubstitutesForMaterial
+                && registry.TryGet(experiment.Id, out ExperimentDefinition _)
+                && experimentation.HypothesisCount == 1;
+            return valid
+                ? Pass(context, "step9-experiment-hypothesis", $"Hypothesis={create.Hypothesis.hypothesisId} Status={create.Hypothesis.status} Duplicate={duplicate.Duplicate}")
+                : Fail(context, "step9-experiment-hypothesis", $"Create={create.Status} Duplicate={duplicate.Status} Count={experimentation.HypothesisCount}");
+        }
+
+        private static TestLabAutomationStepResult ExperimentControlledPlanPreview(TestLabAutomationContext context)
+        {
+            if (!TryExperimentationFixture(context, out ExperimentationRuntime experimentation, out DefinitionRegistry registry, out ExperimentDefinition experiment, out _, out string failure))
+            {
+                return Fail(context, "step9-experiment-plan-preview", failure);
+            }
+
+            ExperimentationResult hypothesis = experimentation.CreateHypothesis(PrototypeHypothesis(context, "plan"));
+            long before = experimentation.Revision;
+            ExperimentPlanData plan = PrototypeExperimentPlan(context, experiment.Id, hypothesis.Hypothesis.hypothesisId);
+            ExperimentationResult preview = experimentation.CreatePlan(plan, registry, preview: true);
+            bool previewReadOnly = preview.Preview && experimentation.PlanCount == 0 && experimentation.Revision == before;
+            ExperimentationResult create = experimentation.CreatePlan(plan, registry);
+            bool valid = previewReadOnly && create.Succeeded && experimentation.PlanCount == 1;
+            return valid
+                ? Pass(context, "step9-experiment-plan-preview", $"Preview={preview.Status} Create={create.Status} Revision={before}->{experimentation.Revision}")
+                : Fail(context, "step9-experiment-plan-preview", $"Preview={preview.Status} Create={create.Status} Plans={experimentation.PlanCount} Revision={before}->{experimentation.Revision}");
+        }
+
+        private static TestLabAutomationStepResult ExperimentCraftingEvidence(TestLabAutomationContext context)
+        {
+            if (!TryExperimentationFixture(context, out ExperimentationRuntime experimentation, out DefinitionRegistry registry, out ExperimentDefinition experiment, out RecipeDefinition recipe, out string failure))
+            {
+                return Fail(context, "step9-experiment-crafting-evidence", failure);
+            }
+
+            ExperimentHypothesisData hypothesis = PrototypeHypothesis(context, "evidence");
+            ExperimentationResult createdHypothesis = experimentation.CreateHypothesis(hypothesis);
+            ExperimentationResult createdPlan = experimentation.CreatePlan(PrototypeExperimentPlan(context, experiment.Id, createdHypothesis.Hypothesis.hypothesisId, recipe.Id), registry);
+            string runId = context.ScenarioContext.ScopedId("experiment-run", "evidence");
+            ExperimentationResult started = experimentation.StartRun(runId, createdPlan.Plan.planId, context.ScenarioContext.Runtimes.PersonId, "1", registry);
+            MaterialDefinition iron = registry.DefinitionsById.Values.OfType<MaterialDefinition>().First(material => material.Id == "material.prototype.recipe-iron");
+            CraftingExecutionRequest request = CraftingRequest(context, recipe, iron, "experiment");
+            ExperimentationResult trial = experimentation.ExecuteCraftingTrial(
+                runId,
+                context.ScenarioContext.ScopedId("experiment-trial", "crafting"),
+                request,
+                registry,
+                new RecipeRuntime(),
+                context.ScenarioContext.Runtimes.ProductionRequirements,
+                context.ScenarioContext.Runtimes.ItemInstances,
+                context.ScenarioContext.Runtimes.ItemCompositions,
+                context.ScenarioContext.Runtimes.ItemQualityAffixes,
+                context.ScenarioContext.Runtimes.ItemDurability,
+                context.ScenarioContext.Runtimes.CraftingExecution);
+
+            context.ScenarioContext.Runtimes.Knowledge.Configure(registry, context.ScenarioContext.Runtimes.PersonId);
+            ExperimentationResult evidence = experimentation.GenerateEvidence(
+                runId,
+                trial.Trial?.trialId,
+                createdHypothesis.Hypothesis.hypothesisId,
+                ExperimentObservation(context, "evidence", recipe.Id),
+                context.ScenarioContext.Runtimes.Knowledge,
+                ExperimentEvidenceRole.Supporting);
+            ExperimentationResult inference = experimentation.RecordInference(new ExperimentInferenceData
+            {
+                inferenceId = context.ScenarioContext.ScopedId("experiment-inference", "recipe-fragment"),
+                experimentRunId = runId,
+                inferenceType = ExperimentInferenceType.RecipeFragment,
+                subjectId = recipe.Id,
+                inferredDefinitionId = "recipe-input.prototype.iron",
+                evidenceIds = evidence.Run?.evidenceIds ?? Array.Empty<string>(),
+                confidence = 720,
+                message = "Observed output supports iron as a recipe fragment."
+            });
+
+            bool valid = createdPlan.Succeeded
+                && started.Succeeded
+                && trial.Succeeded
+                && evidence.Succeeded
+                && inference.Succeeded
+                && context.ScenarioContext.Runtimes.Knowledge.CreateSnapshot(KnowledgeDomain.Crafting).Evidence.Count > 0;
+            return valid
+                ? Pass(context, "step9-experiment-crafting-evidence", $"Trial={trial.Trial.outcome} Evidence={evidence.Run.evidenceIds.Length} Inference={inference.Inference.inferenceType}")
+                : Fail(context, "step9-experiment-crafting-evidence", $"Plan={createdPlan.Status} Run={started.Status} Trial={trial.Status} Evidence={evidence.Status} Inference={inference.Status}");
+        }
+
+        private static TestLabAutomationStepResult ExperimentClaimRegistration(TestLabAutomationContext context)
+        {
+            if (!TryExperimentationFixture(context, out ExperimentationRuntime experimentation, out DefinitionRegistry registry, out ExperimentDefinition experiment, out RecipeDefinition recipe, out string failure))
+            {
+                return Fail(context, "step9-experiment-claim-registration", failure);
+            }
+
+            ExperimentationResult hypothesis = experimentation.CreateHypothesis(PrototypeHypothesis(context, "claim"));
+            ExperimentationResult plan = experimentation.CreatePlan(PrototypeExperimentPlan(context, experiment.Id, hypothesis.Hypothesis.hypothesisId, recipe.Id), registry);
+            string runId = context.ScenarioContext.ScopedId("experiment-run", "claim");
+            experimentation.StartRun(runId, plan.Plan.planId, context.ScenarioContext.Runtimes.PersonId, "1", registry);
+            for (int i = 0; i < 2; i++)
+            {
+                experimentation.RecordTrial(new ExperimentTrialData
+                {
+                    trialId = context.ScenarioContext.ScopedId("experiment-trial", $"repro-{i}"),
+                    experimentRunId = runId,
+                    trialIndex = i,
+                    trialKind = i == 0 ? ExperimentTrialKind.Experimental : ExperimentTrialKind.Reproduction,
+                    recipeDefinitionId = recipe.Id,
+                    recipeVersionId = recipe.CurrentVersionId,
+                    deterministicSeed = $"seed.repro.{i}",
+                    outcome = ExperimentTrialOutcome.ExpectedSuccess
+                });
+            }
+
+            ExperimentationResult inference = experimentation.RecordInference(new ExperimentInferenceData
+            {
+                inferenceId = context.ScenarioContext.ScopedId("experiment-inference", "claim"),
+                experimentRunId = runId,
+                inferenceType = ExperimentInferenceType.Substitution,
+                subjectId = recipe.Id,
+                inferredDefinitionId = "material.prototype.recipe-iron",
+                confidence = 800
+            });
+            ExperimentationResult claim = experimentation.CreateDiscoveryClaim(new DiscoveryClaimData
+            {
+                claimId = context.ScenarioContext.ScopedId("discovery-claim", "claim"),
+                experimentRunId = runId,
+                inferenceId = inference.Inference.inferenceId,
+                hypothesisId = hypothesis.Hypothesis.hypothesisId,
+                evidenceIds = new[] { "evidence.prototype.reproduction-a", "evidence.prototype.reproduction-b" },
+                supportCount = 2,
+                confidence = 850
+            }, experiment.ConfirmationPolicy);
+            ExperimentationResult review = experimentation.ReviewDiscoveryClaim(new DiscoveryReviewData
+            {
+                reviewId = context.ScenarioContext.ScopedId("discovery-review", "claim"),
+                claimId = claim.Claim.claimId,
+                reviewerPersonId = context.ScenarioContext.Runtimes.PersonId,
+                decision = DiscoveryReviewDecision.Confirm,
+                reason = "Independent reproduction threshold met."
+            });
+            int recipeCountBefore = registry.DefinitionsById.Values.OfType<RecipeDefinition>().Count();
+            ExperimentationResult proposal = experimentation.ProposeRecipeRegistration(new RecipeRegistrationProposalData
+            {
+                proposalId = context.ScenarioContext.ScopedId("recipe-registration-proposal", "claim"),
+                claimId = claim.Claim.claimId,
+                proposedRecipeId = "recipe.prototype.discovered-variant",
+                requesterPersonId = context.ScenarioContext.Runtimes.PersonId,
+                authorizationId = "authorization.prototype.discovery-review",
+                authorized = true
+            });
+            int recipeCountAfter = registry.DefinitionsById.Values.OfType<RecipeDefinition>().Count();
+
+            bool valid = claim.Succeeded
+                && review.Succeeded
+                && proposal.Succeeded
+                && claim.Claim.status == DiscoveryClaimStatus.Confirmed
+                && proposal.RegistrationProposal.submitted
+                && recipeCountBefore == recipeCountAfter;
+            return valid
+                ? Pass(context, "step9-experiment-claim-registration", $"Claim={claim.Claim.status} Proposal={proposal.RegistrationProposal.proposalId} Recipes={recipeCountBefore}->{recipeCountAfter}")
+                : Fail(context, "step9-experiment-claim-registration", $"Claim={claim.Status}/{claim.Claim?.status} Review={review.Status} Proposal={proposal.Status} Recipes={recipeCountBefore}->{recipeCountAfter}");
+        }
+
+        private static TestLabAutomationStepResult ExperimentAccessPersistence(TestLabAutomationContext context)
+        {
+            if (!TryExperimentationFixture(context, out ExperimentationRuntime experimentation, out DefinitionRegistry registry, out ExperimentDefinition experiment, out RecipeDefinition recipe, out string failure))
+            {
+                return Fail(context, "step9-experiment-access-persistence", failure);
+            }
+
+            ExperimentationResult hypothesis = experimentation.CreateHypothesis(PrototypeHypothesis(context, "access"));
+            ExperimentationResult plan = experimentation.CreatePlan(PrototypeExperimentPlan(context, experiment.Id, hypothesis.Hypothesis.hypothesisId, recipe.Id), registry);
+            string runId = context.ScenarioContext.ScopedId("experiment-run", "access");
+            experimentation.StartRun(runId, plan.Plan.planId, context.ScenarioContext.Runtimes.PersonId, "1", registry);
+            experimentation.RecordTrial(new ExperimentTrialData
+            {
+                trialId = context.ScenarioContext.ScopedId("experiment-trial", "access"),
+                experimentRunId = runId,
+                trialIndex = 0,
+                recipeDefinitionId = recipe.Id,
+                outcome = ExperimentTrialOutcome.ExpectedSuccess,
+                deterministicSeed = "seed.access"
+            });
+
+            string policyId = context.ScenarioContext.ScopedId("information-access-policy", "experiment");
+            context.ScenarioContext.Runtimes.Access.RegisterPolicy(new InformationAccessPolicyData
+            {
+                policyId = policyId,
+                subject = ExperimentInformationSubject.Experiment(runId, experiment.Id),
+                classification = InformationVisibilityClassification.Confidential,
+                detailVisibilityPolicy = InformationDetailVisibilityPolicy.Redacted,
+                allowedPersonIds = new[] { "person.prototype.observer" },
+                defaultVisibleDetails = new[] { "detail.run" },
+                defaultRedactedDetails = new[] { "detail.trials", "detail.evidence", "detail.inputs", "detail.outputs", "detail.provenance" }
+            });
+            ExperimentProjectionData projection = experimentation.ProjectRun(runId, context.ScenarioContext.Runtimes.Access, new InformationAccessContext
+            {
+                RequestingPersonId = "person.prototype.observer",
+                RedactedAccessAcceptable = true,
+                RevealDenialReasons = true
+            }, policyId);
+
+            ExperimentationRuntimeSaveData save = experimentation.CreateSaveData();
+            ExperimentationRuntime restored = new ExperimentationRuntime();
+            ExperimentationResult restore = restored.RestoreFromSaveData(save, registry);
+            ExperimentationRuntimeSaveData corrupt = save.Clone();
+            corrupt.trials[0].experimentRunId = "experiment-run.missing";
+            ExperimentationResult rejected = restored.RestoreFromSaveData(corrupt, registry);
+            bool valid = projection.Decision == ExperimentProjectionDecision.RedactedAccess
+                && restore.Succeeded
+                && restored.RunCount == experimentation.RunCount
+                && !rejected.Succeeded
+                && restored.RunCount == experimentation.RunCount;
+            return valid
+                ? Pass(context, "step9-experiment-access-persistence", $"Projection={projection.Decision} Restore={restore.Status} Reject={rejected.Status}")
+                : Fail(context, "step9-experiment-access-persistence", $"Projection={projection.Decision} Restore={restore.Status} Reject={rejected.Status} Counts={restored.RunCount}/{experimentation.RunCount}");
+        }
+
+        private static bool TryExperimentationFixture(
+            TestLabAutomationContext context,
+            out ExperimentationRuntime experimentation,
+            out DefinitionRegistry registry,
+            out ExperimentDefinition experiment,
+            out RecipeDefinition recipe,
+            out string failure)
+        {
+            experimentation = context?.ScenarioContext?.Runtimes?.Experimentation;
+            experiment = null;
+            recipe = null;
+            registry = null;
+            failure = string.Empty;
+            if (experimentation == null)
+            {
+                failure = "Experimentation runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            if (!TryCreateCraftingRuntime(context, out _, out _, out _, out DefinitionRegistry baseRegistry, out recipe, out MaterialDefinition iron, out failure))
+            {
+                return false;
+            }
+
+            experiment = PrototypeExperimentDefinition();
+            KnowledgeFactDefinition fact = ExperimentKnowledgeFact();
+            registry = ExtendRegistry(baseRegistry, iron, recipe, experiment, fact);
+            context.ScenarioContext.Runtimes.Knowledge.Configure(registry, context.ScenarioContext.Runtimes.PersonId);
+            return true;
+        }
+
+        private static ExperimentDefinition PrototypeExperimentDefinition()
+        {
+            ExperimentDefinition definition = UnityEngine.ScriptableObject.CreateInstance<ExperimentDefinition>();
+            SetPrivate(definition, "experimentId", "experiment.prototype.recipe-substitution");
+            SetPrivate(definition, "displayName", "Prototype Recipe Substitution Experiment");
+            SetPrivate(definition, "category", ExperimentCategory.SubstitutionTesting);
+            SetPrivate(definition, "defaultPlanMode", ExperimentPlanMode.Controlled);
+            SetPrivate(definition, "tags", new[] { "experiment.prototype", "experiment.recipe", "experiment.substitution" });
+            SetPrivate(definition, "supportedTargetTypes", new[] { "recipe", "material", "tool", "station" });
+            SetPrivate(definition, "variables", new[]
+            {
+                new ExperimentVariableDefinitionData
+                {
+                    variableId = "experiment-variable.prototype.substitute-material",
+                    category = ExperimentVariableCategory.IngredientIdentity,
+                    valueType = ExperimentValueType.StableId,
+                    role = ExperimentVariableRole.Independent,
+                    allowedValueIds = new[] { "material.prototype.recipe-iron" },
+                    controlValue = "material.prototype.recipe-iron"
+                },
+                new ExperimentVariableDefinitionData
+                {
+                    variableId = "experiment-variable.prototype.output-quality",
+                    category = ExperimentVariableCategory.Custom,
+                    valueType = ExperimentValueType.Numeric,
+                    role = ExperimentVariableRole.Dependent,
+                    minimumValue = 0f,
+                    maximumValue = 1000f
+                }
+            });
+            SetPrivate(definition, "requiredControls", new[]
+            {
+                new ExperimentControlDefinitionData
+                {
+                    controlId = "experiment-control.prototype.known-iron",
+                    baselineType = "known-recipe",
+                    baselineReferenceId = "recipe.prototype.sword",
+                    heldVariableIds = new[] { "experiment-variable.prototype.output-quality" }
+                }
+            });
+            SetPrivate(definition, "requiredObservationMethodIds", new[] { "observation-method.close-visual" });
+            SetPrivate(definition, "evidencePolicy", new ExperimentPolicyData { minimumTrials = 1, confirmationEvidenceThreshold = 1, minimumEvidenceStrength = 500 });
+            SetPrivate(definition, "reproducibilityPolicy", new ExperimentPolicyData { minimumTrials = 2, independentReproductionThreshold = 2 });
+            SetPrivate(definition, "confirmationPolicy", new ExperimentPolicyData { minimumTrials = 2, independentReproductionThreshold = 2, confirmationEvidenceThreshold = 2, allowAuthoritativeRegistrationProposal = true });
+            return definition;
+        }
+
+        private static ExperimentHypothesisData PrototypeHypothesis(TestLabAutomationContext context, string slug)
+        {
+            return new ExperimentHypothesisData
+            {
+                hypothesisId = context.ScenarioContext.ScopedId("experiment-hypothesis", slug),
+                claim = new HypothesisClaimData
+                {
+                    claimType = HypothesisClaimType.MaterialSubstitutesForMaterial,
+                    subjectId = "recipe.prototype.sword",
+                    predicateId = "predicate.prototype.substitution",
+                    objectId = "material.prototype.recipe-iron",
+                    proposedStableValueId = "material.prototype.recipe-iron",
+                    displayText = "Prototype iron can satisfy the tested sword material slot."
+                },
+                targetRecipeId = "recipe.prototype.sword",
+                targetMaterialId = "material.prototype.recipe-iron",
+                authorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                creationWorldTime = "0",
+                testability = HypothesisTestabilityState.Testable,
+                status = HypothesisStatus.Proposed,
+                confidence = 250
+            };
+        }
+
+        private static ExperimentPlanData PrototypeExperimentPlan(TestLabAutomationContext context, string experimentId, string hypothesisId, string recipeId = "")
+        {
+            return new ExperimentPlanData
+            {
+                planId = context.ScenarioContext.ScopedId("experiment-plan", string.IsNullOrWhiteSpace(recipeId) ? "controlled" : "recipe"),
+                experimentDefinitionId = experimentId,
+                mode = ExperimentPlanMode.Controlled,
+                hypothesisIds = new[] { hypothesisId },
+                targetSubjectIds = new[] { string.IsNullOrWhiteSpace(recipeId) ? "recipe.prototype.sword" : recipeId },
+                recipeDefinitionId = string.IsNullOrWhiteSpace(recipeId) ? "recipe.prototype.sword" : recipeId,
+                recipeVersionId = "recipe-version.prototype.sword.v1",
+                trialCount = 2,
+                variables =
+                {
+                    new ExperimentVariableAssignmentData
+                    {
+                        assignmentId = context.ScenarioContext.ScopedId("experiment-variable-assignment", "material"),
+                        variableId = "experiment-variable.prototype.substitute-material",
+                        valueType = ExperimentValueType.StableId,
+                        stableValueId = "material.prototype.recipe-iron"
+                    }
+                },
+                controls =
+                {
+                    new ExperimentControlAssignmentData
+                    {
+                        assignmentId = context.ScenarioContext.ScopedId("experiment-control-assignment", "known-iron"),
+                        controlId = "experiment-control.prototype.known-iron",
+                        baselineReferenceId = "recipe.prototype.sword",
+                        heldVariableIds = new[] { "experiment-variable.prototype.output-quality" }
+                    }
+                },
+                deterministicSeed = $"seed.{context.RunId}.{context.CurrentScenarioId}"
+            };
+        }
+
+        private static KnowledgeObservationRequest ExperimentObservation(TestLabAutomationContext context, string slug, string recipeId)
+        {
+            return new KnowledgeObservationRequest
+            {
+                PersonId = context.ScenarioContext.Runtimes.PersonId,
+                TransactionId = context.ScenarioContext.ScopedId("knowledge-observation", slug),
+                EvidenceId = context.ScenarioContext.ScopedId("knowledge-evidence", slug),
+                Proposition = new KnowledgePropositionData
+                {
+                    factDefinitionId = "fact.prototype.experiment.recipe-fragment",
+                    subjectType = KnowledgeSubjectType.Item,
+                    subjectId = recipeId,
+                    objectType = KnowledgeSubjectType.Item,
+                    objectId = "recipe-input.prototype.iron",
+                    valueType = KnowledgeValueType.StableId,
+                    stableValueId = "recipe-input.prototype.iron"
+                },
+                AcquisitionSource = KnowledgeAcquisitionSource.PersonalExperience,
+                Provenance = KnowledgeProvenance.Inference,
+                Strength = 760,
+                Credibility = 760,
+                Visibility = KnowledgeVisibility.Public,
+                Tags = new[] { "experiment", "recipe-fragment" }
+            };
+        }
+
+        private static KnowledgeFactDefinition ExperimentKnowledgeFact()
+        {
+            KnowledgeFactDefinition fact = UnityEngine.ScriptableObject.CreateInstance<KnowledgeFactDefinition>();
+            SetPrivate(fact, "factId", "fact.prototype.experiment.recipe-fragment");
+            SetPrivate(fact, "displayName", "Prototype Experiment Recipe Fragment");
+            SetPrivate(fact, "domain", KnowledgeDomain.Crafting);
+            SetPrivate(fact, "propositionType", KnowledgePropositionType.Capability);
+            SetPrivate(fact, "subjectType", KnowledgeSubjectType.Item);
+            SetPrivate(fact, "objectType", KnowledgeSubjectType.Item);
+            SetPrivate(fact, "valueType", KnowledgeValueType.StableId);
+            SetPrivate(fact, "certaintyThreshold", 700);
+            SetPrivate(fact, "requiredEvidenceCount", 1);
+            return fact;
         }
 
         private static TestLabAutomationStepResult DistinctInstances(TestLabAutomationContext context)

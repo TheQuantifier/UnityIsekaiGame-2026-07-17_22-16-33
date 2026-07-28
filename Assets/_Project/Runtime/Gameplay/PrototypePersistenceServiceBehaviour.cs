@@ -14,6 +14,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Crafting;
 using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
+using UnityIsekaiGame.Inventory.Experimentation;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Inventory.Production;
 using UnityIsekaiGame.Inventory.Quality;
@@ -79,6 +80,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerRecipeKnowledge = true;
         [SerializeField] private bool registerPlayerCraftingExecution = true;
         [SerializeField] private bool registerPlayerProductionWorkflow = true;
+        [SerializeField] private bool registerPlayerExperimentation = true;
         [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
@@ -126,6 +128,7 @@ namespace UnityIsekaiGame.Gameplay
         private RecipeKnowledgePersistenceParticipant recipeKnowledgeParticipant;
         private CraftingExecutionPersistenceParticipant craftingExecutionParticipant;
         private ProductionWorkflowPersistenceParticipant productionWorkflowParticipant;
+        private ExperimentationPersistenceParticipant experimentationParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
         private PlayerCombatExecutionPersistenceParticipant playerCombatExecutionParticipant;
@@ -147,6 +150,7 @@ namespace UnityIsekaiGame.Gameplay
         private RecipeKnowledgeRuntime playerRecipeKnowledge;
         private CraftingExecutionRuntime playerCraftingExecution;
         private ProductionWorkflowRuntime playerProductionWorkflow;
+        private ExperimentationRuntime playerExperimentation;
         private PlayerItemIdentitySynchronizer playerItemIdentitySynchronizer;
         private bool dirtyEventsSubscribed;
 
@@ -172,6 +176,7 @@ namespace UnityIsekaiGame.Gameplay
         public RecipeKnowledgeRuntime RecipeKnowledge => playerRecipeKnowledge ??= new RecipeKnowledgeRuntime();
         public CraftingExecutionRuntime CraftingExecution => playerCraftingExecution ??= new CraftingExecutionRuntime();
         public ProductionWorkflowRuntime ProductionWorkflow => playerProductionWorkflow ??= new ProductionWorkflowRuntime();
+        public ExperimentationRuntime Experimentation => playerExperimentation ??= new ExperimentationRuntime();
         public DefinitionRegistry ItemQualityDefinitionRegistry => GetDefinitionRegistry();
         public DefinitionRegistry ItemDurabilityDefinitionRegistry => GetDefinitionRegistry();
 
@@ -240,6 +245,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(productionWorkflowParticipant);
                 productionWorkflowParticipant = null;
+            }
+
+            if (service != null && experimentationParticipant != null)
+            {
+                service.UnregisterParticipant(experimentationParticipant);
+                experimentationParticipant = null;
             }
 
             if (service != null && identityProgressionParticipant != null)
@@ -405,6 +416,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerRecipeKnowledgeParticipant();
             EnsurePlayerCraftingExecutionParticipant();
             EnsurePlayerProductionWorkflowParticipant();
+            EnsurePlayerExperimentationParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -955,6 +967,39 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 productionWorkflowParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerExperimentationParticipant()
+        {
+            if (!registerPlayerExperimentation || experimentationParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (!registerPlayerItemIdentities || !registerPlayerProductionRequirements || !registerPlayerCraftingExecution)
+            {
+                Debug.LogWarning("Player experimentation persistence participant was not registered because item identity, production requirement, or crafting execution persistence is disabled.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player experimentation persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            experimentationParticipant = new ExperimentationPersistenceParticipant(
+                Experimentation,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(experimentationParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                experimentationParticipant = null;
             }
         }
 
