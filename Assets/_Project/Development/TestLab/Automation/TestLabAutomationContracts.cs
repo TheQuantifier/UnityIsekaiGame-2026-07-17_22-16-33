@@ -31,6 +31,8 @@ namespace UnityIsekaiGame.Development.Automation
         TestLabScenarioIsolationMode IsolationMode { get; }
         TestLabRuntimeArea RequiredRuntimeAreas { get; }
         bool RequiresSceneHost { get; }
+        TestLabCommandLineSupport CommandLineSupport { get; }
+        string CommandLineUnsupportedReason { get; }
         string RequiredHostId { get; }
         TestLabHostFeature RequiredHostFeatures { get; }
         IReadOnlyList<string> RequiredDefinitionIds { get; }
@@ -187,7 +189,9 @@ namespace UnityIsekaiGame.Development.Automation
             bool? requiresSceneHost = null,
             string requiredHostId = "",
             TestLabHostFeature requiredHostFeatures = TestLabHostFeature.AutomatedExecution,
-            IEnumerable<string> requiredDefinitionIds = null)
+            IEnumerable<string> requiredDefinitionIds = null,
+            TestLabCommandLineSupport? commandLineSupport = null,
+            string commandLineUnsupportedReason = "")
         {
             ScenarioId = scenarioId ?? string.Empty;
             DisplayName = displayName ?? string.Empty;
@@ -198,6 +202,10 @@ namespace UnityIsekaiGame.Development.Automation
             IsolationMode = isolationMode;
             RequiredRuntimeAreas = requiredRuntimeAreas;
             RequiresSceneHost = requiresSceneHost ?? RequiresHostByDefault(isolationMode, requiredRuntimeAreas, requiredHostId, requiredHostFeatures);
+            CommandLineSupport = commandLineSupport ?? DefaultCommandLineSupport(RequiresSceneHost);
+            CommandLineUnsupportedReason = string.IsNullOrWhiteSpace(commandLineUnsupportedReason)
+                ? DefaultCommandLineUnsupportedReason(CommandLineSupport)
+                : commandLineUnsupportedReason.Trim();
             RequiredHostId = requiredHostId ?? string.Empty;
             RequiredHostFeatures = requiredHostFeatures;
             RequiredDefinitionIds = (requiredDefinitionIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -216,6 +224,8 @@ namespace UnityIsekaiGame.Development.Automation
         public TestLabScenarioIsolationMode IsolationMode { get; }
         public TestLabRuntimeArea RequiredRuntimeAreas { get; }
         public bool RequiresSceneHost { get; }
+        public TestLabCommandLineSupport CommandLineSupport { get; }
+        public string CommandLineUnsupportedReason { get; }
         public string RequiredHostId { get; }
         public TestLabHostFeature RequiredHostFeatures { get; }
         public IReadOnlyList<string> RequiredDefinitionIds { get; }
@@ -247,6 +257,21 @@ namespace UnityIsekaiGame.Development.Automation
 
             const TestLabRuntimeArea hostlessFreshAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items;
             return (requiredRuntimeAreas & ~hostlessFreshAreas) != TestLabRuntimeArea.None;
+        }
+
+        private static TestLabCommandLineSupport DefaultCommandLineSupport(bool requiresSceneHost)
+        {
+            return requiresSceneHost ? TestLabCommandLineSupport.RequiresScene : TestLabCommandLineSupport.Supported;
+        }
+
+        private static string DefaultCommandLineUnsupportedReason(TestLabCommandLineSupport support)
+        {
+            return support switch
+            {
+                TestLabCommandLineSupport.RequiresScene => "This scenario requires a registered scene automation host; the command runner could not provide one from the default or explicit scene.",
+                TestLabCommandLineSupport.Unsupported => "This scenario is only supported from the in-game Test Lab runner.",
+                _ => string.Empty
+            };
         }
     }
 

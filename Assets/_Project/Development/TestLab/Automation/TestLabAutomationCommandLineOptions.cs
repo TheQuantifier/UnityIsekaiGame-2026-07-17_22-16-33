@@ -37,7 +37,9 @@ namespace UnityIsekaiGame.Development.Automation
                 IncludeExtended = true,
                 MaximumFrameWait = 120,
                 ScenarioOrder = ScenarioOrder,
-                ShuffleSeed = ShuffleSeed
+                ShuffleSeed = ShuffleSeed,
+                RunSurface = TestLabAutomationRunSurface.CommandLine,
+                CommandLineSceneAvailable = !string.IsNullOrWhiteSpace(ScenePath)
             };
         }
 

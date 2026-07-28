@@ -15,6 +15,7 @@ using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Inventory.Quality;
+using UnityIsekaiGame.Inventory.Recipes;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.Records;
@@ -72,6 +73,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
+        [SerializeField] private bool registerPlayerRecipeKnowledge = true;
         [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
@@ -115,6 +117,7 @@ namespace UnityIsekaiGame.Gameplay
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
+        private RecipeKnowledgePersistenceParticipant recipeKnowledgeParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
         private PlayerCombatExecutionPersistenceParticipant playerCombatExecutionParticipant;
@@ -132,6 +135,7 @@ namespace UnityIsekaiGame.Gameplay
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
+        private RecipeKnowledgeRuntime playerRecipeKnowledge;
         private PlayerItemIdentitySynchronizer playerItemIdentitySynchronizer;
         private bool dirtyEventsSubscribed;
 
@@ -153,6 +157,7 @@ namespace UnityIsekaiGame.Gameplay
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
+        public RecipeKnowledgeRuntime RecipeKnowledge => playerRecipeKnowledge ??= new RecipeKnowledgeRuntime();
         public DefinitionRegistry ItemQualityDefinitionRegistry => GetDefinitionRegistry();
         public DefinitionRegistry ItemDurabilityDefinitionRegistry => GetDefinitionRegistry();
 
@@ -197,6 +202,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(itemDurabilityParticipant);
                 itemDurabilityParticipant = null;
+            }
+
+            if (service != null && recipeKnowledgeParticipant != null)
+            {
+                service.UnregisterParticipant(recipeKnowledgeParticipant);
+                recipeKnowledgeParticipant = null;
             }
 
             if (service != null && identityProgressionParticipant != null)
@@ -358,6 +369,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
+            EnsurePlayerRecipeKnowledgeParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -789,6 +801,33 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 itemDurabilityParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerRecipeKnowledgeParticipant()
+        {
+            if (!registerPlayerRecipeKnowledge || recipeKnowledgeParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player recipe knowledge persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            recipeKnowledgeParticipant = new RecipeKnowledgePersistenceParticipant(
+                RecipeKnowledge,
+                GetDefinitionRegistry,
+                service.PlayerId);
+
+            service.RegisterParticipant(recipeKnowledgeParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                recipeKnowledgeParticipant = null;
             }
         }
 

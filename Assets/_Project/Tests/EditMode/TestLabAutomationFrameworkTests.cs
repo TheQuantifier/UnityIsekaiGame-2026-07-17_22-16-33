@@ -806,6 +806,26 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void Validation_CatchesUnsupportedCommandLineSupportMode()
+        {
+            TestLabAutomationRegistry registry = Registry(Suite("suite", 10,
+                new TestLabAutomationScenario(
+                    "scenario",
+                    "scenario",
+                    "scenario",
+                    10,
+                    TestLabAutomationCategory.Quick,
+                    true,
+                    new[] { PassStep("pass") },
+                    commandLineSupport: (TestLabCommandLineSupport)999)));
+
+            TestLabAutomationValidationResult result = TestLabAutomationValidation.Validate(registry);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors.Any(error => error.Contains("unsupported command-line support")), Is.True);
+        }
+
+        [Test]
         public void Validation_CatchesMissingFixtureRequirements()
         {
             TestLabAutomationRegistry registry = Registry(Suite("suite", 10,
@@ -1059,6 +1079,92 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void CommandLineRun_SkipsSceneRequiredScenariosWhenNoSceneWasOpened()
+        {
+            int stepRuns = 0;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "scene-required",
+                "scene-required",
+                "scene-required",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { CountStep("should-not-run", () => stepRuns++) },
+                isolationMode: TestLabScenarioIsolationMode.PersistentFixture,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiredHostId: "host.test.scene");
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(Registry(Suite("suite", 10, scenario)), new TestLabAutomationHostResetCoordinator());
+
+            TestLabAutomationResult result = runner.RunSuite("suite", new TestLabAutomationOptions
+            {
+                RunSurface = TestLabAutomationRunSurface.CommandLine,
+                CommandLineSceneAvailable = false
+            });
+
+            Assert.That(result.HasFailures, Is.False);
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Skipped));
+            Assert.That(result.Scenarios.Single().Steps.Single().StepId, Is.EqualTo("command-line.support"));
+            Assert.That(stepRuns, Is.Zero);
+        }
+
+        [Test]
+        public void CommandLineRun_RunsSceneRequiredScenariosWhenSceneHostIsAvailable()
+        {
+            TestLabAutomationHostRegistry.ClearForTests();
+            TestLabSceneIndependentAutomationHost host = new TestLabSceneIndependentAutomationHost(new DefinitionRegistry(Array.Empty<IGameDefinition>()), "host.test.scene");
+            TestLabAutomationHostRegistry.Register(host, out _);
+            int stepRuns = 0;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "scene-required",
+                "scene-required",
+                "scene-required",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { CountStep("runs", () => stepRuns++) },
+                isolationMode: TestLabScenarioIsolationMode.PersistentFixture,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiredHostId: "host.test.scene");
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(Registry(Suite("suite", 10, scenario)), new TestLabAutomationHostResetCoordinator());
+
+            TestLabAutomationResult result = runner.RunSuite("suite", new TestLabAutomationOptions
+            {
+                RunSurface = TestLabAutomationRunSurface.CommandLine,
+                CommandLineSceneAvailable = true
+            });
+
+            Assert.That(result.HasFailures, Is.False, string.Join(Environment.NewLine, result.Scenarios.SelectMany(item => item.Steps).Select(step => step.Diagnostics)));
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Passed));
+            Assert.That(stepRuns, Is.EqualTo(1));
+            TestLabAutomationHostRegistry.ClearForTests();
+        }
+
+        [Test]
+        public void InGameRun_DoesNotSkipSceneRequiredScenariosWithoutHost()
+        {
+            int stepRuns = 0;
+            ITestLabAutomationScenario scenario = new TestLabAutomationScenario(
+                "scene-required",
+                "scene-required",
+                "scene-required",
+                10,
+                TestLabAutomationCategory.Quick,
+                true,
+                new[] { CountStep("should-not-run", () => stepRuns++) },
+                isolationMode: TestLabScenarioIsolationMode.PersistentFixture,
+                requiredRuntimeAreas: TestLabRuntimeArea.KnowledgeHistory,
+                requiredHostId: "host.test.scene");
+            TestLabAutomationRunner runner = new TestLabAutomationRunner(Registry(Suite("suite", 10, scenario)), new TestLabAutomationHostResetCoordinator());
+
+            TestLabAutomationResult result = runner.RunSuite("suite", TestLabAutomationOptions.Default);
+
+            Assert.That(result.Scenarios.Single().Status, Is.EqualTo(TestLabAutomationStatus.Failed));
+            Assert.That(result.Scenarios.Single().Steps.Single().StepId, Is.EqualTo("host.compatibility"));
+            Assert.That(result.Scenarios.Single().Steps.Single().Actual, Is.EqualTo("HostNotFound"));
+            Assert.That(stepRuns, Is.Zero);
+        }
+
+        [Test]
         public void HostRemovalDuringExecutionFailsClearlyWithoutSelectingReplacement()
         {
             TestLabAutomationHostRegistry.ClearForTests();
@@ -1265,7 +1371,7 @@ namespace UnityIsekaiGame.Tests
             string[] actualSuiteIds = registry.Suites.Select(suite => suite.SuiteId).ToArray();
             Assert.That(actualSuiteIds, Is.EqualTo(PrototypeTestLabAutomationCatalog.SuiteIds()));
             Assert.That(actualSuiteIds.First(), Is.EqualTo("feature.3.runtime-taxonomy"));
-            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.9.5.tools-production-requirements"));
+            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.9.6.recipes-crafting-knowledge"));
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);
