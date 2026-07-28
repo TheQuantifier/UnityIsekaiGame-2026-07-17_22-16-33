@@ -255,7 +255,7 @@ namespace UnityIsekaiGame.Development.Automation
                 return true;
             }
 
-            const TestLabRuntimeArea hostlessFreshAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items;
+            const TestLabRuntimeArea hostlessFreshAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions;
             return (requiredRuntimeAreas & ~hostlessFreshAreas) != TestLabRuntimeArea.None;
         }
 
