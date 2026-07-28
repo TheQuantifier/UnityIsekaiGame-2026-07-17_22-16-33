@@ -12,6 +12,7 @@ using UnityIsekaiGame.StatusEffects;
 
 namespace UnityIsekaiGame.Development.Automation
 {
+    [PrototypeTestLabAutomationProvider(4, "World Data", 400)]
     public static class PrototypeStep4AutomationSuites
     {
         public static void RegisterDefaults(TestLabAutomationRegistry registry)

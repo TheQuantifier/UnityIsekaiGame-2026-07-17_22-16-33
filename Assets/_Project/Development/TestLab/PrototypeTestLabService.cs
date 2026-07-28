@@ -423,6 +423,48 @@ namespace UnityIsekaiGame.Development
                 new[] { context?.DefinitionCatalog == null ? "Using explicit Prototype fallback definitions where catalog assets are unavailable." : "Prototype catalog-authored definitions are authoritative." });
         }
 
+        public static void RegisterDefaultAutomationSuites(TestLabAutomationRegistry registry)
+        {
+            PrototypeTestLabAutomationCatalog.RegisterDefaultSuites(registry);
+        }
+
+        public static TestLabDefinitionContext CreateDefaultAutomationDefinitionContext(DefinitionCatalog catalog = null)
+        {
+            DefinitionCatalog effectiveCatalog = catalog;
+#if UNITY_EDITOR
+            if (effectiveCatalog == null)
+            {
+                effectiveCatalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(PrototypeCatalogPath);
+            }
+#endif
+            DefinitionRegistry registry = CreateAutomationDefinitionRegistry(effectiveCatalog);
+            return new TestLabDefinitionContext(
+                registry,
+                PrototypeCatalogPath,
+                "Prototype Definition Catalog",
+                catalogAuthored: effectiveCatalog != null,
+                fallbackDefinitionsAvailable: true,
+                revision: registry == null ? 0 : registry.Count,
+                new[] { effectiveCatalog == null ? "Using explicit Prototype fallback definitions because no Prototype catalog asset was available." : "Using Prototype catalog-authored definitions plus explicit Prototype fallback definitions." });
+        }
+
+        public static DefinitionRegistry CreateAutomationDefinitionRegistry(DefinitionCatalog catalog = null)
+        {
+            DefinitionRegistry baseRegistry = null;
+            if (catalog != null)
+            {
+                baseRegistry = catalog.CreateRegistry();
+            }
+#if UNITY_EDITOR
+            if (baseRegistry == null)
+            {
+                DefinitionCatalog loaded = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(PrototypeCatalogPath);
+                baseRegistry = loaded == null ? null : loaded.CreateRegistry();
+            }
+#endif
+            return AddDevelopmentHistoryDefinitions(baseRegistry);
+        }
+
         public void SetActiveAutomationScenarioContext(TestLabScenarioContext scenarioContext)
         {
             automationRuntimeBindingStack.Push(new AutomationRuntimeBindingFrame(
@@ -13504,13 +13546,7 @@ namespace UnityIsekaiGame.Development
         {
             if (automationRegistry.Suites.Count == 0)
             {
-                PrototypeStep3AutomationSuites.RegisterDefaults(automationRegistry);
-                PrototypeStep4AutomationSuites.RegisterDefaults(automationRegistry);
-                PrototypeStep5AutomationSuites.RegisterDefaults(automationRegistry);
-                PrototypeStep6AutomationSuites.RegisterDefaults(automationRegistry);
-                PrototypeStep7AutomationSuites.RegisterDefaults(automationRegistry);
-                PrototypeStep8AutomationSuites.RegisterDefaults(automationRegistry);
-                PrototypeStep9AutomationSuites.RegisterDefaults(automationRegistry);
+                RegisterDefaultAutomationSuites(automationRegistry);
             }
 
             if (automationRunner == null)
@@ -14274,19 +14310,7 @@ namespace UnityIsekaiGame.Development
 
         private DefinitionRegistry CreateRegistry(DefinitionCatalog catalog)
         {
-            DefinitionRegistry baseRegistry = null;
-            if (catalog != null)
-            {
-                baseRegistry = catalog.CreateRegistry();
-            }
-#if UNITY_EDITOR
-            if (baseRegistry == null)
-            {
-                DefinitionCatalog loaded = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(PrototypeCatalogPath);
-                baseRegistry = loaded == null ? null : loaded.CreateRegistry();
-            }
-#endif
-            return AddDevelopmentHistoryDefinitions(baseRegistry);
+            return CreateAutomationDefinitionRegistry(catalog);
         }
 
         private static DefinitionRegistry AddDevelopmentHistoryDefinitions(DefinitionRegistry baseRegistry)

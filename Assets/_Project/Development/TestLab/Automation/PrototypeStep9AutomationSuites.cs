@@ -15,6 +15,7 @@ using UnityIsekaiGame.Stats;
 
 namespace UnityIsekaiGame.Development.Automation
 {
+    [PrototypeTestLabAutomationProvider(9, "Items", 900)]
     public static class PrototypeStep9AutomationSuites
     {
         private const string SwordId = "item.prototype-sword";

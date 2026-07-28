@@ -11,6 +11,7 @@ using UnityIsekaiGame.Traits;
 
 namespace UnityIsekaiGame.Development.Automation
 {
+    [PrototypeTestLabAutomationProvider(5, "Character", 500)]
     public static class PrototypeStep5AutomationSuites
     {
         public static void RegisterDefaults(TestLabAutomationRegistry registry)

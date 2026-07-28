@@ -4,6 +4,7 @@ using System.Linq;
 
 namespace UnityIsekaiGame.Development.Automation
 {
+    [PrototypeTestLabAutomationProvider(8, "Knowledge", 800)]
     public static class PrototypeStep8AutomationSuites
     {
         public static void RegisterDefaults(TestLabAutomationRegistry registry)

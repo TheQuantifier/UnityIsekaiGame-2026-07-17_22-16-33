@@ -13,6 +13,7 @@ using UnityIsekaiGame.Combat;
 
 namespace UnityIsekaiGame.Development.Automation
 {
+    [PrototypeTestLabAutomationProvider(7, "Body", 700)]
     public static class PrototypeStep7AutomationSuites
     {
         public static void RegisterDefaults(TestLabAutomationRegistry registry)
