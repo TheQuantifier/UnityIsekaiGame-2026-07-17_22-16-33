@@ -215,4 +215,165 @@ namespace UnityIsekaiGame.Professions
         SecretRequirementRevealed = 9,
         Corrected = 10
     }
+
+    public enum TrainingProgramCategory
+    {
+        Custom = 0,
+        AcademicEducation = 1,
+        VocationalTraining = 2,
+        Apprenticeship = 3,
+        Mentorship = 4,
+        MilitaryTraining = 5,
+        ReligiousInstruction = 6,
+        ProfessionalInduction = 7,
+        SafetyTraining = 8,
+        ContinuingEducation = 9,
+        RemedialTraining = 10
+    }
+
+    public enum TrainingProgramFormality
+    {
+        Informal = 0,
+        Formal = 1,
+        Either = 2
+    }
+
+    public enum TrainingTeachingMethod
+    {
+        Custom = 0,
+        Lecture = 1,
+        Reading = 2,
+        Demonstration = 3,
+        GuidedPractice = 4,
+        SupervisedWork = 5,
+        Discussion = 6,
+        ExaminationPreparation = 7,
+        FieldStudy = 8,
+        IndependentStudy = 9
+    }
+
+    public enum TrainingEnrollmentState
+    {
+        Applied = 0,
+        Accepted = 1,
+        Enrolled = 2,
+        Active = 3,
+        Paused = 4,
+        Suspended = 5,
+        Withdrawn = 6,
+        Dismissed = 7,
+        Failed = 8,
+        Completed = 9,
+        Cancelled = 10,
+        Expired = 11,
+        Custom = 12
+    }
+
+    public enum TrainingInstructorRoleKind
+    {
+        Instructor = 0,
+        Mentor = 1,
+        Master = 2,
+        Supervisor = 3,
+        Evaluator = 4,
+        AssistantInstructor = 5,
+        GuestInstructor = 6,
+        Custom = 7
+    }
+
+    public enum TrainingAssignmentActivityCategory
+    {
+        Custom = 0,
+        Crafting = 1,
+        ProductionJob = 2,
+        Repair = 3,
+        Salvage = 4,
+        Experiment = 5,
+        ResearchRecord = 6,
+        WorkOrder = 7,
+        Combat = 8,
+        Service = 9
+    }
+
+    public enum TrainingSupervisionLevel
+    {
+        Custom = 0,
+        ObservationOnly = 1,
+        DirectInstruction = 2,
+        CloselySupervised = 3,
+        PeriodicallySupervised = 4,
+        IndependentWithReview = 5
+    }
+
+    public enum TrainingSessionCompletionState
+    {
+        Planned = 0,
+        Attended = 1,
+        Completed = 2,
+        Partial = 3,
+        Failed = 4,
+        Cancelled = 5
+    }
+
+    public enum TrainingWorkOutcome
+    {
+        Unknown = 0,
+        Succeeded = 1,
+        Partial = 2,
+        Failed = 3,
+        Rejected = 4
+    }
+
+    public enum TrainingOperationStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        Duplicate = 2,
+        MissingRuntime = 3,
+        MissingDefinition = 4,
+        MissingPerson = 5,
+        MissingEnrollment = 6,
+        InvalidRequest = 7,
+        InvalidState = 8,
+        InvalidTransition = 9,
+        InvalidInstructor = 10,
+        InvalidModule = 11,
+        InvalidLesson = 12,
+        InvalidAssignment = 13,
+        DuplicateActivity = 14,
+        RequirementBlocked = 15,
+        StaleProgress = 16,
+        TeachingFailed = 17,
+        RestoreFailed = 18,
+        ValidationFailed = 19
+    }
+
+    public enum TrainingProjectionAudience
+    {
+        AuthoritativeInternal = 0,
+        PrivilegedDebug = 1,
+        Learner = 2,
+        Instructor = 3,
+        Mentor = 4,
+        Supervisor = 5,
+        Institution = 6,
+        ProfessionAuthority = 7,
+        PublicInspection = 8,
+        PersonKnown = 9,
+        PersonBelieved = 10
+    }
+
+    public enum TrainingHistoryHookKind
+    {
+        ProgramEntered = 0,
+        ApprenticeshipBegun = 1,
+        InstructorAssigned = 2,
+        MajorAssignmentCompleted = 3,
+        ProgramPaused = 4,
+        LearnerDismissed = 5,
+        ProgramFailed = 6,
+        ProgramCompleted = 7,
+        ApprenticeshipCompleted = 8,
+        Corrected = 9
+    }
 }
