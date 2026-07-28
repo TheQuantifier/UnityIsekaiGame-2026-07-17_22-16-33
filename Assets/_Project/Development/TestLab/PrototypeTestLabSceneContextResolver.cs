@@ -8,6 +8,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.UI.Inventory;
@@ -28,6 +29,7 @@ namespace UnityIsekaiGame.Development
             EnemyHealth enemyHealth = Object.FindAnyObjectByType<EnemyHealth>();
             Transform playerTransform = ResolvePlayerTransform(menuController);
             Transform enemyTransform = enemyHealth == null ? Object.FindAnyObjectByType<PrototypeEnemyController>()?.transform : enemyHealth.transform;
+            PlayerIdentityProgression identityProgression = ResolveIdentityProgression(menuController, playerTransform);
 
             CombatStateService combatState = playerTransform == null ? Object.FindAnyObjectByType<CombatStateService>() : playerTransform.GetComponentInParent<CombatStateService>(includeInactive: true);
             if (combatState == null && playerTransform != null && playerTransform.gameObject.activeInHierarchy)
@@ -60,7 +62,7 @@ namespace UnityIsekaiGame.Development
                 KnowledgeRecords = persistence?.KnowledgeRecords,
                 CharacterSystem = menuController?.RuntimeCharacterSystem,
                 PlayerStatuses = menuController?.StatusEffects,
-                IdentityProgression = menuController?.IdentityProgression,
+                IdentityProgression = identityProgression,
                 Spellcaster = playerTransform == null ? null : playerTransform.GetComponentInParent<PlayerSpellcaster>(),
                 SpellLoadout = menuController?.SpellLoadout,
                 QuestLog = menuController?.QuestLog,
@@ -101,6 +103,27 @@ namespace UnityIsekaiGame.Development
 
             PlayerSpellcaster spellcaster = Object.FindAnyObjectByType<PlayerSpellcaster>();
             return spellcaster == null ? null : spellcaster.transform;
+        }
+
+        private static PlayerIdentityProgression ResolveIdentityProgression(InventoryScreenController menuController, Transform playerTransform)
+        {
+            if (menuController?.IdentityProgression != null)
+            {
+                return menuController.IdentityProgression;
+            }
+
+            PlayerIdentityProgression identity = playerTransform == null ? null : playerTransform.GetComponentInParent<PlayerIdentityProgression>(includeInactive: true);
+            if (identity == null)
+            {
+                identity = Object.FindAnyObjectByType<PlayerIdentityProgression>(FindObjectsInactive.Include);
+            }
+
+            if (identity == null && playerTransform != null && playerTransform.gameObject.activeInHierarchy)
+            {
+                identity = playerTransform.gameObject.AddComponent<PlayerIdentityProgression>();
+            }
+
+            return identity;
         }
 
         private static OngoingEffectService ResolveOrAddOngoingEffects(Transform owner)

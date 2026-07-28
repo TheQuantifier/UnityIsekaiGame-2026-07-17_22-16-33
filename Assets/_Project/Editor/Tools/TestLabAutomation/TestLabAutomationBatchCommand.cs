@@ -47,6 +47,7 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
                 return TestLabAutomationBatchCommandResult.Fail(2, $"{options.Error} {TestLabAutomationCommandLineOptions.Usage()}", Array.Empty<string>(), null);
             }
 
+            PrototypeTestLabService sceneService = null;
             try
             {
                 if (!string.IsNullOrWhiteSpace(options.ScenePath))
@@ -57,6 +58,7 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
                     }
 
                     EditorSceneManager.OpenScene(options.ScenePath);
+                    sceneService = CreateSceneService();
                 }
 
                 PrototypeTestLabAutomationCatalogValidationResult catalogValidation = PrototypeTestLabAutomationCatalog.Validate();
@@ -111,6 +113,14 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
                 Debug.LogException(exception);
                 return TestLabAutomationBatchCommandResult.Fail(3, $"Test Lab automation command failed: {exception.GetType().Name}: {exception.Message}", Array.Empty<string>(), null);
             }
+            finally
+            {
+                if (sceneService != null)
+                {
+                    PrototypeTestLabServiceLocator.Unregister(sceneService);
+                    sceneService.UnregisterAutomationHost();
+                }
+            }
         }
 
         private static TestLabAutomationResult Execute(TestLabAutomationRunner runner, TestLabAutomationCommandLineOptions options)
@@ -143,6 +153,14 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
 
             TestLabAutomationHostCapabilities capabilities = batchHost.GetCapabilities();
             return TestLabAutomationHostResolution.Success(batchHost, capabilities, TestLabAutomationHostRegistry.Revision);
+        }
+
+        private static PrototypeTestLabService CreateSceneService()
+        {
+            PrototypeTestLabService service = new PrototypeTestLabService();
+            service.Configure(PrototypeTestLabSceneContextResolver.Resolve());
+            PrototypeTestLabServiceLocator.Register(service);
+            return service;
         }
 
         private static void LogFailures(TestLabAutomationResult result)
