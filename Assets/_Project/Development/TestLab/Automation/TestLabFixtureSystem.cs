@@ -385,6 +385,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProductionWorkflowRuntime productionWorkflow,
             ExperimentationRuntime experimentation,
             PersonProfessionRuntime professions,
+            ProfessionEntryRuntime professionEntries,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -409,6 +410,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProductionWorkflow = productionWorkflow;
             Experimentation = experimentation;
             Professions = professions;
+            ProfessionEntries = professionEntries;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -435,6 +437,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ProductionWorkflowRuntime ProductionWorkflow { get; }
         public ExperimentationRuntime Experimentation { get; }
         public PersonProfessionRuntime Professions { get; }
+        public ProfessionEntryRuntime ProfessionEntries { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -459,11 +462,14 @@ namespace UnityIsekaiGame.Development.Automation
             CraftingExecutionRuntime craftingExecution = null,
             ProductionWorkflowRuntime productionWorkflow = null,
             ExperimentationRuntime experimentation = null,
-            PersonProfessionRuntime professions = null)
+            PersonProfessionRuntime professions = null,
+            ProfessionEntryRuntime professionEntries = null)
         {
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
             professionRuntime.Configure(definitionRegistry, knownPersonIds);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, null);
+            ProfessionEntryRuntime entryRuntime = professionEntries ?? new ProfessionEntryRuntime();
+            entryRuntime.Configure(definitionRegistry, professionRuntime, knownPersonIds);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -493,6 +499,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProductionWorkflowRuntime productionWorkflow = new ProductionWorkflowRuntime();
             ExperimentationRuntime experimentation = new ExperimentationRuntime();
             PersonProfessionRuntime professions = new PersonProfessionRuntime();
+            ProfessionEntryRuntime professionEntries = new ProfessionEntryRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -504,8 +511,9 @@ namespace UnityIsekaiGame.Development.Automation
             access.Configure(definitionRegistry, personId);
             records.Configure(definitionRegistry, personId);
             professions.Configure(definitionRegistry, persons);
+            professionEntries.Configure(definitionRegistry, professions, persons);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -546,7 +554,8 @@ namespace UnityIsekaiGame.Development.Automation
                 CraftingExecution?.CreateSaveData(),
                 ProductionWorkflow?.CreateSaveData(),
                 Experimentation?.CreateSaveData(),
-                Professions?.CreateSaveData());
+                Professions?.CreateSaveData(),
+                ProfessionEntries?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -569,7 +578,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("CraftingExecution", CraftingExecution?.Revision ?? 0L, CraftingExecution?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("ProductionWorkflow", ProductionWorkflow?.Revision ?? 0L, ProductionWorkflow?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Experimentation", Experimentation?.Revision ?? 0L, Experimentation?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("Professions", Professions?.Revision ?? 0L, Professions?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("Professions", Professions?.Revision ?? 0L, Professions?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("ProfessionEntries", ProfessionEntries?.Revision ?? 0L, ProfessionEntries?.CreateSaveData())
             });
         }
 
@@ -750,6 +760,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (ProfessionEntries != null && snapshot.ProfessionEntries != null)
+            {
+                ProfessionEntryOperationResult result = ProfessionEntries.RestoreFromSaveData(snapshot.ProfessionEntries, DefinitionRegistry, Professions, KnownPersonIds, restoring: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Profession entry restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -790,7 +810,8 @@ namespace UnityIsekaiGame.Development.Automation
             CraftingExecutionRuntimeSaveData craftingExecution,
             ProductionWorkflowRuntimeSaveData productionWorkflow,
             ExperimentationRuntimeSaveData experimentation,
-            PersonProfessionRuntimeSaveData professions)
+            PersonProfessionRuntimeSaveData professions,
+            ProfessionEntryRuntimeSaveData professionEntries)
         {
             Knowledge = knowledge;
             History = history;
@@ -809,6 +830,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProductionWorkflow = productionWorkflow;
             Experimentation = experimentation;
             Professions = professions;
+            ProfessionEntries = professionEntries;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -828,6 +850,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ProductionWorkflowRuntimeSaveData ProductionWorkflow { get; }
         public ExperimentationRuntimeSaveData Experimentation { get; }
         public PersonProfessionRuntimeSaveData Professions { get; }
+        public ProfessionEntryRuntimeSaveData ProfessionEntries { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint

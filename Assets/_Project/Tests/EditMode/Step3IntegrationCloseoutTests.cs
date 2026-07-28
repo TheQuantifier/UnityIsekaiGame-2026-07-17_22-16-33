@@ -220,6 +220,40 @@ namespace UnityIsekaiGame.Tests
             }
         }
 
+        [Test]
+        public void FirstPersonWeaponPresenter_FlattensSingleChildVisualPrefab()
+        {
+            DefinitionRegistry registry = LoadCatalog().CreateRegistry();
+            ItemDefinition sword = Required<ItemDefinition>(registry, "item.prototype-sword");
+
+            GameObject player = new GameObject("Prototype Sword Presenter Test Player");
+            GameObject weaponRoot = new GameObject("PrototypeSwordView");
+            try
+            {
+                weaponRoot.transform.SetParent(player.transform);
+
+                PlayerInventory inventory = player.AddComponent<PlayerInventory>();
+                PlayerEquipment equipment = player.AddComponent<PlayerEquipment>();
+                SetPrivateField(equipment, "inventory", inventory);
+                FirstPersonWeaponPresenter presenter = player.AddComponent<FirstPersonWeaponPresenter>();
+                SetPrivateField(presenter, "equipment", equipment);
+                SetPrivateField(presenter, "weaponRoot", weaponRoot);
+                SetPrivateField(presenter, "swingRoot", weaponRoot.transform);
+
+                Assert.That(inventory.AddItemOrInstances(sword, 1).AddedAll, Is.True);
+                Assert.That(equipment.EquipFromInventorySlot(FindSlot(inventory, sword)).Succeeded, Is.True);
+                InvokePrivateMethod(presenter, "RefreshVisibility");
+
+                Assert.That(weaponRoot.transform.childCount, Is.EqualTo(1));
+                Assert.That(weaponRoot.transform.GetChild(0).name, Is.EqualTo("Longsword"));
+                Assert.That(weaponRoot.transform.Find("Prototype Sword View"), Is.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(player);
+            }
+        }
+
         private static DefinitionCatalog LoadCatalog()
         {
             DefinitionCatalog catalog = AssetDatabase.LoadAssetAtPath<DefinitionCatalog>(CatalogPath);
@@ -279,6 +313,13 @@ namespace UnityIsekaiGame.Tests
             FieldInfo field = typeof(TTarget).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, $"Expected private field '{fieldName}' on {typeof(TTarget).Name}.");
             field.SetValue(target, value);
+        }
+
+        private static void InvokePrivateMethod<TTarget>(TTarget target, string methodName)
+        {
+            MethodInfo method = typeof(TTarget).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null, $"Expected private method '{methodName}' on {typeof(TTarget).Name}.");
+            method.Invoke(target, null);
         }
     }
 }

@@ -129,6 +129,7 @@ namespace UnityIsekaiGame.Combat
             viewTransform.localRotation = Quaternion.Euler(view.FirstPersonLocalEulerAngles);
             viewTransform.localScale = CompensateForMountScale(view.FirstPersonLocalScale);
             RemoveRuntimePhysics(generatedWeaponView);
+            FlattenSingleChildVisualRoot();
         }
 
         private void ClearGeneratedWeaponView()
@@ -138,7 +139,7 @@ namespace UnityIsekaiGame.Combat
                 return;
             }
 
-            Destroy(generatedWeaponView);
+            DestroyViewObject(generatedWeaponView);
             generatedWeaponView = null;
         }
 
@@ -146,12 +147,67 @@ namespace UnityIsekaiGame.Combat
         {
             foreach (Collider collider in viewObject.GetComponentsInChildren<Collider>())
             {
-                Destroy(collider);
+                DestroyViewObject(collider);
             }
 
             foreach (Rigidbody rigidbody in viewObject.GetComponentsInChildren<Rigidbody>())
             {
-                Destroy(rigidbody);
+                DestroyViewObject(rigidbody);
+            }
+        }
+
+        private void FlattenSingleChildVisualRoot()
+        {
+            if (generatedWeaponView == null || weaponRoot == null)
+            {
+                return;
+            }
+
+            Transform root = generatedWeaponView.transform;
+            if (root.childCount != 1 || HasRuntimeComponentsBeyondTransform(generatedWeaponView))
+            {
+                return;
+            }
+
+            Transform visual = root.GetChild(0);
+            visual.SetParent(weaponRoot.transform, worldPositionStays: true);
+            DestroyViewObject(generatedWeaponView);
+            generatedWeaponView = visual.gameObject;
+        }
+
+        private static bool HasRuntimeComponentsBeyondTransform(GameObject target)
+        {
+            Component[] components = target == null ? null : target.GetComponents<Component>();
+            if (components == null)
+            {
+                return false;
+            }
+
+            foreach (Component component in components)
+            {
+                if (component != null && component is not Transform)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void DestroyViewObject(Object target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(target);
+            }
+            else
+            {
+                DestroyImmediate(target);
             }
         }
 

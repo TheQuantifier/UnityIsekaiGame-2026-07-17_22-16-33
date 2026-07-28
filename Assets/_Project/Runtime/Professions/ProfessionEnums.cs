@@ -90,4 +90,129 @@ namespace UnityIsekaiGame.Professions
         SecretRevealed = 8,
         Corrected = 9
     }
+
+    public enum ProfessionEntryType
+    {
+        SelfDeclaredPractice = 0,
+        InformalApprenticeship = 1,
+        FormalStudy = 2,
+        GuildApplication = 3,
+        RecognitionApplication = 4,
+        MilitaryOrGovernmentAppointment = 5,
+        ReligiousVocation = 6,
+        Specialization = 7,
+        Reentry = 8,
+        Custom = 9
+    }
+
+    public enum ProfessionEntryFormality
+    {
+        Informal = 0,
+        Formal = 1,
+        Either = 2
+    }
+
+    public enum ProfessionSelfDeclarationPolicy
+    {
+        Disallowed = 0,
+        Allowed = 1,
+        Required = 2
+    }
+
+    public enum ProfessionReentryPolicy
+    {
+        NotApplicable = 0,
+        AllowFormerInactiveAbandonedRetired = 1,
+        AllowSuspendedWithAuthority = 2,
+        AllowRevokedWithExplicitReinstatement = 3
+    }
+
+    public enum ProfessionEntryRequestState
+    {
+        Draft = 0,
+        Submitted = 1,
+        UnderReview = 2,
+        Approved = 3,
+        Rejected = 4,
+        Withdrawn = 5,
+        Expired = 6,
+        Cancelled = 7,
+        Invalid = 8,
+        Custom = 9
+    }
+
+    public enum ProfessionEligibilityStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        MissingRuntime = 2,
+        MissingDefinition = 3,
+        MissingPerson = 4,
+        MissingEntryPath = 5,
+        ProfessionMismatch = 6,
+        SpecializationMismatch = 7,
+        FormalityMismatch = 8,
+        SelfDeclarationBlocked = 9,
+        MissingAuthority = 10,
+        InvalidAuthority = 11,
+        RequirementFailed = 12,
+        MissingSkill = 13,
+        MissingKnowledge = 14,
+        MissingCapability = 15,
+        MissingTrait = 16,
+        MissingStatus = 17,
+        MissingOrganization = 18,
+        AccessDenied = 19,
+        AgeOrLifeStageBlocked = 20,
+        Conflict = 21,
+        DuplicateActiveRelationship = 22,
+        StaleEvaluation = 23,
+        InvalidRequest = 24,
+        RestoreFailed = 25,
+        ValidationFailed = 26
+    }
+
+    public enum ProfessionEntryOperationStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        Duplicate = 2,
+        MissingRuntime = 3,
+        MissingDefinition = 4,
+        MissingRequest = 5,
+        InvalidRequest = 6,
+        InvalidState = 7,
+        EligibilityFailed = 8,
+        StaleEvaluation = 9,
+        DuplicateRelationship = 10,
+        MissingAuthority = 11,
+        InvalidAuthority = 12,
+        RestoreFailed = 13,
+        ValidationFailed = 14
+    }
+
+    public enum ProfessionEntryProjectionAudience
+    {
+        AuthoritativeInternal = 0,
+        PrivilegedDebug = 1,
+        Applicant = 2,
+        Sponsor = 3,
+        Authority = 4,
+        PublicInspection = 5
+    }
+
+    public enum ProfessionEntryHistoryHookKind
+    {
+        EligibilityEvaluated = 0,
+        InformalEntry = 1,
+        RequestSubmitted = 2,
+        RequestApproved = 3,
+        RequestRejected = 4,
+        RequestWithdrawn = 5,
+        SpecializationEntered = 6,
+        ProfessionResumed = 7,
+        RecognitionReinstated = 8,
+        SecretRequirementRevealed = 9,
+        Corrected = 10
+    }
 }

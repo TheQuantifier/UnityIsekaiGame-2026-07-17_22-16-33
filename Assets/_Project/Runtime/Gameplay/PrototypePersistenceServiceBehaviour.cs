@@ -89,6 +89,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerBody = true;
         [SerializeField] private bool registerPlayerKnowledge = true;
         [SerializeField] private bool registerPlayerProfessions = true;
+        [SerializeField] private bool registerPlayerProfessionEntries = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -122,6 +123,7 @@ namespace UnityIsekaiGame.Gameplay
         private InformationAccessPersistenceParticipant playerInformationAccessParticipant;
         private KnowledgeRecordPersistenceParticipant playerKnowledgeRecordParticipant;
         private PersonProfessionPersistenceParticipant playerProfessionParticipant;
+        private ProfessionEntryPersistenceParticipant playerProfessionEntryParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
@@ -146,6 +148,7 @@ namespace UnityIsekaiGame.Gameplay
         private InformationAccessRuntime playerInformationAccess;
         private KnowledgeRecordRuntime playerKnowledgeRecords;
         private PersonProfessionRuntime playerProfessions;
+        private ProfessionEntryRuntime playerProfessionEntries;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
@@ -183,6 +186,19 @@ namespace UnityIsekaiGame.Gameplay
                 }
 
                 return playerProfessions;
+            }
+        }
+        public ProfessionEntryRuntime ProfessionEntries
+        {
+            get
+            {
+                if (playerProfessionEntries == null)
+                {
+                    playerProfessionEntries = new ProfessionEntryRuntime();
+                    playerProfessionEntries.Configure(GetDefinitionRegistry(), Professions, new[] { service == null ? PersistenceService.LocalPlayerId : service.PlayerId });
+                }
+
+                return playerProfessionEntries;
             }
         }
         public ItemInstanceIdentityRuntime ItemIdentities => playerItemIdentities ??= new ItemInstanceIdentityRuntime();
@@ -306,6 +322,18 @@ namespace UnityIsekaiGame.Gameplay
                 playerKnowledgeParticipant = null;
             }
 
+            if (service != null && playerProfessionParticipant != null)
+            {
+                service.UnregisterParticipant(playerProfessionParticipant);
+                playerProfessionParticipant = null;
+            }
+
+            if (service != null && playerProfessionEntryParticipant != null)
+            {
+                service.UnregisterParticipant(playerProfessionEntryParticipant);
+                playerProfessionEntryParticipant = null;
+            }
+
             if (service != null && statsVitalsStatusParticipant != null)
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
@@ -422,6 +450,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerBodyParticipant();
             EnsurePlayerKnowledgeParticipant();
             EnsurePlayerProfessionParticipant();
+            EnsurePlayerProfessionEntryParticipant();
             EnsurePlayerInformationSourceParticipant();
             EnsurePlayerInformationTransferParticipant();
             EnsurePlayerInformationAccessParticipant();
@@ -1349,6 +1378,40 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerProfessionParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerProfessionEntryParticipant()
+        {
+            if (!registerPlayerProfessionEntries || playerProfessionEntryParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Profession Entry persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            Professions.Configure(GetDefinitionRegistry(), new[] { personId, service.PlayerId });
+            ProfessionEntries.Configure(GetDefinitionRegistry(), Professions, new[] { personId, service.PlayerId });
+            playerProfessionEntryParticipant = new ProfessionEntryPersistenceParticipant(
+                ProfessionEntries,
+                GetDefinitionRegistry,
+                () => Professions,
+                () => new[] { personId, service.PlayerId },
+                service.PlayerId);
+
+            service.RegisterParticipant(playerProfessionEntryParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerProfessionEntryParticipant = null;
             }
         }
 
@@ -2523,7 +2586,7 @@ namespace UnityIsekaiGame.Gameplay
                 definitions.Add(definition);
             }
 
-            definitionRegistry = new DefinitionRegistry(definitions);
+            definitionRegistry = PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions));
             return definitionRegistry;
         }
     }
