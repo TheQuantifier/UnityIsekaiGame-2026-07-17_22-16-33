@@ -11,9 +11,11 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Inventory.Crafting;
 using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Inventory.Production;
 using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Inventory.Recipes;
 using UnityIsekaiGame.Knowledge;
@@ -73,7 +75,9 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
+        [SerializeField] private bool registerPlayerProductionRequirements = true;
         [SerializeField] private bool registerPlayerRecipeKnowledge = true;
+        [SerializeField] private bool registerPlayerCraftingExecution = true;
         [SerializeField] private bool registerPlayerIdentityProgression = true;
         [SerializeField] private bool registerPlayerAttributes = true;
         [SerializeField] private bool registerPlayerSkills = true;
@@ -117,7 +121,9 @@ namespace UnityIsekaiGame.Gameplay
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
+        private ProductionRequirementPersistenceParticipant productionRequirementParticipant;
         private RecipeKnowledgePersistenceParticipant recipeKnowledgeParticipant;
+        private CraftingExecutionPersistenceParticipant craftingExecutionParticipant;
         private PlayerStatsVitalsStatusPersistenceParticipant statsVitalsStatusParticipant;
         private PlayerResourcesPersistenceParticipant playerResourcesParticipant;
         private PlayerCombatExecutionPersistenceParticipant playerCombatExecutionParticipant;
@@ -135,7 +141,9 @@ namespace UnityIsekaiGame.Gameplay
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
+        private ProductionRequirementRuntime playerProductionRequirements;
         private RecipeKnowledgeRuntime playerRecipeKnowledge;
+        private CraftingExecutionRuntime playerCraftingExecution;
         private PlayerItemIdentitySynchronizer playerItemIdentitySynchronizer;
         private bool dirtyEventsSubscribed;
 
@@ -157,7 +165,9 @@ namespace UnityIsekaiGame.Gameplay
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
+        public ProductionRequirementRuntime ProductionRequirements => playerProductionRequirements ??= new ProductionRequirementRuntime();
         public RecipeKnowledgeRuntime RecipeKnowledge => playerRecipeKnowledge ??= new RecipeKnowledgeRuntime();
+        public CraftingExecutionRuntime CraftingExecution => playerCraftingExecution ??= new CraftingExecutionRuntime();
         public DefinitionRegistry ItemQualityDefinitionRegistry => GetDefinitionRegistry();
         public DefinitionRegistry ItemDurabilityDefinitionRegistry => GetDefinitionRegistry();
 
@@ -369,7 +379,9 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
+            EnsurePlayerProductionRequirementParticipant();
             EnsurePlayerRecipeKnowledgeParticipant();
+            EnsurePlayerCraftingExecutionParticipant();
             EnsurePlayerInventoryEquipmentParticipant();
             EnsurePlayerStatsVitalsStatusParticipant();
             EnsurePlayerResourcesParticipant();
@@ -828,6 +840,65 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 recipeKnowledgeParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerProductionRequirementParticipant()
+        {
+            if (!registerPlayerProductionRequirements || productionRequirementParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player production requirement persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            productionRequirementParticipant = new ProductionRequirementPersistenceParticipant(
+                ProductionRequirements,
+                service.WorldId);
+
+            service.RegisterParticipant(productionRequirementParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                productionRequirementParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerCraftingExecutionParticipant()
+        {
+            if (!registerPlayerCraftingExecution || craftingExecutionParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (!registerPlayerItemIdentities || !registerPlayerRecipeKnowledge)
+            {
+                Debug.LogWarning("Player crafting execution persistence participant was not registered because item identity or recipe persistence is disabled.");
+                return;
+            }
+
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Player crafting execution persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            craftingExecutionParticipant = new CraftingExecutionPersistenceParticipant(
+                CraftingExecution,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(craftingExecutionParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                craftingExecutionParticipant = null;
             }
         }
 

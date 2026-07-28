@@ -6,6 +6,7 @@ using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
+using UnityIsekaiGame.Inventory.Crafting;
 using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Identity;
@@ -37,6 +38,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildDurabilitySuite());
             TryRegister(registry, BuildProductionRequirementsSuite());
             TryRegister(registry, BuildRecipesCraftingKnowledgeSuite());
+            TryRegister(registry, BuildCraftingExecutionSuite());
         }
 
         private static ITestLabAutomationSuite BuildItemIdentitySuite()
@@ -145,6 +147,22 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("step9-recipes-knowledge", "Project recipe knowledge", RecipeKnowledgeProjection)),
                 Scenario("persistence-round-trip", "Recipe knowledge persistence validates before commit", 40,
                     Step("step9-recipes-persistence", "Persist recipe knowledge", RecipeKnowledgePersistence)));
+        }
+
+        private static ITestLabAutomationSuite BuildCraftingExecutionSuite()
+        {
+            return Suite("feature.9.7.crafting-execution", "Feature 9.7 Crafting Execution", "9.7", 970,
+                Required("CraftingExecutionRuntime", "RecipeRuntime", "ProductionRequirementRuntime", "ItemInstanceIdentityRuntime", "ItemCompositionRuntime", "ItemQualityAffixRuntime", "ItemDurabilityRuntime"),
+                Scenario("preview-is-readonly", "Crafting execution preview resolves without mutating owned runtimes", 10,
+                    Step("step9-crafting-preview", "Preview crafting execution", CraftingPreviewReadonly)),
+                Scenario("execute-produces-output-graph", "Crafting execution consumes a reserved plan and creates output item state", 20,
+                    Step("step9-crafting-execute", "Execute crafting operation", CraftingExecuteOutputGraph)),
+                Scenario("duplicate-operation-idempotent", "Duplicate crafting operation returns committed result without duplicate output", 30,
+                    Step("step9-crafting-duplicate", "Replay crafting operation", CraftingDuplicateIdempotent)),
+                Scenario("failure-rolls-back", "Crafting execution rolls back partial downstream mutations on failure", 40,
+                    Step("step9-crafting-rollback", "Rollback failed crafting operation", CraftingFailureRollback)),
+                Scenario("persistence-round-trip", "Crafting execution persistence preserves completed operations without replay", 50,
+                    Step("step9-crafting-persistence", "Persist crafting execution", CraftingPersistence)));
         }
 
         private static TestLabAutomationStepResult DistinctInstances(TestLabAutomationContext context)
@@ -1141,6 +1159,119 @@ namespace UnityIsekaiGame.Development.Automation
                 : Fail(context, "step9-recipes-persistence", $"Restore={restore} {restoreFailure} Prepare={prepare.Message}");
         }
 
+        private static TestLabAutomationStepResult CraftingPreviewReadonly(TestLabAutomationContext context)
+        {
+            if (!TryCreateCraftingRuntime(context, out CraftingExecutionRuntime crafting, out RecipeRuntime recipes, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out RecipeDefinition recipe, out MaterialDefinition iron, out string failure))
+            {
+                return Fail(context, "step9-crafting-preview", failure);
+            }
+
+            int itemsBefore = context.ScenarioContext.Runtimes.ItemInstances.Count;
+            int plansBefore = production.PlanCount;
+            CraftingExecutionResult preview = crafting.Preview(CraftingRequest(context, recipe, iron, "preview"), registry, recipes, production, context.ScenarioContext.Runtimes.ItemInstances, context.ScenarioContext.Runtimes.ItemDurability);
+            bool valid = preview.Succeeded
+                && preview.Preview
+                && preview.Operation != null
+                && preview.Operation.outputs.Count == 0
+                && crafting.OperationCount == 0
+                && context.ScenarioContext.Runtimes.ItemInstances.Count == itemsBefore
+                && production.PlanCount == plansBefore;
+            return valid
+                ? Pass(context, "step9-crafting-preview", $"Preview={preview.Status} Items={itemsBefore}->{context.ScenarioContext.Runtimes.ItemInstances.Count} Plans={plansBefore}->{production.PlanCount}")
+                : Fail(context, "step9-crafting-preview", $"Preview={preview.Status}:{preview.Message} Operations={crafting.OperationCount} Items={itemsBefore}->{context.ScenarioContext.Runtimes.ItemInstances.Count} Plans={plansBefore}->{production.PlanCount}");
+        }
+
+        private static TestLabAutomationStepResult CraftingExecuteOutputGraph(TestLabAutomationContext context)
+        {
+            if (!TryCreateCraftingRuntime(context, out CraftingExecutionRuntime crafting, out RecipeRuntime recipes, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out RecipeDefinition recipe, out MaterialDefinition iron, out string failure))
+            {
+                return Fail(context, "step9-crafting-execute", failure);
+            }
+
+            CraftingExecutionResult result = crafting.Execute(CraftingRequest(context, recipe, iron, "execute"), registry, recipes, production, context.ScenarioContext.Runtimes.ItemInstances, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, context.ScenarioContext.Runtimes.ItemDurability);
+            string outputItem = result.Operation?.outputs.FirstOrDefault(output => output.createdItemInstance)?.itemInstanceId ?? string.Empty;
+            bool valid = result.Succeeded
+                && !result.Preview
+                && result.Operation.state == CraftingOperationState.Completed
+                && context.ScenarioContext.Runtimes.ItemInstances.TryGetSnapshot(outputItem, out _)
+                && context.ScenarioContext.Runtimes.ItemCompositions.TryGetSnapshotForItem(outputItem, out _)
+                && context.ScenarioContext.Runtimes.ItemQualityAffixes.TryGetQualityForItem(outputItem, out _)
+                && context.ScenarioContext.Runtimes.ItemDurability.TryGetDurabilityForItem(outputItem, out _)
+                && production.Plans.Any(plan => plan.status == ProductionPlanStatus.Released);
+            return valid
+                ? Pass(context, "step9-crafting-execute", $"Output={outputItem} Operations={crafting.OperationCount} Plans={production.PlanCount} Reservations={production.ReservationCount}")
+                : Fail(context, "step9-crafting-execute", $"Result={result.Status}:{result.Message} Output={outputItem} Operations={crafting.OperationCount}");
+        }
+
+        private static TestLabAutomationStepResult CraftingDuplicateIdempotent(TestLabAutomationContext context)
+        {
+            if (!TryCreateCraftingRuntime(context, out CraftingExecutionRuntime crafting, out RecipeRuntime recipes, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out RecipeDefinition recipe, out MaterialDefinition iron, out string failure))
+            {
+                return Fail(context, "step9-crafting-duplicate", failure);
+            }
+
+            CraftingExecutionRequest request = CraftingRequest(context, recipe, iron, "duplicate");
+            CraftingExecutionResult first = crafting.Execute(request, registry, recipes, production, context.ScenarioContext.Runtimes.ItemInstances, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, context.ScenarioContext.Runtimes.ItemDurability);
+            int itemsAfterFirst = context.ScenarioContext.Runtimes.ItemInstances.Count;
+            CraftingExecutionResult duplicate = crafting.Execute(request, registry, recipes, production, context.ScenarioContext.Runtimes.ItemInstances, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, context.ScenarioContext.Runtimes.ItemDurability);
+            bool valid = first.Succeeded
+                && duplicate.Succeeded
+                && duplicate.Duplicate
+                && context.ScenarioContext.Runtimes.ItemInstances.Count == itemsAfterFirst
+                && duplicate.Operation.outputs.Select(output => output.itemInstanceId).SequenceEqual(first.Operation.outputs.Select(output => output.itemInstanceId));
+            return valid
+                ? Pass(context, "step9-crafting-duplicate", $"First={first.Status} Duplicate={duplicate.Status} Items={itemsAfterFirst}->{context.ScenarioContext.Runtimes.ItemInstances.Count}")
+                : Fail(context, "step9-crafting-duplicate", $"First={first.Status}:{first.Message} Duplicate={duplicate.Status}:{duplicate.Message} Items={itemsAfterFirst}->{context.ScenarioContext.Runtimes.ItemInstances.Count}");
+        }
+
+        private static TestLabAutomationStepResult CraftingFailureRollback(TestLabAutomationContext context)
+        {
+            if (!TryCreateCraftingRuntime(context, out CraftingExecutionRuntime crafting, out RecipeRuntime recipes, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out RecipeDefinition recipe, out MaterialDefinition iron, out string failure))
+            {
+                return Fail(context, "step9-crafting-rollback", failure);
+            }
+
+            RecipeDefinition broken = PrototypeRecipeWithMissingOutput(recipe, iron);
+            registry = ExtendRegistry(registry, broken);
+            int itemsBefore = context.ScenarioContext.Runtimes.ItemInstances.Count;
+            int plansBefore = production.PlanCount;
+            CraftingExecutionRequest request = CraftingRequest(context, broken, iron, "rollback");
+            CraftingExecutionResult result = crafting.Execute(request, registry, recipes, production, context.ScenarioContext.Runtimes.ItemInstances, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, context.ScenarioContext.Runtimes.ItemDurability);
+            bool valid = !result.Succeeded
+                && result.Status == CraftingExecutionStatus.OutputCreationFailed
+                && context.ScenarioContext.Runtimes.ItemInstances.Count == itemsBefore
+                && production.PlanCount == plansBefore
+                && crafting.OperationCount == 0;
+            return valid
+                ? Pass(context, "step9-crafting-rollback", $"Failure={result.Status} Items={itemsBefore}->{context.ScenarioContext.Runtimes.ItemInstances.Count} Plans={plansBefore}->{production.PlanCount}")
+                : Fail(context, "step9-crafting-rollback", $"Failure={result.Status}:{result.Message} Items={itemsBefore}->{context.ScenarioContext.Runtimes.ItemInstances.Count} Plans={plansBefore}->{production.PlanCount} Operations={crafting.OperationCount}");
+        }
+
+        private static TestLabAutomationStepResult CraftingPersistence(TestLabAutomationContext context)
+        {
+            if (!TryCreateCraftingRuntime(context, out CraftingExecutionRuntime crafting, out RecipeRuntime recipes, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out RecipeDefinition recipe, out MaterialDefinition iron, out string failure))
+            {
+                return Fail(context, "step9-crafting-persistence", failure);
+            }
+
+            CraftingExecutionResult result = crafting.Execute(CraftingRequest(context, recipe, iron, "persist"), registry, recipes, production, context.ScenarioContext.Runtimes.ItemInstances, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, context.ScenarioContext.Runtimes.ItemDurability);
+            CraftingExecutionRuntimeSaveData save = crafting.CreateSaveData();
+            CraftingExecutionRuntime restored = new CraftingExecutionRuntime();
+            CraftingExecutionResult restore = restored.RestoreFromSaveData(save, registry);
+            CraftingExecutionPersistenceParticipant participant = new CraftingExecutionPersistenceParticipant(crafting, () => registry, context.ScenarioContext.Runtimes.WorldId);
+            CraftingExecutionRuntimeSaveData bad = save.Clone();
+            bad.operations[0].recipeId = "recipe.prototype.missing";
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(UnityEngine.JsonUtility.ToJson(bad), CraftingExecutionPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = result.Succeeded
+                && restore.Succeeded
+                && restored.OperationCount == 1
+                && !rejected.Succeeded
+                && crafting.OperationCount == 1;
+            return valid
+                ? Pass(context, "step9-crafting-persistence", $"Restore={restore.Status} Reject={rejected.Succeeded} Operations={restored.OperationCount}")
+                : Fail(context, "step9-crafting-persistence", $"Execute={result.Status}:{result.Message} Restore={restore.Status}:{restore.Message} Reject={rejected.Message}");
+        }
+
         private static bool TryCreateRuntime(TestLabAutomationContext context, out ItemInstanceIdentityRuntime runtime, out ItemDefinition sword, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.ItemInstances;
@@ -1201,6 +1332,31 @@ namespace UnityIsekaiGame.Development.Automation
             recipe = PrototypeRecipe(sword, iron);
             registry = ExtendRegistry(existing, iron, recipe);
             return true;
+        }
+
+        private static bool TryCreateCraftingRuntime(
+            TestLabAutomationContext context,
+            out CraftingExecutionRuntime crafting,
+            out RecipeRuntime recipeRuntime,
+            out ProductionRequirementRuntime production,
+            out DefinitionRegistry registry,
+            out RecipeDefinition recipe,
+            out MaterialDefinition iron,
+            out string failure)
+        {
+            crafting = context?.ScenarioContext?.Runtimes?.CraftingExecution;
+            if (crafting == null)
+            {
+                recipeRuntime = null;
+                production = null;
+                registry = null;
+                recipe = null;
+                iron = null;
+                failure = "Crafting execution runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            return TryCreateRecipeRuntime(context, out recipeRuntime, out production, out registry, out recipe, out iron, out failure);
         }
 
         private static bool TryCreateProductionRuntime(
@@ -1688,6 +1844,58 @@ namespace UnityIsekaiGame.Development.Automation
             SetPrivate(recipe, "affixGenerationPolicyId", "recipe-policy.prototype.affix");
             SetPrivate(recipe, "durabilityInitializationPolicyId", "recipe-policy.prototype.durability");
             return recipe;
+        }
+
+        private static RecipeDefinition PrototypeRecipeWithMissingOutput(RecipeDefinition source, MaterialDefinition iron)
+        {
+            RecipeDefinition recipe = UnityEngine.ScriptableObject.CreateInstance<RecipeDefinition>();
+            SetPrivate(recipe, "recipeId", "recipe.prototype.broken-output");
+            SetPrivate(recipe, "displayName", "Broken Output Recipe");
+            SetPrivate(recipe, "category", RecipeCategory.Smithing);
+            SetPrivate(recipe, "currentVersionId", "recipe-version.prototype.broken-output.v1");
+            SetPrivate(recipe, "versions", new[]
+            {
+                new RecipeVersionData { versionId = "recipe-version.prototype.broken-output.v1", versionLabel = "Current" }
+            });
+            SetPrivate(recipe, "inputs", new[]
+            {
+                RecipeInput("recipe-input.prototype.iron", RecipeInputRole.PrimaryMaterial, iron.Id, 1f, false, RecipeRequirementState.Required)
+            });
+            SetPrivate(recipe, "outputs", new[]
+            {
+                new RecipeOutputSpecificationData { outputId = "recipe-output.prototype.missing", role = RecipeOutputRole.PrimaryOutput, itemDefinitionId = "item.prototype.missing", quantity = 1f }
+            });
+            SetPrivate(recipe, "procedureSteps", new[]
+            {
+                RecipeStep("recipe-step.prototype.prepare", RecipeProcedureStepKind.PrepareInput)
+            });
+            SetPrivate(recipe, "batchPolicy", new RecipeBatchPolicyData { scalingPolicy = RecipeBatchScalingPolicy.Fixed, baseBatchSize = 1f, minimumBatchSize = 1f, maximumBatchSize = 1f, batchIncrement = 1f });
+            return recipe;
+        }
+
+        private static CraftingExecutionRequest CraftingRequest(TestLabAutomationContext context, RecipeDefinition recipe, MaterialDefinition iron, string slug)
+        {
+            return new CraftingExecutionRequest
+            {
+                operationId = context.ScenarioContext.ScopedId("crafting-operation", slug),
+                recipeId = recipe.Id,
+                actorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                ownerPersonId = context.ScenarioContext.Runtimes.PersonId,
+                custodianPersonId = context.ScenarioContext.Runtimes.PersonId,
+                locationId = "location.prototype.smithy",
+                worldTime = $"world-time.{context.RunId}.{slug}",
+                deterministicSeed = $"seed.{context.RunId}.{slug}",
+                productionContext = new ProductionContextData
+                {
+                    actorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                    locationId = "location.prototype.smithy",
+                    worldTime = $"world-time.{context.RunId}.{slug}",
+                    materialQuantities =
+                    {
+                        new ProductionQuantityData { definitionId = iron.Id, sourceContainerId = context.ScenarioContext.ScopedId("container", $"materials-{slug}"), quantity = 6f, sourceTotalQuantity = 6f, unit = ProductionQuantityUnit.Kilogram }
+                    }
+                }
+            };
         }
 
         private static RecipeInputSpecificationData RecipeInput(string id, RecipeInputRole role, string materialId, float quantity, bool hidden, RecipeRequirementState state)
