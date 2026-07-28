@@ -8,6 +8,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Inventory.Production;
 using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Persistence;
@@ -32,6 +33,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildMaterialsCompositionSuite());
             TryRegister(registry, BuildQualityAffixSuite());
             TryRegister(registry, BuildDurabilitySuite());
+            TryRegister(registry, BuildProductionRequirementsSuite());
         }
 
         private static ITestLabAutomationSuite BuildItemIdentitySuite()
@@ -112,6 +114,20 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("step9-durability-project-stack", "Project and compare stack signatures", DurabilityProjectionStack)),
                 Scenario("broken-equipment-contribution", "Broken equipped items do not contribute stats", 60,
                     Step("step9-durability-equipment", "Gate equipment stat contribution", DurabilityEquipmentContribution)));
+        }
+
+        private static ITestLabAutomationSuite BuildProductionRequirementsSuite()
+        {
+            return Suite("feature.9.5.tools-production-requirements", "Feature 9.5 Tools and Production Requirements", "9.5", 950,
+                Required("ProductionRequirementRuntime", "ProductionToolDefinition", "ProductionStationDefinition", "ProductionRequirementDefinition", "ItemDurabilityRuntime"),
+                Scenario("tool-station-selection", "Exact tools, substitutes, and stations produce deterministic plans", 10,
+                    Step("step9-production-selection", "Select production tools and station", ProductionToolStationSelection)),
+                Scenario("resource-skill-knowledge-requirements", "Production plans include non-tool requirements", 20,
+                    Step("step9-production-requirements", "Evaluate resource skill and knowledge requirements", ProductionResourceSkillKnowledge)),
+                Scenario("reservations-and-invalidation", "Reservations block conflicts and dependency changes invalidate plans", 30,
+                    Step("step9-production-reservations", "Reserve and invalidate production plans", ProductionReservationsInvalidation)),
+                Scenario("wear-and-persistence", "Tool wear and persistence preserve production plans", 40,
+                    Step("step9-production-wear-save", "Apply tool wear and restore production runtime", ProductionWearPersistence)));
         }
 
         private static TestLabAutomationStepResult DistinctInstances(TestLabAutomationContext context)
@@ -842,6 +858,162 @@ namespace UnityIsekaiGame.Development.Automation
                 : Fail(context, "step9-durability-equipment", $"Healthy={healthy.Status}:{healthyFactor} Broken={brokenFactor}");
         }
 
+        private static TestLabAutomationStepResult ProductionToolStationSelection(TestLabAutomationContext context)
+        {
+            if (!TryCreateProductionRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out ItemDefinition sword, out ProductionToolDefinition hammer, out ProductionToolDefinition mallet, out ProductionStationDefinition forge, out string failure))
+            {
+                return Fail(context, "step9-production-selection", failure);
+            }
+
+            string malletItem = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "production-mallet"), ownerPersonId: context.ScenarioContext.Runtimes.PersonId).Snapshot.ItemInstanceId;
+            production.RegisterStation(forge, context.ScenarioContext.ScopedId("station", "forge"), "location.prototype.smithy");
+            ProductionRequirementDefinition toolRequirement = ProductionRequirement("production-requirement.prototype.hammer", ProductionRequirementType.Tool, tool: hammer, role: ProductionToolRole.Primary, category: ProductionToolCategory.Hammering, capabilityId: "tool.capability.strike");
+            ProductionRequirementDefinition stationRequirement = ProductionRequirement("production-requirement.prototype.forge", ProductionRequirementType.Station, station: forge, stationCategory: ProductionStationCategory.Forge, stationCapabilityId: "station.capability.heat");
+            ProductionContextData productionContext = new ProductionContextData
+            {
+                actorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                locationId = "location.prototype.smithy",
+                toolCandidates = { ToolCandidate(malletItem, mallet) }
+            };
+
+            ProductionRequirementEvaluationResult first = production.EvaluateRequirements(new[] { toolRequirement, stationRequirement }, productionContext, registry, itemRuntime, productionJobId: context.ScenarioContext.ScopedId("production-job", "selection"));
+            ProductionRequirementEvaluationResult second = production.EvaluateRequirements(new[] { stationRequirement, toolRequirement }, productionContext, registry, itemRuntime, productionJobId: context.ScenarioContext.ScopedId("production-job", "selection"));
+            ProductionRequirementEvaluationResult perceived = production.EvaluateRequirements(
+                new[] { toolRequirement },
+                new ProductionContextData
+                {
+                    actorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                    perspective = ProductionEvaluationPerspective.Perceived,
+                    toolCandidates = { ToolCandidate(malletItem, mallet, perceived: true, authoritative: false, durability: 1f) }
+                },
+                registry,
+                itemRuntime,
+                productionJobId: context.ScenarioContext.ScopedId("production-job", "selection-perceived"));
+            ProductionRequirementEvaluationResult authoritative = production.EvaluateRequirements(
+                new[] { toolRequirement },
+                new ProductionContextData
+                {
+                    actorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                    perspective = ProductionEvaluationPerspective.Authoritative,
+                    toolCandidates = { ToolCandidate(malletItem, mallet, perceived: true, authoritative: false, durability: 1f) }
+                },
+                registry,
+                itemRuntime,
+                productionJobId: context.ScenarioContext.ScopedId("production-job", "selection-authoritative"));
+            bool valid = first.Succeeded
+                && second.Succeeded
+                && first.Plan.signature == second.Plan.signature
+                && first.Plan.selections.Any(selection => selection.selectedToolDefinitionId == mallet.Id)
+                && first.Plan.selections.Any(selection => !string.IsNullOrWhiteSpace(selection.selectedStationInstanceId))
+                && perceived.Succeeded
+                && !authoritative.Succeeded;
+            return valid
+                ? Pass(context, "step9-production-selection", $"Plan={first.Plan.planId} Signature={first.Plan.signature} Perceived={perceived.Status} Authoritative={authoritative.Status}")
+                : Fail(context, "step9-production-selection", $"First={first.Status} Second={second.Status} Perceived={perceived.Status} Authoritative={authoritative.Status} {first.Message} {second.Message}");
+        }
+
+        private static TestLabAutomationStepResult ProductionResourceSkillKnowledge(TestLabAutomationContext context)
+        {
+            if (!TryCreateProductionRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out ItemDefinition sword, out _, out _, out _, out string failure))
+            {
+                return Fail(context, "step9-production-requirements", failure);
+            }
+
+            MaterialDefinition iron = Material("material.prototype.production-iron", MaterialCategory.Metal, 7.8f, 0.8f, 0.8f);
+            registry = ExtendRegistry(registry, iron);
+            ProductionRequirementDefinition skill = ProductionRequirement("production-requirement.prototype.skill", ProductionRequirementType.SkillCapability, capabilityId: "capability.production.blacksmithing");
+            ProductionRequirementDefinition knowledge = ProductionRequirement("production-requirement.prototype.knowledge", ProductionRequirementType.Knowledge, knowledgeId: "fact.prototype.blade-pattern");
+            ProductionRequirementDefinition heat = ProductionRequirement("production-requirement.prototype.heat", ProductionRequirementType.Resource, resourceId: "resource.production.heat", quantity: 5f);
+            ProductionRequirementDefinition item = ProductionRequirement("production-requirement.prototype.blank", ProductionRequirementType.Item, item: sword, quantity: 1f);
+            ProductionRequirementDefinition material = ProductionRequirement("production-requirement.prototype.iron", ProductionRequirementType.Material, material: iron, quantity: 2f);
+            ProductionContextData productionContext = new ProductionContextData
+            {
+                actorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                capabilityIds = new[] { "capability.production.blacksmithing" },
+                knownFactDefinitionIds = new[] { "fact.prototype.blade-pattern" },
+                resourceQuantities = { ProductionQuantity("resource.production.heat", 5f, sourceContainerId: "station.prototype.forge-heat", locationId: "location.prototype.smithy", revision: 5L) },
+                itemQuantities = { ProductionQuantity(sword.Id, 1f, itemInstanceId: context.ScenarioContext.ScopedId("item-instance", "blank"), sourceContainerId: "container.prototype.smithy", locationId: "location.prototype.smithy", revision: 6L, stackRevision: 7L) },
+                materialQuantities = { ProductionQuantity(iron.Id, 2f, itemInstanceId: context.ScenarioContext.ScopedId("item-instance", "iron-stack"), sourceContainerId: "container.prototype.smithy", locationId: "location.prototype.smithy", revision: 8L, stackRevision: 9L) }
+            };
+
+            ProductionRequirementEvaluationResult preview = production.EvaluateRequirements(new[] { skill, knowledge, heat, item, material }, productionContext, registry, itemRuntime, preview: true);
+            bool valid = preview.Succeeded && preview.Preview && production.PlanCount == 0 && preview.Plan.selections.Count == 5 && preview.Plan.selections.SelectMany(selection => selection.allocations).Count() >= 3;
+            return valid
+                ? Pass(context, "step9-production-requirements", $"Selections={preview.Plan.selections.Count} Preview={preview.Preview}")
+                : Fail(context, "step9-production-requirements", $"{preview.Status}: {preview.Message}");
+        }
+
+        private static TestLabAutomationStepResult ProductionReservationsInvalidation(TestLabAutomationContext context)
+        {
+            if (!TryCreateProductionRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out ItemDefinition sword, out ProductionToolDefinition hammer, out _, out ProductionStationDefinition forge, out string failure))
+            {
+                return Fail(context, "step9-production-reservations", failure);
+            }
+
+            ItemDurabilityRuntime durability = context.ScenarioContext.Runtimes.ItemDurability;
+            string hammerItem = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "production-reserved-hammer"), ownerPersonId: context.ScenarioContext.Runtimes.PersonId).Snapshot.ItemInstanceId;
+            durability.EnsureDefaultDurability(itemRuntime, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, registry, hammerItem);
+            production.RegisterStation(forge, context.ScenarioContext.ScopedId("station", "reservation-forge"), "location.prototype.smithy");
+            ProductionRequirementDefinition toolRequirement = ProductionRequirement("production-requirement.prototype.hammer-reserve", ProductionRequirementType.Tool, tool: hammer, role: ProductionToolRole.Primary);
+            MaterialDefinition iron = Material("material.prototype.production-reserved-iron", MaterialCategory.Metal, 7.8f, 0.8f, 0.8f);
+            registry = ExtendRegistry(registry, iron);
+            ProductionRequirementDefinition ironSeven = ProductionRequirement("production-requirement.prototype.iron-seven", ProductionRequirementType.Material, material: iron, quantity: 7f);
+            ProductionRequirementDefinition ironFive = ProductionRequirement("production-requirement.prototype.iron-five", ProductionRequirementType.Material, material: iron, quantity: 5f);
+            ProductionContextData productionContext = new ProductionContextData
+            {
+                actorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                locationId = "location.prototype.smithy",
+                toolCandidates = { ToolCandidate(hammerItem, hammer) },
+                materialQuantities = { ProductionQuantity(iron.Id, 10f, itemInstanceId: context.ScenarioContext.ScopedId("item-instance", "reserved-iron-stack"), sourceContainerId: "container.prototype.smithy", locationId: "location.prototype.smithy", revision: 12L, stackRevision: 13L) }
+            };
+
+            ProductionRequirementEvaluationResult plan = production.EvaluateRequirements(new[] { toolRequirement }, productionContext, registry, itemRuntime, durability, productionJobId: context.ScenarioContext.ScopedId("production-job", "reserve"));
+            ProductionRequirementEvaluationResult materialPlan = production.EvaluateRequirements(new[] { ironSeven }, productionContext, registry, itemRuntime, durability, productionJobId: context.ScenarioContext.ScopedId("production-job", "reserve-material"));
+            ProductionReservationResult materialReserve = production.ReservePlan(materialPlan.Plan.planId, "10");
+            ProductionRequirementEvaluationResult materialConflict = production.EvaluateRequirements(new[] { ironFive }, productionContext, registry, itemRuntime, durability, productionJobId: context.ScenarioContext.ScopedId("production-job", "reserve-material-conflict"));
+            ProductionReservationResult reserve = production.ReservePlan(plan.Plan.planId, "10");
+            ProductionRequirementEvaluationResult conflicted = production.EvaluateRequirements(new[] { toolRequirement }, productionContext, registry, itemRuntime, durability, productionJobId: context.ScenarioContext.ScopedId("production-job", "reserve-conflict"));
+            production.ReleasePlanReservations(plan.Plan.planId);
+            production.ReleasePlanReservations(materialPlan.Plan.planId);
+            durability.ApplyDamage(itemRuntime, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, registry, hammerItem, 1f);
+            ProductionRequirementEvaluationResult stale = production.ValidatePlanCurrent(plan.Plan.planId, itemRuntime, durability);
+            bool valid = plan.Succeeded && materialPlan.Succeeded && materialReserve.Succeeded && !materialConflict.Succeeded && reserve.Succeeded && !conflicted.Succeeded && stale.Status == ProductionRequirementEvaluationStatus.StalePlan;
+            return valid
+                ? Pass(context, "step9-production-reservations", $"Plan={plan.Plan.planId} Conflict={conflicted.Status} MaterialConflict={materialConflict.Status} Stale={stale.Status}")
+                : Fail(context, "step9-production-reservations", $"Plan={plan.Status} Material={materialPlan.Status}/{materialReserve.Status}/{materialConflict.Status} Reserve={reserve.Status} Conflict={conflicted.Status} Stale={stale.Status}");
+        }
+
+        private static TestLabAutomationStepResult ProductionWearPersistence(TestLabAutomationContext context)
+        {
+            if (!TryCreateProductionRuntime(context, out ItemInstanceIdentityRuntime itemRuntime, out ProductionRequirementRuntime production, out DefinitionRegistry registry, out ItemDefinition sword, out ProductionToolDefinition hammer, out _, out _, out string failure))
+            {
+                return Fail(context, "step9-production-wear-save", failure);
+            }
+
+            ItemDurabilityRuntime durability = context.ScenarioContext.Runtimes.ItemDurability;
+            string hammerItem = itemRuntime.CreateItem(sword, itemInstanceId: RunGuid(context, "production-wear-hammer"), ownerPersonId: context.ScenarioContext.Runtimes.PersonId).Snapshot.ItemInstanceId;
+            durability.EnsureDefaultDurability(itemRuntime, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, registry, hammerItem);
+            ProductionRequirementDefinition toolRequirement = ProductionRequirement("production-requirement.prototype.hammer-wear", ProductionRequirementType.Tool, tool: hammer, role: ProductionToolRole.Primary);
+            ProductionRequirementEvaluationResult plan = production.EvaluateRequirements(
+                new[] { toolRequirement },
+                new ProductionContextData { actorPersonId = context.ScenarioContext.Runtimes.PersonId, toolCandidates = { ToolCandidate(hammerItem, hammer) } },
+                registry,
+                itemRuntime,
+                durability,
+                productionJobId: context.ScenarioContext.ScopedId("production-job", "wear"));
+            float beforeWear = durability.TryGetDurabilityForItem(hammerItem, out ItemDurabilitySnapshot before) ? before.NormalizedDurability : -1f;
+            ProductionRequirementEvaluationResult wear = production.ApplyToolWearForPlan(plan.Plan.planId, itemRuntime, context.ScenarioContext.Runtimes.ItemCompositions, context.ScenarioContext.Runtimes.ItemQualityAffixes, durability, registry);
+            float afterWear = durability.TryGetDurabilityForItem(hammerItem, out ItemDurabilitySnapshot after) ? after.NormalizedDurability : -2f;
+            ProductionReservationResult reserve = production.ReservePlan(plan.Plan.planId);
+            ProductionRequirementRuntimeSaveData save = production.CreateSaveData();
+            ProductionRequirementRuntime restored = new ProductionRequirementRuntime();
+            ProductionRequirementEvaluationResult restore = restored.RestoreFromSaveData(save);
+            bool valid = wear.Succeeded && Math.Abs(beforeWear - afterWear) < 0.0001f && plan.Plan.selections.Any(selection => selection.expectedToolWear > 0f) && reserve.Succeeded && restore.Succeeded && restored.PlanCount == 1 && restored.ReservationCount == 1;
+            return valid
+                ? Pass(context, "step9-production-wear-save", $"Plans={restored.PlanCount} Reservations={restored.ReservationCount} Wear={beforeWear:0.###}->{afterWear:0.###}")
+                : Fail(context, "step9-production-wear-save", $"Plan={plan.Status} Wear={wear.Status} Durable={beforeWear}->{afterWear} Reserve={reserve.Status} Restore={restore.Status}");
+        }
+
         private static bool TryCreateRuntime(TestLabAutomationContext context, out ItemInstanceIdentityRuntime runtime, out ItemDefinition sword, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.ItemInstances;
@@ -866,6 +1038,46 @@ namespace UnityIsekaiGame.Development.Automation
                 return false;
             }
 
+            return true;
+        }
+
+        private static bool TryCreateProductionRuntime(
+            TestLabAutomationContext context,
+            out ItemInstanceIdentityRuntime itemRuntime,
+            out ProductionRequirementRuntime production,
+            out DefinitionRegistry registry,
+            out ItemDefinition sword,
+            out ProductionToolDefinition hammer,
+            out ProductionToolDefinition mallet,
+            out ProductionStationDefinition forge,
+            out string failure)
+        {
+            production = context?.ScenarioContext?.Runtimes?.ProductionRequirements;
+            itemRuntime = context?.ScenarioContext?.Runtimes?.ItemInstances;
+            sword = null;
+            hammer = null;
+            mallet = null;
+            forge = null;
+            registry = null;
+            failure = string.Empty;
+
+            if (production == null || itemRuntime == null)
+            {
+                failure = "Production requirement or item identity runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            DefinitionRegistry existing = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (existing == null || !existing.TryGet(SwordId, out sword))
+            {
+                failure = $"Item definition '{SwordId}' is missing.";
+                return false;
+            }
+
+            hammer = ProductionTool("production-tool.prototype.hammer", ProductionToolCategory.Hammering, new[] { ProductionToolRole.Primary }, new[] { "tool.capability.strike" }, wear: 2f);
+            mallet = ProductionTool("production-tool.prototype.mallet", ProductionToolCategory.Hammering, new[] { ProductionToolRole.Primary }, new[] { "tool.capability.strike" }, substitutesFor: new[] { hammer.Id }, priority: 10, wear: 1f);
+            forge = ProductionStation("production-station.prototype.forge", ProductionStationCategory.Forge, new[] { "station.capability.heat" }, new[] { ProductionToolRole.Primary });
+            registry = ExtendRegistry(existing, hammer, mallet, forge);
             return true;
         }
 
@@ -1147,6 +1359,116 @@ namespace UnityIsekaiGame.Development.Automation
                 biologicalCompatibility = 0.5f
             });
             return material;
+        }
+
+        private static ProductionToolDefinition ProductionTool(string id, ProductionToolCategory category, ProductionToolRole[] roles, string[] capabilities, string[] substitutesFor = null, int priority = 0, float wear = 0f)
+        {
+            ProductionToolDefinition tool = UnityEngine.ScriptableObject.CreateInstance<ProductionToolDefinition>();
+            SetPrivate(tool, "toolId", id);
+            SetPrivate(tool, "displayName", id);
+            SetPrivate(tool, "category", category);
+            SetPrivate(tool, "roles", roles);
+            SetPrivate(tool, "capabilityIds", capabilities);
+            SetPrivate(tool, "substitutesForToolIds", substitutesFor ?? Array.Empty<string>());
+            SetPrivate(tool, "minimumQuality", 0f);
+            SetPrivate(tool, "minimumDurability", 0.01f);
+            SetPrivate(tool, "durabilityWearPerUse", wear);
+            SetPrivate(tool, "priority", priority);
+            return tool;
+        }
+
+        private static ProductionStationDefinition ProductionStation(string id, ProductionStationCategory category, string[] capabilities, ProductionToolRole[] supportedRoles)
+        {
+            ProductionStationDefinition station = UnityEngine.ScriptableObject.CreateInstance<ProductionStationDefinition>();
+            SetPrivate(station, "stationId", id);
+            SetPrivate(station, "displayName", id);
+            SetPrivate(station, "category", category);
+            SetPrivate(station, "capabilityIds", capabilities);
+            SetPrivate(station, "supportedToolRoles", supportedRoles);
+            SetPrivate(station, "concurrentReservationLimit", 1);
+            return station;
+        }
+
+        private static ProductionRequirementDefinition ProductionRequirement(
+            string id,
+            ProductionRequirementType type,
+            ProductionToolDefinition tool = null,
+            ProductionToolRole role = ProductionToolRole.Unknown,
+            ProductionToolCategory category = ProductionToolCategory.Unknown,
+            string capabilityId = "",
+            ProductionStationDefinition station = null,
+            ProductionStationCategory stationCategory = ProductionStationCategory.Unknown,
+            string stationCapabilityId = "",
+            string knowledgeId = "",
+            string resourceId = "",
+            ItemDefinition item = null,
+            MaterialDefinition material = null,
+            float quantity = 1f)
+        {
+            ProductionRequirementDefinition requirement = UnityEngine.ScriptableObject.CreateInstance<ProductionRequirementDefinition>();
+            SetPrivate(requirement, "requirementId", id);
+            SetPrivate(requirement, "displayName", id);
+            SetPrivate(requirement, "requirementGroupId", "requirement-group.prototype.production");
+            SetPrivate(requirement, "requirementType", type);
+            SetPrivate(requirement, "strictness", ProductionRequirementStrictness.Required);
+            SetPrivate(requirement, "allowSubstitution", true);
+            SetPrivate(requirement, "toolDefinition", tool);
+            SetPrivate(requirement, "toolRole", role);
+            SetPrivate(requirement, "toolCategory", category);
+            SetPrivate(requirement, "toolCapabilityId", capabilityId);
+            SetPrivate(requirement, "stationDefinition", station);
+            SetPrivate(requirement, "stationCategory", stationCategory);
+            SetPrivate(requirement, "stationCapabilityId", stationCapabilityId);
+            SetPrivate(requirement, "capabilityId", capabilityId);
+            SetPrivate(requirement, "knowledgeFactDefinitionId", knowledgeId);
+            SetPrivate(requirement, "resourceId", resourceId);
+            SetPrivate(requirement, "itemDefinition", item);
+            SetPrivate(requirement, "materialDefinition", material);
+            SetPrivate(requirement, "quantity", quantity);
+            return requirement;
+        }
+
+        private static ProductionToolCandidateData ToolCandidate(string itemInstanceId, ProductionToolDefinition tool, bool perceived = true, bool authoritative = true, float durability = 1f)
+        {
+            return new ProductionToolCandidateData
+            {
+                itemInstanceId = itemInstanceId,
+                toolDefinitionId = tool.Id,
+                role = tool.Roles.FirstOrDefault(),
+                category = tool.Category,
+                capabilityIds = tool.CapabilityIds.ToArray(),
+                quality = 1f,
+                durability = durability,
+                perceived = perceived,
+                authoritative = authoritative
+            };
+        }
+
+        private static ProductionQuantityData ProductionQuantity(string id, float quantity, string itemInstanceId = "", string sourceContainerId = "", string locationId = "", long revision = 0L, long stackRevision = 0L)
+        {
+            return new ProductionQuantityData
+            {
+                definitionId = id,
+                itemInstanceId = itemInstanceId,
+                sourceContainerId = sourceContainerId,
+                locationId = locationId,
+                quantity = quantity,
+                unit = ProductionQuantityUnit.Count,
+                expectedRuntimeRevision = revision,
+                expectedStackRevision = stackRevision,
+                accessDecisionId = string.IsNullOrWhiteSpace(itemInstanceId) ? string.Empty : $"access.{itemInstanceId}",
+                perceived = true,
+                authoritative = true
+            };
+        }
+
+        private static DefinitionRegistry ExtendRegistry(DefinitionRegistry registry, params IGameDefinition[] additions)
+        {
+            IEnumerable<IGameDefinition> existing = registry == null ? Array.Empty<IGameDefinition>() : registry.DefinitionsById.Values;
+            IGameDefinition[] newDefinitions = additions ?? Array.Empty<IGameDefinition>();
+            return new DefinitionRegistry(existing
+                .Where(definition => definition != null && !newDefinitions.Any(addition => addition != null && string.Equals(addition.Id, definition.Id, StringComparison.Ordinal)))
+                .Concat(newDefinitions));
         }
 
         private static CompositeMaterialConstituentDefinition Constituent(MaterialDefinition material, float ratio)

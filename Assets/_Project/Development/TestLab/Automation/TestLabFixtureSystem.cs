@@ -10,6 +10,7 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Inventory.Production;
 using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
@@ -374,6 +375,7 @@ namespace UnityIsekaiGame.Development.Automation
             ItemCompositionRuntime itemCompositions,
             ItemQualityAffixRuntime itemQualityAffixes,
             ItemDurabilityRuntime itemDurability,
+            ProductionRequirementRuntime productionRequirements,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -392,6 +394,7 @@ namespace UnityIsekaiGame.Development.Automation
             ItemCompositions = itemCompositions;
             ItemQualityAffixes = itemQualityAffixes;
             ItemDurability = itemDurability;
+            ProductionRequirements = productionRequirements;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -412,6 +415,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ItemCompositionRuntime ItemCompositions { get; }
         public ItemQualityAffixRuntime ItemQualityAffixes { get; }
         public ItemDurabilityRuntime ItemDurability { get; }
+        public ProductionRequirementRuntime ProductionRequirements { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -430,9 +434,10 @@ namespace UnityIsekaiGame.Development.Automation
             ItemInstanceIdentityRuntime itemInstances = null,
             ItemCompositionRuntime itemCompositions = null,
             ItemQualityAffixRuntime itemQualityAffixes = null,
-            ItemDurabilityRuntime itemDurability = null)
+            ItemDurabilityRuntime itemDurability = null,
+            ProductionRequirementRuntime productionRequirements = null)
         {
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), null);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -456,6 +461,7 @@ namespace UnityIsekaiGame.Development.Automation
             ItemCompositionRuntime itemCompositions = new ItemCompositionRuntime();
             ItemQualityAffixRuntime itemQualityAffixes = new ItemQualityAffixRuntime();
             ItemDurabilityRuntime itemDurability = new ItemDurabilityRuntime();
+            ProductionRequirementRuntime productionRequirements = new ProductionRequirementRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -467,7 +473,7 @@ namespace UnityIsekaiGame.Development.Automation
             access.Configure(definitionRegistry, personId);
             records.Configure(definitionRegistry, personId);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -502,7 +508,8 @@ namespace UnityIsekaiGame.Development.Automation
                 ItemInstances?.CreateSaveData(),
                 ItemCompositions?.CreateSaveData(),
                 ItemQualityAffixes?.CreateSaveData(),
-                ItemDurability?.CreateSaveData());
+                ItemDurability?.CreateSaveData(),
+                ProductionRequirements?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -519,7 +526,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Items", ItemInstances?.Revision ?? 0L, ItemInstances?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("ItemCompositions", ItemCompositions?.Revision ?? 0L, ItemCompositions?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("ItemQualityAffixes", ItemQualityAffixes?.Revision ?? 0L, ItemQualityAffixes?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("ItemDurability", ItemDurability?.Revision ?? 0L, ItemDurability?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("ItemDurability", ItemDurability?.Revision ?? 0L, ItemDurability?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("ProductionRequirements", ProductionRequirements?.Revision ?? 0L, ProductionRequirements?.CreateSaveData())
             });
         }
 
@@ -641,6 +649,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (ProductionRequirements != null && snapshot.ProductionRequirements != null)
+            {
+                ProductionRequirementEvaluationResult result = ProductionRequirements.RestoreFromSaveData(snapshot.ProductionRequirements);
+                if (!result.Succeeded)
+                {
+                    failure = $"Production requirement restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -675,7 +693,8 @@ namespace UnityIsekaiGame.Development.Automation
             ItemInstanceRuntimeSaveData itemInstances,
             ItemCompositionRuntimeSaveData itemCompositions,
             ItemQualityAffixRuntimeSaveData itemQualityAffixes,
-            ItemDurabilityRuntimeSaveData itemDurability)
+            ItemDurabilityRuntimeSaveData itemDurability,
+            ProductionRequirementRuntimeSaveData productionRequirements)
         {
             Knowledge = knowledge;
             History = history;
@@ -688,6 +707,7 @@ namespace UnityIsekaiGame.Development.Automation
             ItemCompositions = itemCompositions;
             ItemQualityAffixes = itemQualityAffixes;
             ItemDurability = itemDurability;
+            ProductionRequirements = productionRequirements;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -701,6 +721,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ItemCompositionRuntimeSaveData ItemCompositions { get; }
         public ItemQualityAffixRuntimeSaveData ItemQualityAffixes { get; }
         public ItemDurabilityRuntimeSaveData ItemDurability { get; }
+        public ProductionRequirementRuntimeSaveData ProductionRequirements { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
