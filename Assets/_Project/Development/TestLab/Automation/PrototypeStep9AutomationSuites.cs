@@ -10,6 +10,7 @@ using UnityIsekaiGame.Inventory.Crafting;
 using UnityIsekaiGame.Inventory.Composition;
 using UnityIsekaiGame.Inventory.Durability;
 using UnityIsekaiGame.Inventory.Experimentation;
+using UnityIsekaiGame.Inventory.Integration;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Inventory.Production;
 using UnityIsekaiGame.Inventory.Quality;
@@ -43,6 +44,7 @@ namespace UnityIsekaiGame.Development.Automation
             TryRegister(registry, BuildCraftingExecutionSuite());
             TryRegister(registry, BuildProductionWorkflowSuite());
             TryRegister(registry, BuildExperimentationDiscoverySuite());
+            TryRegister(registry, BuildItemCraftingIntegrationFinalizationSuite());
         }
 
         private static ITestLabAutomationSuite BuildItemIdentitySuite()
@@ -201,6 +203,80 @@ namespace UnityIsekaiGame.Development.Automation
                     Step("step9-experiment-claim-registration", "Confirm discovery claim and propose registration", ExperimentClaimRegistration)),
                 Scenario("access-and-persistence", "Experiment projections and save restore preserve access-safe state", 50,
                     Step("step9-experiment-access-persistence", "Project and persist experimentation", ExperimentAccessPersistence)));
+        }
+
+        private static ITestLabAutomationSuite BuildItemCraftingIntegrationFinalizationSuite()
+        {
+            return Suite("feature.9.10.item-crafting-integration-finalization", "Feature 9.10 Item and Crafting Integration Finalization", "9.10", 1000,
+                Required("Step9IntegrationValidator", "ItemInstanceIdentityRuntime", "ItemCompositionRuntime", "ItemQualityAffixRuntime", "ItemDurabilityRuntime", "ProductionRequirementRuntime", "RecipeKnowledgeRuntime", "CraftingExecutionRuntime", "ProductionWorkflowRuntime", "ExperimentationRuntime"),
+                Scenario("readiness-and-validation", "Integrated Step 9 readiness, authority, and graph validation pass", 10,
+                    Step("step9-integration-validate", "Validate Step 9 integrated runtime graph", Step9IntegrationReadinessValidation)),
+                Scenario("conflict-detection-and-fingerprint", "Integration validator catches graph conflicts and keeps deterministic fingerprints", 20,
+                    Step("step9-integration-conflicts", "Detect Step 9 graph conflicts", Step9IntegrationConflictDetection)));
+        }
+
+        private static TestLabAutomationStepResult Step9IntegrationReadinessValidation(TestLabAutomationContext context)
+        {
+            Step9IntegrationRuntimeSnapshot snapshot = Step9Snapshot(context);
+            Step9IntegrationValidationReport report = Step9IntegrationValidator.ValidateRuntimeGraph(snapshot, context.ScenarioContext.Runtimes.DefinitionRegistry);
+            string fingerprint = Step9IntegrationValidator.CreateCanonicalFingerprint(snapshot);
+
+            return report.Succeeded
+                ? Pass(context, "step9-integration-validate", $"Readiness=True {report.ToSummary()} Fingerprint={fingerprint}")
+                : Fail(context, "step9-integration-validate", $"Readiness=False {report.ToSummary()} Diagnostics={string.Join(" | ", report.Diagnostics.Select(diagnostic => diagnostic.ToString()))}");
+        }
+
+        private static TestLabAutomationStepResult Step9IntegrationConflictDetection(TestLabAutomationContext context)
+        {
+            Step9IntegrationRuntimeSnapshot baseline = Step9Snapshot(context);
+            ItemInstanceRuntimeSaveData items = baseline.ItemInstances.Clone();
+            items.records.Add(new ItemInstanceRecordData
+            {
+                itemInstanceId = "test.integration.item.a",
+                itemDefinitionId = SwordId,
+                lifecycleState = ItemLifecycleState.Active,
+                location = new ItemLocationStateData { kind = ItemLocationKind.Equipped, equipmentHolderId = "person.prototype", equipmentSlotId = "main-hand" }
+            });
+            items.records.Add(new ItemInstanceRecordData
+            {
+                itemInstanceId = "test.integration.item.b",
+                itemDefinitionId = SwordId,
+                lifecycleState = ItemLifecycleState.Active,
+                location = new ItemLocationStateData { kind = ItemLocationKind.Equipped, equipmentHolderId = "person.prototype", equipmentSlotId = "main-hand" }
+            });
+
+            Step9IntegrationRuntimeSnapshot invalid = new Step9IntegrationRuntimeSnapshot(
+                itemInstances: items,
+                itemCompositions: baseline.ItemCompositions,
+                itemQualityAffixes: baseline.ItemQualityAffixes,
+                itemDurability: baseline.ItemDurability,
+                productionRequirements: baseline.ProductionRequirements,
+                recipeKnowledge: baseline.RecipeKnowledge,
+                craftingExecution: baseline.CraftingExecution,
+                productionWorkflow: baseline.ProductionWorkflow,
+                experimentation: baseline.Experimentation);
+            Step9IntegrationValidationReport invalidReport = Step9IntegrationValidator.ValidateRuntimeGraph(invalid, context.ScenarioContext.Runtimes.DefinitionRegistry);
+            bool conflictFound = invalidReport.Diagnostics.Any(diagnostic => diagnostic.Code == "DuplicateExclusiveLocation");
+            bool baselineUnchanged = Step9IntegrationValidator.CreateCanonicalFingerprint(baseline) == Step9IntegrationValidator.CreateCanonicalFingerprint(Step9Snapshot(context));
+
+            return !invalidReport.Succeeded && conflictFound && baselineUnchanged
+                ? Pass(context, "step9-integration-conflicts", $"ConflictFound=True BaselineUnchanged=True Errors={invalidReport.ErrorCount}")
+                : Fail(context, "step9-integration-conflicts", $"ConflictFound={conflictFound} BaselineUnchanged={baselineUnchanged} {invalidReport.ToSummary()} Diagnostics={string.Join(" | ", invalidReport.Diagnostics.Select(diagnostic => diagnostic.ToString()))}");
+        }
+
+        private static Step9IntegrationRuntimeSnapshot Step9Snapshot(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            return new Step9IntegrationRuntimeSnapshot(
+                runtimes.ItemInstances?.CreateSaveData(),
+                runtimes.ItemCompositions?.CreateSaveData(),
+                runtimes.ItemQualityAffixes?.CreateSaveData(),
+                runtimes.ItemDurability?.CreateSaveData(),
+                runtimes.ProductionRequirements?.CreateSaveData(),
+                runtimes.RecipeKnowledge?.CreateSaveData(),
+                runtimes.CraftingExecution?.CreateSaveData(),
+                runtimes.ProductionWorkflow?.CreateSaveData(),
+                runtimes.Experimentation?.CreateSaveData());
         }
 
         private static TestLabAutomationStepResult ExperimentHypothesisFoundation(TestLabAutomationContext context)
