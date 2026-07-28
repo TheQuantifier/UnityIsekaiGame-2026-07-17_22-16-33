@@ -14346,16 +14346,7 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            foreach (ScriptableObject definition in PrototypeProfessionDefinitionFactory.CreateDefinitions())
-            {
-                if (definition is IGameDefinition gameDefinition
-                    && !definitions.Any(existing => string.Equals(existing.Id, gameDefinition.Id, StringComparison.Ordinal)))
-                {
-                    definitions.Add(gameDefinition);
-                }
-            }
-
-            return new DefinitionRegistry(definitions);
+            return PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()
