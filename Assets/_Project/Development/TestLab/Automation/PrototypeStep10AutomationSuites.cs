@@ -1,9 +1,14 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
+using UnityIsekaiGame.Knowledge.History;
+using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Professions;
+using UnityEngine;
 
 namespace UnityIsekaiGame.Development.Automation
 {
@@ -19,6 +24,7 @@ namespace UnityIsekaiGame.Development.Automation
 
             registry.TryRegister(BuildProfessionIdentitySuite(), out _);
             registry.TryRegister(BuildProfessionalEligibilityEntrySuite(), out _);
+            registry.TryRegister(BuildEducationTrainingApprenticeshipSuite(), out _);
         }
 
         private static ITestLabAutomationSuite BuildProfessionIdentitySuite()
@@ -116,6 +122,256 @@ namespace UnityIsekaiGame.Development.Automation
         private static ITestLabScenarioStep Step(string stepId, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
         {
             return new TestLabScenarioStep(stepId, stepId, action);
+        }
+
+        private static ITestLabAutomationSuite BuildEducationTrainingApprenticeshipSuite()
+        {
+            return new TestLabAutomationSuite(
+                "feature.10.3.education-training-apprenticeship",
+                "Feature 10.3 Education, Training, and Apprenticeship",
+                "10.3",
+                "Training programs, curricula, apprenticeship enrollment, instruction, supervised work, progress, access, and persistence automation.",
+                1030,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "TrainingRuntime", "TrainingProgramDefinition", "TrainingCurriculumDefinition", "InformationTransferRuntime" },
+                scenarios: new ITestLabAutomationScenario[]
+                {
+                    TrainingScenario("definitions-and-curricula", "Training definitions and curricula validate", 10, Step("step10-training-definitions", TrainingDefinitionsAndCurricula)),
+                    TrainingScenario("enrollment-apprenticeship", "Enrollment and apprenticeship transitions preserve boundaries", 20, Step("step10-training-enrollment", TrainingEnrollmentApprenticeship)),
+                    TrainingScenario("learning-session-teaching", "Learning sessions route teaching through Step 8", 30, Step("step10-training-teaching", TrainingLearningSessionTeaching)),
+                    TrainingScenario("practical-supervised-work", "Practical assignments and supervised work reference activity records", 40, Step("step10-training-practical", TrainingPracticalSupervisedWork)),
+                    TrainingScenario("progress-completion-boundaries", "Progress evaluation and completion enforce hidden requirements", 50, Step("step10-training-progress", TrainingProgressCompletionBoundaries)),
+                    TrainingScenario("persistence-projections", "Training persistence and projections are atomic and redacted", 60, Step("step10-training-persistence", TrainingPersistenceProjections))
+                });
+        }
+
+        private static ITestLabAutomationScenario TrainingScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                order <= 20 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
+                includeInQuickRun: order <= 20,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory,
+                requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCurriculumId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithSafetyProgramId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithSafetyCurriculumId,
+                    PrototypeProfessionDefinitionFactory.TrainingLessonTransferDefinitionId,
+                    PrototypeProfessionDefinitionFactory.TrainingDemonstrationTransferDefinitionId,
+                    PrototypeProfessionDefinitionFactory.TrainingGuidedPracticeTransferDefinitionId
+                });
+        }
+
+        private static TestLabAutomationStepResult TrainingDefinitionsAndCurricula(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (IGameDefinition definition in PrototypeProfessionDefinitionFactory.CreateDefinitions().OfType<IGameDefinition>())
+            {
+                if (definition is IDefinitionCatalogValidationParticipant participant)
+                {
+                    participant.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                }
+            }
+
+            TrainingCurriculumDefinition cyclic = ScriptableObject.CreateInstance<TrainingCurriculumDefinition>();
+            cyclic.DevelopmentConfigure(
+                "training-curriculum.automation.cycle",
+                PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId,
+                "Automation Cycle",
+                new[]
+                {
+                    TrainingModule("training-module.automation.cycle-a", true, false, dependencies: new[] { "training-module.automation.cycle-b" }),
+                    TrainingModule("training-module.automation.cycle-b", true, false, dependencies: new[] { "training-module.automation.cycle-a" })
+                },
+                Array.Empty<TrainingLessonDefinitionData>());
+            DefinitionValidationReport cycleReport = new DefinitionValidationReport();
+            cyclic.ValidateCatalogDefinition(registry.DefinitionsById, cycleReport);
+            UnityEngine.Object.DestroyImmediate(cyclic);
+
+            bool program = registry.TryGet(PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId, out TrainingProgramDefinition apprenticeship)
+                && apprenticeship.Category == TrainingProgramCategory.Apprenticeship;
+            bool curriculum = registry.TryGet(PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCurriculumId, out TrainingCurriculumDefinition trainingCurriculum)
+                && trainingCurriculum.Modules.Count >= 3
+                && trainingCurriculum.Lessons.Any(lesson => lesson.teachingMethod == TrainingTeachingMethod.Demonstration);
+            bool transfers = registry.TryGet(PrototypeProfessionDefinitionFactory.TrainingLessonTransferDefinitionId, out InformationTransferDefinition lecture)
+                && lecture.Mode == InformationTransferMode.Lecture
+                && registry.TryGet(PrototypeProfessionDefinitionFactory.TrainingDemonstrationTransferDefinitionId, out InformationTransferDefinition demonstration)
+                && demonstration.Mode == InformationTransferMode.Demonstration;
+
+            bool valid = report.ErrorCount == 0
+                && report.WarningCount == 0
+                && cycleReport.ErrorCount > 0
+                && program
+                && curriculum
+                && transfers;
+            return TestLabAssertions.True("step10-training-definitions", "Training definitions and curricula validate", valid, $"Errors={report.ErrorCount} Warnings={report.WarningCount} CycleErrors={cycleReport.ErrorCount} Program={program} Curriculum={curriculum} Transfers={transfers}");
+        }
+
+        private static TestLabAutomationStepResult TrainingEnrollmentApprenticeship(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            long professionRevision = runtimes.Professions.Revision;
+            long knowledgeRevision = runtimes.Knowledge.KnowledgeRevision;
+            string enrollmentId = TrainingEnrollmentId(context, "enrollment");
+
+            TrainingOperationResult apply = runtimes.Training.ApplyToProgram(enrollmentId, runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId, context.ScenarioContext.ScopedId("training-tx", "apply"), worldTime: 1d);
+            TrainingOperationResult duplicate = runtimes.Training.ApplyToProgram(context.ScenarioContext.ScopedId("training-enrollment", "duplicate"), runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId, context.ScenarioContext.ScopedId("training-tx", "duplicate"), worldTime: 2d);
+            TrainingOperationResult accept = runtimes.Training.AcceptEnrollment(enrollmentId, context.ScenarioContext.ScopedId("training-tx", "accept"));
+            TrainingOperationResult instructor = runtimes.Training.AssignInstructor(enrollmentId, context.ScenarioContext.ScopedId("training-instructor", "master"), TrainingInstructorRoleKind.Master, runtimes.PersonId, context.ScenarioContext.ScopedId("training-tx", "master"), professionId: PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, authorityId: "authority.guild.prototype");
+            TrainingOperationResult begin = runtimes.Training.BeginProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", "begin"));
+            TrainingOperationResult withdraw = runtimes.Training.Withdraw(enrollmentId, context.ScenarioContext.ScopedId("training-tx", "withdraw"));
+            TrainingOperationResult terminalBegin = runtimes.Training.BeginProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", "terminal-begin"));
+
+            bool valid = apply.Succeeded
+                && !duplicate.Succeeded
+                && duplicate.Status == TrainingOperationStatus.Duplicate
+                && accept.Succeeded
+                && instructor.Succeeded
+                && begin.Succeeded
+                && withdraw.Succeeded
+                && !terminalBegin.Succeeded
+                && terminalBegin.Status == TrainingOperationStatus.InvalidTransition
+                && runtimes.Professions.Revision == professionRevision
+                && runtimes.Knowledge.KnowledgeRevision == knowledgeRevision;
+            return TestLabAssertions.True("step10-training-enrollment", "Enrollment and apprenticeship transitions preserve boundaries", valid, $"Apply={apply.Status} Duplicate={duplicate.Status} Accept={accept.Status} Instructor={instructor.Status} Begin={begin.Status} Withdraw={withdraw.Status} TerminalBegin={terminalBegin.Status} Profession={professionRevision}->{runtimes.Professions.Revision} Knowledge={knowledgeRevision}->{runtimes.Knowledge.KnowledgeRevision}");
+        }
+
+        private static TestLabAutomationStepResult TrainingLearningSessionTeaching(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            string enrollmentId = BeginTrainingApprenticeship(context, "teaching");
+            TrainingOperationResult attendance = runtimes.Training.RunLearningSession(context.ScenarioContext.ScopedId("training-session", "attendance"), enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithBasicsModuleId, PrototypeProfessionDefinitionFactory.BlacksmithSafetyLessonId, context.ScenarioContext.ScopedId("training-tx", "attendance"), startWorldTime: 10d, completionWorldTime: 11d);
+            long knowledgeBeforeTeaching = runtimes.Knowledge.KnowledgeRevision;
+            TrainingOperationResult taught = runtimes.Training.RunLearningSession(
+                context.ScenarioContext.ScopedId("training-session", "teaching"),
+                enrollmentId,
+                PrototypeProfessionDefinitionFactory.BlacksmithPracticeModuleId,
+                PrototypeProfessionDefinitionFactory.BlacksmithDemonstrationLessonId,
+                context.ScenarioContext.ScopedId("training-tx", "teaching"),
+                BuildTrainingTeachingRequest(context, "teaching-transfer"),
+                startWorldTime: 12d,
+                completionWorldTime: 13d);
+
+            bool valid = attendance.Succeeded
+                && taught.Succeeded
+                && taught.Transfer != null
+                && taught.Transfer.Succeeded
+                && taught.Transfer.Record != null
+                && taught.Transfer.Record.Data.teachingRequested
+                && runtimes.Knowledge.KnowledgeRevision > knowledgeBeforeTeaching;
+            return TestLabAssertions.True("step10-training-teaching", "Learning sessions route teaching through Step 8", valid, $"Attendance={attendance.Status} Teaching={taught.Status} Transfer={taught.Transfer?.Status} Requested={taught.Transfer?.Record?.Data.teachingRequested} Knowledge={knowledgeBeforeTeaching}->{runtimes.Knowledge.KnowledgeRevision}");
+        }
+
+        private static TestLabAutomationStepResult TrainingPracticalSupervisedWork(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            string enrollmentId = BeginTrainingApprenticeship(context, "practical");
+            CompleteTrainingVisibleRequirements(context, enrollmentId, completePractice: false);
+            string activityId = context.ScenarioContext.ScopedId("crafting-operation", "blacksmith-training");
+
+            TrainingOperationResult missingSupervisor = runtimes.Training.RecordPracticalAssignment(context.ScenarioContext.ScopedId("training-practical", "missing-supervisor"), enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithPracticalAssignmentId, activityId, TrainingAssignmentActivityCategory.Crafting, context.ScenarioContext.ScopedId("training-tx", "practice-missing"), supervisorPersonId: string.Empty);
+            TrainingOperationResult accepted = runtimes.Training.RecordPracticalAssignment(context.ScenarioContext.ScopedId("training-practical", "accepted"), enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithPracticalAssignmentId, activityId, TrainingAssignmentActivityCategory.Crafting, context.ScenarioContext.ScopedId("training-tx", "practice-accepted"), quality: 700, supervisorPersonId: runtimes.PersonId);
+            TrainingOperationResult duplicate = runtimes.Training.RecordPracticalAssignment(context.ScenarioContext.ScopedId("training-practical", "duplicate"), enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithPracticalAssignmentId, activityId, TrainingAssignmentActivityCategory.Crafting, context.ScenarioContext.ScopedId("training-tx", "practice-duplicate"), quality: 700, supervisorPersonId: runtimes.PersonId);
+            TrainingOperationResult supervised = runtimes.Training.RecordSupervisedWork(context.ScenarioContext.ScopedId("training-supervised", "forge"), enrollmentId, runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, activityId, TrainingSupervisionLevel.CloselySupervised, TrainingWorkOutcome.Succeeded, context.ScenarioContext.ScopedId("training-tx", "supervised"), quality: 725, startWorldTime: 20d, completionWorldTime: 21d);
+            TrainingRuntimeSaveData save = runtimes.Training.CreateSaveData();
+
+            bool valid = !missingSupervisor.Succeeded
+                && missingSupervisor.Status == TrainingOperationStatus.RequirementBlocked
+                && accepted.Succeeded
+                && !duplicate.Succeeded
+                && duplicate.Status == TrainingOperationStatus.DuplicateActivity
+                && supervised.Succeeded
+                && save.practicalWorkRecords.Any(record => string.Equals(record.activityReferenceId, activityId, StringComparison.Ordinal))
+                && save.supervisedWorkRecords.Any(record => record.supervisionLevel == TrainingSupervisionLevel.CloselySupervised && string.Equals(record.activityReferenceId, activityId, StringComparison.Ordinal));
+            return TestLabAssertions.True("step10-training-practical", "Practical assignments and supervised work reference activity records", valid, $"Missing={missingSupervisor.Status} Accepted={accepted.Status} Duplicate={duplicate.Status} Supervised={supervised.Status} Practical={save.practicalWorkRecords.Count} SupervisedCount={save.supervisedWorkRecords.Count}");
+        }
+
+        private static TestLabAutomationStepResult TrainingProgressCompletionBoundaries(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            string enrollmentId = BeginTrainingApprenticeship(context, "progress");
+            CompleteTrainingVisibleRequirements(context, enrollmentId, completePractice: true);
+
+            TrainingProgressResult perceived = runtimes.Training.EvaluateProgress(enrollmentId, perceived: true);
+            TrainingProgressResult authoritative = runtimes.Training.EvaluateProgress(enrollmentId, perceived: false);
+            TrainingProgressTokenData staleToken = authoritative.RuntimeToken;
+            TrainingOperationResult blocked = runtimes.Training.CompleteProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", "complete-blocked"), authoritative.RuntimeToken);
+            TrainingOperationResult hidden = runtimes.Training.CompleteModule(enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithHiddenAssessmentModuleId, context.ScenarioContext.ScopedId("training-tx", "hidden"));
+            TrainingOperationResult stale = runtimes.Training.CompleteProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", "complete-stale"), staleToken);
+            TrainingProgressResult current = runtimes.Training.EvaluateProgress(enrollmentId, perceived: false);
+            TrainingOperationResult complete = runtimes.Training.CompleteProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", "complete"), current.RuntimeToken, worldTime: 100d);
+
+            bool valid = perceived.EligibleForCompletion
+                && !authoritative.EligibleForCompletion
+                && authoritative.RemainingRequirements.Contains(PrototypeProfessionDefinitionFactory.BlacksmithHiddenAssessmentModuleId)
+                && !blocked.Succeeded
+                && blocked.Status == TrainingOperationStatus.RequirementBlocked
+                && hidden.Succeeded
+                && !stale.Succeeded
+                && stale.Status == TrainingOperationStatus.StaleProgress
+                && complete.Succeeded
+                && complete.Enrollment != null
+                && complete.Enrollment.State == TrainingEnrollmentState.Completed
+                && runtimes.Professions.Count == 0;
+            return TestLabAssertions.True("step10-training-progress", "Progress evaluation and completion enforce hidden requirements", valid, $"Perceived={perceived.EligibleForCompletion}/{perceived.Percentage} Authoritative={authoritative.EligibleForCompletion}/{authoritative.Percentage} Blocked={blocked.Status} Hidden={hidden.Status} Stale={stale.Status} Complete={complete.Status} Professions={runtimes.Professions.Count}");
+        }
+
+        private static TestLabAutomationStepResult TrainingPersistenceProjections(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            string enrollmentId = BeginTrainingApprenticeship(context, "persistence");
+            CompleteTrainingVisibleRequirements(context, enrollmentId, completePractice: true);
+            TrainingRuntimeSaveData save = runtimes.Training.CreateSaveData();
+            TrainingRuntime restored = new TrainingRuntime();
+            TrainingOperationResult restore = restored.RestoreFromSaveData(save, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Transfers, runtimes.KnownPersonIds, restoring: true);
+
+            TrainingRuntimeSaveData corrupt = save.Clone();
+            corrupt.enrollments[0].programId = "training-program.missing";
+            int beforeCount = restored.EnrollmentCount;
+            long beforeRevision = restored.Revision;
+            TrainingOperationResult rejected = restored.RestoreFromSaveData(corrupt, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Transfers, runtimes.KnownPersonIds, restoring: true);
+
+            InformationAccessDecision decision = new InformationAccessDecision(
+                "person.observer",
+                TrainingInformationSubject.Create(TrainingInformationSubject.EnrollmentTag, enrollmentId, runtimes.PersonId),
+                InformationAccessMode.Inspect,
+                InformationAccessDecisionKind.RedactedAccess,
+                InformationAccessDenialCode.DetailRestriction,
+                false,
+                InformationResharingPolicy.NoResharing,
+                new[] { "program-id", "state" },
+                TrainingInformationSubject.ProtectedFields,
+                Array.Empty<string>(),
+                new[] { PrototypeProfessionDefinitionFactory.AccessPublicId },
+                50d,
+                "Redacted training enrollment access.",
+                "Training enrollment hides learner and progress token details.",
+                true);
+            TrainingProjection<TrainingEnrollmentSnapshot> projection = restored.ProjectEnrollment(enrollmentId, TrainingProjectionAudience.PublicInspection, decision);
+
+            bool valid = restore.Succeeded
+                && restored.EnrollmentCount == runtimes.Training.EnrollmentCount
+                && restored.HistoryHooks.Count == 0
+                && !rejected.Succeeded
+                && restored.EnrollmentCount == beforeCount
+                && restored.Revision == beforeRevision
+                && projection.Record != null
+                && projection.Redacted
+                && !projection.Denied
+                && string.IsNullOrWhiteSpace(projection.Record.PersonId)
+                && projection.Record.ProgramId == PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId;
+            return TestLabAssertions.True("step10-training-persistence", "Training persistence and projections are atomic and redacted", valid, $"Restore={restore.Status} Rejected={rejected.Status} Count={restored.EnrollmentCount}/{runtimes.Training.EnrollmentCount} Hooks={restored.HistoryHooks.Count} Redacted={projection.Redacted} Person='{projection.Record?.PersonId}'");
         }
 
         private static TestLabAutomationStepResult DefinitionsAndSpecializations(TestLabAutomationContext context)
@@ -479,6 +735,119 @@ namespace UnityIsekaiGame.Development.Automation
                 worldTime: 1d,
                 correlationId: "step10.blacksmith",
                 preview: preview);
+        }
+
+        private static string TrainingEnrollmentId(TestLabAutomationContext context, string slug)
+        {
+            return context.ScenarioContext.ScopedId("training-enrollment", slug);
+        }
+
+        private static string BeginTrainingApprenticeship(TestLabAutomationContext context, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            string enrollmentId = TrainingEnrollmentId(context, slug);
+            TrainingOperationResult apply = runtimes.Training.ApplyToProgram(enrollmentId, runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId, context.ScenarioContext.ScopedId("training-tx", $"{slug}-apply"), worldTime: 1d);
+            if (apply.Succeeded)
+            {
+                runtimes.Training.AcceptEnrollment(enrollmentId, context.ScenarioContext.ScopedId("training-tx", $"{slug}-accept"));
+                runtimes.Training.AssignInstructor(enrollmentId, context.ScenarioContext.ScopedId("training-instructor", $"{slug}-master"), TrainingInstructorRoleKind.Master, runtimes.PersonId, context.ScenarioContext.ScopedId("training-tx", $"{slug}-master"), professionId: PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, authorityId: "authority.guild.prototype");
+                runtimes.Training.BeginProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", $"{slug}-begin"));
+            }
+
+            return enrollmentId;
+        }
+
+        private static void CompleteTrainingVisibleRequirements(TestLabAutomationContext context, string enrollmentId, bool completePractice)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            runtimes.Training.RunLearningSession(context.ScenarioContext.ScopedId("training-session", "safety"), enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithBasicsModuleId, PrototypeProfessionDefinitionFactory.BlacksmithSafetyLessonId, context.ScenarioContext.ScopedId("training-tx", "safety"));
+            runtimes.Training.CompleteModule(enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithBasicsModuleId, context.ScenarioContext.ScopedId("training-tx", "module-basics"));
+            runtimes.Training.RunLearningSession(context.ScenarioContext.ScopedId("training-session", "practice"), enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithPracticeModuleId, PrototypeProfessionDefinitionFactory.BlacksmithDemonstrationLessonId, context.ScenarioContext.ScopedId("training-tx", "practice-lesson"));
+            if (!completePractice)
+            {
+                return;
+            }
+
+            string activityId = context.ScenarioContext.ScopedId("crafting-operation", "practice-complete");
+            runtimes.Training.RecordPracticalAssignment(context.ScenarioContext.ScopedId("training-practical", "practice-complete"), enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithPracticalAssignmentId, activityId, TrainingAssignmentActivityCategory.Crafting, context.ScenarioContext.ScopedId("training-tx", "practice-complete"), quality: 700, supervisorPersonId: runtimes.PersonId);
+            runtimes.Training.CompleteModule(enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithPracticeModuleId, context.ScenarioContext.ScopedId("training-tx", "module-practice"));
+        }
+
+        private static InformationTransferRequest BuildTrainingTeachingRequest(TestLabAutomationContext context, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            KnowledgePropositionData proposition = TrainingTeachingProposition();
+            runtimes.Knowledge.RecordObservation(new KnowledgeObservationRequest
+            {
+                PersonId = runtimes.PersonId,
+                TransactionId = context.ScenarioContext.ScopedId("knowledge-observation", $"{slug}-teacher"),
+                Proposition = proposition,
+                AcquisitionSource = KnowledgeAcquisitionSource.DirectObservation,
+                Provenance = KnowledgeProvenance.DirectObservation,
+                Direction = KnowledgeEvidenceDirection.Supports,
+                Strength = 950,
+                Credibility = 950,
+                SourceId = context.ScenarioContext.ScopedId("training-source", "teacher"),
+                Visibility = KnowledgeVisibility.Public,
+                PrivateAccessAuthorized = true
+            });
+
+            string transferTx = context.ScenarioContext.ScopedId("training-transfer", slug);
+            return new InformationTransferRequest
+            {
+                TransactionId = transferTx,
+                TransferId = context.ScenarioContext.ScopedId("transfer", slug),
+                SenderPersonId = runtimes.PersonId,
+                RecipientPersonIds = new[] { runtimes.PersonId },
+                ContentItems = new[]
+                {
+                    new TransferContentItemData
+                    {
+                        contentItemId = context.ScenarioContext.ScopedId("transfer-content", slug),
+                        contentType = InformationTransferContentType.InstructionalConcept,
+                        domain = KnowledgeDomain.Professional,
+                        proposition = proposition,
+                        senderConfidence = 900,
+                        senderBeliefState = KnowledgeBeliefState.Known,
+                        privacyClassification = KnowledgeVisibility.Public,
+                        assertionType = InformationTransferAssertionType.Instruction,
+                        typedPayloadId = "procedure.blacksmith.forge-safety",
+                        rawEvidenceStrength = 850
+                    }
+                },
+                WorldTimeSeconds = 12d,
+                PrivacyScope = TransferPrivacyScope.RecipientOnly,
+                SenderKnowledge = runtimes.Knowledge,
+                SenderMemory = runtimes.Memory,
+                SourceRuntime = null,
+                RecipientKnowledgeRuntimes = new Dictionary<string, PersonKnowledgeRuntime> { [runtimes.PersonId] = runtimes.Knowledge },
+                RecipientMemoryRuntimes = new Dictionary<string, PersonMemoryRuntime> { [runtimes.PersonId] = runtimes.Memory },
+                PrivilegedAccess = true
+            };
+        }
+
+        private static KnowledgePropositionData TrainingTeachingProposition()
+        {
+            return new KnowledgePropositionData
+            {
+                factDefinitionId = BuiltInKnowledgeFacts.SpeciesCapability,
+                subjectType = KnowledgeSubjectType.Species,
+                subjectId = "species.human",
+                valueType = KnowledgeValueType.StableId,
+                stableValueId = "capability.profession.blacksmith-safety"
+            };
+        }
+
+        private static TrainingModuleDefinitionData TrainingModule(string id, bool required, bool hidden, string[] dependencies = null)
+        {
+            return new TrainingModuleDefinitionData
+            {
+                moduleId = id,
+                displayName = id,
+                required = required,
+                hiddenFromLearner = hidden,
+                dependencyModuleIds = dependencies ?? Array.Empty<string>()
+            };
         }
 
         private static ProfessionEligibilityContext MedicContext(TestLabAutomationContext context, bool preview)

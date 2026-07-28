@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
+using UnityIsekaiGame.Knowledge.Sharing;
+using UnityIsekaiGame.Knowledge.Sources;
 
 namespace UnityIsekaiGame.Professions
 {
@@ -20,6 +23,19 @@ namespace UnityIsekaiGame.Professions
         public const string SpySecretEntryPathId = "profession-entry.spy.secret-self-declared";
         public const string WeaponsmithSpecializationEntryPathId = "profession-entry.blacksmith.weaponsmith";
         public const string BlacksmithReentryPathId = "profession-entry.blacksmith.reentry";
+        public const string BlacksmithApprenticeshipProgramId = "training-program.blacksmith-apprenticeship";
+        public const string BlacksmithApprenticeshipCurriculumId = "training-curriculum.blacksmith-apprenticeship";
+        public const string BlacksmithSafetyProgramId = "training-program.blacksmith-safety";
+        public const string BlacksmithSafetyCurriculumId = "training-curriculum.blacksmith-safety";
+        public const string TrainingLessonTransferDefinitionId = "information-transfer.training.prototype-lecture";
+        public const string TrainingDemonstrationTransferDefinitionId = "information-transfer.training.prototype-demonstration";
+        public const string TrainingGuidedPracticeTransferDefinitionId = "information-transfer.training.prototype-guided-practice";
+        public const string BlacksmithBasicsModuleId = "training-module.blacksmith.basics";
+        public const string BlacksmithPracticeModuleId = "training-module.blacksmith.practical";
+        public const string BlacksmithHiddenAssessmentModuleId = "training-module.blacksmith.hidden-assessment";
+        public const string BlacksmithSafetyLessonId = "training-lesson.blacksmith.safety";
+        public const string BlacksmithDemonstrationLessonId = "training-lesson.blacksmith.demonstration";
+        public const string BlacksmithPracticalAssignmentId = "training-assignment.blacksmith.practice-forging";
         public const string AccessPublicId = "information-access.profession.public";
         public const string AccessSecretId = "information-access.profession.secret";
 
@@ -28,6 +44,9 @@ namespace UnityIsekaiGame.Professions
             List<ScriptableObject> definitions = new List<ScriptableObject>();
             definitions.Add(AccessPolicy(AccessPublicId, "Profession Public Access", InformationVisibilityClassification.Public, InformationDetailVisibilityPolicy.All));
             definitions.Add(AccessPolicy(AccessSecretId, "Profession Secret Access", InformationVisibilityClassification.Secret, InformationDetailVisibilityPolicy.Selected, new[] { "profession-id", "state" }, ProfessionInformationSubject.ProtectedFields));
+            definitions.Add(TransferDefinition(TrainingLessonTransferDefinitionId, "Prototype Training Lecture Transfer", InformationTransferMode.Lecture));
+            definitions.Add(TransferDefinition(TrainingDemonstrationTransferDefinitionId, "Prototype Training Demonstration Transfer", InformationTransferMode.Demonstration));
+            definitions.Add(TransferDefinition(TrainingGuidedPracticeTransferDefinitionId, "Prototype Training Guided Practice Transfer", InformationTransferMode.GuidedPractice));
 
             ProfessionSpecializationDefinition weaponsmith = Specialization(WeaponsmithSpecializationId, BlacksmithProfessionId, "Weaponsmith", ProfessionRecognitionForm.Either, new[] { "skill.smithing" }, new[] { "knowledge.subject.weapons" }, activities: new[] { "production.activity.weapon-crafting" });
             ProfessionSpecializationDefinition trauma = Specialization(TraumaSpecializationId, FieldMedicProfessionId, "Trauma Care", ProfessionRecognitionForm.Formal, new[] { "skill.healing-magic" }, new[] { "knowledge.subject.injury-treatment" }, activities: new[] { "production.activity.medical-treatment" });
@@ -43,6 +62,40 @@ namespace UnityIsekaiGame.Professions
             definitions.Add(EntryPath(SpySecretEntryPathId, SpyProfessionId, "Secret Spy Self-Declared Practice", ProfessionEntryType.SelfDeclaredPractice, ProfessionEntryFormality.Informal, ProfessionSelfDeclarationPolicy.Required, accessKeys: new[] { "access.profession.secret-practice" }, secret: true, restricted: true, accessPolicy: AccessSecretId));
             definitions.Add(EntryPath(WeaponsmithSpecializationEntryPathId, BlacksmithProfessionId, "Weaponsmith Specialization Entry", ProfessionEntryType.Specialization, ProfessionEntryFormality.Informal, ProfessionSelfDeclarationPolicy.Disallowed, specialization: WeaponsmithSpecializationId, skills: new[] { "skill.smithing" }, requiredActiveProfessions: new[] { BlacksmithProfessionId }));
             definitions.Add(EntryPath(BlacksmithReentryPathId, BlacksmithProfessionId, "Blacksmith Reentry", ProfessionEntryType.Reentry, ProfessionEntryFormality.Informal, ProfessionSelfDeclarationPolicy.Disallowed, reentry: ProfessionReentryPolicy.AllowFormerInactiveAbandonedRetired));
+            definitions.Add(BlacksmithApprenticeshipCurriculum());
+            definitions.Add(TrainingProgram(
+                BlacksmithApprenticeshipProgramId,
+                "Blacksmith Apprenticeship",
+                TrainingProgramCategory.Apprenticeship,
+                TrainingProgramFormality.Formal,
+                BlacksmithApprenticeshipCurriculumId,
+                new[] { BlacksmithProfessionId },
+                entryPaths: new[] { BlacksmithSelfDeclaredEntryPathId },
+                instructors: new[]
+                {
+                    InstructorRequirement("training-instructor-requirement.blacksmith.master", TrainingInstructorRoleKind.Master, BlacksmithProfessionId, authority: "authority.guild.prototype", capacity: 1)
+                },
+                durationHours: 240d,
+                organization: "organization.prototype.guild",
+                stations: new[] { "production-station.prototype.forge" },
+                completionRequirements: new[] { BlacksmithBasicsModuleId, BlacksmithPracticeModuleId, BlacksmithHiddenAssessmentModuleId },
+                accessPolicy: AccessPublicId));
+            definitions.Add(BlacksmithSafetyCurriculum());
+            definitions.Add(TrainingProgram(
+                BlacksmithSafetyProgramId,
+                "Blacksmith Safety Training",
+                TrainingProgramCategory.SafetyTraining,
+                TrainingProgramFormality.Informal,
+                BlacksmithSafetyCurriculumId,
+                new[] { BlacksmithProfessionId },
+                entryPaths: new[] { BlacksmithSelfDeclaredEntryPathId },
+                instructors: new[]
+                {
+                    InstructorRequirement("training-instructor-requirement.blacksmith.safety", TrainingInstructorRoleKind.Instructor, BlacksmithProfessionId, capacity: 8)
+                },
+                durationHours: 4d,
+                completionRequirements: new[] { BlacksmithBasicsModuleId },
+                accessPolicy: AccessPublicId));
             return definitions;
         }
 
@@ -164,6 +217,170 @@ namespace UnityIsekaiGame.Professions
                 requiresDiscovery: false,
                 allowRedactedAccess: true);
             return definition;
+        }
+
+        private static InformationTransferDefinition TransferDefinition(string id, string name, InformationTransferMode mode)
+        {
+            InformationTransferDefinition definition = ScriptableObject.CreateInstance<InformationTransferDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(
+                id,
+                name,
+                mode,
+                new[] { KnowledgeDomain.Professional, KnowledgeDomain.Crafting },
+                new[] { InformationSourceCategory.PersonalTestimony, InformationSourceCategory.ExpertTestimony, InformationSourceCategory.DirectObservation },
+                false,
+                true,
+                false,
+                true,
+                850,
+                850,
+                TransferMemoryPolicy.FormCommunicationMemory,
+                TransferEvidencePolicy.CreateRecipientEvidence);
+            return definition;
+        }
+
+        private static TrainingProgramDefinition TrainingProgram(
+            string id,
+            string name,
+            TrainingProgramCategory category,
+            TrainingProgramFormality formality,
+            string curriculum,
+            string[] professions,
+            string[] specializations = null,
+            string[] entryPaths = null,
+            TrainingInstructorRequirementData[] instructors = null,
+            double durationHours = 0d,
+            string organization = "",
+            string[] stations = null,
+            string[] completionRequirements = null,
+            string accessPolicy = AccessPublicId)
+        {
+            TrainingProgramDefinition definition = ScriptableObject.CreateInstance<TrainingProgramDefinition>();
+            definition.name = name.Replace(" ", string.Empty) + "TrainingProgram";
+            definition.DevelopmentConfigure(
+                id,
+                name,
+                category,
+                formality,
+                curriculum,
+                professions,
+                specializations,
+                entryPaths,
+                instructors,
+                durationHours,
+                minLearners: 1,
+                maxLearners: category == TrainingProgramCategory.Apprenticeship ? 1 : 8,
+                organization: organization,
+                stations: stations,
+                completionRequirements: completionRequirements,
+                accessPolicy: accessPolicy);
+            return definition;
+        }
+
+        private static TrainingInstructorRequirementData InstructorRequirement(string id, TrainingInstructorRoleKind role, string professionId, string specialization = "", string authority = "", int capacity = 1)
+        {
+            return new TrainingInstructorRequirementData
+            {
+                requirementId = id,
+                role = role,
+                requiredProfessionId = professionId,
+                requiredSpecializationId = specialization,
+                requiredAuthorityId = authority,
+                accessPolicyId = AccessPublicId,
+                maximumLearnerCapacity = capacity
+            };
+        }
+
+        private static TrainingCurriculumDefinition BlacksmithApprenticeshipCurriculum()
+        {
+            TrainingCurriculumDefinition definition = ScriptableObject.CreateInstance<TrainingCurriculumDefinition>();
+            definition.name = "BlacksmithApprenticeshipCurriculum";
+            definition.DevelopmentConfigure(
+                BlacksmithApprenticeshipCurriculumId,
+                BlacksmithApprenticeshipProgramId,
+                "Blacksmith Apprenticeship Curriculum",
+                new[]
+                {
+                    Module(BlacksmithBasicsModuleId, "Forge Safety and Fundamentals", required: true, hidden: false, lessons: new[] { BlacksmithSafetyLessonId }),
+                    Module(BlacksmithPracticeModuleId, "Supervised Practice", required: true, hidden: false, dependencies: new[] { BlacksmithBasicsModuleId }, lessons: new[] { BlacksmithDemonstrationLessonId }, assignments: new[] { BlacksmithPracticalAssignmentId }),
+                    Module(BlacksmithHiddenAssessmentModuleId, "Master's Hidden Assessment", required: true, hidden: true, dependencies: new[] { BlacksmithPracticeModuleId })
+                },
+                new[]
+                {
+                    Lesson(BlacksmithSafetyLessonId, BlacksmithBasicsModuleId, "Forge Safety Lesson", TrainingTeachingMethod.Lecture, TrainingLessonTransferDefinitionId),
+                    Lesson(BlacksmithDemonstrationLessonId, BlacksmithPracticeModuleId, "Hammering Demonstration", TrainingTeachingMethod.Demonstration, TrainingDemonstrationTransferDefinitionId)
+                },
+                new[]
+                {
+                    Assignment(BlacksmithPracticalAssignmentId, BlacksmithPracticeModuleId, TrainingAssignmentActivityCategory.Crafting, BlacksmithProfessionId, "recipe.prototype-iron-ingot", "production.activity.forging", requiredQuantity: 1, qualityThreshold: 500, supervisionRequired: true)
+                },
+                knowledgeSubjects: new[] { "knowledge.subject.metalwork", "knowledge.subject.forge-safety" },
+                skillPractice: new[] { "skill.smithing.practice" });
+            return definition;
+        }
+
+        private static TrainingCurriculumDefinition BlacksmithSafetyCurriculum()
+        {
+            TrainingCurriculumDefinition definition = ScriptableObject.CreateInstance<TrainingCurriculumDefinition>();
+            definition.name = "BlacksmithSafetyCurriculum";
+            definition.DevelopmentConfigure(
+                BlacksmithSafetyCurriculumId,
+                BlacksmithSafetyProgramId,
+                "Blacksmith Safety Curriculum",
+                new[] { Module(BlacksmithBasicsModuleId, "Forge Safety", required: true, hidden: false, lessons: new[] { BlacksmithSafetyLessonId }) },
+                new[] { Lesson(BlacksmithSafetyLessonId, BlacksmithBasicsModuleId, "Forge Safety Lesson", TrainingTeachingMethod.Lecture, TrainingLessonTransferDefinitionId) },
+                knowledgeSubjects: new[] { "knowledge.subject.forge-safety" });
+            return definition;
+        }
+
+        private static TrainingModuleDefinitionData Module(string id, string name, bool required, bool hidden, string[] dependencies = null, string[] lessons = null, string[] assignments = null)
+        {
+            return new TrainingModuleDefinitionData
+            {
+                moduleId = id,
+                displayName = name,
+                required = required,
+                hiddenFromLearner = hidden,
+                dependencyModuleIds = dependencies ?? Array.Empty<string>(),
+                lessonIds = lessons ?? Array.Empty<string>(),
+                assignmentIds = assignments ?? Array.Empty<string>(),
+                accessPolicyId = hidden ? AccessSecretId : AccessPublicId,
+                estimatedDurationHours = 1d
+            };
+        }
+
+        private static TrainingLessonDefinitionData Lesson(string id, string moduleId, string name, TrainingTeachingMethod method, string transferDefinitionId)
+        {
+            return new TrainingLessonDefinitionData
+            {
+                lessonId = id,
+                moduleId = moduleId,
+                displayName = name,
+                teachingMethod = method,
+                informationTransferDefinitionId = transferDefinitionId,
+                knowledgeSubjectIds = new[] { "knowledge.subject.metalwork" },
+                accessPolicyId = AccessPublicId,
+                durationHours = 1d
+            };
+        }
+
+        private static TrainingPracticalAssignmentDefinitionData Assignment(string id, string moduleId, TrainingAssignmentActivityCategory category, string professionId, string recipeId, string activityId, int requiredQuantity, int qualityThreshold, bool supervisionRequired)
+        {
+            return new TrainingPracticalAssignmentDefinitionData
+            {
+                assignmentId = id,
+                moduleId = moduleId,
+                activityCategory = category,
+                requiredProfessionId = professionId,
+                requiredRecipeId = recipeId,
+                requiredProductionActivityId = activityId,
+                requiredQuantity = requiredQuantity,
+                qualityThreshold = qualityThreshold,
+                supervisionRequired = supervisionRequired,
+                exclusiveActivityReference = true,
+                accessPolicyId = AccessPublicId
+            };
         }
     }
 }
