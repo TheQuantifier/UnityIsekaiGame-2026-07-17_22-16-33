@@ -8,6 +8,7 @@ using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Professions;
+using UnityIsekaiGame.Professions.Integration;
 using UnityEngine;
 
 namespace UnityIsekaiGame.Development.Automation
@@ -31,6 +32,7 @@ namespace UnityIsekaiGame.Development.Automation
             registry.TryRegister(BuildPositionsDutiesEmploymentFoundationsSuite(), out _);
             registry.TryRegister(BuildCareerHistoryTransitionsSuite(), out _);
             registry.TryRegister(BuildLifePathsAspirationsProfessionalIdentitySuite(), out _);
+            registry.TryRegister(BuildProfessionLifePathIntegrationFinalizationSuite(), out _);
         }
 
         private static ITestLabAutomationSuite BuildProfessionIdentitySuite()
@@ -117,6 +119,51 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeProfessionDefinitionFactory.GoalEnterBlacksmithProfessionId,
                     PrototypeProfessionDefinitionFactory.GoalCompleteBlacksmithApprenticeshipId,
                     PrototypeProfessionDefinitionFactory.GoalProduceMasterworkId
+                });
+        }
+
+        private static ITestLabAutomationSuite BuildProfessionLifePathIntegrationFinalizationSuite()
+        {
+            return new TestLabAutomationSuite(
+                "feature.10.10.profession-life-path-integration-finalization",
+                "Feature 10.10 Profession and Life Path Integration Finalization",
+                "10.10",
+                "Step 10 authority, graph validation, persistence dependency, deterministic fingerprint, lifecycle, access, and scale automation.",
+                1100,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "Step10IntegrationValidator", "PersonProfessionRuntime", "LifePathRuntime", "CareerHistoryRuntime" },
+                scenarios: new ITestLabAutomationScenario[]
+                {
+                    IntegrationScenario("readiness-and-validation", "Step 10 definitions and integrated runtime graph validate", 10, Step("step10-integration-validate", Step10IntegrationReadinessAndValidation)),
+                    IntegrationScenario("persistence-fingerprint-and-schema", "Persistence dependencies, schema validation, and fingerprints are deterministic", 20, Step("step10-integration-persistence", Step10IntegrationPersistenceFingerprintAndSchema)),
+                    IntegrationScenario("cross-system-career-graph", "Representative cross-system career graph remains authoritative", 30, Step("step10-integration-cross-system", Step10IntegrationCrossSystemCareerGraph)),
+                    IntegrationScenario("scale-snapshot-and-access", "Large fixtures, immutable snapshots, and access boundaries remain stable", 40, Step("step10-integration-scale", Step10IntegrationScaleSnapshotAndAccess))
+                });
+        }
+
+        private static ITestLabAutomationScenario IntegrationScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                order <= 20 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
+                includeInQuickRun: order <= 20,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
+                requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId,
+                    PrototypeProfessionDefinitionFactory.GuildClerkPositionId,
+                    PrototypeProfessionDefinitionFactory.AspirationEarnGuildLicenseId,
+                    PrototypeProfessionDefinitionFactory.GoalEarnBlacksmithGuildLicenseId
                 });
         }
 
@@ -2162,6 +2209,173 @@ namespace UnityIsekaiGame.Development.Automation
                 && restored.GoalCount == beforeGoals
                 && restored.Revision == beforeRevision;
             return TestLabAssertions.True("step10-life-persistence", "Life-path persistence restores atomically and rejects corrupt payloads", valid, $"Restore={restore.Status} Rejected={rejected.Status} Count={restored.GoalCount}/{runtimes.LifePaths.GoalCount} Hooks={restored.HistoryHooks.Count}");
+        }
+
+        private static TestLabAutomationStepResult Step10IntegrationReadinessAndValidation(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            Step10IntegrationValidationReport definitions = Step10IntegrationValidator.ValidateDefinitions(runtimes.DefinitionRegistry);
+            PrepareStep10IntegrationFixture(context, "readiness");
+            Step10IntegrationValidationReport graph = ValidateStep10Graph(context);
+            bool valid = definitions.ErrorCount == 0
+                && graph.ErrorCount == 0
+                && Step10IntegrationValidator.AuthorityMap.Select(entry => entry.Domain).Distinct(StringComparer.Ordinal).Count() == Step10IntegrationValidator.AuthorityMap.Count;
+            return TestLabAssertions.True("step10-integration-validate", "Step 10 definitions, authority ownership, and integrated runtime graph validate", valid, $"DefinitionErrors={definitions.ErrorCount} GraphErrors={graph.ErrorCount} GraphWarnings={graph.WarningCount} {graph.ToSummary()}");
+        }
+
+        private static TestLabAutomationStepResult Step10IntegrationPersistenceFingerprintAndSchema(TestLabAutomationContext context)
+        {
+            PrepareStep10IntegrationFixture(context, "fingerprint");
+            Step10IntegrationRuntimeSnapshot snapshot = CreateStep10IntegrationSnapshot(context);
+            string first = Step10IntegrationValidator.CreateCanonicalFingerprint(snapshot);
+            Step10IntegrationRuntimeSnapshot reordered = snapshot.Clone();
+            reordered.Activities.activities.Reverse();
+            reordered.Positions.employments.Reverse();
+            reordered.LifePaths.goals.Reverse();
+            string second = Step10IntegrationValidator.CreateCanonicalFingerprint(reordered);
+
+            Step10IntegrationRuntimeSnapshot corrupt = snapshot.Clone();
+            corrupt.LifePaths.schemaVersion = LifePathRuntimeSaveData.CurrentSchemaVersion + 1;
+            Step10IntegrationValidationReport corruptReport = Step10IntegrationValidator.ValidateRuntimeGraph(
+                corrupt,
+                context.ScenarioContext.Runtimes.DefinitionRegistry,
+                context.ScenarioContext.Runtimes.KnownPersonIds,
+                DefaultLifePathOrganizations(),
+                DefaultLifePathAuthorities());
+            bool valid = string.Equals(first, second, StringComparison.Ordinal)
+                && corruptReport.Diagnostics.Any(diagnostic => diagnostic.Code == "UnsupportedSchemaVersion" && diagnostic.SubjectId == "LifePathRuntime")
+                && !Step10IntegrationValidator.PersistenceDependencies.Any(entry => entry.DependsOn.Contains(entry.Owner));
+            return TestLabAssertions.True("step10-integration-persistence", "Persistence dependency order, schema boundaries, and canonical fingerprints are deterministic", valid, $"Fingerprint={first} CorruptErrors={corruptReport.ErrorCount} Dependencies={Step10IntegrationValidator.PersistenceDependencies.Count}");
+        }
+
+        private static TestLabAutomationStepResult Step10IntegrationCrossSystemCareerGraph(TestLabAutomationContext context)
+        {
+            PrepareStep10IntegrationFixture(context, "cross-system");
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            Step10IntegrationValidationReport graph = ValidateStep10Graph(context);
+            bool hasProfession = runtimes.Professions.QueryByPerson(runtimes.PersonId).Any(item => item.ProfessionId == PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            bool hasCredential = runtimes.Credentials.QueryByRecipient(runtimes.PersonId, activeOnly: true).Any(item => item.credentialDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId || item.credentialDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId);
+            bool hasRank = runtimes.ProfessionalRanks.QueryByPerson(runtimes.PersonId, currentOnly: true).Any(item => item.rankDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId);
+            bool hasEmployment = runtimes.PositionEmployment.QueryEmploymentByPerson(runtimes.PersonId, activeOnly: true).Any(item => item.positionDefinitionId == PrototypeProfessionDefinitionFactory.GuildClerkPositionId);
+            bool hasLifePath = runtimes.LifePaths.QueryLifePathsByPerson(runtimes.PersonId).Count > 0;
+            bool valid = graph.ErrorCount == 0 && hasProfession && hasCredential && hasRank && hasEmployment && hasLifePath;
+            return TestLabAssertions.True("step10-integration-cross-system", "Representative profession, credential, rank, employment, career, and life-path graph remains authoritative", valid, $"Errors={graph.ErrorCount} Profession={hasProfession} Credential={hasCredential} Rank={hasRank} Employment={hasEmployment} LifePath={hasLifePath}");
+        }
+
+        private static TestLabAutomationStepResult Step10IntegrationScaleSnapshotAndAccess(TestLabAutomationContext context)
+        {
+            PrepareStep10IntegrationFixture(context, "scale");
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            Step10IntegrationRuntimeSnapshot snapshot = CreateStep10IntegrationSnapshot(context);
+            string before = Step10IntegrationValidator.CreateCanonicalFingerprint(snapshot);
+
+            for (int i = 0; i < 24; i++)
+            {
+                RegisterLifeActivity(context, $"scale-{i:00}", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ProfessionalActivitySourceType.CraftingOperation);
+            }
+
+            string snapshotAfterMutation = Step10IntegrationValidator.CreateCanonicalFingerprint(snapshot);
+            Step10IntegrationValidationReport currentGraph = ValidateStep10Graph(context);
+            PersonProfessionProjection publicProjection = runtimes.Professions.Project(
+                runtimes.Professions.QueryByPerson(runtimes.PersonId).First().RelationshipId,
+                ProfessionProjectionAudience.PublicInspection);
+            bool valid = string.Equals(before, snapshotAfterMutation, StringComparison.Ordinal)
+                && currentGraph.ErrorCount == 0
+                && publicProjection != null
+                && runtimes.ProfessionalActivities.BuildExperienceSummary(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId).TotalValidatedActivities >= 24;
+            return TestLabAssertions.True("step10-integration-scale", "Large fixtures, immutable snapshots, and access-aware projections remain stable", valid, $"SnapshotStable={before == snapshotAfterMutation} Errors={currentGraph.ErrorCount} Activities={runtimes.ProfessionalActivities.BuildExperienceSummary(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId).TotalValidatedActivities} ProjectionDenied={publicProjection?.Denied}");
+        }
+
+        private static void PrepareStep10IntegrationFixture(TestLabAutomationContext context, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureLifePathRecord(context);
+            EnsureBlacksmithCredentialFoundation(context, slug);
+            CredentialOperationResult credential = IssueApprenticeshipCredential(context, $"{slug}-credential", out _);
+            ProfessionalRankOperationResult rank = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, $"{slug}-rank");
+            CreateLifePositionEmployment(context, slug);
+            ProfessionalActivityOperationResult activity = RegisterLifeActivity(context, $"{slug}-activity", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ProfessionalActivitySourceType.CraftingOperation);
+
+            PersonAspirationData aspiration = LifeAspiration(context, $"{slug}-license", PrototypeProfessionDefinitionFactory.AspirationEarnGuildLicenseId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            aspiration.targetSubjectType = LifePathTargetSubjectType.Credential;
+            aspiration.targetCredentialDefinitionId = PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId;
+            runtimes.LifePaths.AddAspiration(aspiration, context.ScenarioContext.ScopedId("life-tx", $"{slug}-aspiration"));
+
+            AddLifeGoal(
+                context,
+                $"{slug}-credential",
+                PrototypeProfessionDefinitionFactory.GoalEarnBlacksmithGuildLicenseId,
+                aspiration.aspirationId,
+                targetProfession: PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                targetCredential: PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId);
+
+            CareerHistoryRuntimeSaveData careerSave = runtimes.CareerHistory.CreateSaveData();
+            PositionEmploymentRuntimeSaveData positionSave = runtimes.PositionEmployment.CreateSaveData();
+            EmploymentRecordData employment = positionSave.employments.FirstOrDefault(item => item.personId == runtimes.PersonId && item.positionDefinitionId == PrototypeProfessionDefinitionFactory.GuildClerkPositionId);
+            if (employment != null && careerSave.episodes.All(item => item.employmentId != employment.employmentId))
+            {
+                careerSave.episodes.Add(new CareerEpisodeData
+                {
+                    episodeId = context.ScenarioContext.ScopedId("career-episode", slug),
+                    personId = runtimes.PersonId,
+                    category = CareerEpisodeCategory.Employment,
+                    professionId = PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                    employmentId = employment.employmentId,
+                    positionInstanceId = employment.positionInstanceId,
+                    organizationId = employment.employerOrganizationId,
+                    state = CareerEpisodeState.Active,
+                    rankRecordId = rank.Rank?.rankRecordId ?? string.Empty,
+                    credentialId = credential.Credential?.credentialId ?? string.Empty,
+                    primaryCareer = true,
+                    accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId
+                });
+                runtimes.CareerHistory.RestoreFromSaveData(careerSave, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.PositionEmployment, runtimes.KnownPersonIds, DefaultLifePathOrganizations(), DefaultLifePathAuthorities(), restoring: false);
+            }
+
+            CareerEpisodeData episode = runtimes.CareerHistory.CreateSaveData().episodes.FirstOrDefault(item => item.personId == runtimes.PersonId && item.state == CareerEpisodeState.Active);
+            PersonProfessionSnapshot profession = runtimes.Professions.QueryByPerson(runtimes.PersonId).FirstOrDefault(item => item.ProfessionId == PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            if (profession != null && episode != null)
+            {
+                runtimes.LifePaths.SetProfessionalIdentity(new ProfessionalIdentityData
+                {
+                    identityId = context.ScenarioContext.ScopedId("professional-identity", slug),
+                    personId = runtimes.PersonId,
+                    kind = ProfessionalIdentityKind.Primary,
+                    alignment = ProfessionalIdentityAlignmentState.Aligned,
+                    professionId = PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                    professionRelationshipId = profession.RelationshipId,
+                    careerEpisodeId = episode.episodeId,
+                    active = true,
+                    accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId
+                }, context.ScenarioContext.ScopedId("life-tx", $"{slug}-identity"));
+            }
+
+            _ = activity;
+        }
+
+        private static Step10IntegrationValidationReport ValidateStep10Graph(TestLabAutomationContext context)
+        {
+            return Step10IntegrationValidator.ValidateRuntimeGraph(
+                CreateStep10IntegrationSnapshot(context),
+                context.ScenarioContext.Runtimes.DefinitionRegistry,
+                context.ScenarioContext.Runtimes.KnownPersonIds,
+                DefaultLifePathOrganizations(),
+                DefaultLifePathAuthorities());
+        }
+
+        private static Step10IntegrationRuntimeSnapshot CreateStep10IntegrationSnapshot(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            return new Step10IntegrationRuntimeSnapshot(
+                runtimes.Professions.CreateSaveData(),
+                runtimes.ProfessionEntries.CreateSaveData(),
+                runtimes.Training.CreateSaveData(),
+                runtimes.ProfessionalActivities.CreateSaveData(),
+                runtimes.Credentials.CreateSaveData(),
+                runtimes.ProfessionalRanks.CreateSaveData(),
+                runtimes.PositionEmployment.CreateSaveData(),
+                runtimes.CareerHistory.CreateSaveData(),
+                runtimes.LifePaths.CreateSaveData());
         }
 
         private static LifePathOperationResult EnsureLifePathRecord(TestLabAutomationContext context)

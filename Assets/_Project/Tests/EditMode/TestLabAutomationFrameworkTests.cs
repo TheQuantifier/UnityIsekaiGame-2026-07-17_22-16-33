@@ -1371,7 +1371,7 @@ namespace UnityIsekaiGame.Tests
             string[] actualSuiteIds = registry.Suites.Select(suite => suite.SuiteId).ToArray();
             Assert.That(actualSuiteIds, Is.EqualTo(PrototypeTestLabAutomationCatalog.SuiteIds()));
             Assert.That(actualSuiteIds.First(), Is.EqualTo("feature.3.runtime-taxonomy"));
-            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.10.9.life-paths-aspirations-professional-identity"));
+            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.10.10.profession-life-path-integration-finalization"));
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);
