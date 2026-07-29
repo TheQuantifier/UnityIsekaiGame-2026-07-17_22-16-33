@@ -95,6 +95,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerCredentials = true;
         [SerializeField] private bool registerPlayerProfessionalRanks = true;
         [SerializeField] private bool registerPlayerPositionEmployment = true;
+        [SerializeField] private bool registerPlayerCareerHistory = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -134,6 +135,7 @@ namespace UnityIsekaiGame.Gameplay
         private CredentialPersistenceParticipant playerCredentialParticipant;
         private ProfessionalRankPersistenceParticipant playerProfessionalRankParticipant;
         private PositionEmploymentPersistenceParticipant playerPositionEmploymentParticipant;
+        private CareerHistoryPersistenceParticipant playerCareerHistoryParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
@@ -164,6 +166,7 @@ namespace UnityIsekaiGame.Gameplay
         private CredentialRuntime playerCredentials;
         private ProfessionalRankRuntime playerProfessionalRanks;
         private PositionEmploymentRuntime playerPositionEmployment;
+        private CareerHistoryRuntime playerCareerHistory;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
@@ -284,6 +287,20 @@ namespace UnityIsekaiGame.Gameplay
                 }
 
                 return playerPositionEmployment;
+            }
+        }
+        public CareerHistoryRuntime CareerHistory
+        {
+            get
+            {
+                if (playerCareerHistory == null)
+                {
+                    playerCareerHistory = new CareerHistoryRuntime();
+                    string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+                    playerCareerHistory.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, ProfessionalRanks, PositionEmployment, new[] { personId }, GetPrototypeOrganizations(), GetPrototypeCredentialAuthorities());
+                }
+
+                return playerCareerHistory;
             }
         }
         public ItemInstanceIdentityRuntime ItemIdentities => playerItemIdentities ??= new ItemInstanceIdentityRuntime();
@@ -449,6 +466,12 @@ namespace UnityIsekaiGame.Gameplay
                 playerPositionEmploymentParticipant = null;
             }
 
+            if (service != null && playerCareerHistoryParticipant != null)
+            {
+                service.UnregisterParticipant(playerCareerHistoryParticipant);
+                playerCareerHistoryParticipant = null;
+            }
+
             if (service != null && statsVitalsStatusParticipant != null)
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
@@ -573,6 +596,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerCredentialParticipant();
             EnsurePlayerProfessionalRankParticipant();
             EnsurePlayerPositionEmploymentParticipant();
+            EnsurePlayerCareerHistoryParticipant();
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
@@ -1807,6 +1831,55 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsurePlayerCareerHistoryParticipant()
+        {
+            if (!registerPlayerCareerHistory || playerCareerHistoryParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Career history persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            string[] knownPersons = new[] { personId, service.PlayerId };
+            string[] authorities = GetPrototypeCredentialAuthorities();
+            string[] organizations = GetPrototypeOrganizations();
+            Professions.Configure(GetDefinitionRegistry(), knownPersons);
+            Training.Configure(GetDefinitionRegistry(), Professions, InformationTransfers, knownPersons);
+            ProfessionalActivities.Configure(GetDefinitionRegistry(), Professions, knownPersons);
+            Credentials.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, knownPersons, authorities);
+            ProfessionalRanks.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, knownPersons, authorities);
+            PositionEmployment.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, ProfessionalRanks, knownPersons, organizations, authorities);
+            CareerHistory.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, ProfessionalRanks, PositionEmployment, knownPersons, organizations, authorities);
+            playerCareerHistoryParticipant = new CareerHistoryPersistenceParticipant(
+                CareerHistory,
+                GetDefinitionRegistry,
+                () => Professions,
+                () => Training,
+                () => ProfessionalActivities,
+                () => Credentials,
+                () => ProfessionalRanks,
+                () => PositionEmployment,
+                () => knownPersons,
+                () => organizations,
+                () => authorities,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerCareerHistoryParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerCareerHistoryParticipant = null;
+            }
+        }
+
         private void EnsurePlayerInformationAccessParticipant()
         {
             if (!registerPlayerInformationAccess || playerInformationAccessParticipant != null)
@@ -2923,6 +2996,17 @@ namespace UnityIsekaiGame.Gameplay
                 "organization.prototype.guild",
                 "authority.government.prototype",
                 "authority.school.prototype",
+                PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId,
+                PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId,
+                PrototypeProfessionDefinitionFactory.PositionSuperviseAuthorityId,
+                PrototypeProfessionDefinitionFactory.PositionRestrictedRecordsAuthorityId,
+                PrototypeProfessionDefinitionFactory.BlacksmithTeachPermissionId,
+                PrototypeProfessionDefinitionFactory.ForgeRestrictedStationPermissionId,
+                "organization.prototype.royal-forge",
+                "organization.prototype.temple",
+                "organization.prototype.university",
+                "organization.prototype.government",
+                "organization.prototype.independent",
                 PersistenceService.LocalPlayerId
             };
         }

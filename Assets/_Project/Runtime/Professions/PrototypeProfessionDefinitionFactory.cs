@@ -88,6 +88,21 @@ namespace UnityIsekaiGame.Professions
         public const string TempleHealerMedicalDutyId = "duty.prototype.temple.healer.medical";
         public const string UniversityLecturerTeachingDutyId = "duty.prototype.university.lecturer.teaching";
         public const string IndependentContractorServiceDutyId = "duty.prototype.independent.contractor.service";
+        public const string CareerProfessionEnteredTransitionId = "career-transition.prototype.profession-entered";
+        public const string CareerEmploymentStartedTransitionId = "career-transition.prototype.employment-started";
+        public const string CareerEmploymentEndedTransitionId = "career-transition.prototype.employment-ended";
+        public const string CareerPromotionTransitionId = "career-transition.prototype.promotion";
+        public const string CareerDemotionTransitionId = "career-transition.prototype.demotion";
+        public const string CareerTransferTransitionId = "career-transition.prototype.transfer";
+        public const string CareerResignationTransitionId = "career-transition.prototype.resignation";
+        public const string CareerDismissalTransitionId = "career-transition.prototype.dismissal";
+        public const string CareerRetirementTransitionId = "career-transition.prototype.retirement";
+        public const string CareerReturnFromRetirementTransitionId = "career-transition.prototype.return-from-retirement";
+        public const string CareerGapStartedTransitionId = "career-transition.prototype.career-gap-started";
+        public const string CareerGapEndedTransitionId = "career-transition.prototype.career-gap-ended";
+        public const string CareerChangeTransitionId = "career-transition.prototype.career-change";
+        public const string CareerAchievementTransitionId = "career-transition.prototype.achievement";
+        public const string CareerSetbackTransitionId = "career-transition.prototype.setback";
 
         public static IReadOnlyList<ScriptableObject> CreateDefinitions()
         {
@@ -425,6 +440,21 @@ namespace UnityIsekaiGame.Professions
             definitions.Add(Duty(TempleHealerMedicalDutyId, TempleHealerPositionId, "Treat Temple Patients", DutyCategory.Medical, FieldMedicProfessionId, "authority.medical.prototype"));
             definitions.Add(Duty(UniversityLecturerTeachingDutyId, UniversityLecturerPositionId, "Deliver University Lectures", DutyCategory.Teaching, BlacksmithProfessionId, BlacksmithTeachPermissionId, allowDelegation: true));
             definitions.Add(Duty(IndependentContractorServiceDutyId, IndependentContractorPositionId, "Complete Contracted Service", DutyCategory.Service, requireEvidence: true));
+            definitions.Add(CareerTransition(CareerProfessionEnteredTransitionId, "Profession Entered", CareerTransitionCategory.ProfessionEntered, destinations: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.ProfessionRelationship }, professions: new[] { BlacksmithProfessionId }));
+            definitions.Add(CareerTransition(CareerEmploymentStartedTransitionId, "Employment Started", CareerTransitionCategory.EmploymentStarted, destinations: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.Employment, CareerTransitionSourceRecordType.Position }, requiresAuthority: true));
+            definitions.Add(CareerTransition(CareerEmploymentEndedTransitionId, "Employment Ended", CareerTransitionCategory.EmploymentEnded, sources: new[] { CareerEpisodeState.Active, CareerEpisodeState.Suspended }, required: new[] { CareerTransitionSourceRecordType.Employment }));
+            definitions.Add(CareerTransition(CareerPromotionTransitionId, "Career Promotion", CareerTransitionCategory.Promotion, sources: new[] { CareerEpisodeState.Active }, destinations: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.Rank }, ranks: new[] { BlacksmithRankJourneymanId, BlacksmithRankMasterId }, requiresAuthority: true));
+            definitions.Add(CareerTransition(CareerDemotionTransitionId, "Career Demotion", CareerTransitionCategory.Demotion, sources: new[] { CareerEpisodeState.Active }, destinations: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.Rank }, ranks: new[] { BlacksmithRankApprenticeId, BlacksmithRankJourneymanId }, requiresAuthority: true, disputed: true));
+            definitions.Add(CareerTransition(CareerTransferTransitionId, "Career Transfer", CareerTransitionCategory.Transfer, sources: new[] { CareerEpisodeState.Active }, destinations: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.Employment, CareerTransitionSourceRecordType.Position }, requiresAuthority: true));
+            definitions.Add(CareerTransition(CareerResignationTransitionId, "Resignation", CareerTransitionCategory.Resignation, sources: new[] { CareerEpisodeState.Active, CareerEpisodeState.Suspended }, required: new[] { CareerTransitionSourceRecordType.Employment }));
+            definitions.Add(CareerTransition(CareerDismissalTransitionId, "Dismissal", CareerTransitionCategory.Dismissal, sources: new[] { CareerEpisodeState.Active, CareerEpisodeState.Suspended }, required: new[] { CareerTransitionSourceRecordType.Employment }, requiresAuthority: true, disputed: true, allowSecret: true, policyId: AccessSecretId));
+            definitions.Add(CareerTransition(CareerRetirementTransitionId, "Retirement", CareerTransitionCategory.Retirement, sources: new[] { CareerEpisodeState.Active }, destinations: new[] { CareerEpisodeState.Active, CareerEpisodeState.Retired }, required: new[] { CareerTransitionSourceRecordType.Employment }));
+            definitions.Add(CareerTransition(CareerReturnFromRetirementTransitionId, "Return From Retirement", CareerTransitionCategory.ReturnFromRetirement, sources: new[] { CareerEpisodeState.Active, CareerEpisodeState.Retired }, destinations: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.CareerEpisode, CareerTransitionSourceRecordType.Employment }));
+            definitions.Add(CareerTransition(CareerGapStartedTransitionId, "Career Gap Started", CareerTransitionCategory.CareerGapStarted, destinations: new[] { CareerEpisodeState.Active }));
+            definitions.Add(CareerTransition(CareerGapEndedTransitionId, "Career Gap Ended", CareerTransitionCategory.CareerGapEnded, sources: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.CareerEpisode }));
+            definitions.Add(CareerTransition(CareerChangeTransitionId, "Career Change", CareerTransitionCategory.CareerChange, sources: new[] { CareerEpisodeState.Active, CareerEpisodeState.Ended, CareerEpisodeState.Retired }, destinations: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.ProfessionRelationship, CareerTransitionSourceRecordType.Employment }));
+            definitions.Add(CareerTransition(CareerAchievementTransitionId, "Career Achievement", CareerTransitionCategory.Achievement, sources: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.ProfessionalActivity, CareerTransitionSourceRecordType.ExperienceEvidence }));
+            definitions.Add(CareerTransition(CareerSetbackTransitionId, "Career Setback", CareerTransitionCategory.Setback, sources: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.ProfessionalActivity }, disputed: true, allowSecret: true, policyId: AccessSecretId));
             return definitions;
         }
 
@@ -837,6 +867,28 @@ namespace UnityIsekaiGame.Professions
             DutyDefinition definition = ScriptableObject.CreateInstance<DutyDefinition>();
             definition.name = name.Replace(" ", string.Empty);
             definition.DevelopmentConfigure(id, positionId, name, category, true, 100, professionId, authorityId, allowDelegation, requireSupervision, requireEvidence, isSecret, policyId);
+            return definition;
+        }
+
+        private static CareerTransitionDefinition CareerTransition(
+            string id,
+            string name,
+            CareerTransitionCategory category,
+            CareerEpisodeState[] sources = null,
+            CareerEpisodeState[] destinations = null,
+            CareerTransitionSourceRecordType[] required = null,
+            string[] professions = null,
+            string[] ranks = null,
+            string[] credentials = null,
+            bool voluntary = true,
+            bool requiresAuthority = false,
+            bool disputed = false,
+            bool allowSecret = false,
+            string policyId = AccessPublicId)
+        {
+            CareerTransitionDefinition definition = ScriptableObject.CreateInstance<CareerTransitionDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(id, name, category, sources, destinations, required, professions, ranks, credentials, voluntary, requiresAuthority, disputed, allowSecret, historyPolicy: "history-significance.profession.prototype", policyId: policyId);
             return definition;
         }
 
