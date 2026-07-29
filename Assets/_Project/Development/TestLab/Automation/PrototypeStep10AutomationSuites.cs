@@ -29,6 +29,7 @@ namespace UnityIsekaiGame.Development.Automation
             registry.TryRegister(BuildQualificationsCredentialsCertificationSuite(), out _);
             registry.TryRegister(BuildProfessionalRanksMasterySpecializationsSuite(), out _);
             registry.TryRegister(BuildPositionsDutiesEmploymentFoundationsSuite(), out _);
+            registry.TryRegister(BuildCareerHistoryTransitionsSuite(), out _);
         }
 
         private static ITestLabAutomationSuite BuildProfessionIdentitySuite()
@@ -352,6 +353,51 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeProfessionDefinitionFactory.ApprenticeSupervisorPositionId,
                     PrototypeProfessionDefinitionFactory.SeniorSmithCraftDutyId,
                     PrototypeProfessionDefinitionFactory.GuildClerkRecordDutyId
+                });
+        }
+
+        private static ITestLabAutomationSuite BuildCareerHistoryTransitionsSuite()
+        {
+            return new TestLabAutomationSuite(
+                "feature.10.8.career-history-transitions",
+                "Feature 10.8 Career History and Transitions",
+                "10.8",
+                "Career episodes, transitions, timelines, gaps, retirement, access, persistence, and authoritative source integration automation.",
+                1080,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "CareerHistoryRuntime", "CareerTransitionDefinition", "PositionEmploymentRuntime", "ProfessionalRankRuntime" },
+                scenarios: new ITestLabAutomationScenario[]
+                {
+                    CareerScenario("episodes-and-timelines", "Career episodes build immutable deterministic timelines", 10, Step("step10-career-timeline", CareerDefinitionsEpisodesTimeline)),
+                    CareerScenario("authoritative-transitions", "Promotion, demotion, transfer, resignation, and dismissal reference owning runtimes", 20, Step("step10-career-transitions", CareerAuthoritativeTransitions)),
+                    CareerScenario("concurrent-primary-gaps-redaction", "Concurrent careers, primary career changes, gaps, and redaction behave deterministically", 30, Step("step10-career-concurrent", CareerConcurrentGapsRedaction)),
+                    CareerScenario("retirement-return-career-change", "Retirement, return, and career change preserve prior history", 40, Step("step10-career-retirement", CareerRetirementReturnChange)),
+                    CareerScenario("persistence-and-restore", "Career history persistence rejects corrupt restore without replaying hooks", 50, Step("step10-career-persistence", CareerPersistenceRestore))
+                });
+        }
+
+        private static ITestLabAutomationScenario CareerScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                order <= 20 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
+                includeInQuickRun: order <= 20,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory,
+                requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeProfessionDefinitionFactory.CareerProfessionEnteredTransitionId,
+                    PrototypeProfessionDefinitionFactory.CareerEmploymentStartedTransitionId,
+                    PrototypeProfessionDefinitionFactory.CareerPromotionTransitionId,
+                    PrototypeProfessionDefinitionFactory.CareerTransferTransitionId,
+                    PrototypeProfessionDefinitionFactory.CareerRetirementTransitionId,
+                    PrototypeProfessionDefinitionFactory.CareerChangeTransitionId
                 });
         }
 
@@ -1351,6 +1397,236 @@ namespace UnityIsekaiGame.Development.Automation
             string positionInstanceId = position.Position?.positionInstanceId ?? context.ScenarioContext.ScopedId("position-instance", slug);
             PositionEligibilityResult eligibility = runtimes.PositionEmployment.EvaluateEligibility(runtimes.PersonId, positionInstanceId, privilegedDiagnostics: true);
             return runtimes.PositionEmployment.AppointPerson(context.ScenarioContext.ScopedId("employment", slug), string.Empty, runtimes.PersonId, positionInstanceId, authorityId, eligibility.Snapshot, context.ScenarioContext.ScopedId("position-time", $"{slug}-appoint"), context.ScenarioContext.ScopedId("position-tx", $"{slug}-appoint"), classification);
+        }
+
+        private static TestLabAutomationStepResult CareerDefinitionsEpisodesTimeline(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (IGameDefinition definition in PrototypeProfessionDefinitionFactory.CreateDefinitions().OfType<IGameDefinition>())
+            {
+                if (definition is IDefinitionCatalogValidationParticipant participant)
+                {
+                    participant.ValidateCatalogDefinition(runtimes.DefinitionRegistry.DefinitionsById, report);
+                }
+            }
+
+            EnsureBlacksmithActivityProfession(context);
+            PersonProfessionSnapshot relationship = runtimes.Professions.QueryByProfession(PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, activeOnly: true).First();
+            CareerHistoryOperationResult start = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "identity", CareerEpisodeCategory.FormalProfessionalPractice, relationshipId: relationship.RelationshipId, primary: true), context.ScenarioContext.ScopedId("career-tx", "identity-start"));
+            CareerHistoryOperationResult transition = runtimes.CareerHistory.RecordTransition(Transition(context, "identity", PrototypeProfessionDefinitionFactory.CareerProfessionEnteredTransitionId, CareerTransitionCategory.ProfessionEntered, destinationEpisodeIds: new[] { start.Episode?.episodeId }, supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.ProfessionRelationship, relationship.RelationshipId, runtimes.Professions.Revision) }), context.ScenarioContext.ScopedId("career-tx", "identity-transition"));
+            CareerHistoryOperationResult first = runtimes.CareerHistory.BuildTimeline(runtimes.PersonId);
+            first.Timeline.Episodes[0].state = CareerEpisodeState.Ended;
+            CareerHistoryOperationResult second = runtimes.CareerHistory.BuildTimeline(runtimes.PersonId);
+
+            bool valid = report.ErrorCount == 0
+                && report.WarningCount == 0
+                && start.Succeeded
+                && transition.Succeeded
+                && first.Succeeded
+                && second.Succeeded
+                && second.Timeline.Episodes[0].state == CareerEpisodeState.Active
+                && second.Timeline.PrimaryCareers.Count == 1
+                && second.Timeline.Transitions.Count == 1;
+            return TestLabAssertions.True("step10-career-timeline", "Career definitions validate and timelines are immutable deterministic projections", valid, $"Errors={report.ErrorCount} Warnings={report.WarningCount} Start={start.Status} Transition={transition.Status} Timeline={second.Timeline?.Episodes.Count}/{second.Timeline?.Transitions.Count}");
+        }
+
+        private static TestLabAutomationStepResult CareerAuthoritativeTransitions(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            ProfessionalRankOperationResult journeyman = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, "career-authority-journeyman");
+            CareerHistoryOperationResult rankEpisode = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "ranked", CareerEpisodeCategory.FormalProfessionalPractice, rankRecordId: journeyman.Rank?.rankRecordId, rankDefinitionId: journeyman.Rank?.rankDefinitionId, primary: true), context.ScenarioContext.ScopedId("career-tx", "ranked"));
+            ProfessionalRankOperationResult master = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankMasterId, "career-authority-master");
+            CareerHistoryOperationResult promotion = runtimes.CareerHistory.RecordTransition(Transition(context, "promotion", PrototypeProfessionDefinitionFactory.CareerPromotionTransitionId, CareerTransitionCategory.Promotion, sourceEpisodeIds: new[] { rankEpisode.Episode?.episodeId }, destinationEpisodeIds: new[] { rankEpisode.Episode?.episodeId }, previousRank: journeyman.Rank?.rankRecordId, newRank: master.Rank?.rankRecordId, supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.Rank, master.Rank?.rankRecordId, runtimes.ProfessionalRanks.Revision) }, authority: "authority.guild.prototype"), context.ScenarioContext.ScopedId("career-tx", "promotion"));
+            ProfessionalRankOperationResult demoted = runtimes.ProfessionalRanks.DemotePerson(master.Rank?.rankRecordId, context.ScenarioContext.ScopedId("rank-record", "career-demoted"), PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, "70", context.ScenarioContext.ScopedId("rank-tx", "career-demote"));
+            CareerHistoryOperationResult demotion = runtimes.CareerHistory.RecordTransition(Transition(context, "demotion", PrototypeProfessionDefinitionFactory.CareerDemotionTransitionId, CareerTransitionCategory.Demotion, sourceEpisodeIds: new[] { rankEpisode.Episode?.episodeId }, destinationEpisodeIds: new[] { rankEpisode.Episode?.episodeId }, previousRank: master.Rank?.rankRecordId, newRank: demoted.Rank?.rankRecordId, supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.Rank, demoted.Rank?.rankRecordId, runtimes.ProfessionalRanks.Revision) }, authority: "authority.guild.prototype"), context.ScenarioContext.ScopedId("career-tx", "demotion"));
+
+            PositionEmploymentOperationResult clerk = AppointEligiblePerson(context, "career-transfer-clerk", PrototypeProfessionDefinitionFactory.GuildClerkPositionId, "organization.prototype.guild", PrototypeProfessionDefinitionFactory.GuildOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionRestrictedRecordsAuthorityId);
+            CareerHistoryOperationResult clerkEpisode = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "transfer-clerk", CareerEpisodeCategory.Employment, employment: clerk.Employment, primary: false), context.ScenarioContext.ScopedId("career-tx", "transfer-clerk"));
+            PositionEmploymentOperationResult target = CreatePosition(context, "career-transfer-target", PrototypeProfessionDefinitionFactory.IndependentContractorPositionId, "organization.prototype.independent", PrototypeProfessionDefinitionFactory.IndependentOrganizationTypeId, 2);
+            PositionEligibilityResult transferEligibility = runtimes.PositionEmployment.EvaluateEligibility(runtimes.PersonId, target.Position?.positionInstanceId, privilegedDiagnostics: true);
+            PositionEmploymentOperationResult transfer = runtimes.PositionEmployment.TransferPerson(clerk.Employment?.employmentId, context.ScenarioContext.ScopedId("employment", "career-transfer"), target.Position?.positionInstanceId, "authority.guild.prototype", transferEligibility.Snapshot, "72", context.ScenarioContext.ScopedId("position-tx", "career-transfer"));
+            CareerHistoryOperationResult transferEpisode = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "transfer-target", CareerEpisodeCategory.Employment, employment: transfer.Employment, primary: false), context.ScenarioContext.ScopedId("career-tx", "transfer-target"));
+            CareerHistoryOperationResult transferTransition = runtimes.CareerHistory.RecordTransition(Transition(context, "transfer", PrototypeProfessionDefinitionFactory.CareerTransferTransitionId, CareerTransitionCategory.Transfer, sourceEpisodeIds: new[] { clerkEpisode.Episode?.episodeId }, destinationEpisodeIds: new[] { transferEpisode.Episode?.episodeId }, previousEmployment: clerk.Employment?.employmentId, newEmployment: transfer.Employment?.employmentId, previousPosition: clerk.Position?.positionInstanceId, newPosition: target.Position?.positionInstanceId, organization: "organization.prototype.independent", supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.Employment, transfer.Employment?.employmentId, runtimes.PositionEmployment.Revision), CareerSource(CareerTransitionSourceRecordType.Position, target.Position?.positionInstanceId, runtimes.PositionEmployment.Revision) }, authority: "authority.guild.prototype"), context.ScenarioContext.ScopedId("career-tx", "transfer"));
+            PositionEmploymentOperationResult resigned = runtimes.PositionEmployment.Resign(transfer.Employment?.employmentId, "73", context.ScenarioContext.ScopedId("position-tx", "career-resign"));
+            CareerHistoryOperationResult resignation = runtimes.CareerHistory.RecordTransition(Transition(context, "resignation", PrototypeProfessionDefinitionFactory.CareerResignationTransitionId, CareerTransitionCategory.Resignation, sourceEpisodeIds: new[] { transferEpisode.Episode?.episodeId }, previousEmployment: transfer.Employment?.employmentId, supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.Employment, transfer.Employment?.employmentId, runtimes.PositionEmployment.Revision) }), context.ScenarioContext.ScopedId("career-tx", "resignation"));
+            PositionEmploymentOperationResult dismissedEmployment = AppointEligiblePerson(context, "career-dismiss-clerk", PrototypeProfessionDefinitionFactory.GuildClerkPositionId, "organization.prototype.guild", PrototypeProfessionDefinitionFactory.GuildOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionRestrictedRecordsAuthorityId);
+            CareerHistoryOperationResult dismissEpisode = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "dismiss-clerk", CareerEpisodeCategory.Employment, employment: dismissedEmployment.Employment, secret: true), context.ScenarioContext.ScopedId("career-tx", "dismiss-clerk"));
+            PositionEmploymentOperationResult dismissed = runtimes.PositionEmployment.Dismiss(dismissedEmployment.Employment?.employmentId, "74", context.ScenarioContext.ScopedId("position-tx", "career-dismiss"));
+            CareerHistoryOperationResult dismissal = runtimes.CareerHistory.RecordTransition(Transition(context, "dismissal", PrototypeProfessionDefinitionFactory.CareerDismissalTransitionId, CareerTransitionCategory.Dismissal, sourceEpisodeIds: new[] { dismissEpisode.Episode?.episodeId }, previousEmployment: dismissedEmployment.Employment?.employmentId, supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.Employment, dismissedEmployment.Employment?.employmentId, runtimes.PositionEmployment.Revision) }, authority: PrototypeProfessionDefinitionFactory.PositionRestrictedRecordsAuthorityId, secret: true), context.ScenarioContext.ScopedId("career-tx", "dismissal"));
+
+            bool valid = journeyman.Succeeded && master.Succeeded && promotion.Succeeded && demoted.Succeeded && demotion.Succeeded && transfer.Succeeded && transferTransition.Succeeded && resigned.Succeeded && resignation.Succeeded && dismissed.Succeeded && dismissal.Succeeded;
+            return TestLabAssertions.True("step10-career-transitions", "Career transitions reference authoritative rank and employment mutations", valid, $"Promotion={promotion.Status} Demotion={demotion.Status} Transfer={transferTransition.Status} Resign={resignation.Status} Dismiss={dismissal.Status}");
+        }
+
+        private static TestLabAutomationStepResult CareerConcurrentGapsRedaction(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, "career-concurrent");
+            PositionEmploymentOperationResult senior = AppointEligiblePerson(context, "career-primary-senior", PrototypeProfessionDefinitionFactory.RoyalForgeSeniorSmithPositionId, "organization.prototype.royal-forge", PrototypeProfessionDefinitionFactory.ForgeOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId);
+            CareerHistoryOperationResult primary = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "primary-senior", CareerEpisodeCategory.Employment, employment: senior.Employment, primary: true, exclusive: false), context.ScenarioContext.ScopedId("career-tx", "primary-senior"));
+            PositionEmploymentOperationResult clerk = AppointEligiblePerson(context, "career-secondary-clerk", PrototypeProfessionDefinitionFactory.GuildClerkPositionId, "organization.prototype.guild", PrototypeProfessionDefinitionFactory.GuildOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionRestrictedRecordsAuthorityId);
+            CareerHistoryOperationResult secondary = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "secondary-clerk", CareerEpisodeCategory.Employment, employment: clerk.Employment, primary: false, exclusive: false), context.ScenarioContext.ScopedId("career-tx", "secondary-clerk"));
+            CareerHistoryOperationResult setPrimary = runtimes.CareerHistory.SetPrimaryCareer(secondary.Episode?.episodeId, context.ScenarioContext.ScopedId("career-tx", "set-primary"));
+            CareerHistoryOperationResult gap = runtimes.CareerHistory.BeginCareerGap(context.ScenarioContext.ScopedId("career-episode", "gap"), runtimes.PersonId, "80", "Travel between contracts.", context.ScenarioContext.ScopedId("career-tx", "gap-start"));
+            CareerHistoryOperationResult gapEnd = runtimes.CareerHistory.EndCareerGap(gap.Episode?.episodeId, "81", "Accepted work.", context.ScenarioContext.ScopedId("career-tx", "gap-end"));
+            CareerHistoryOperationResult secret = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "secret-spy", CareerEpisodeCategory.FormalProfessionalPractice, profession: PrototypeProfessionDefinitionFactory.SpyProfessionId, primary: false, secret: true), context.ScenarioContext.ScopedId("career-tx", "secret"));
+            CareerHistoryProjection<CareerEpisodeData> redacted = runtimes.CareerHistory.ProjectEpisode(secret.Episode?.episodeId, CareerHistoryProjectionAudience.Public);
+            CareerHistoryOperationResult timeline = runtimes.CareerHistory.BuildTimeline(runtimes.PersonId);
+
+            bool valid = primary.Succeeded
+                && secondary.Succeeded
+                && setPrimary.Succeeded
+                && gap.Succeeded
+                && gapEnd.Succeeded
+                && secret.Succeeded
+                && redacted.Redacted
+                && timeline.Timeline.PrimaryCareers.Count == 1
+                && timeline.Timeline.PrimaryCareers[0].episodeId == secondary.Episode?.episodeId
+                && timeline.Timeline.CareerGaps.Count == 1;
+            return TestLabAssertions.True("step10-career-concurrent", "Concurrent careers, primary selection, gaps, and redaction are deterministic", valid, $"Primary={timeline.Timeline?.PrimaryCareers.Count} Active={timeline.Timeline?.ActiveCareers.Count} Gaps={timeline.Timeline?.CareerGaps.Count} Redacted={redacted.Redacted}");
+        }
+
+        private static TestLabAutomationStepResult CareerRetirementReturnChange(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            PositionEmploymentOperationResult contractor = AppointEligiblePerson(context, "career-retire-contractor", PrototypeProfessionDefinitionFactory.IndependentContractorPositionId, "organization.prototype.independent", PrototypeProfessionDefinitionFactory.IndependentOrganizationTypeId, "authority.guild.prototype", EmploymentClassification.IndependentServiceFoundation);
+            CareerHistoryOperationResult contractorEpisode = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "retire-contractor", CareerEpisodeCategory.IndependentPractice, employment: contractor.Employment, primary: true, exclusive: false), context.ScenarioContext.ScopedId("career-tx", "retire-contractor"));
+            PositionEmploymentOperationResult retireEmployment = runtimes.PositionEmployment.Retire(contractor.Employment?.employmentId, "90", context.ScenarioContext.ScopedId("position-tx", "retire"));
+            CareerHistoryOperationResult retirementEpisode = runtimes.CareerHistory.StartCareerEpisode(new CareerEpisodeData { episodeId = context.ScenarioContext.ScopedId("career-episode", "retirement"), personId = runtimes.PersonId, category = CareerEpisodeCategory.Retirement, state = CareerEpisodeState.Active, careerClassification = CareerClassification.Retirement, startWorldTime = "90", primaryCareer = false, accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId }, context.ScenarioContext.ScopedId("career-tx", "retirement-episode"));
+            CareerHistoryOperationResult retirement = runtimes.CareerHistory.RecordTransition(Transition(context, "retirement", PrototypeProfessionDefinitionFactory.CareerRetirementTransitionId, CareerTransitionCategory.Retirement, sourceEpisodeIds: new[] { contractorEpisode.Episode?.episodeId }, destinationEpisodeIds: new[] { retirementEpisode.Episode?.episodeId }, previousEmployment: contractor.Employment?.employmentId, supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.Employment, contractor.Employment?.employmentId, runtimes.PositionEmployment.Revision) }), context.ScenarioContext.ScopedId("career-tx", "retirement"));
+            PositionEmploymentOperationResult returnEmployment = AppointEligiblePerson(context, "career-return-contractor", PrototypeProfessionDefinitionFactory.IndependentContractorPositionId, "organization.prototype.independent", PrototypeProfessionDefinitionFactory.IndependentOrganizationTypeId, "authority.guild.prototype", EmploymentClassification.IndependentServiceFoundation);
+            CareerHistoryOperationResult returnEpisode = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "return-contractor", CareerEpisodeCategory.IndependentPractice, employment: returnEmployment.Employment, primary: true, exclusive: false), context.ScenarioContext.ScopedId("career-tx", "return-episode"));
+            CareerHistoryOperationResult returned = runtimes.CareerHistory.RecordTransition(Transition(context, "return", PrototypeProfessionDefinitionFactory.CareerReturnFromRetirementTransitionId, CareerTransitionCategory.ReturnFromRetirement, sourceEpisodeIds: new[] { retirementEpisode.Episode?.episodeId }, destinationEpisodeIds: new[] { returnEpisode.Episode?.episodeId }, newEmployment: returnEmployment.Employment?.employmentId, supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.CareerEpisode, retirementEpisode.Episode?.episodeId, runtimes.CareerHistory.Revision), CareerSource(CareerTransitionSourceRecordType.Employment, returnEmployment.Employment?.employmentId, runtimes.PositionEmployment.Revision) }), context.ScenarioContext.ScopedId("career-tx", "return"));
+            ProfessionOperationResult medic = runtimes.Professions.AddRelationship(new AddProfessionRelationshipRequest { relationshipId = context.ScenarioContext.ScopedId("profession-relationship", "career-medic"), personId = runtimes.PersonId, professionId = PrototypeProfessionDefinitionFactory.FieldMedicProfessionId, informalPractice = true, formalPractice = true, active = true, startWorldTime = "94", transactionId = context.ScenarioContext.ScopedId("profession-tx", "career-medic") });
+            CareerHistoryOperationResult medicEpisode = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "career-medic", CareerEpisodeCategory.FormalProfessionalPractice, profession: PrototypeProfessionDefinitionFactory.FieldMedicProfessionId, relationshipId: medic.Snapshot?.RelationshipId, primary: true, exclusive: false), context.ScenarioContext.ScopedId("career-tx", "medic"));
+            CareerHistoryOperationResult change = runtimes.CareerHistory.RecordTransition(Transition(context, "career-change", PrototypeProfessionDefinitionFactory.CareerChangeTransitionId, CareerTransitionCategory.CareerChange, sourceEpisodeIds: new[] { returnEpisode.Episode?.episodeId }, destinationEpisodeIds: new[] { medicEpisode.Episode?.episodeId }, profession: PrototypeProfessionDefinitionFactory.FieldMedicProfessionId, supportingRecords: new[] { CareerSource(CareerTransitionSourceRecordType.ProfessionRelationship, medic.Snapshot?.RelationshipId, runtimes.Professions.Revision), CareerSource(CareerTransitionSourceRecordType.Employment, returnEmployment.Employment?.employmentId, runtimes.PositionEmployment.Revision) }), context.ScenarioContext.ScopedId("career-tx", "career-change"));
+            CareerHistoryOperationResult timeline = runtimes.CareerHistory.BuildTimeline(runtimes.PersonId);
+
+            bool valid = retireEmployment.Succeeded && retirementEpisode.Succeeded && retirement.Succeeded && returnEmployment.Succeeded && returned.Succeeded && medic.Succeeded && change.Succeeded && timeline.Timeline.Transitions.Any(item => item.category == CareerTransitionCategory.CareerChange) && timeline.Timeline.Episodes.Any(item => item.professionId == PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            return TestLabAssertions.True("step10-career-retirement", "Retirement, return, and career change retain prior career history", valid, $"Retire={retirement.Status} Return={returned.Status} Change={change.Status} Episodes={timeline.Timeline?.Episodes.Count}");
+        }
+
+        private static TestLabAutomationStepResult CareerPersistenceRestore(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithActivityProfession(context);
+            PersonProfessionSnapshot relationship = runtimes.Professions.QueryByProfession(PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, activeOnly: true).First();
+            CareerHistoryOperationResult start = runtimes.CareerHistory.StartCareerEpisode(CareerEpisode(context, "persist", CareerEpisodeCategory.FormalProfessionalPractice, relationshipId: relationship.RelationshipId, primary: true), context.ScenarioContext.ScopedId("career-tx", "persist-start"));
+            CareerHistoryOperationResult achievement = runtimes.CareerHistory.RecordMilestone(new CareerMilestoneRecordData { milestoneId = context.ScenarioContext.ScopedId("career-milestone", "achievement"), personId = runtimes.PersonId, kind = CareerMilestoneKind.Achievement, episodeId = start.Episode?.episodeId, professionId = PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, worldTime = "100", description = "Prototype career milestone.", exclusive = true, accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId }, context.ScenarioContext.ScopedId("career-tx", "achievement"));
+            CareerHistoryRuntimeSaveData save = runtimes.CareerHistory.CreateSaveData();
+            CareerHistoryRuntime restored = new CareerHistoryRuntime();
+            CareerHistoryOperationResult restore = restored.RestoreFromSaveData(save, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.PositionEmployment, runtimes.KnownPersonIds, new[] { "organization.prototype.guild", "organization.prototype.royal-forge", "organization.prototype.independent" }, new[] { "authority.guild.prototype", PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId }, restoring: true);
+            CareerHistoryRuntimeSaveData corrupt = save.Clone();
+            corrupt.episodes[0].professionId = "profession.missing";
+            CareerHistoryOperationResult rejected = restored.RestoreFromSaveData(corrupt, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.PositionEmployment, runtimes.KnownPersonIds, new[] { "organization.prototype.guild", "organization.prototype.royal-forge", "organization.prototype.independent" }, new[] { "authority.guild.prototype", PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId }, restoring: true);
+            CareerHistoryOperationResult timeline = restored.BuildTimeline(runtimes.PersonId);
+
+            bool valid = start.Succeeded && achievement.Succeeded && restore.Succeeded && restored.HistoryHooks.Count == 0 && !rejected.Succeeded && timeline.Succeeded && timeline.Timeline.Episodes.Count == 1 && timeline.Timeline.Milestones.Count == 1;
+            return TestLabAssertions.True("step10-career-persistence", "Career persistence restores atomically and rejects corrupt data without replaying hooks", valid, $"Start={start.Status} Achievement={achievement.Status} Restore={restore.Status} Rejected={rejected.Status} Hooks={restored.HistoryHooks.Count}");
+        }
+
+        private static CareerEpisodeData CareerEpisode(
+            TestLabAutomationContext context,
+            string slug,
+            CareerEpisodeCategory category,
+            EmploymentRecordData employment = null,
+            string relationshipId = "",
+            string profession = null,
+            string rankRecordId = "",
+            string rankDefinitionId = "",
+            bool primary = false,
+            bool exclusive = false,
+            bool secret = false)
+        {
+            string professionId = profession ?? PrototypeProfessionDefinitionFactory.BlacksmithProfessionId;
+            string organizationId = employment?.employerOrganizationId ?? string.Empty;
+            string sourceId = !string.IsNullOrWhiteSpace(employment?.employmentId) ? employment.employmentId : relationshipId;
+            bool hasEmploymentSource = !string.IsNullOrWhiteSpace(employment?.employmentId);
+            bool hasProfessionSource = !hasEmploymentSource && !string.IsNullOrWhiteSpace(relationshipId);
+            CareerTransitionSourceRecordType sourceType = hasEmploymentSource ? CareerTransitionSourceRecordType.Employment : CareerTransitionSourceRecordType.ProfessionRelationship;
+            return new CareerEpisodeData
+            {
+                episodeId = context.ScenarioContext.ScopedId("career-episode", slug),
+                personId = context.ScenarioContext.Runtimes.PersonId,
+                category = category,
+                professionId = professionId,
+                employmentId = employment?.employmentId ?? string.Empty,
+                positionInstanceId = employment?.positionInstanceId ?? string.Empty,
+                organizationId = organizationId,
+                rankRecordId = rankRecordId ?? string.Empty,
+                rankDefinitionId = rankDefinitionId ?? string.Empty,
+                startWorldTime = context.ScenarioContext.ScopedId("career-time", $"{slug}-start"),
+                state = CareerEpisodeState.Active,
+                careerClassification = primary ? CareerClassification.Primary : CareerClassification.Secondary,
+                workClassification = employment?.classification ?? EmploymentClassification.Custom,
+                reasonStarted = "Prototype career fixture.",
+                primaryCareer = primary,
+                exclusiveCareer = exclusive,
+                secret = secret,
+                accessPolicyId = secret ? PrototypeProfessionDefinitionFactory.AccessSecretId : PrototypeProfessionDefinitionFactory.AccessPublicId,
+                provenance = "test-lab",
+                sourceRecords = string.IsNullOrWhiteSpace(sourceId) || (!hasEmploymentSource && !hasProfessionSource)
+                    ? Array.Empty<CareerSourceRecordReferenceData>()
+                    : new[] { CareerSource(sourceType, sourceId, sourceType == CareerTransitionSourceRecordType.Employment ? context.ScenarioContext.Runtimes.PositionEmployment.Revision : context.ScenarioContext.Runtimes.Professions.Revision) }
+            };
+        }
+
+        private static CareerTransitionRecordData Transition(
+            TestLabAutomationContext context,
+            string slug,
+            string definitionId,
+            CareerTransitionCategory category,
+            string[] sourceEpisodeIds = null,
+            string[] destinationEpisodeIds = null,
+            string profession = null,
+            string previousRank = "",
+            string newRank = "",
+            string previousEmployment = "",
+            string newEmployment = "",
+            string previousPosition = "",
+            string newPosition = "",
+            string organization = "",
+            CareerSourceRecordReferenceData[] supportingRecords = null,
+            string authority = "",
+            bool secret = false)
+        {
+            return new CareerTransitionRecordData
+            {
+                transitionId = context.ScenarioContext.ScopedId("career-transition", slug),
+                personId = context.ScenarioContext.Runtimes.PersonId,
+                transitionDefinitionId = definitionId,
+                category = category,
+                sourceEpisodeIds = sourceEpisodeIds ?? Array.Empty<string>(),
+                destinationEpisodeIds = destinationEpisodeIds ?? Array.Empty<string>(),
+                professionId = profession ?? PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                previousRankRecordId = previousRank ?? string.Empty,
+                newRankRecordId = newRank ?? string.Empty,
+                previousEmploymentId = previousEmployment ?? string.Empty,
+                newEmploymentId = newEmployment ?? string.Empty,
+                previousPositionInstanceId = previousPosition ?? string.Empty,
+                newPositionInstanceId = newPosition ?? string.Empty,
+                organizationId = organization ?? string.Empty,
+                transitionWorldTime = context.ScenarioContext.ScopedId("career-time", slug),
+                decidingAuthorityId = authority ?? string.Empty,
+                voluntary = category != CareerTransitionCategory.Dismissal && category != CareerTransitionCategory.Demotion,
+                involuntary = category == CareerTransitionCategory.Dismissal || category == CareerTransitionCategory.Demotion,
+                secret = secret,
+                reason = "Prototype career transition.",
+                supportingRecords = supportingRecords ?? Array.Empty<CareerSourceRecordReferenceData>(),
+                accessPolicyId = secret ? PrototypeProfessionDefinitionFactory.AccessSecretId : PrototypeProfessionDefinitionFactory.AccessPublicId,
+                provenance = "test-lab"
+            };
+        }
+
+        private static CareerSourceRecordReferenceData CareerSource(CareerTransitionSourceRecordType type, string recordId, long revision)
+        {
+            return new CareerSourceRecordReferenceData
+            {
+                recordType = type,
+                recordId = recordId ?? string.Empty,
+                sourceRevision = revision
+            };
         }
 
         private static TestLabAutomationStepResult EligibilityPreview(TestLabAutomationContext context)

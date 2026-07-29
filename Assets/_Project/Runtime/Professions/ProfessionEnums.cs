@@ -1122,4 +1122,169 @@ namespace UnityIsekaiGame.Professions
         EmploymentDisputed = 14,
         Corrected = 15
     }
+
+    public enum CareerEpisodeCategory
+    {
+        Custom = 0,
+        InformalPractice = 1,
+        FormalProfessionalPractice = 2,
+        Education = 3,
+        Apprenticeship = 4,
+        Employment = 5,
+        MilitaryService = 6,
+        ReligiousService = 7,
+        GovernmentService = 8,
+        IndependentPractice = 9,
+        ContractWorkFoundation = 10,
+        CareerGap = 11,
+        Retirement = 12,
+        Suspension = 13
+    }
+
+    public enum CareerEpisodeState
+    {
+        Planned = 0,
+        Active = 1,
+        Suspended = 2,
+        Ended = 3,
+        Retired = 4,
+        Corrected = 5,
+        Disputed = 6,
+        Invalid = 7,
+        Custom = 8
+    }
+
+    public enum CareerClassification
+    {
+        Custom = 0,
+        Primary = 1,
+        Secondary = 2,
+        FullTime = 3,
+        PartTime = 4,
+        Temporary = 5,
+        Volunteer = 6,
+        Service = 7,
+        Informal = 8,
+        Education = 9,
+        Gap = 10,
+        Retirement = 11
+    }
+
+    public enum CareerTransitionCategory
+    {
+        Custom = 0,
+        ProfessionEntered = 1,
+        ProfessionLeft = 2,
+        EmploymentStarted = 3,
+        EmploymentEnded = 4,
+        Promotion = 5,
+        Demotion = 6,
+        Transfer = 7,
+        SpecializationEntered = 8,
+        SpecializationLeft = 9,
+        Suspension = 10,
+        Reinstatement = 11,
+        Resignation = 12,
+        Dismissal = 13,
+        Retirement = 14,
+        ReturnFromRetirement = 15,
+        CareerChange = 16,
+        ConcurrentCareerStarted = 17,
+        CareerGapStarted = 18,
+        CareerGapEnded = 19,
+        Achievement = 20,
+        Setback = 21,
+        Correction = 22
+    }
+
+    public enum CareerTransitionSourceRecordType
+    {
+        None = 0,
+        ProfessionRelationship = 1,
+        Employment = 2,
+        Position = 3,
+        Rank = 4,
+        Credential = 5,
+        TrainingEnrollment = 6,
+        ProfessionalActivity = 7,
+        ExperienceEvidence = 8,
+        CareerEpisode = 9,
+        CareerTransition = 10,
+        HistoricalRecordFoundation = 11,
+        Custom = 12
+    }
+
+    public enum CareerMilestoneKind
+    {
+        Custom = 0,
+        Achievement = 1,
+        Setback = 2,
+        FirstProfessionalWork = 3,
+        MajorPromotion = 4,
+        MasteryRecognition = 5,
+        CredentialEarned = 6,
+        ProductionAchievement = 7,
+        ImportantDiscovery = 8,
+        ApprenticeshipSuccess = 9,
+        LeadershipRole = 10,
+        Dismissal = 11,
+        CredentialRevocation = 12,
+        ProfessionalFailure = 13,
+        Suspension = 14,
+        CareerAffectingInjuryFoundation = 15,
+        PublicDispute = 16
+    }
+
+    public enum CareerHistoryOperationStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        Duplicate = 2,
+        MissingDefinition = 3,
+        MissingPerson = 4,
+        MissingEpisode = 5,
+        MissingTransition = 6,
+        MissingSourceRecord = 7,
+        MissingRequirement = 8,
+        UnauthorizedAuthority = 9,
+        StaleState = 10,
+        InvalidRequest = 11,
+        InvalidState = 12,
+        InvalidTransition = 13,
+        InvalidDateRange = 14,
+        PrimaryCareerConflict = 15,
+        ExclusiveCareerConflict = 16,
+        ValidationFailed = 17,
+        CorruptSave = 18
+    }
+
+    public enum CareerHistoryProjectionAudience
+    {
+        SubjectPerson = 0,
+        Employer = 1,
+        Supervisor = 2,
+        Organization = 3,
+        ProfessionAuthority = 4,
+        Public = 5,
+        PersonKnown = 6,
+        PersonBelieved = 7,
+        PrivilegedDebug = 8,
+        Redacted = 9
+    }
+
+    public enum CareerHistoryHookKind
+    {
+        Unknown = 0,
+        EpisodeStarted = 1,
+        EpisodeEnded = 2,
+        TransitionRecorded = 3,
+        PrimaryCareerChanged = 4,
+        CareerGapStarted = 5,
+        CareerGapEnded = 6,
+        RetirementRecorded = 7,
+        ReturnRecorded = 8,
+        AchievementRecorded = 9,
+        SetbackRecorded = 10,
+        Corrected = 11
+    }
 }
