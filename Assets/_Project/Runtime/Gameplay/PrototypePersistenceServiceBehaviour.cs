@@ -92,6 +92,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerProfessionEntries = true;
         [SerializeField] private bool registerPlayerTraining = true;
         [SerializeField] private bool registerPlayerProfessionalActivities = true;
+        [SerializeField] private bool registerPlayerCredentials = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -128,6 +129,7 @@ namespace UnityIsekaiGame.Gameplay
         private ProfessionEntryPersistenceParticipant playerProfessionEntryParticipant;
         private TrainingPersistenceParticipant playerTrainingParticipant;
         private ProfessionalActivityPersistenceParticipant playerProfessionalActivityParticipant;
+        private CredentialPersistenceParticipant playerCredentialParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
@@ -155,6 +157,7 @@ namespace UnityIsekaiGame.Gameplay
         private ProfessionEntryRuntime playerProfessionEntries;
         private TrainingRuntime playerTraining;
         private ProfessionalActivityRuntime playerProfessionalActivities;
+        private CredentialRuntime playerCredentials;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
@@ -233,6 +236,20 @@ namespace UnityIsekaiGame.Gameplay
                 }
 
                 return playerProfessionalActivities;
+            }
+        }
+        public CredentialRuntime Credentials
+        {
+            get
+            {
+                if (playerCredentials == null)
+                {
+                    playerCredentials = new CredentialRuntime();
+                    string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+                    playerCredentials.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, new[] { personId }, GetPrototypeCredentialAuthorities());
+                }
+
+                return playerCredentials;
             }
         }
         public ItemInstanceIdentityRuntime ItemIdentities => playerItemIdentities ??= new ItemInstanceIdentityRuntime();
@@ -380,6 +397,12 @@ namespace UnityIsekaiGame.Gameplay
                 playerProfessionalActivityParticipant = null;
             }
 
+            if (service != null && playerCredentialParticipant != null)
+            {
+                service.UnregisterParticipant(playerCredentialParticipant);
+                playerCredentialParticipant = null;
+            }
+
             if (service != null && statsVitalsStatusParticipant != null)
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
@@ -501,6 +524,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerInformationTransferParticipant();
             EnsurePlayerTrainingParticipant();
             EnsurePlayerProfessionalActivityParticipant();
+            EnsurePlayerCredentialParticipant();
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
@@ -1601,6 +1625,47 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerProfessionalActivityParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerCredentialParticipant()
+        {
+            if (!registerPlayerCredentials || playerCredentialParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Credential persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            string[] knownPersons = new[] { personId, service.PlayerId };
+            string[] authorities = GetPrototypeCredentialAuthorities();
+            Professions.Configure(GetDefinitionRegistry(), knownPersons);
+            Training.Configure(GetDefinitionRegistry(), Professions, InformationTransfers, knownPersons);
+            ProfessionalActivities.Configure(GetDefinitionRegistry(), Professions, knownPersons);
+            Credentials.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, knownPersons, authorities);
+            playerCredentialParticipant = new CredentialPersistenceParticipant(
+                Credentials,
+                GetDefinitionRegistry,
+                () => Professions,
+                () => Training,
+                () => ProfessionalActivities,
+                () => knownPersons,
+                () => authorities,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerCredentialParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerCredentialParticipant = null;
             }
         }
 
@@ -2709,6 +2774,19 @@ namespace UnityIsekaiGame.Gameplay
 
             definitionRegistry = PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions));
             return definitionRegistry;
+        }
+
+        private static string[] GetPrototypeCredentialAuthorities()
+        {
+            return new[]
+            {
+                "authority.guild.prototype",
+                "authority.medical.prototype",
+                "organization.prototype.guild",
+                "authority.government.prototype",
+                "authority.school.prototype",
+                PersistenceService.LocalPlayerId
+            };
         }
     }
 }

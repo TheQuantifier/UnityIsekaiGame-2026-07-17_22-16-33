@@ -388,6 +388,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionEntryRuntime professionEntries,
             TrainingRuntime training,
             ProfessionalActivityRuntime professionalActivities,
+            CredentialRuntime credentials,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -415,6 +416,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionEntries = professionEntries;
             Training = training;
             ProfessionalActivities = professionalActivities;
+            Credentials = credentials;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -444,6 +446,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ProfessionEntryRuntime ProfessionEntries { get; }
         public TrainingRuntime Training { get; }
         public ProfessionalActivityRuntime ProfessionalActivities { get; }
+        public CredentialRuntime Credentials { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -471,7 +474,8 @@ namespace UnityIsekaiGame.Development.Automation
             PersonProfessionRuntime professions = null,
             ProfessionEntryRuntime professionEntries = null,
             TrainingRuntime training = null,
-            ProfessionalActivityRuntime professionalActivities = null)
+            ProfessionalActivityRuntime professionalActivities = null,
+            CredentialRuntime credentials = null)
         {
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
             professionRuntime.Configure(definitionRegistry, knownPersonIds);
@@ -481,7 +485,9 @@ namespace UnityIsekaiGame.Development.Automation
             trainingRuntime.Configure(definitionRegistry, professionRuntime, transfers, knownPersonIds);
             ProfessionalActivityRuntime professionalActivityRuntime = professionalActivities ?? new ProfessionalActivityRuntime();
             professionalActivityRuntime.Configure(definitionRegistry, professionRuntime, knownPersonIds);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, null);
+            CredentialRuntime credentialRuntime = credentials ?? new CredentialRuntime();
+            credentialRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, knownPersonIds, DefaultCredentialAuthorityIds);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -514,6 +520,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionEntryRuntime professionEntries = new ProfessionEntryRuntime();
             TrainingRuntime training = new TrainingRuntime();
             ProfessionalActivityRuntime professionalActivities = new ProfessionalActivityRuntime();
+            CredentialRuntime credentials = new CredentialRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -528,8 +535,9 @@ namespace UnityIsekaiGame.Development.Automation
             professionEntries.Configure(definitionRegistry, professions, persons);
             training.Configure(definitionRegistry, professions, transfers, persons);
             professionalActivities.Configure(definitionRegistry, professions, persons);
+            credentials.Configure(definitionRegistry, professions, training, professionalActivities, persons, DefaultCredentialAuthorityIds);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -573,7 +581,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Professions?.CreateSaveData(),
                 ProfessionEntries?.CreateSaveData(),
                 Training?.CreateSaveData(),
-                ProfessionalActivities?.CreateSaveData());
+                ProfessionalActivities?.CreateSaveData(),
+                Credentials?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -599,7 +608,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Professions", Professions?.Revision ?? 0L, Professions?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("ProfessionEntries", ProfessionEntries?.Revision ?? 0L, ProfessionEntries?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Training", Training?.Revision ?? 0L, Training?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("ProfessionalActivities", ProfessionalActivities?.Revision ?? 0L, ProfessionalActivities?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("ProfessionalActivities", ProfessionalActivities?.Revision ?? 0L, ProfessionalActivities?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Credentials", Credentials?.Revision ?? 0L, Credentials?.CreateSaveData())
             });
         }
 
@@ -810,8 +820,28 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (Credentials != null && snapshot.Credentials != null)
+            {
+                CredentialOperationResult result = Credentials.RestoreFromSaveData(snapshot.Credentials, DefinitionRegistry, Professions, Training, ProfessionalActivities, KnownPersonIds, DefaultCredentialAuthorityIds, restoring: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Credential restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
+
+        private static readonly string[] DefaultCredentialAuthorityIds =
+        {
+            "authority.guild.prototype",
+            "authority.medical.prototype",
+            "authority.government.prototype",
+            "authority.school.prototype",
+            "organization.prototype.guild",
+            PersistenceService.LocalPlayerId
+        };
 
         public void Dispose()
         {
@@ -853,7 +883,8 @@ namespace UnityIsekaiGame.Development.Automation
             PersonProfessionRuntimeSaveData professions,
             ProfessionEntryRuntimeSaveData professionEntries,
             TrainingRuntimeSaveData training,
-            ProfessionalActivityRuntimeSaveData professionalActivities)
+            ProfessionalActivityRuntimeSaveData professionalActivities,
+            CredentialRuntimeSaveData credentials)
         {
             Knowledge = knowledge;
             History = history;
@@ -875,6 +906,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionEntries = professionEntries;
             Training = training;
             ProfessionalActivities = professionalActivities;
+            Credentials = credentials;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -897,6 +929,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ProfessionEntryRuntimeSaveData ProfessionEntries { get; }
         public TrainingRuntimeSaveData Training { get; }
         public ProfessionalActivityRuntimeSaveData ProfessionalActivities { get; }
+        public CredentialRuntimeSaveData Credentials { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint

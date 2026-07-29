@@ -390,6 +390,7 @@ namespace UnityIsekaiGame.Professions
         public IReadOnlyList<string> RedactedFields { get; }
     }
 
+    [Serializable]
     public sealed class ProfessionalExperienceRequirementData
     {
         public string professionId;

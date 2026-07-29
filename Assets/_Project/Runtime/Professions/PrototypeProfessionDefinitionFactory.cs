@@ -43,6 +43,14 @@ namespace UnityIsekaiGame.Professions
         public const string BlacksmithSupervisedPracticeActivityDefinitionId = "professional-activity.blacksmith.supervised-practice";
         public const string BlacksmithTeachingActivityDefinitionId = "professional-activity.blacksmith.teaching";
         public const string BlacksmithExperimentationActivityDefinitionId = "professional-activity.blacksmith.experimentation";
+        public const string BlacksmithApprenticeshipCertificateCredentialId = "credential.blacksmith.apprenticeship-certificate";
+        public const string BlacksmithGuildLicenseCredentialId = "credential.blacksmith.guild-license";
+        public const string BlacksmithSafetyCertificateCredentialId = "credential.blacksmith.safety-certificate";
+        public const string BlacksmithPracticalExaminationId = "examination.blacksmith.practical";
+        public const string BlacksmithWrittenExaminationId = "examination.blacksmith.written";
+        public const string BlacksmithPracticePermissionId = "permission.profession.blacksmith.practice";
+        public const string BlacksmithTeachPermissionId = "permission.profession.blacksmith.teach";
+        public const string ForgeRestrictedStationPermissionId = "permission.station.forge.restricted";
         public const string AccessPublicId = "information-access.profession.public";
         public const string AccessSecretId = "information-access.profession.secret";
 
@@ -110,6 +118,88 @@ namespace UnityIsekaiGame.Professions
                 durationHours: 4d,
                 completionRequirements: new[] { BlacksmithBasicsModuleId },
                 accessPolicy: AccessPublicId));
+            definitions.Add(Examination(
+                BlacksmithPracticalExaminationId,
+                "Blacksmith Practical Certification Exam",
+                new[] { BlacksmithApprenticeshipCertificateCredentialId, BlacksmithGuildLicenseCredentialId },
+                CredentialAssessmentCategory.Practical,
+                700,
+                3,
+                new[] { "authority.guild.prototype" },
+                knowledgeSubjects: new[] { "knowledge.subject.metalwork", "knowledge.subject.forge-safety" },
+                practicalActivityIds: new[] { BlacksmithCraftingActivityDefinitionId, BlacksmithSupervisedPracticeActivityDefinitionId },
+                policyId: AccessPublicId));
+            definitions.Add(Examination(
+                BlacksmithWrittenExaminationId,
+                "Blacksmith Written Safety Exam",
+                new[] { BlacksmithGuildLicenseCredentialId, BlacksmithSafetyCertificateCredentialId },
+                CredentialAssessmentCategory.Written,
+                650,
+                3,
+                new[] { "authority.guild.prototype" },
+                knowledgeSubjects: new[] { "knowledge.subject.metalwork", "knowledge.subject.forge-safety" },
+                policyId: AccessPublicId));
+            definitions.Add(Credential(
+                BlacksmithSafetyCertificateCredentialId,
+                "Blacksmith Safety Certificate",
+                CredentialCategory.Certificate,
+                new[] { BlacksmithProfessionId },
+                new[] { "authority.guild.prototype" },
+                new[] { CredentialIssuerAuthorityKind.Guild },
+                trainingProgramIds: new[] { BlacksmithSafetyProgramId },
+                examinationDefinitionIds: new[] { BlacksmithWrittenExaminationId },
+                permissions: new[] { ForgeRestrictedStationPermissionId },
+                renewal: CredentialRenewalPolicy.RenewWithNewExamination,
+                policyId: AccessPublicId));
+            definitions.Add(Credential(
+                BlacksmithApprenticeshipCertificateCredentialId,
+                "Blacksmith Apprenticeship Certificate",
+                CredentialCategory.Certificate,
+                new[] { BlacksmithProfessionId },
+                new[] { "authority.guild.prototype" },
+                new[] { CredentialIssuerAuthorityKind.Guild },
+                trainingProgramIds: new[] { BlacksmithApprenticeshipProgramId },
+                experience: new ProfessionalExperienceRequirementData
+                {
+                    professionId = BlacksmithProfessionId,
+                    specializationId = WeaponsmithSpecializationId,
+                    minimumValidatedActivities = 1,
+                    minimumSupervisedActivities = 1,
+                    minimumQuality = 500,
+                    minimumDifficulty = ProfessionalActivityDifficulty.Routine
+                },
+                examinationDefinitionIds: new[] { BlacksmithPracticalExaminationId },
+                permissions: new[] { BlacksmithPracticePermissionId },
+                specializationIds: new[] { WeaponsmithSpecializationId },
+                renewal: CredentialRenewalPolicy.NotRenewable,
+                policyId: AccessPublicId));
+            definitions.Add(Credential(
+                BlacksmithGuildLicenseCredentialId,
+                "Blacksmith Guild License",
+                CredentialCategory.License,
+                new[] { BlacksmithProfessionId },
+                new[] { "authority.guild.prototype" },
+                new[] { CredentialIssuerAuthorityKind.Guild },
+                trainingProgramIds: new[] { BlacksmithSafetyProgramId },
+                experience: new ProfessionalExperienceRequirementData
+                {
+                    professionId = BlacksmithProfessionId,
+                    specializationId = WeaponsmithSpecializationId,
+                    minimumValidatedActivities = 2,
+                    minimumIndependentActivities = 1,
+                    minimumSupervisedActivities = 1,
+                    minimumQuality = 600,
+                    minimumDifficulty = ProfessionalActivityDifficulty.Routine,
+                    requireRecentActivity = true
+                },
+                examinationDefinitionIds: new[] { BlacksmithPracticalExaminationId, BlacksmithWrittenExaminationId },
+                permissions: new[] { BlacksmithPracticePermissionId, BlacksmithTeachPermissionId, ForgeRestrictedStationPermissionId },
+                specializationIds: new[] { WeaponsmithSpecializationId },
+                formalRecognition: true,
+                durationHours: 8760d,
+                expiration: CredentialExpirationPolicy.FixedDuration,
+                renewal: CredentialRenewalPolicy.RenewWithRecentExperience,
+                policyId: AccessPublicId));
             return definitions;
         }
 
@@ -312,6 +402,76 @@ namespace UnityIsekaiGame.Professions
             ProfessionalActivityDefinition definition = ScriptableObject.CreateInstance<ProfessionalActivityDefinition>();
             definition.name = name.Replace(" ", string.Empty);
             definition.DevelopmentConfigure(id, name, category, professionIds, sourceTypes, specializationIds, supervision, independent, credit, failureCredit, repetition, minQuality, minDifficulty, tags, accessPolicy);
+            return definition;
+        }
+
+        private static CredentialDefinition Credential(
+            string id,
+            string name,
+            CredentialCategory category,
+            string[] professionIds,
+            string[] issuerIds,
+            CredentialIssuerAuthorityKind[] issuerKinds,
+            string[] trainingProgramIds = null,
+            ProfessionalExperienceRequirementData experience = null,
+            string[] examinationDefinitionIds = null,
+            string[] permissions = null,
+            string[] specializationIds = null,
+            bool formalRecognition = false,
+            double durationHours = 0d,
+            CredentialExpirationPolicy expiration = CredentialExpirationPolicy.NeverExpires,
+            CredentialRenewalPolicy renewal = CredentialRenewalPolicy.NotRenewable,
+            string policyId = AccessPublicId)
+        {
+            CredentialDefinition definition = ScriptableObject.CreateInstance<CredentialDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(
+                id,
+                name,
+                category,
+                professionIds,
+                issuerIds,
+                issuerKinds,
+                trainingProgramIds,
+                experience,
+                examinationDefinitionIds,
+                permissions,
+                specializationIds,
+                formalRecognition,
+                durationHours,
+                expiration,
+                renewal,
+                policyId: policyId);
+            return definition;
+        }
+
+        private static CredentialExaminationDefinition Examination(
+            string id,
+            string name,
+            string[] credentialDefinitionIds,
+            CredentialAssessmentCategory category,
+            int passingScore,
+            int attemptLimit,
+            string[] evaluatorAuthorityIds,
+            string[] knowledgeSubjects = null,
+            string[] skillOrCapabilityIds = null,
+            string[] practicalActivityIds = null,
+            string policyId = AccessPublicId)
+        {
+            CredentialExaminationDefinition definition = ScriptableObject.CreateInstance<CredentialExaminationDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(
+                id,
+                name,
+                credentialDefinitionIds,
+                category,
+                passingScore,
+                attemptLimit,
+                evaluatorAuthorityIds,
+                knowledgeSubjects,
+                skillOrCapabilityIds,
+                practicalActivityIds,
+                policyId);
             return definition;
         }
 
