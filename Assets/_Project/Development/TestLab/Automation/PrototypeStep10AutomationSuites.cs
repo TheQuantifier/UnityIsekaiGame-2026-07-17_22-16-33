@@ -28,6 +28,7 @@ namespace UnityIsekaiGame.Development.Automation
             registry.TryRegister(BuildProfessionalActivityExperienceSuite(), out _);
             registry.TryRegister(BuildQualificationsCredentialsCertificationSuite(), out _);
             registry.TryRegister(BuildProfessionalRanksMasterySpecializationsSuite(), out _);
+            registry.TryRegister(BuildPositionsDutiesEmploymentFoundationsSuite(), out _);
         }
 
         private static ITestLabAutomationSuite BuildProfessionIdentitySuite()
@@ -309,6 +310,226 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeProfessionDefinitionFactory.WeaponsmithRankLadderId,
                     PrototypeProfessionDefinitionFactory.WeaponsmithMasteryId
                 });
+        }
+
+        private static ITestLabAutomationSuite BuildPositionsDutiesEmploymentFoundationsSuite()
+        {
+            return new TestLabAutomationSuite(
+                "feature.10.7.positions-duties-employment-foundations",
+                "Feature 10.7 Positions, Duties, and Employment Foundations",
+                "10.7",
+                "Position definitions, exact organization positions, employment records, duties, authority, lifecycle, access, and persistence automation.",
+                1070,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "PositionEmploymentRuntime", "PositionDefinition", "DutyDefinition", "ProfessionalRankRuntime", "CredentialRuntime", "ProfessionalActivityRuntime" },
+                scenarios: new ITestLabAutomationScenario[]
+                {
+                    PositionScenario("definitions-and-vacancies", "Position and duty definitions validate and vacant fixtures are created", 10, Step("step10-position-definitions", PositionDefinitionsAndVacancies)),
+                    PositionScenario("eligibility-applications-appointments", "Eligibility, application, offer, acceptance, and direct appointment are integrated", 20, Step("step10-position-appointment", PositionEligibilityApplicationsAppointments)),
+                    PositionScenario("capacity-conflicts-duties-authority", "Capacity, conflicts, duties, activity evidence, and authority are enforced", 30, Step("step10-position-duties", PositionCapacityConflictsDutiesAuthority)),
+                    PositionScenario("reporting-lifecycle-persistence", "Reporting, lifecycle, projections, and persistence are safe", 40, Step("step10-position-persistence", PositionReportingLifecyclePersistence))
+                });
+        }
+
+        private static ITestLabAutomationScenario PositionScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                order <= 20 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
+                includeInQuickRun: order <= 20,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
+                requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeProfessionDefinitionFactory.RoyalForgeSeniorSmithPositionId,
+                    PrototypeProfessionDefinitionFactory.GuildClerkPositionId,
+                    PrototypeProfessionDefinitionFactory.ApprenticeSupervisorPositionId,
+                    PrototypeProfessionDefinitionFactory.SeniorSmithCraftDutyId,
+                    PrototypeProfessionDefinitionFactory.GuildClerkRecordDutyId
+                });
+        }
+
+        private static TestLabAutomationStepResult PositionDefinitionsAndVacancies(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (IGameDefinition definition in PrototypeProfessionDefinitionFactory.CreateDefinitions().OfType<IGameDefinition>())
+            {
+                if (definition is IDefinitionCatalogValidationParticipant participant)
+                {
+                    participant.ValidateCatalogDefinition(runtimes.DefinitionRegistry.DefinitionsById, report);
+                }
+            }
+
+            bool senior = runtimes.DefinitionRegistry.TryGet(PrototypeProfessionDefinitionFactory.RoyalForgeSeniorSmithPositionId, out PositionDefinition seniorDefinition);
+            bool clerk = runtimes.DefinitionRegistry.TryGet(PrototypeProfessionDefinitionFactory.GuildClerkPositionId, out PositionDefinition clerkDefinition);
+            bool duty = runtimes.DefinitionRegistry.TryGet(PrototypeProfessionDefinitionFactory.SeniorSmithCraftDutyId, out DutyDefinition craftDuty);
+            PositionEmploymentOperationResult vacant = CreatePosition(context, "vacant-senior", PrototypeProfessionDefinitionFactory.RoyalForgeSeniorSmithPositionId, "organization.prototype.royal-forge", PrototypeProfessionDefinitionFactory.ForgeOrganizationTypeId, 1);
+            PositionEmploymentOperationResult shared = CreatePosition(context, "vacant-clerk", PrototypeProfessionDefinitionFactory.GuildClerkPositionId, "organization.prototype.guild", PrototypeProfessionDefinitionFactory.GuildOrganizationTypeId, 2);
+
+            bool valid = report.ErrorCount == 0
+                && report.WarningCount == 0
+                && senior
+                && clerk
+                && duty
+                && seniorDefinition != null
+                && seniorDefinition.RequiredRankDefinitionIds.Contains(PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId)
+                && seniorDefinition.RequiredCredentialDefinitionIds.Contains(PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId)
+                && seniorDefinition.RequiredTrainingProgramIds.Contains(PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId)
+                && seniorDefinition.ExperienceRequirement.minimumValidatedActivities >= 2
+                && clerkDefinition != null
+                && clerkDefinition.SharedPositionAllowed
+                && craftDuty != null
+                && craftDuty.PositionDefinitionId == PrototypeProfessionDefinitionFactory.RoyalForgeSeniorSmithPositionId
+                && vacant.Succeeded
+                && vacant.Position?.state == PositionInstanceState.Vacant
+                && shared.Succeeded
+                && shared.Position?.maximumHolders == 2;
+            return TestLabAssertions.True("step10-position-definitions", "Position and duty definitions validate and vacant position fixtures are created", valid, $"Errors={report.ErrorCount} Warnings={report.WarningCount} Senior={senior} Clerk={clerk} Duty={duty} Vacant={vacant.Status} Shared={shared.Status}");
+        }
+
+        private static TestLabAutomationStepResult PositionEligibilityApplicationsAppointments(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            PositionEmploymentRuntime runtime = runtimes.PositionEmployment;
+            PositionEmploymentOperationResult position = CreatePosition(context, "appointment-senior", PrototypeProfessionDefinitionFactory.RoyalForgeSeniorSmithPositionId, "organization.prototype.royal-forge", PrototypeProfessionDefinitionFactory.ForgeOrganizationTypeId, 1);
+            long beforeEligibilityRevision = runtime.Revision;
+            PositionEligibilityResult before = runtime.EvaluateEligibility(runtimes.PersonId, position.Position?.positionInstanceId, perceived: true, privilegedDiagnostics: false);
+            bool noEligibilityMutation = beforeEligibilityRevision == runtime.Revision;
+            EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, "position-appointment");
+            EnsureGuildLicense(context, "position-appointment");
+            PositionEligibilityResult authoritative = runtime.EvaluateEligibility(runtimes.PersonId, position.Position?.positionInstanceId, privilegedDiagnostics: true);
+            PositionEligibilityResult perceived = runtime.EvaluateEligibility(runtimes.PersonId, position.Position?.positionInstanceId, perceived: true, privilegedDiagnostics: false);
+            PositionEmploymentOperationResult apply = runtime.SubmitApplication(context.ScenarioContext.ScopedId("position-application", "senior"), runtimes.PersonId, position.Position?.positionInstanceId, authoritative.Snapshot, "100", context.ScenarioContext.ScopedId("position-tx", "apply"));
+            PositionEmploymentOperationResult offer = runtime.OfferPosition(apply.Application?.requestId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId, "101", context.ScenarioContext.ScopedId("position-tx", "offer"));
+            PositionEmploymentOperationResult accept = runtime.AcceptOffer(apply.Application?.requestId, runtimes.PersonId, "102", context.ScenarioContext.ScopedId("position-tx", "accept"));
+            PositionEmploymentOperationResult staleAppointment = runtime.AppointPerson(context.ScenarioContext.ScopedId("employment", "stale"), apply.Application?.requestId, runtimes.PersonId, position.Position?.positionInstanceId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId, authoritative.Snapshot, "103", context.ScenarioContext.ScopedId("position-tx", "stale"));
+            PositionEligibilityResult currentEligibility = runtime.EvaluateEligibility(runtimes.PersonId, position.Position?.positionInstanceId, privilegedDiagnostics: true);
+            PositionEligibilitySnapshotData tampered = currentEligibility.Snapshot.Clone();
+            tampered.evaluationHash = "stale";
+            PositionEmploymentOperationResult tamperedAppointment = runtime.AppointPerson(context.ScenarioContext.ScopedId("employment", "tampered"), apply.Application?.requestId, runtimes.PersonId, position.Position?.positionInstanceId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId, tampered, "104", context.ScenarioContext.ScopedId("position-tx", "tampered"));
+            PositionEmploymentOperationResult unauthorized = runtime.AppointPerson(context.ScenarioContext.ScopedId("employment", "unauthorized"), apply.Application?.requestId, runtimes.PersonId, position.Position?.positionInstanceId, "authority.bad", currentEligibility.Snapshot, "105", context.ScenarioContext.ScopedId("position-tx", "unauthorized"));
+            PositionEmploymentOperationResult appoint = runtime.AppointPerson(context.ScenarioContext.ScopedId("employment", "senior"), apply.Application?.requestId, runtimes.PersonId, position.Position?.positionInstanceId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId, currentEligibility.Snapshot, "106", context.ScenarioContext.ScopedId("position-tx", "appoint"));
+
+            bool boundaries = runtimes.Professions.QueryByProfession(PrototypeProfessionDefinitionFactory.BlacksmithProfessionId).Count == 1
+                && runtimes.Credentials.QueryByRecipient(runtimes.PersonId, activeOnly: true).Any()
+                && runtimes.ProfessionalRanks.QueryByPerson(runtimes.PersonId, currentOnly: true).Any()
+                && runtimes.Knowledge.KnowledgeRevision == 0;
+            bool valid = position.Succeeded
+                && !before.AuthoritativeEligible
+                && noEligibilityMutation
+                && authoritative.AuthoritativeEligible
+                && perceived.PerceivedEligible
+                && apply.Succeeded
+                && offer.Succeeded
+                && accept.Succeeded
+                && !staleAppointment.Succeeded
+                && staleAppointment.Status == PositionEmploymentOperationStatus.StaleEvaluation
+                && !tamperedAppointment.Succeeded
+                && tamperedAppointment.Status == PositionEmploymentOperationStatus.StaleEvaluation
+                && !unauthorized.Succeeded
+                && unauthorized.Status == PositionEmploymentOperationStatus.UnauthorizedAuthority
+                && appoint.Succeeded
+                && appoint.Employment?.state == EmploymentState.Active
+                && boundaries;
+            return TestLabAssertions.True("step10-position-appointment", "Eligibility, applications, offers, acceptance, stale checks, authority, and employment boundaries are integrated", valid, $"Before={before.AuthoritativeEligible} Auth={authoritative.AuthoritativeEligible} Perceived={perceived.PerceivedEligible} Apply={apply.Status} Offer={offer.Status} Accept={accept.Status} Stale={staleAppointment.Status} Tampered={tamperedAppointment.Status} Unauthorized={unauthorized.Status} Appoint={appoint.Status} Rev={beforeEligibilityRevision}->{runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult PositionCapacityConflictsDutiesAuthority(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            PositionEmploymentRuntime runtime = runtimes.PositionEmployment;
+            EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, "position-duty");
+            EnsureGuildLicense(context, "position-duty");
+            PositionEmploymentOperationResult senior = AppointEligiblePerson(context, "duty-senior", PrototypeProfessionDefinitionFactory.RoyalForgeSeniorSmithPositionId, "organization.prototype.royal-forge", PrototypeProfessionDefinitionFactory.ForgeOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId);
+            PositionEmploymentOperationResult overflow = AppointEligiblePerson(context, "duty-overflow", PrototypeProfessionDefinitionFactory.RoyalForgeSeniorSmithPositionId, "organization.prototype.royal-forge", PrototypeProfessionDefinitionFactory.ForgeOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId);
+            PositionEmploymentOperationResult clerk = AppointEligiblePerson(context, "duty-clerk", PrototypeProfessionDefinitionFactory.GuildClerkPositionId, "organization.prototype.guild", PrototypeProfessionDefinitionFactory.GuildOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionRestrictedRecordsAuthorityId);
+            PositionEmploymentOperationResult duplicateSamePosition = runtime.AppointPerson(context.ScenarioContext.ScopedId("employment", "duplicate-holder"), string.Empty, runtimes.PersonId, senior.Position?.positionInstanceId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId, runtime.EvaluateEligibility(runtimes.PersonId, senior.Position?.positionInstanceId, privilegedDiagnostics: true).Snapshot, "130", context.ScenarioContext.ScopedId("position-tx", "duplicate-holder"));
+            PositionEmploymentOperationResult duty = runtime.AssignDuty(context.ScenarioContext.ScopedId("position-duty", "craft"), senior.Employment?.employmentId, PrototypeProfessionDefinitionFactory.SeniorSmithCraftDutyId, "131", context.ScenarioContext.ScopedId("position-tx", "assign-duty"));
+            ProfessionalActivityOperationResult activity = runtimes.ProfessionalActivities.RegisterAndValidateActivity(
+                ActivityRequest(context, "position-duty-craft", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ActivityCustomSource(context, ProfessionalActivitySourceType.CraftingOperation, "position-duty-craft", "production.activity.forging"), ProfessionalResponsibilityLevel.IndependentPractitioner),
+                context.ScenarioContext.ScopedId("professional-evidence", "position-duty-craft"),
+                "authority.guild.prototype",
+                context.ScenarioContext.ScopedId("professional-tx", "position-duty-craft"));
+            PositionEmploymentOperationResult complete = runtime.CompleteDutyWithEvidence(duty.Duty?.assignmentId, new[] { activity.Evidence?.evidenceId }, "132", context.ScenarioContext.ScopedId("position-tx", "complete-duty"));
+            PositionEmploymentOperationResult superviseDuty = runtime.AssignDuty(context.ScenarioContext.ScopedId("position-duty", "supervise"), senior.Employment?.employmentId, PrototypeProfessionDefinitionFactory.SeniorSmithSuperviseDutyId, "133", context.ScenarioContext.ScopedId("position-tx", "assign-supervise"));
+            PositionEmploymentOperationResult delegated = runtime.DelegateDuty(superviseDuty.Duty?.assignmentId, runtimes.PersonId, runtimes.PersonId, "134", context.ScenarioContext.ScopedId("position-tx", "delegate-duty"));
+            bool authorityActive = runtime.HasActiveAuthority(runtimes.PersonId, "organization.prototype.royal-forge", PrototypeProfessionDefinitionFactory.PositionSuperviseAuthorityId);
+            PositionEmploymentOperationResult suspended = runtime.SuspendEmployment(senior.Employment?.employmentId, "135", context.ScenarioContext.ScopedId("position-tx", "suspend"));
+            bool authoritySuspended = runtime.HasActiveAuthority(runtimes.PersonId, "organization.prototype.royal-forge", PrototypeProfessionDefinitionFactory.PositionSuperviseAuthorityId);
+            PositionEmploymentOperationResult reinstated = runtime.ReinstateEmployment(senior.Employment?.employmentId, "136", context.ScenarioContext.ScopedId("position-tx", "reinstate"));
+            bool authorityReinstated = runtime.HasActiveAuthority(runtimes.PersonId, "organization.prototype.royal-forge", PrototypeProfessionDefinitionFactory.PositionSuperviseAuthorityId);
+
+            bool valid = senior.Succeeded
+                && !overflow.Succeeded
+                && (overflow.Status == PositionEmploymentOperationStatus.CapacityExceeded || overflow.Status == PositionEmploymentOperationStatus.EmploymentConflict || overflow.Status == PositionEmploymentOperationStatus.MissingRequirement || overflow.Status == PositionEmploymentOperationStatus.StaleEvaluation)
+                && clerk.Succeeded
+                && !duplicateSamePosition.Succeeded
+                && duty.Succeeded
+                && activity.Succeeded
+                && complete.Succeeded
+                && complete.Duty?.state == DutyAssignmentState.Completed
+                && delegated.Succeeded
+                && authorityActive
+                && suspended.Succeeded
+                && !authoritySuspended
+                && reinstated.Succeeded
+                && authorityReinstated;
+            return TestLabAssertions.True("step10-position-duties", "Capacity, conflicts, duties, real activity evidence, delegation, and active-state authority are enforced", valid, $"Senior={senior.Status} Overflow={overflow.Status} Clerk={clerk.Status} Duplicate={duplicateSamePosition.Status} Duty={duty.Status} Activity={activity.Status} Complete={complete.Status} Delegate={delegated.Status} Authority={authorityActive}/{authoritySuspended}/{authorityReinstated}");
+        }
+
+        private static TestLabAutomationStepResult PositionReportingLifecyclePersistence(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            PositionEmploymentRuntime runtime = runtimes.PositionEmployment;
+            EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankMasterId, "position-persistence");
+            EnsureGuildLicense(context, "position-persistence");
+            PositionEmploymentOperationResult supervisor = AppointEligiblePerson(context, "persistence-supervisor", PrototypeProfessionDefinitionFactory.ApprenticeSupervisorPositionId, "organization.prototype.guild", PrototypeProfessionDefinitionFactory.GuildOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId);
+            PositionEmploymentOperationResult clerk = AppointEligiblePerson(context, "persistence-clerk", PrototypeProfessionDefinitionFactory.GuildClerkPositionId, "organization.prototype.guild", PrototypeProfessionDefinitionFactory.GuildOrganizationTypeId, PrototypeProfessionDefinitionFactory.PositionRestrictedRecordsAuthorityId);
+            PositionEmploymentOperationResult assignSupervisor = runtime.AssignSupervisor(clerk.Position?.positionInstanceId, supervisor.Position?.positionInstanceId, context.ScenarioContext.ScopedId("position-tx", "supervisor"));
+            PositionEmploymentOperationResult cycle = runtime.AssignSupervisor(supervisor.Position?.positionInstanceId, clerk.Position?.positionInstanceId, context.ScenarioContext.ScopedId("position-tx", "cycle"));
+            PositionEmploymentOperationResult secretDuty = runtime.AssignDuty(context.ScenarioContext.ScopedId("position-duty", "secret-records"), clerk.Employment?.employmentId, PrototypeProfessionDefinitionFactory.GuildClerkRecordDutyId, "149", context.ScenarioContext.ScopedId("position-tx", "secret-duty"));
+            PositionEmploymentProjection<DutyAssignmentData> publicProjection = runtime.ProjectDuty(secretDuty.Duty?.assignmentId, PositionEmploymentProjectionAudience.Public, null);
+            PositionEmploymentOperationResult resign = runtime.Resign(clerk.Employment?.employmentId, "150", context.ScenarioContext.ScopedId("position-tx", "resign"));
+            bool authorityEnded = runtime.HasActiveAuthority(runtimes.PersonId, "organization.prototype.guild", PrototypeProfessionDefinitionFactory.PositionRestrictedRecordsAuthorityId);
+            PositionEmploymentOperationResult close = runtime.ClosePosition(clerk.Position?.positionInstanceId, "151", context.ScenarioContext.ScopedId("position-tx", "close"), forceEndActiveEmployment: true);
+            PositionEmploymentRuntimeSaveData save = runtime.CreateSaveData();
+            PositionEmploymentRuntime restored = new PositionEmploymentRuntime();
+            PositionEmploymentOperationResult restore = restored.RestoreFromSaveData(save, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.KnownPersonIds, new[] { "organization.prototype.guild", "organization.prototype.royal-forge" }, new[] { "authority.guild.prototype", PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId, PrototypeProfessionDefinitionFactory.PositionSuperviseAuthorityId }, restoring: true);
+            PositionEmploymentRuntimeSaveData corrupt = save.Clone();
+            corrupt.employments[0].personId = "person.missing";
+            int beforeCount = restored.EmploymentCount;
+            long beforeRevision = restored.Revision;
+            PositionEmploymentOperationResult rejected = restored.RestoreFromSaveData(corrupt, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.KnownPersonIds, new[] { "organization.prototype.guild", "organization.prototype.royal-forge" }, new[] { "authority.guild.prototype", PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId, PrototypeProfessionDefinitionFactory.PositionSuperviseAuthorityId }, restoring: true);
+            PositionEmploymentOperationResult legacyEmpty = new PositionEmploymentRuntime().RestoreFromSaveData(null, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.KnownPersonIds, Array.Empty<string>(), Array.Empty<string>(), restoring: true);
+
+            bool valid = supervisor.Succeeded
+                && clerk.Succeeded
+                && assignSupervisor.Succeeded
+                && !cycle.Succeeded
+                && cycle.Status == PositionEmploymentOperationStatus.ReportingCycle
+                && secretDuty.Succeeded
+                && publicProjection.Record != null
+                && publicProjection.Redacted
+                && resign.Succeeded
+                && !authorityEnded
+                && close.Succeeded
+                && close.Position?.state == PositionInstanceState.Closed
+                && restore.Succeeded
+                && restored.EmploymentCount == save.employments.Count
+                && restored.PositionCount == save.positions.Count
+                && restored.HistoryHooks.Count == 0
+                && !rejected.Succeeded
+                && restored.EmploymentCount == beforeCount
+                && restored.Revision == beforeRevision
+                && legacyEmpty.Succeeded;
+            return TestLabAssertions.True("step10-position-persistence", "Reporting, lifecycle transitions, redacted projections, and persistence restore safely", valid, $"Supervisor={supervisor.Status} Clerk={clerk.Status} Assign={assignSupervisor.Status} Cycle={cycle.Status} ProjectionRedacted={publicProjection.Redacted} Resign={resign.Status} Close={close.Status} Restore={restore.Status} Reject={rejected.Status} Legacy={legacyEmpty.Status}");
         }
 
         private static TestLabAutomationStepResult RankDefinitionsLadders(TestLabAutomationContext context)
@@ -1099,6 +1320,37 @@ namespace UnityIsekaiGame.Development.Automation
                 && context.ScenarioContext.Runtimes.History.HistoryRevision == 0L
                 && runtime.HistoryHooks.Count >= 1;
             return TestLabAssertions.True("step10-profession-boundary", "Profession identity does not grant skills or capabilities", valid, $"Knowledge={knowledgeRevision}->{context.ScenarioContext.Runtimes.Knowledge.KnowledgeRevision} Access={accessRevision}->{context.ScenarioContext.Runtimes.Access.AccessRevision} History={context.ScenarioContext.Runtimes.History.HistoryRevision} Hooks={runtime.HistoryHooks.Count}");
+        }
+
+        private static PositionEmploymentOperationResult CreatePosition(TestLabAutomationContext context, string slug, string positionDefinitionId, string organizationId, string organizationTypeId, int maxHolders)
+        {
+            return context.ScenarioContext.Runtimes.PositionEmployment.CreatePosition(new PositionInstanceData
+            {
+                positionInstanceId = context.ScenarioContext.ScopedId("position-instance", slug),
+                positionDefinitionId = positionDefinitionId,
+                organizationId = organizationId,
+                organizationTypeId = organizationTypeId,
+                state = PositionInstanceState.Vacant,
+                maximumHolders = Math.Max(1, maxHolders),
+                vacancyAllowed = true,
+                createdWorldTime = context.ScenarioContext.ScopedId("position-time", $"{slug}-created"),
+                accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId,
+                provenance = "test-lab"
+            }, context.ScenarioContext.ScopedId("position-tx", $"{slug}-create"));
+        }
+
+        private static PositionEmploymentOperationResult AppointEligiblePerson(TestLabAutomationContext context, string slug, string positionDefinitionId, string organizationId, string organizationTypeId, string authorityId, EmploymentClassification? classification = null)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            PositionEmploymentOperationResult position = CreatePosition(context, slug, positionDefinitionId, organizationId, organizationTypeId, positionDefinitionId == PrototypeProfessionDefinitionFactory.GuildClerkPositionId ? 2 : 1);
+            if (!position.Succeeded && !position.Duplicate)
+            {
+                return position;
+            }
+
+            string positionInstanceId = position.Position?.positionInstanceId ?? context.ScenarioContext.ScopedId("position-instance", slug);
+            PositionEligibilityResult eligibility = runtimes.PositionEmployment.EvaluateEligibility(runtimes.PersonId, positionInstanceId, privilegedDiagnostics: true);
+            return runtimes.PositionEmployment.AppointPerson(context.ScenarioContext.ScopedId("employment", slug), string.Empty, runtimes.PersonId, positionInstanceId, authorityId, eligibility.Snapshot, context.ScenarioContext.ScopedId("position-time", $"{slug}-appoint"), context.ScenarioContext.ScopedId("position-tx", $"{slug}-appoint"), classification);
         }
 
         private static TestLabAutomationStepResult EligibilityPreview(TestLabAutomationContext context)

@@ -923,4 +923,203 @@ namespace UnityIsekaiGame.Professions
         RankReplaced = 14,
         RankCorrected = 15
     }
+
+    public enum PositionCategory
+    {
+        Custom = 0,
+        Worker = 1,
+        Specialist = 2,
+        Supervisor = 3,
+        Manager = 4,
+        Executive = 5,
+        Officer = 6,
+        Administrator = 7,
+        Instructor = 8,
+        Researcher = 9,
+        Military = 10,
+        Religious = 11,
+        Government = 12,
+        Guild = 13,
+        Contractor = 14,
+        Volunteer = 15,
+        ElectedOfficeFoundation = 16,
+        AppointedOffice = 17
+    }
+
+    public enum DutyCategory
+    {
+        Custom = 0,
+        Production = 1,
+        Crafting = 2,
+        Repair = 3,
+        Service = 4,
+        Teaching = 5,
+        Supervision = 6,
+        Administration = 7,
+        Security = 8,
+        Combat = 9,
+        Medical = 10,
+        Research = 11,
+        Inspection = 12,
+        Recordkeeping = 13,
+        CustomerInteraction = 14,
+        QuestRequestFoundation = 15
+    }
+
+    public enum EmploymentClassification
+    {
+        Custom = 0,
+        Permanent = 1,
+        Temporary = 2,
+        ContractFoundation = 3,
+        PartTime = 4,
+        FullTime = 5,
+        Seasonal = 6,
+        ApprenticeEmployment = 7,
+        Volunteer = 8,
+        Appointed = 9,
+        ElectedFoundation = 10,
+        MilitaryService = 11,
+        ReligiousService = 12,
+        IndependentServiceFoundation = 13
+    }
+
+    public enum PositionInstanceState
+    {
+        Planned = 0,
+        Vacant = 1,
+        RecruitingFoundation = 2,
+        Filled = 3,
+        PartiallyFilled = 4,
+        Suspended = 5,
+        Frozen = 6,
+        Closed = 7,
+        Abolished = 8,
+        Invalid = 9,
+        Custom = 10
+    }
+
+    public enum EmploymentState
+    {
+        Proposed = 0,
+        Applied = 1,
+        Offered = 2,
+        Accepted = 3,
+        Active = 4,
+        Probationary = 5,
+        OnLeaveFoundation = 6,
+        Suspended = 7,
+        Resigned = 8,
+        Dismissed = 9,
+        LaidOffFoundation = 10,
+        ContractEnded = 11,
+        Retired = 12,
+        DeceasedFoundation = 13,
+        Former = 14,
+        Cancelled = 15,
+        Invalid = 16,
+        Custom = 17
+    }
+
+    public enum PositionRequestType
+    {
+        Application = 0,
+        DirectAppointment = 1,
+        PromotionFoundation = 2,
+        Transfer = 3,
+        TemporaryAssignment = 4,
+        VolunteerAssignment = 5,
+        ElectionResultFoundation = 6,
+        Custom = 7
+    }
+
+    public enum PositionRequestState
+    {
+        Draft = 0,
+        Submitted = 1,
+        UnderReview = 2,
+        Offered = 3,
+        Accepted = 4,
+        Approved = 5,
+        Rejected = 6,
+        Withdrawn = 7,
+        Expired = 8,
+        Cancelled = 9,
+        Invalid = 10,
+        Custom = 11
+    }
+
+    public enum DutyAssignmentState
+    {
+        Assigned = 0,
+        Active = 1,
+        Completed = 2,
+        Failed = 3,
+        NeglectedFoundation = 4,
+        Delegated = 5,
+        Suspended = 6,
+        Cancelled = 7,
+        Archived = 8,
+        Custom = 9
+    }
+
+    public enum PositionEmploymentOperationStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        Duplicate = 2,
+        MissingDefinition = 3,
+        MissingPerson = 4,
+        MissingOrganization = 5,
+        MissingPosition = 6,
+        MissingEmployment = 7,
+        MissingApplication = 8,
+        MissingDuty = 9,
+        MissingRequirement = 10,
+        UnauthorizedAuthority = 11,
+        StaleEvaluation = 12,
+        InvalidRequest = 13,
+        InvalidState = 14,
+        InvalidTransition = 15,
+        CapacityExceeded = 16,
+        EmploymentConflict = 17,
+        ReportingCycle = 18,
+        ValidationFailed = 19,
+        CorruptSave = 20
+    }
+
+    public enum PositionEmploymentProjectionAudience
+    {
+        Employee = 0,
+        Applicant = 1,
+        Supervisor = 2,
+        Employer = 3,
+        OrganizationMember = 4,
+        ProfessionAuthority = 5,
+        Public = 6,
+        PersonKnown = 7,
+        PersonBelieved = 8,
+        PrivilegedDebug = 9,
+        Redacted = 10
+    }
+
+    public enum PositionEmploymentHistoryHookKind
+    {
+        Unknown = 0,
+        PositionCreated = 1,
+        PersonApplied = 2,
+        OfferMade = 3,
+        PersonAppointed = 4,
+        EmploymentBegan = 5,
+        DutyAssigned = 6,
+        PersonTransferred = 7,
+        EmploymentSuspended = 8,
+        PersonResigned = 9,
+        PersonDismissed = 10,
+        PersonRetired = 11,
+        PositionClosed = 12,
+        SecretPositionRevealed = 13,
+        EmploymentDisputed = 14,
+        Corrected = 15
+    }
 }
