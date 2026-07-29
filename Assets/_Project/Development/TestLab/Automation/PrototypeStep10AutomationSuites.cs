@@ -26,6 +26,7 @@ namespace UnityIsekaiGame.Development.Automation
             registry.TryRegister(BuildProfessionalEligibilityEntrySuite(), out _);
             registry.TryRegister(BuildEducationTrainingApprenticeshipSuite(), out _);
             registry.TryRegister(BuildProfessionalActivityExperienceSuite(), out _);
+            registry.TryRegister(BuildQualificationsCredentialsCertificationSuite(), out _);
         }
 
         private static ITestLabAutomationSuite BuildProfessionIdentitySuite()
@@ -216,6 +217,210 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeProfessionDefinitionFactory.BlacksmithTeachingActivityDefinitionId,
                     PrototypeProfessionDefinitionFactory.BlacksmithExperimentationActivityDefinitionId
                 });
+        }
+
+        private static ITestLabAutomationSuite BuildQualificationsCredentialsCertificationSuite()
+        {
+            return new TestLabAutomationSuite(
+                "feature.10.5.qualifications-credentials-certification",
+                "Feature 10.5 Qualifications, Credentials, and Certification",
+                "10.5",
+                "Credential qualification, application, examination, issuing authority, lifecycle, access, and persistence automation.",
+                1050,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "CredentialRuntime", "CredentialDefinition", "CredentialExaminationDefinition", "PersonProfessionRuntime", "TrainingRuntime", "ProfessionalActivityRuntime" },
+                scenarios: new ITestLabAutomationScenario[]
+                {
+                    CredentialScenario("definitions-and-qualification", "Credential definitions resolve and qualification evaluates without mutation", 10, Step("step10-credential-qualification", CredentialDefinitionsAndQualification)),
+                    CredentialScenario("application-examination-issuance", "Applications, examinations, and issuance produce authoritative credentials", 20, Step("step10-credential-issue", CredentialApplicationExaminationIssuance)),
+                    CredentialScenario("stale-unauthorized-forgery", "Unauthorized issuers, stale qualifications, and forged claims are rejected safely", 30, Step("step10-credential-boundaries", CredentialStaleUnauthorizedForgery)),
+                    CredentialScenario("lifecycle-permissions", "Expiration, suspension, reinstatement, revocation, and renewal affect permissions", 40, Step("step10-credential-lifecycle", CredentialLifecyclePermissions)),
+                    CredentialScenario("access-persistence", "Credential projections redact and persistence restores atomically", 50, Step("step10-credential-persistence", CredentialAccessPersistence))
+                });
+        }
+
+        private static ITestLabAutomationScenario CredentialScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                order <= 20 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
+                includeInQuickRun: order <= 20,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
+                requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithPracticalExaminationId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithWrittenExaminationId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithSupervisedPracticeActivityDefinitionId
+                });
+        }
+
+        private static TestLabAutomationStepResult CredentialDefinitionsAndQualification(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (IGameDefinition definition in PrototypeProfessionDefinitionFactory.CreateDefinitions().OfType<IGameDefinition>())
+            {
+                if (definition is IDefinitionCatalogValidationParticipant participant)
+                {
+                    participant.ValidateCatalogDefinition(runtimes.DefinitionRegistry.DefinitionsById, report);
+                }
+            }
+
+            long professionRevision = runtimes.Professions.Revision;
+            long trainingRevision = runtimes.Training.Revision;
+            long activityRevision = runtimes.ProfessionalActivities.Revision;
+            long credentialRevision = runtimes.Credentials.Revision;
+            CredentialQualificationResult before = runtimes.Credentials.EvaluateQualification(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, privilegedDiagnostics: true);
+            bool nonMutatingInitial = runtimes.Professions.Revision == professionRevision
+                && runtimes.Training.Revision == trainingRevision
+                && runtimes.ProfessionalActivities.Revision == activityRevision
+                && runtimes.Credentials.Revision == credentialRevision;
+
+            EnsureBlacksmithCredentialFoundation(context, "qualification");
+            CredentialQualificationResult afterFoundation = runtimes.Credentials.EvaluateQualification(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, privilegedDiagnostics: true);
+            RecordCredentialExam(context, "qualification", PrototypeProfessionDefinitionFactory.BlacksmithPracticalExaminationId, 820);
+            CredentialQualificationResult qualified = runtimes.Credentials.EvaluateQualification(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, privilegedDiagnostics: true);
+
+            bool valid = report.ErrorCount == 0
+                && report.WarningCount == 0
+                && !before.AuthoritativeQualified
+                && !afterFoundation.AuthoritativeQualified
+                && afterFoundation.BlockingFailures.Contains($"examination:{PrototypeProfessionDefinitionFactory.BlacksmithPracticalExaminationId}")
+                && qualified.AuthoritativeQualified
+                && nonMutatingInitial;
+            return TestLabAssertions.True("step10-credential-qualification", "Credential definitions resolve and qualification evaluates without mutation", valid, $"Errors={report.ErrorCount} Warnings={report.WarningCount} Before={before.AuthoritativeQualified} AfterFoundation={afterFoundation.AuthoritativeQualified} Qualified={qualified.AuthoritativeQualified} NonMutating={nonMutatingInitial}");
+        }
+
+        private static TestLabAutomationStepResult CredentialApplicationExaminationIssuance(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithCredentialFoundation(context, "issue");
+            CredentialOperationResult exam = RecordCredentialExam(context, "issue", PrototypeProfessionDefinitionFactory.BlacksmithPracticalExaminationId, 850);
+            CredentialQualificationResult qualification = runtimes.Credentials.EvaluateQualification(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId);
+            CredentialOperationResult apply = runtimes.Credentials.SubmitApplication(context.ScenarioContext.ScopedId("credential-application", "issue"), runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, GuildIssuer(), qualification.Snapshot, "30", context.ScenarioContext.ScopedId("credential-tx", "apply"));
+            CredentialOperationResult approve = runtimes.Credentials.ApproveApplication(apply.Application?.applicationId, "authority.guild.prototype", qualification.Snapshot, "31", context.ScenarioContext.ScopedId("credential-tx", "approve"));
+            CredentialOperationResult issue = runtimes.Credentials.IssueCredential(context.ScenarioContext.ScopedId("credential-record", "issue"), PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, runtimes.PersonId, GuildIssuer(), apply.Application?.applicationId, exam.ExaminationAttempt?.attemptId, context.ScenarioContext.ScopedId("registration", "issue"), qualification.Snapshot, "32", context.ScenarioContext.ScopedId("credential-tx", "issue"));
+            bool permission = runtimes.Credentials.HasActivePermission(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithPracticePermissionId);
+
+            bool valid = exam.Succeeded
+                && qualification.AuthoritativeQualified
+                && apply.Succeeded
+                && approve.Succeeded
+                && issue.Succeeded
+                && issue.Credential?.authenticityState == CredentialAuthenticityState.Authoritative
+                && permission
+                && runtimes.Professions.QueryByProfession(PrototypeProfessionDefinitionFactory.BlacksmithProfessionId).Count == 1;
+            return TestLabAssertions.True("step10-credential-issue", "Applications, examinations, and issuance produce authoritative credentials", valid, $"Exam={exam.Status} Qualified={qualification.AuthoritativeQualified} Apply={apply.Status} Approve={approve.Status} Issue={issue.Status} Permission={permission}");
+        }
+
+        private static TestLabAutomationStepResult CredentialStaleUnauthorizedForgery(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithCredentialFoundation(context, "boundary");
+            CredentialOperationResult exam = RecordCredentialExam(context, "boundary", PrototypeProfessionDefinitionFactory.BlacksmithPracticalExaminationId, 850);
+            CredentialQualificationResult qualification = runtimes.Credentials.EvaluateQualification(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId);
+            CredentialOperationResult badIssuer = runtimes.Credentials.SubmitApplication(context.ScenarioContext.ScopedId("credential-application", "bad-issuer"), runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, new CredentialIssuerReferenceData { issuerId = "authority.medical.prototype", issuerKind = CredentialIssuerAuthorityKind.ProfessionalOrganization }, qualification.Snapshot, "33", context.ScenarioContext.ScopedId("credential-tx", "bad-issuer"));
+            CredentialOperationResult apply = runtimes.Credentials.SubmitApplication(context.ScenarioContext.ScopedId("credential-application", "stale"), runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, GuildIssuer(), qualification.Snapshot, "34", context.ScenarioContext.ScopedId("credential-tx", "stale-apply"));
+            runtimes.ProfessionalActivities.RegisterAndValidateActivity(ActivityRequest(context, "stale-extra", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ActivityCustomSource(context, ProfessionalActivitySourceType.CraftingOperation, "stale-extra", "production.activity.forging")), context.ScenarioContext.ScopedId("professional-evidence", "stale-extra"), "authority.guild.prototype", context.ScenarioContext.ScopedId("professional-tx", "stale-extra"));
+            CredentialQualificationResult current = runtimes.Credentials.EvaluateQualification(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId);
+            CredentialOperationResult staleApprove = runtimes.Credentials.ApproveApplication(apply.Application?.applicationId, "authority.guild.prototype", current.Snapshot, "35", context.ScenarioContext.ScopedId("credential-tx", "stale-approve"));
+            CredentialOperationResult forged = runtimes.Credentials.RecordForgedClaim(context.ScenarioContext.ScopedId("credential-forged", "claim"), PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, runtimes.PersonId, "authority.guild.prototype", "36", context.ScenarioContext.ScopedId("credential-tx", "forged"));
+            bool forgedPermission = runtimes.Credentials.HasActivePermission(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithPracticePermissionId, CredentialPermissionStatePolicy.AnyNonRevoked);
+
+            bool valid = exam.Succeeded
+                && !badIssuer.Succeeded
+                && badIssuer.Status == CredentialOperationStatus.UnauthorizedIssuer
+                && apply.Succeeded
+                && !staleApprove.Succeeded
+                && staleApprove.Status == CredentialOperationStatus.StaleQualification
+                && forged.Succeeded
+                && forged.Credential?.authenticityState == CredentialAuthenticityState.ForgedClaim
+                && !forgedPermission;
+            return TestLabAssertions.True("step10-credential-boundaries", "Unauthorized issuers, stale qualifications, and forged claims are rejected safely", valid, $"Exam={exam.Status} BadIssuer={badIssuer.Status} Apply={apply.Status} Stale={staleApprove.Status} Forged={forged.Status} ForgedPermission={forgedPermission}");
+        }
+
+        private static TestLabAutomationStepResult CredentialLifecyclePermissions(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            CredentialOperationResult issued = IssueApprenticeshipCredential(context, "lifecycle", out _);
+            string credentialId = issued.Credential?.credentialId;
+            bool activePermission = runtimes.Credentials.HasActivePermission(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithPracticePermissionId);
+            CredentialOperationResult suspend = runtimes.Credentials.SuspendCredential(credentialId, "40", context.ScenarioContext.ScopedId("credential-tx", "suspend"));
+            bool suspendedPermission = runtimes.Credentials.HasActivePermission(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithPracticePermissionId);
+            CredentialOperationResult reinstate = runtimes.Credentials.ReinstateCredential(credentialId, "41", context.ScenarioContext.ScopedId("credential-tx", "reinstate"));
+            bool reinstatedPermission = runtimes.Credentials.HasActivePermission(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithPracticePermissionId);
+            CredentialOperationResult renew = runtimes.Credentials.RenewCredential(credentialId, null, "42", context.ScenarioContext.ScopedId("credential-tx", "renew"));
+            CredentialOperationResult expire = runtimes.Credentials.ExpireCredential(credentialId, "43", context.ScenarioContext.ScopedId("credential-tx", "expire"));
+            bool expiredPermission = runtimes.Credentials.HasActivePermission(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithPracticePermissionId);
+            CredentialOperationResult revoke = runtimes.Credentials.RevokeCredential(credentialId, "44", context.ScenarioContext.ScopedId("credential-tx", "revoke"));
+            CredentialOperationResult revokedReinstate = runtimes.Credentials.ReinstateCredential(credentialId, "45", context.ScenarioContext.ScopedId("credential-tx", "revoked-reinstate"));
+
+            bool valid = issued.Succeeded
+                && activePermission
+                && suspend.Succeeded
+                && !suspendedPermission
+                && reinstate.Succeeded
+                && reinstatedPermission
+                && !renew.Succeeded
+                && renew.Status == CredentialOperationStatus.InvalidTransition
+                && expire.Succeeded
+                && !expiredPermission
+                && revoke.Succeeded
+                && !revokedReinstate.Succeeded
+                && revokedReinstate.Status == CredentialOperationStatus.InvalidTransition;
+            return TestLabAssertions.True("step10-credential-lifecycle", "Expiration, suspension, reinstatement, revocation, and renewal affect permissions", valid, $"Issued={issued.Status} Active={activePermission} Suspend={suspend.Status} SuspendedPermission={suspendedPermission} Reinstate={reinstate.Status} Renew={renew.Status} Expire={expire.Status} Revoke={revoke.Status} RevokedReinstate={revokedReinstate.Status}");
+        }
+
+        private static TestLabAutomationStepResult CredentialAccessPersistence(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            CredentialOperationResult issued = IssueApprenticeshipCredential(context, "persist", out string applicationId);
+            InformationAccessDecision decision = new InformationAccessDecision(
+                "person.observer",
+                CredentialInformationSubject.Create(CredentialInformationSubject.CredentialTag, issued.Credential?.credentialId, runtimes.PersonId),
+                InformationAccessMode.Inspect,
+                InformationAccessDecisionKind.RedactedAccess,
+                InformationAccessDenialCode.DetailRestriction,
+                false,
+                InformationResharingPolicy.NoResharing,
+                new[] { "credential-definition-id", "state" },
+                CredentialInformationSubject.ProtectedFields,
+                Array.Empty<string>(),
+                new[] { PrototypeProfessionDefinitionFactory.AccessPublicId },
+                50d,
+                "Credential redacted.",
+                "Credential supporting evidence hidden.",
+                true);
+            CredentialProjection<CredentialRecordData> projection = runtimes.Credentials.ProjectCredential(issued.Credential?.credentialId, CredentialProjectionAudience.PublicInspection, decision);
+            CredentialRuntimeSaveData save = runtimes.Credentials.CreateSaveData();
+            string[] authorities = { "authority.guild.prototype", "authority.medical.prototype", "organization.prototype.guild" };
+            CredentialRuntime restored = new CredentialRuntime();
+            CredentialOperationResult restore = restored.RestoreFromSaveData(save, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.KnownPersonIds, authorities, restoring: true);
+            CredentialRuntimeSaveData corrupt = save.Clone();
+            corrupt.credentials[0].supportingApplicationId = string.Empty;
+            CredentialOperationResult rejected = restored.RestoreFromSaveData(corrupt, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.KnownPersonIds, authorities, restoring: true);
+
+            bool valid = issued.Succeeded
+                && !string.IsNullOrWhiteSpace(applicationId)
+                && projection.Redacted
+                && projection.Record != null
+                && string.IsNullOrWhiteSpace(projection.Record.registrationNumber)
+                && restore.Succeeded
+                && restored.CredentialCount == 1
+                && restored.HistoryHooks.Count == 0
+                && !rejected.Succeeded
+                && restored.CredentialCount == 1;
+            return TestLabAssertions.True("step10-credential-persistence", "Credential projections redact and persistence restores atomically", valid, $"Issued={issued.Status} Redacted={projection.Redacted} Restore={restore.Status} Rejected={rejected.Status} Count={restored.CredentialCount}");
         }
 
         private static TestLabAutomationStepResult ProfessionalActivityDefinitionsAndAdapters(TestLabAutomationContext context)
@@ -1074,6 +1279,91 @@ namespace UnityIsekaiGame.Development.Automation
                 difficulty: difficulty,
                 worldTime: context.ScenarioContext.ScopedId("professional-time", slug),
                 tags: tag);
+        }
+
+        private static void EnsureBlacksmithCredentialFoundation(TestLabAutomationContext context, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithActivityProfession(context);
+
+            bool completedTraining = runtimes.Training.QueryByProgram(PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId)
+                .Any(item => string.Equals(item.PersonId, runtimes.PersonId, StringComparison.Ordinal) && item.State == TrainingEnrollmentState.Completed);
+            if (!completedTraining)
+            {
+                string enrollmentId = BeginTrainingApprenticeship(context, $"credential-{slug}");
+                CompleteTrainingVisibleRequirements(context, enrollmentId, completePractice: true);
+                runtimes.Training.CompleteModule(enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithHiddenAssessmentModuleId, context.ScenarioContext.ScopedId("training-tx", $"{slug}-hidden"));
+                TrainingProgressResult progress = runtimes.Training.EvaluateProgress(enrollmentId, perceived: false);
+                runtimes.Training.CompleteProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", $"{slug}-complete"), progress.RuntimeToken, worldTime: 24d);
+            }
+
+            if (runtimes.ProfessionalActivities.BuildExperienceSummary(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId).TotalValidatedActivities == 0)
+            {
+                runtimes.ProfessionalActivities.RegisterAndValidateActivity(
+                    ActivityRequest(
+                        context,
+                        $"credential-{slug}-supervised",
+                        PrototypeProfessionDefinitionFactory.BlacksmithSupervisedPracticeActivityDefinitionId,
+                        ActivityCustomSource(context, ProfessionalActivitySourceType.TrainingPracticalAssignment, $"credential-{slug}-practice", "training.activity.practical"),
+                        ProfessionalResponsibilityLevel.SupervisedWorker,
+                        TrainingSupervisionLevel.CloselySupervised),
+                    context.ScenarioContext.ScopedId("professional-evidence", $"credential-{slug}"),
+                    "authority.guild.prototype",
+                    context.ScenarioContext.ScopedId("professional-tx", $"credential-{slug}"));
+            }
+        }
+
+        private static CredentialOperationResult RecordCredentialExam(TestLabAutomationContext context, string slug, string examinationDefinitionId, int score)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            return runtimes.Credentials.RecordExaminationAttempt(new CredentialExaminationAttemptData
+            {
+                attemptId = context.ScenarioContext.ScopedId("credential-exam", slug),
+                examinationDefinitionId = examinationDefinitionId,
+                applicantPersonId = runtimes.PersonId,
+                evaluatorPersonId = runtimes.PersonId,
+                evaluatorAuthorityId = "authority.guild.prototype",
+                startWorldTime = "25",
+                completionWorldTime = "26",
+                score = score,
+                sectionResults = new[]
+                {
+                    new CredentialExaminationSectionResultData
+                    {
+                        sectionId = context.ScenarioContext.ScopedId("credential-exam-section", slug),
+                        displayName = "Prototype assessment",
+                        score = score,
+                        passed = score >= 700
+                    }
+                },
+                provenance = context.ScenarioContext.ScopedId("credential-exam-provenance", slug)
+            }, context.ScenarioContext.ScopedId("credential-tx", $"exam-{slug}"));
+        }
+
+        private static CredentialOperationResult IssueApprenticeshipCredential(TestLabAutomationContext context, string slug, out string applicationId)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithCredentialFoundation(context, slug);
+            CredentialOperationResult exam = RecordCredentialExam(context, slug, PrototypeProfessionDefinitionFactory.BlacksmithPracticalExaminationId, 850);
+            CredentialQualificationResult qualification = runtimes.Credentials.EvaluateQualification(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId);
+            CredentialOperationResult apply = runtimes.Credentials.SubmitApplication(context.ScenarioContext.ScopedId("credential-application", slug), runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, GuildIssuer(), qualification.Snapshot, "30", context.ScenarioContext.ScopedId("credential-tx", $"{slug}-apply"));
+            CredentialOperationResult approve = runtimes.Credentials.ApproveApplication(apply.Application?.applicationId, "authority.guild.prototype", qualification.Snapshot, "31", context.ScenarioContext.ScopedId("credential-tx", $"{slug}-approve"));
+            applicationId = apply.Application?.applicationId ?? string.Empty;
+            if (!exam.Succeeded || !qualification.AuthoritativeQualified || !apply.Succeeded || !approve.Succeeded)
+            {
+                return CredentialOperationResult.Failure(CredentialOperationStatus.InvalidRequest, $"Credential fixture setup failed. Exam={exam.Status} Qualified={qualification.AuthoritativeQualified} Apply={apply.Status} Approve={approve.Status}", runtimes.Credentials.Revision, qualification);
+            }
+
+            return runtimes.Credentials.IssueCredential(context.ScenarioContext.ScopedId("credential-record", slug), PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId, runtimes.PersonId, GuildIssuer(), applicationId, exam.ExaminationAttempt?.attemptId, context.ScenarioContext.ScopedId("registration", slug), qualification.Snapshot, "32", context.ScenarioContext.ScopedId("credential-tx", $"{slug}-issue"));
+        }
+
+        private static CredentialIssuerReferenceData GuildIssuer()
+        {
+            return new CredentialIssuerReferenceData
+            {
+                issuerId = "authority.guild.prototype",
+                issuerKind = CredentialIssuerAuthorityKind.Guild
+            };
         }
 
         private static TrainingModuleDefinitionData TrainingModule(string id, bool required, bool hidden, string[] dependencies = null)

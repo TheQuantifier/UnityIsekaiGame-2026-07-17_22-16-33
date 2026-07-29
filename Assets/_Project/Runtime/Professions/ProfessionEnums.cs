@@ -595,4 +595,204 @@ namespace UnityIsekaiGame.Professions
         ExperienceRecordCorrected = 8,
         ExperienceRevoked = 9
     }
+
+    public enum CredentialCategory
+    {
+        Custom = 0,
+        Certificate = 1,
+        License = 2,
+        Commission = 3,
+        Ordination = 4,
+        Clearance = 5,
+        Qualification = 6,
+        Authorization = 7,
+        Endorsement = 8,
+        Recommendation = 9,
+        AwardFoundation = 10
+    }
+
+    public enum CredentialIssuerAuthorityKind
+    {
+        Custom = 0,
+        Guild = 1,
+        Government = 2,
+        Military = 3,
+        School = 4,
+        University = 5,
+        Religion = 6,
+        ProfessionalOrganization = 7,
+        EmployerAuthority = 8,
+        AuthorizedIndividual = 9
+    }
+
+    public enum CredentialExpirationPolicy
+    {
+        NeverExpires = 0,
+        FixedDuration = 1,
+        ExplicitWorldTime = 2,
+        RequiresRenewal = 3,
+        Custom = 4
+    }
+
+    public enum CredentialRenewalPolicy
+    {
+        NotRenewable = 0,
+        RenewWithCurrentQualification = 1,
+        RenewWithContinuingEducation = 2,
+        RenewWithRecentExperience = 3,
+        RenewWithNewExamination = 4,
+        Custom = 5
+    }
+
+    public enum CredentialLifecyclePolicy
+    {
+        NotAllowed = 0,
+        AllowedByIssuer = 1,
+        RequiresReason = 2,
+        RequiresAuthorityAndReason = 3,
+        Custom = 4
+    }
+
+    public enum CredentialTransferability
+    {
+        NonTransferable = 0,
+        TransferableWithIssuerApproval = 1,
+        Transferable = 2,
+        Custom = 3
+    }
+
+    public enum CredentialApplicationState
+    {
+        Draft = 0,
+        Submitted = 1,
+        UnderReview = 2,
+        AwaitingExamination = 3,
+        AwaitingEvidence = 4,
+        Approved = 5,
+        Rejected = 6,
+        Withdrawn = 7,
+        Expired = 8,
+        Cancelled = 9,
+        Invalid = 10,
+        Custom = 11
+    }
+
+    public enum CredentialAssessmentCategory
+    {
+        Custom = 0,
+        Written = 1,
+        Oral = 2,
+        Practical = 3,
+        Observed = 4,
+        Mixed = 5
+    }
+
+    public enum CredentialExaminationAttemptState
+    {
+        Draft = 0,
+        InProgress = 1,
+        Passed = 2,
+        Failed = 3,
+        Incomplete = 4,
+        Invalid = 5,
+        Disputed = 6,
+        Custom = 7
+    }
+
+    public enum CredentialState
+    {
+        Pending = 0,
+        Active = 1,
+        Expired = 2,
+        Suspended = 3,
+        Revoked = 4,
+        Surrendered = 5,
+        Replaced = 6,
+        Invalid = 7,
+        Disputed = 8,
+        ForgedClaimFoundation = 9,
+        Custom = 10
+    }
+
+    public enum CredentialAuthenticityState
+    {
+        Unknown = 0,
+        Authoritative = 1,
+        VerifiedAuthentic = 2,
+        Disputed = 3,
+        ForgedClaim = 4,
+        InvalidDocument = 5,
+        RevokedButDocumentExists = 6
+    }
+
+    public enum CredentialPermissionStatePolicy
+    {
+        ActiveOnly = 0,
+        ActiveOrGracePeriod = 1,
+        HistoricalOnly = 2,
+        AnyNonRevoked = 3,
+        Custom = 4
+    }
+
+    public enum CredentialOperationStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        Duplicate = 2,
+        MissingRuntime = 3,
+        MissingDefinition = 4,
+        MissingPerson = 5,
+        MissingAuthority = 6,
+        UnauthorizedIssuer = 7,
+        UnauthorizedEvaluator = 8,
+        MissingQualification = 9,
+        StaleQualification = 10,
+        MissingApplication = 11,
+        MissingExamination = 12,
+        MissingCredential = 13,
+        InvalidRequest = 14,
+        InvalidState = 15,
+        InvalidTransition = 16,
+        DuplicateActiveCredential = 17,
+        DuplicateApplication = 18,
+        DuplicateRegistrationNumber = 19,
+        PermissionDenied = 20,
+        ForgedClaimRejected = 21,
+        RestoreFailed = 22,
+        ValidationFailed = 23
+    }
+
+    public enum CredentialProjectionAudience
+    {
+        AuthoritativeInternal = 0,
+        PrivilegedDebug = 1,
+        Holder = 2,
+        Applicant = 3,
+        Issuer = 4,
+        Evaluator = 5,
+        ProfessionAuthority = 6,
+        Employer = 7,
+        PublicInspection = 8,
+        PersonKnown = 9,
+        PersonBelieved = 10
+    }
+
+    public enum CredentialHistoryHookKind
+    {
+        ApplicationSubmitted = 0,
+        ExaminationAttempted = 1,
+        ExaminationPassed = 2,
+        ExaminationFailed = 3,
+        CredentialIssued = 4,
+        CredentialRenewed = 5,
+        CredentialExpired = 6,
+        CredentialSuspended = 7,
+        CredentialReinstated = 8,
+        CredentialRevoked = 9,
+        CredentialSurrendered = 10,
+        CredentialDisputed = 11,
+        CredentialReplaced = 12,
+        ForgedCredentialExposed = 13,
+        Corrected = 14
+    }
 }
