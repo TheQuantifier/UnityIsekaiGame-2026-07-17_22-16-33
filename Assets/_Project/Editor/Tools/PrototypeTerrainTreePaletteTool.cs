@@ -16,6 +16,9 @@ namespace UnityIsekaiGame.Editor
         private const string GeneratedPrefabRoot = GeneratedVegetationRoot + "/Prefabs";
         private const float DefaultBendFactor = 0.35f;
         private const int TreeScaleRandomSalt = 0x278D13;
+        private const float TrunkFootprintSlice = 0.1f;
+        private const float MaximumTrunkFootprintSlice = 0.35f;
+        private const int MinimumTrunkFootprintVertexCount = 8;
 
         private static readonly PrototypeTreePaletteEntry[] TreePalette =
         {
@@ -147,6 +150,7 @@ namespace UnityIsekaiGame.Editor
                 instance.transform.localScale = Vector3.one * entry.PrefabScale;
                 AssignProjectMaterials(instance, entry.Style, materials);
                 RemoveImportedRuntimeColliders(instance);
+                AddGeneratedTrunkCollider(instance, entry);
                 ValidateGeneratedPrefab(instance, entry);
 
                 PrefabUtility.SaveAsPrefabAsset(instance, entry.GeneratedPrefabPath);
@@ -183,6 +187,120 @@ namespace UnityIsekaiGame.Editor
             }
         }
 
+        private static void AddGeneratedTrunkCollider(GameObject instance, PrototypeTreePaletteEntry entry)
+        {
+            if (!entry.HasTrunkCollider)
+            {
+                return;
+            }
+
+            var localVertices = CollectLocalMeshVertices(instance);
+            if (localVertices.Count == 0)
+            {
+                throw new InvalidOperationException($"Cannot generate trunk collider for '{entry.Name}' because it has no mesh vertices.");
+            }
+
+            var localBounds = CalculateBounds(localVertices);
+            var trunkFootprint = CalculateBottomFootprintBounds(localVertices, localBounds, TrunkFootprintSlice);
+
+            var collider = instance.AddComponent<CapsuleCollider>();
+            collider.isTrigger = false;
+            collider.direction = 1;
+            collider.center = new Vector3(trunkFootprint.center.x, localBounds.min.y + localBounds.size.y * entry.TrunkColliderCenterHeight, trunkFootprint.center.z);
+            collider.height = Mathf.Max(localBounds.size.y * entry.TrunkColliderHeight, 0.08f);
+            collider.radius = Mathf.Clamp(Mathf.Min(trunkFootprint.size.x, trunkFootprint.size.z) * entry.TrunkColliderRadiusScale, 0.035f, entry.MaximumTrunkColliderRadius);
+        }
+
+        private static List<Vector3> CollectLocalMeshVertices(GameObject instance)
+        {
+            var vertices = new List<Vector3>();
+            var meshFilters = instance.GetComponentsInChildren<MeshFilter>(true);
+
+            foreach (var meshFilter in meshFilters)
+            {
+                if (meshFilter == null || meshFilter.sharedMesh == null)
+                {
+                    continue;
+                }
+
+                foreach (var vertex in meshFilter.sharedMesh.vertices)
+                {
+                    vertices.Add(instance.transform.InverseTransformPoint(meshFilter.transform.TransformPoint(vertex)));
+                }
+            }
+
+            return vertices;
+        }
+
+        private static Bounds CalculateBounds(IReadOnlyList<Vector3> vertices)
+        {
+            if (vertices == null || vertices.Count == 0)
+            {
+                return new Bounds(Vector3.zero, Vector3.zero);
+            }
+
+            var bounds = new Bounds(vertices[0], Vector3.zero);
+            for (var i = 1; i < vertices.Count; i++)
+            {
+                bounds.Encapsulate(vertices[i]);
+            }
+
+            return bounds;
+        }
+
+        private static Bounds CalculateBottomFootprintBounds(IReadOnlyList<Vector3> vertices, Bounds localBounds, float startingSlice)
+        {
+            var slice = Mathf.Clamp01(startingSlice);
+            while (slice <= MaximumTrunkFootprintSlice)
+            {
+                var footprint = CollectBottomFootprint(vertices, localBounds, slice);
+                if (footprint.VertexCount >= MinimumTrunkFootprintVertexCount && footprint.Bounds.size.x > 0f && footprint.Bounds.size.z > 0f)
+                {
+                    return footprint.Bounds;
+                }
+
+                slice += 0.05f;
+            }
+
+            return CollectBottomFootprint(vertices, localBounds, MaximumTrunkFootprintSlice).Bounds;
+        }
+
+        private static TrunkFootprint CollectBottomFootprint(IReadOnlyList<Vector3> vertices, Bounds localBounds, float slice)
+        {
+            var maxY = localBounds.min.y + localBounds.size.y * Mathf.Clamp01(slice);
+            var hasBounds = false;
+            var bounds = new Bounds();
+            var count = 0;
+
+            foreach (var vertex in vertices)
+            {
+                if (vertex.y > maxY)
+                {
+                    continue;
+                }
+
+                var footprintPoint = new Vector3(vertex.x, 0f, vertex.z);
+                if (!hasBounds)
+                {
+                    bounds = new Bounds(footprintPoint, Vector3.zero);
+                    hasBounds = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(footprintPoint);
+                }
+
+                count++;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = new Bounds(new Vector3(localBounds.center.x, 0f, localBounds.center.z), new Vector3(0.07f, 0f, 0.07f));
+            }
+
+            return new TrunkFootprint(bounds, count);
+        }
+
         private static void ValidateGeneratedPrefab(GameObject instance, PrototypeTreePaletteEntry entry)
         {
             var renderers = instance.GetComponentsInChildren<MeshRenderer>(true);
@@ -203,6 +321,19 @@ namespace UnityIsekaiGame.Editor
                 {
                     throw new InvalidOperationException($"Generated vegetation prefab '{entry.Name}' has an invalid material assignment.");
                 }
+            }
+
+            var colliders = instance.GetComponentsInChildren<Collider>(true);
+            if (entry.HasTrunkCollider)
+            {
+                if (colliders.OfType<CapsuleCollider>().All(collider => collider == null || collider.isTrigger || collider.radius <= 0f || collider.height <= collider.radius))
+                {
+                    throw new InvalidOperationException($"Generated tree prefab '{entry.Name}' has no valid trunk CapsuleCollider.");
+                }
+            }
+            else if (colliders.Any(collider => collider != null && !collider.isTrigger))
+            {
+                throw new InvalidOperationException($"Generated non-tree vegetation prefab '{entry.Name}' should not have blocking colliders.");
             }
         }
 
@@ -378,7 +509,54 @@ namespace UnityIsekaiGame.Editor
 
             public float MaximumPaintedHeightScale { get; }
 
+            public bool HasTrunkCollider => Style != PrototypeTreePaletteStyle.GreenShrub;
+
+            public float TrunkColliderCenterHeight
+            {
+                get
+                {
+                    return Style == PrototypeTreePaletteStyle.DeadTree ? 0.38f : 0.34f;
+                }
+            }
+
+            public float TrunkColliderHeight
+            {
+                get
+                {
+                    return Style == PrototypeTreePaletteStyle.DeadTree ? 0.76f : 0.68f;
+                }
+            }
+
+            public float TrunkColliderRadiusScale
+            {
+                get
+                {
+                    return Style == PrototypeTreePaletteStyle.DeadTree ? 0.45f : 0.5f;
+                }
+            }
+
+            public float MaximumTrunkColliderRadius
+            {
+                get
+                {
+                    return Style == PrototypeTreePaletteStyle.DeadTree ? 0.11f : 0.12f;
+                }
+            }
+
             public string GeneratedPrefabPath => $"{GeneratedPrefabRoot}/{AssetName}.prefab";
+        }
+
+        private readonly struct TrunkFootprint
+        {
+            public TrunkFootprint(Bounds bounds, int vertexCount)
+            {
+                Bounds = bounds;
+                VertexCount = vertexCount;
+            }
+
+            public Bounds Bounds { get; }
+
+            public int VertexCount { get; }
         }
 
         private enum PrototypeTreePaletteStyle

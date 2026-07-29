@@ -123,6 +123,45 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void PrototypeTreePaintPrefabsUseSimpleTrunkColliders()
+        {
+            string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { PrototypeVegetationPrefabRoot });
+
+            Assert.That(prefabGuids.Length, Is.GreaterThanOrEqualTo(12));
+
+            foreach (string guid in prefabGuids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+
+                Assert.That(prefab, Is.Not.Null, path);
+
+                bool isTree = prefab.name.StartsWith("prototype-tree-", System.StringComparison.Ordinal);
+                Collider[] colliders = prefab.GetComponentsInChildren<Collider>(true);
+
+                if (isTree)
+                {
+                    CapsuleCollider trunk = colliders.OfType<CapsuleCollider>().SingleOrDefault(collider => collider != null && !collider.isTrigger);
+
+                    Assert.That(trunk, Is.Not.Null, path);
+                    Assert.That(trunk.direction, Is.EqualTo(1), path);
+                    Assert.That(trunk.radius, Is.GreaterThan(0f), path);
+                    Assert.That(trunk.radius, Is.LessThanOrEqualTo(0.12f), path);
+                    Assert.That(trunk.height, Is.GreaterThan(trunk.radius), path);
+                    Assert.That(trunk.center.y, Is.GreaterThan(0f), path);
+
+                    Bounds bottomFootprint = CalculateBottomMeshFootprint(prefab);
+                    Assert.That(trunk.center.x, Is.InRange(bottomFootprint.min.x, bottomFootprint.max.x), path);
+                    Assert.That(trunk.center.z, Is.InRange(bottomFootprint.min.z, bottomFootprint.max.z), path);
+                }
+                else
+                {
+                    Assert.That(colliders.Any(collider => collider != null && !collider.isTrigger), Is.False, path);
+                }
+            }
+        }
+
+        [Test]
         public void PrototypeTerrainsUseGeneratedVegetationPaintPalette()
         {
             UnityEngine.SceneManagement.Scene scene = EditorSceneManager.OpenScene(ScenePath);
@@ -156,6 +195,57 @@ namespace UnityIsekaiGame.Tests
         private static void AssertSceneDoesNotContain(string scene, string removedName)
         {
             Assert.That(scene, Does.Not.Contain($"m_Name: {removedName}"), removedName);
+        }
+
+        private static Bounds CalculateBottomMeshFootprint(GameObject root)
+        {
+            List<Vector3> vertices = new List<Vector3>();
+            foreach (MeshFilter meshFilter in root.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (meshFilter == null || meshFilter.sharedMesh == null)
+                {
+                    continue;
+                }
+
+                foreach (Vector3 vertex in meshFilter.sharedMesh.vertices)
+                {
+                    vertices.Add(root.transform.InverseTransformPoint(meshFilter.transform.TransformPoint(vertex)));
+                }
+            }
+
+            Assert.That(vertices.Count, Is.GreaterThan(0), root.name);
+
+            Bounds visualBounds = new Bounds(vertices[0], Vector3.zero);
+            for (int i = 1; i < vertices.Count; i++)
+            {
+                visualBounds.Encapsulate(vertices[i]);
+            }
+
+            float maxY = visualBounds.min.y + visualBounds.size.y * 0.1f;
+            Bounds footprint = new Bounds(new Vector3(visualBounds.center.x, 0f, visualBounds.center.z), Vector3.zero);
+            bool hasFootprint = false;
+
+            foreach (Vector3 vertex in vertices)
+            {
+                if (vertex.y > maxY)
+                {
+                    continue;
+                }
+
+                Vector3 footprintPoint = new Vector3(vertex.x, 0f, vertex.z);
+                if (!hasFootprint)
+                {
+                    footprint = new Bounds(footprintPoint, Vector3.zero);
+                    hasFootprint = true;
+                }
+                else
+                {
+                    footprint.Encapsulate(footprintPoint);
+                }
+            }
+
+            Assert.That(hasFootprint, Is.True, root.name);
+            return footprint;
         }
     }
 }

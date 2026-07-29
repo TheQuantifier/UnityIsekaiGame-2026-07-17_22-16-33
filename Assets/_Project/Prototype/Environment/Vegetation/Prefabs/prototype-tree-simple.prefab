@@ -192,6 +192,7 @@ GameObject:
   m_Component:
   - component: {fileID: 4712471767984736396}
   - component: {fileID: 1935890688284168874}
+  - component: {fileID: 424116079553532120}
   m_Layer: 0
   m_Name: prototype-tree-simple
   m_TagString: Untagged
@@ -245,6 +246,29 @@ LODGroup:
     - renderer: {fileID: 2395506847251019822}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
+--- !u!136 &424116079553532120
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4119221931111016858}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.12
+  m_Height: 3.945917
+  m_Direction: 1
+  m_Center: {x: -0.0015729964, y: 1.9729584, z: 0.000000014901161}
 --- !u!1 &7717407229365175476
 GameObject:
   m_ObjectHideFlags: 0

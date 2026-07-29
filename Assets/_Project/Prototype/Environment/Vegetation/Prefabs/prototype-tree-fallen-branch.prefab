@@ -101,6 +101,7 @@ GameObject:
   m_Component:
   - component: {fileID: 665108917473198845}
   - component: {fileID: 2685286321793555445}
+  - component: {fileID: 1281182546076473738}
   m_Layer: 0
   m_Name: prototype-tree-fallen-branch
   m_TagString: Untagged
@@ -154,6 +155,29 @@ LODGroup:
     - renderer: {fileID: 3011365643044515019}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
+--- !u!136 &1281182546076473738
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6364958593306949978}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.12
+  m_Height: 3.5683544
+  m_Direction: 1
+  m_Center: {x: 0, y: 1.7841772, z: 0.0023418665}
 --- !u!1 &6866641283750013090
 GameObject:
   m_ObjectHideFlags: 0

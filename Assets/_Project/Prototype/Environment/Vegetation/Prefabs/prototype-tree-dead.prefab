@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3868268482099608645}
   - component: {fileID: 2562059303162615294}
+  - component: {fileID: 7848856549505480128}
   m_Layer: 0
   m_Name: prototype-tree-dead
   m_TagString: Untagged
@@ -63,6 +64,29 @@ LODGroup:
     - renderer: {fileID: 6805615015983439598}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
+--- !u!136 &7848856549505480128
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 456221555130282848}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.0411674
+  m_Height: 1.886554
+  m_Direction: 1
+  m_Center: {x: -2.2977896, y: 0.040007345, z: -0.3741454}
 --- !u!1 &2974475783495341712
 GameObject:
   m_ObjectHideFlags: 0

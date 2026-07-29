@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6016818965272975705}
   - component: {fileID: 2397194807407906699}
+  - component: {fileID: 2168355489723963998}
   m_Layer: 0
   m_Name: prototype-tree-broadleaf
   m_TagString: Untagged
@@ -63,6 +64,29 @@ LODGroup:
     - renderer: {fileID: 269724863931929569}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
+--- !u!136 &2168355489723963998
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 804061603105994802}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.12
+  m_Height: 4.3084755
+  m_Direction: 1
+  m_Center: {x: 0, y: 2.1542377, z: 0.000000014901161}
 --- !u!1 &3161983945143659665
 GameObject:
   m_ObjectHideFlags: 0
