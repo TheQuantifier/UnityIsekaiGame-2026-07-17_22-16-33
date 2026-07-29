@@ -103,6 +103,24 @@ namespace UnityIsekaiGame.Professions
         public const string CareerChangeTransitionId = "career-transition.prototype.career-change";
         public const string CareerAchievementTransitionId = "career-transition.prototype.achievement";
         public const string CareerSetbackTransitionId = "career-transition.prototype.setback";
+        public const string AspirationEnterBlacksmithProfessionId = "aspiration.prototype.enter-blacksmith";
+        public const string AspirationReachMasterWeaponsmithId = "aspiration.prototype.reach-master-weaponsmith";
+        public const string AspirationEarnGuildLicenseId = "aspiration.prototype.earn-guild-license";
+        public const string AspirationObtainGuildPositionId = "aspiration.prototype.obtain-guild-position";
+        public const string AspirationCreateMasterworkId = "aspiration.prototype.create-masterwork";
+        public const string AspirationMakeDiscoveryId = "aspiration.prototype.make-discovery";
+        public const string AspirationRetireSuccessfullyId = "aspiration.prototype.retire-successfully";
+        public const string AspirationSecretSpyIdentityId = "aspiration.prototype.secret-spy-identity";
+        public const string GoalEnterBlacksmithProfessionId = "goal.prototype.enter-blacksmith";
+        public const string GoalCompleteBlacksmithApprenticeshipId = "goal.prototype.complete-blacksmith-apprenticeship";
+        public const string GoalEarnBlacksmithGuildLicenseId = "goal.prototype.earn-blacksmith-guild-license";
+        public const string GoalReachJourneymanRankId = "goal.prototype.reach-journeyman-rank";
+        public const string GoalReachMasterRankId = "goal.prototype.reach-master-rank";
+        public const string GoalObtainGuildClerkPositionId = "goal.prototype.obtain-guild-clerk-position";
+        public const string GoalRecordCraftingActivityId = "goal.prototype.record-crafting-activity";
+        public const string GoalProduceMasterworkId = "goal.prototype.produce-masterwork";
+        public const string GoalConfirmDiscoveryId = "goal.prototype.confirm-discovery";
+        public const string GoalRetireFromProfessionId = "goal.prototype.retire-from-profession";
 
         public static IReadOnlyList<ScriptableObject> CreateDefinitions()
         {
@@ -455,6 +473,24 @@ namespace UnityIsekaiGame.Professions
             definitions.Add(CareerTransition(CareerChangeTransitionId, "Career Change", CareerTransitionCategory.CareerChange, sources: new[] { CareerEpisodeState.Active, CareerEpisodeState.Ended, CareerEpisodeState.Retired }, destinations: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.ProfessionRelationship, CareerTransitionSourceRecordType.Employment }));
             definitions.Add(CareerTransition(CareerAchievementTransitionId, "Career Achievement", CareerTransitionCategory.Achievement, sources: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.ProfessionalActivity, CareerTransitionSourceRecordType.ExperienceEvidence }));
             definitions.Add(CareerTransition(CareerSetbackTransitionId, "Career Setback", CareerTransitionCategory.Setback, sources: new[] { CareerEpisodeState.Active }, required: new[] { CareerTransitionSourceRecordType.ProfessionalActivity }, disputed: true, allowSecret: true, policyId: AccessSecretId));
+            definitions.Add(LifeGoal(GoalEnterBlacksmithProfessionId, "Enter Blacksmith Profession", LifeGoalCategory.EnterProfession, LifePathTargetSubjectType.Profession, professions: new[] { BlacksmithProfessionId }, compatibleAspirations: new[] { AspirationEnterBlacksmithProfessionId }));
+            definitions.Add(LifeGoal(GoalCompleteBlacksmithApprenticeshipId, "Complete Blacksmith Apprenticeship", LifeGoalCategory.CompleteApprenticeship, LifePathTargetSubjectType.TrainingProgram, trainingPrograms: new[] { BlacksmithApprenticeshipProgramId }, compatibleAspirations: new[] { AspirationEnterBlacksmithProfessionId, AspirationReachMasterWeaponsmithId }, dependencies: new[] { GoalEnterBlacksmithProfessionId }));
+            definitions.Add(LifeGoal(GoalEarnBlacksmithGuildLicenseId, "Earn Blacksmith Guild License", LifeGoalCategory.EarnCredential, LifePathTargetSubjectType.Credential, credentials: new[] { BlacksmithGuildLicenseCredentialId }, compatibleAspirations: new[] { AspirationEarnGuildLicenseId, AspirationReachMasterWeaponsmithId }, dependencies: new[] { GoalCompleteBlacksmithApprenticeshipId }));
+            definitions.Add(LifeGoal(GoalReachJourneymanRankId, "Reach Journeyman Rank", LifeGoalCategory.ReachRank, LifePathTargetSubjectType.Rank, ranks: new[] { BlacksmithRankJourneymanId }, compatibleAspirations: new[] { AspirationReachMasterWeaponsmithId }, dependencies: new[] { GoalEarnBlacksmithGuildLicenseId }));
+            definitions.Add(LifeGoal(GoalReachMasterRankId, "Reach Master Rank", LifeGoalCategory.ReachRank, LifePathTargetSubjectType.Rank, ranks: new[] { BlacksmithRankMasterId, WeaponsmithRankMasterId }, compatibleAspirations: new[] { AspirationReachMasterWeaponsmithId }, dependencies: new[] { GoalReachJourneymanRankId }));
+            definitions.Add(LifeGoal(GoalObtainGuildClerkPositionId, "Obtain Guild Clerk Position", LifeGoalCategory.ObtainPosition, LifePathTargetSubjectType.Position, positions: new[] { GuildClerkPositionId }, compatibleAspirations: new[] { AspirationObtainGuildPositionId }));
+            definitions.Add(LifeGoal(GoalRecordCraftingActivityId, "Record Crafting Activity", LifeGoalCategory.GainExperience, LifePathTargetSubjectType.ProfessionalActivity, activities: new[] { BlacksmithCraftingActivityDefinitionId }, compatibleAspirations: new[] { AspirationCreateMasterworkId }));
+            definitions.Add(LifeGoal(GoalProduceMasterworkId, "Produce Masterwork", LifeGoalCategory.ProduceQualifyingItem, LifePathTargetSubjectType.ProfessionalActivity, activities: new[] { BlacksmithCraftingActivityDefinitionId }, compatibleAspirations: new[] { AspirationCreateMasterworkId }, dependencies: new[] { GoalRecordCraftingActivityId }, alternatives: new[] { GoalReachMasterRankId }));
+            definitions.Add(LifeGoal(GoalConfirmDiscoveryId, "Confirm Discovery", LifeGoalCategory.MakeDiscovery, LifePathTargetSubjectType.Discovery, activities: new[] { BlacksmithExperimentationActivityDefinitionId }, compatibleAspirations: new[] { AspirationMakeDiscoveryId }, conflicts: new[] { "life-path.conflict.discovery-secrecy" }));
+            definitions.Add(LifeGoal(GoalRetireFromProfessionId, "Retire From Profession", LifeGoalCategory.Retire, LifePathTargetSubjectType.CareerTransition, compatibleAspirations: new[] { AspirationRetireSuccessfullyId }));
+            definitions.Add(Aspiration(AspirationEnterBlacksmithProfessionId, "Become a Blacksmith", AspirationCategory.EnterProfession, LifePathTargetSubjectType.Profession, professions: new[] { BlacksmithProfessionId }, suggestedGoals: new[] { GoalEnterBlacksmithProfessionId, GoalCompleteBlacksmithApprenticeshipId }, conflicts: new[] { "life-path.profession.blacksmith" }));
+            definitions.Add(Aspiration(AspirationReachMasterWeaponsmithId, "Become a Master Weaponsmith", AspirationCategory.AchieveMastery, LifePathTargetSubjectType.Rank, professions: new[] { BlacksmithProfessionId }, specializations: new[] { WeaponsmithSpecializationId }, ranks: new[] { BlacksmithRankMasterId, WeaponsmithRankMasterId }, suggestedGoals: new[] { GoalReachJourneymanRankId, GoalReachMasterRankId }, conflicts: new[] { "life-path.mastery.weaponsmith" }));
+            definitions.Add(Aspiration(AspirationEarnGuildLicenseId, "Earn a Guild License", AspirationCategory.EarnCredential, LifePathTargetSubjectType.Credential, professions: new[] { BlacksmithProfessionId }, credentials: new[] { BlacksmithGuildLicenseCredentialId }, suggestedGoals: new[] { GoalEarnBlacksmithGuildLicenseId }));
+            definitions.Add(Aspiration(AspirationObtainGuildPositionId, "Obtain a Guild Position", AspirationCategory.ObtainPosition, LifePathTargetSubjectType.Position, positions: new[] { GuildClerkPositionId }, organizations: new[] { "organization.prototype.guild" }, suggestedGoals: new[] { GoalObtainGuildClerkPositionId }));
+            definitions.Add(Aspiration(AspirationCreateMasterworkId, "Create a Masterwork", AspirationCategory.CreateMasterwork, LifePathTargetSubjectType.ProfessionalActivity, professions: new[] { BlacksmithProfessionId }, suggestedGoals: new[] { GoalRecordCraftingActivityId, GoalProduceMasterworkId }));
+            definitions.Add(Aspiration(AspirationMakeDiscoveryId, "Make a Professional Discovery", AspirationCategory.MakeDiscovery, LifePathTargetSubjectType.Discovery, professions: new[] { BlacksmithProfessionId }, suggestedGoals: new[] { GoalConfirmDiscoveryId }, allowSecret: true, conflicts: new[] { "life-path.conflict.discovery-secrecy" }));
+            definitions.Add(Aspiration(AspirationRetireSuccessfullyId, "Retire Successfully", AspirationCategory.RetireSuccessfully, LifePathTargetSubjectType.CareerTransition, professions: new[] { BlacksmithProfessionId }, suggestedGoals: new[] { GoalRetireFromProfessionId }));
+            definitions.Add(Aspiration(AspirationSecretSpyIdentityId, "Maintain Secret Spy Identity", AspirationCategory.ProfessionalIdentity, LifePathTargetSubjectType.Profession, professions: new[] { SpyProfessionId }, suggestedGoals: Array.Empty<string>(), allowSecret: true, conflicts: new[] { "life-path.secret-identity" }, policyId: AccessSecretId));
             return definitions;
         }
 
@@ -491,6 +527,51 @@ namespace UnityIsekaiGame.Professions
             ProfessionSpecializationDefinition definition = ScriptableObject.CreateInstance<ProfessionSpecializationDefinition>();
             definition.name = name.Replace(" ", string.Empty) + "Specialization";
             definition.DevelopmentConfigure(id, parentId, name, form, skills, knowledge, capabilities, activities, accessPolicy);
+            return definition;
+        }
+
+        private static AspirationDefinition Aspiration(
+            string id,
+            string name,
+            AspirationCategory category,
+            LifePathTargetSubjectType targetType,
+            string[] professions = null,
+            string[] specializations = null,
+            string[] ranks = null,
+            string[] credentials = null,
+            string[] positions = null,
+            string[] organizations = null,
+            string[] suggestedGoals = null,
+            bool allowSecret = false,
+            string[] conflicts = null,
+            string policyId = AccessPublicId)
+        {
+            AspirationDefinition definition = ScriptableObject.CreateInstance<AspirationDefinition>();
+            definition.name = name.Replace(" ", string.Empty) + "Aspiration";
+            definition.DevelopmentConfigure(id, name, category, targetType, professions, specializations, ranks, credentials, positions, organizations, suggestedGoals, conflicts: conflicts, allowSecret: allowSecret, policyId: policyId);
+            return definition;
+        }
+
+        private static LifeGoalDefinition LifeGoal(
+            string id,
+            string name,
+            LifeGoalCategory category,
+            LifePathTargetSubjectType targetType,
+            string[] professions = null,
+            string[] trainingPrograms = null,
+            string[] credentials = null,
+            string[] ranks = null,
+            string[] positions = null,
+            string[] activities = null,
+            string[] compatibleAspirations = null,
+            string[] dependencies = null,
+            string[] alternatives = null,
+            string[] conflicts = null,
+            string policyId = AccessPublicId)
+        {
+            LifeGoalDefinition definition = ScriptableObject.CreateInstance<LifeGoalDefinition>();
+            definition.name = name.Replace(" ", string.Empty) + "LifeGoal";
+            definition.DevelopmentConfigure(id, name, category, targetType, professions, trainingPrograms, credentials, ranks, positions, activities, compatibleAspirations: compatibleAspirations, dependencies: dependencies, alternatives: alternatives, conflicts: conflicts, policyId: policyId);
             return definition;
         }
 
