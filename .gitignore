@@ -111,3 +111,10 @@ InitTestScene*.unity*
 
 # Unity AI Assistant local/user package state
 /ProjectSettings/Packages/com.unity.ai.assistant/
+
+# Imported Asset Store package bulk/demo content that is not part of the
+# committed prototype slice. Files already tracked inside these folders remain
+# versioned; this only hides unused local import leftovers.
+/Assets/ThirdParty/Handpainted_Grass_and_Ground_Textures/Demo/
+/Assets/ThirdParty/Handpainted_Grass_and_Ground_Textures/Textures/
+/Assets/ThirdParty/polygonTrees/polygonTrees/
