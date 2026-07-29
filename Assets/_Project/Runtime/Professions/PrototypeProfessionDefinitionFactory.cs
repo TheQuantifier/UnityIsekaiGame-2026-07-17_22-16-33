@@ -64,6 +64,30 @@ namespace UnityIsekaiGame.Professions
         public const string BlacksmithSupervisePermissionId = "permission.profession.blacksmith.supervise";
         public const string AccessPublicId = "information-access.profession.public";
         public const string AccessSecretId = "information-access.profession.secret";
+        public const string GuildOrganizationTypeId = "organization-type.guild";
+        public const string ForgeOrganizationTypeId = "organization-type.forge";
+        public const string TempleOrganizationTypeId = "organization-type.temple";
+        public const string UniversityOrganizationTypeId = "organization-type.university";
+        public const string GovernmentOrganizationTypeId = "organization-type.government";
+        public const string IndependentOrganizationTypeId = "organization-type.independent";
+        public const string PositionAppointAuthorityId = "authority.position.appoint";
+        public const string PositionDutyAssignAuthorityId = "authority.position.assign-duty";
+        public const string PositionSuperviseAuthorityId = "authority.position.supervise";
+        public const string PositionRestrictedRecordsAuthorityId = "authority.position.restricted-records";
+        public const string RoyalForgeSeniorSmithPositionId = "position.prototype.royal-forge.senior-smith";
+        public const string GuildClerkPositionId = "position.prototype.guild.clerk";
+        public const string ApprenticeSupervisorPositionId = "position.prototype.guild.apprentice-supervisor";
+        public const string TempleHealerPositionId = "position.prototype.temple.healer";
+        public const string UniversityLecturerPositionId = "position.prototype.university.lecturer";
+        public const string IndependentContractorPositionId = "position.prototype.independent.contractor";
+        public const string SeniorSmithCraftDutyId = "duty.prototype.royal-forge.senior-smith.craft";
+        public const string SeniorSmithSuperviseDutyId = "duty.prototype.royal-forge.senior-smith.supervise";
+        public const string GuildClerkRecordDutyId = "duty.prototype.guild.clerk.records";
+        public const string GuildClerkCustomerDutyId = "duty.prototype.guild.clerk.customer-service";
+        public const string ApprenticeSupervisorTeachingDutyId = "duty.prototype.guild.apprentice-supervisor.teaching";
+        public const string TempleHealerMedicalDutyId = "duty.prototype.temple.healer.medical";
+        public const string UniversityLecturerTeachingDutyId = "duty.prototype.university.lecturer.teaching";
+        public const string IndependentContractorServiceDutyId = "duty.prototype.independent.contractor.service";
 
         public static IReadOnlyList<ScriptableObject> CreateDefinitions()
         {
@@ -334,6 +358,73 @@ namespace UnityIsekaiGame.Professions
                 examinations: new[] { BlacksmithPracticalExaminationId },
                 achievements: new[] { BlacksmithMasterworkAchievementId },
                 authorities: new[] { "authority.guild.prototype" }));
+            definitions.Add(Position(
+                RoyalForgeSeniorSmithPositionId,
+                "Royal Forge Senior Smith",
+                PositionCategory.Specialist,
+                new[] { BlacksmithProfessionId },
+                new[] { WeaponsmithSpecializationId },
+                ForgeOrganizationTypeId,
+                ranks: new[] { BlacksmithRankJourneymanId },
+                credentials: new[] { BlacksmithGuildLicenseCredentialId },
+                trainingPrograms: new[] { BlacksmithApprenticeshipProgramId, BlacksmithSafetyProgramId },
+                experience: new ProfessionalExperienceRequirementData
+                {
+                    professionId = BlacksmithProfessionId,
+                    specializationId = WeaponsmithSpecializationId,
+                    minimumValidatedActivities = 2,
+                    minimumIndependentActivities = 1,
+                    minimumQuality = 600,
+                    minimumDifficulty = ProfessionalActivityDifficulty.Routine
+                },
+                duties: new[] { SeniorSmithCraftDutyId, SeniorSmithSuperviseDutyId },
+                authorities: new[] { PositionDutyAssignAuthorityId, PositionSuperviseAuthorityId, ForgeRestrictedStationPermissionId },
+                classification: EmploymentClassification.FullTime,
+                maxHolders: 1,
+                exclusive: true,
+                compensationPolicy: "compensation-policy.foundation.royal-forge.senior-smith",
+                costCenter: "cost-center.foundation.royal-forge"));
+            definitions.Add(Position(
+                GuildClerkPositionId,
+                "Adventurer Guild Clerk",
+                PositionCategory.Administrator,
+                professions: null,
+                specializations: null,
+                organizationTypeId: GuildOrganizationTypeId,
+                duties: new[] { GuildClerkRecordDutyId, GuildClerkCustomerDutyId },
+                authorities: new[] { PositionRestrictedRecordsAuthorityId },
+                classification: EmploymentClassification.PartTime,
+                maxHolders: 2,
+                allowShared: true,
+                exclusive: false,
+                compensationPolicy: "compensation-policy.foundation.guild.clerk"));
+            definitions.Add(Position(
+                ApprenticeSupervisorPositionId,
+                "Guild Apprentice Supervisor",
+                PositionCategory.Supervisor,
+                new[] { BlacksmithProfessionId },
+                new[] { WeaponsmithSpecializationId },
+                GuildOrganizationTypeId,
+                ranks: new[] { BlacksmithRankMasterId },
+                credentials: new[] { BlacksmithGuildLicenseCredentialId },
+                trainingPrograms: new[] { BlacksmithApprenticeshipProgramId },
+                duties: new[] { ApprenticeSupervisorTeachingDutyId },
+                authorities: new[] { PositionAppointAuthorityId, PositionDutyAssignAuthorityId, PositionSuperviseAuthorityId, BlacksmithTeachPermissionId },
+                classification: EmploymentClassification.Appointed,
+                maxHolders: 1,
+                exclusive: false,
+                supervisorCapacity: 4));
+            definitions.Add(Position(TempleHealerPositionId, "Temple Healer", PositionCategory.Religious, new[] { FieldMedicProfessionId }, new[] { TraumaSpecializationId }, TempleOrganizationTypeId, duties: new[] { TempleHealerMedicalDutyId }, authorities: new[] { "authority.medical.prototype" }, classification: EmploymentClassification.ReligiousService, exclusive: false));
+            definitions.Add(Position(UniversityLecturerPositionId, "University Lecturer", PositionCategory.Instructor, new[] { BlacksmithProfessionId }, null, UniversityOrganizationTypeId, ranks: new[] { BlacksmithRankMasterId }, duties: new[] { UniversityLecturerTeachingDutyId }, authorities: new[] { BlacksmithTeachPermissionId }, classification: EmploymentClassification.ContractFoundation, exclusive: false));
+            definitions.Add(Position(IndependentContractorPositionId, "Independent Contractor Foundation", PositionCategory.Contractor, null, null, IndependentOrganizationTypeId, duties: new[] { IndependentContractorServiceDutyId }, classification: EmploymentClassification.IndependentServiceFoundation, maxHolders: 99, allowShared: true, exclusive: false, contractTerms: "contract-terms.foundation.independent-service"));
+            definitions.Add(Duty(SeniorSmithCraftDutyId, RoyalForgeSeniorSmithPositionId, "Craft Royal Forge Orders", DutyCategory.Crafting, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, PositionDutyAssignAuthorityId, allowDelegation: false));
+            definitions.Add(Duty(SeniorSmithSuperviseDutyId, RoyalForgeSeniorSmithPositionId, "Supervise Forge Apprentices", DutyCategory.Supervision, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, PositionSuperviseAuthorityId, allowDelegation: true, requireSupervision: false));
+            definitions.Add(Duty(GuildClerkRecordDutyId, GuildClerkPositionId, "Maintain Guild Records", DutyCategory.Recordkeeping, authorityId: PositionRestrictedRecordsAuthorityId, isSecret: true, policyId: AccessSecretId));
+            definitions.Add(Duty(GuildClerkCustomerDutyId, GuildClerkPositionId, "Receive Adventurers", DutyCategory.CustomerInteraction, requireEvidence: false));
+            definitions.Add(Duty(ApprenticeSupervisorTeachingDutyId, ApprenticeSupervisorPositionId, "Teach and Review Apprentices", DutyCategory.Teaching, BlacksmithProfessionId, BlacksmithTeachPermissionId, allowDelegation: true));
+            definitions.Add(Duty(TempleHealerMedicalDutyId, TempleHealerPositionId, "Treat Temple Patients", DutyCategory.Medical, FieldMedicProfessionId, "authority.medical.prototype"));
+            definitions.Add(Duty(UniversityLecturerTeachingDutyId, UniversityLecturerPositionId, "Deliver University Lectures", DutyCategory.Teaching, BlacksmithProfessionId, BlacksmithTeachPermissionId, allowDelegation: true));
+            definitions.Add(Duty(IndependentContractorServiceDutyId, IndependentContractorPositionId, "Complete Contracted Service", DutyCategory.Service, requireEvidence: true));
             return definitions;
         }
 
@@ -673,6 +764,79 @@ namespace UnityIsekaiGame.Professions
             ProfessionalMasteryDefinition definition = ScriptableObject.CreateInstance<ProfessionalMasteryDefinition>();
             definition.name = name.Replace(" ", string.Empty);
             definition.DevelopmentConfigure(id, name, professionId, requiredRank, specialization, experience, breadth, depthQuality, independentWork, teachingOrLeadership, credentials, examinations, achievements, authorities, policyId: policyId);
+            return definition;
+        }
+
+        private static PositionDefinition Position(
+            string id,
+            string name,
+            PositionCategory category,
+            string[] professions = null,
+            string[] specializations = null,
+            string organizationTypeId = "",
+            string[] ranks = null,
+            string[] credentials = null,
+            string[] trainingPrograms = null,
+            ProfessionalExperienceRequirementData experience = null,
+            string[] duties = null,
+            string[] authorities = null,
+            EmploymentClassification classification = EmploymentClassification.Permanent,
+            int maxHolders = 1,
+            bool allowVacancy = true,
+            bool allowShared = false,
+            bool exclusive = true,
+            bool isSecret = false,
+            string policyId = AccessPublicId,
+            int supervisorCapacity = 0,
+            string compensationPolicy = "",
+            string costCenter = "",
+            string contractTerms = "")
+        {
+            PositionDefinition definition = ScriptableObject.CreateInstance<PositionDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(
+                id,
+                name,
+                category,
+                professions,
+                specializations,
+                organizationTypeId,
+                ranks,
+                credentials,
+                trainingPrograms,
+                experience,
+                duties,
+                authorities,
+                classification,
+                maxHolders,
+                allowVacancy,
+                allowShared,
+                exclusive,
+                isSecret,
+                policyId,
+                supervisorCapacity: supervisorCapacity,
+                compensationPolicy: compensationPolicy,
+                costCenter: costCenter,
+                contractTerms: contractTerms);
+            return definition;
+        }
+
+        private static DutyDefinition Duty(
+            string id,
+            string positionId,
+            string name,
+            DutyCategory category,
+            string professionId = "",
+            string authorityId = "",
+            bool allowDelegation = false,
+            bool requireSupervision = false,
+            bool requireEvidence = true,
+            bool isSecret = false,
+            string policyId = AccessPublicId)
+        {
+            DutyDefinition definition = ScriptableObject.CreateInstance<DutyDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(id, positionId, name, category, true, 100, professionId, authorityId, allowDelegation, requireSupervision, requireEvidence, isSecret, policyId);
             return definition;
         }
 
