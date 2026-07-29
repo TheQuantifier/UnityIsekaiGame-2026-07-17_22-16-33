@@ -1287,4 +1287,277 @@ namespace UnityIsekaiGame.Professions
         SetbackRecorded = 10,
         Corrected = 11
     }
+
+    public enum LifePathState
+    {
+        Forming = 0,
+        Active = 1,
+        Stable = 2,
+        Transitional = 3,
+        Conflicted = 4,
+        Interrupted = 5,
+        Recovering = 6,
+        RetiredFoundation = 7,
+        FulfilledFoundation = 8,
+        Abandoned = 9,
+        Unknown = 10,
+        Custom = 11
+    }
+
+    public enum FormativeReferenceKind
+    {
+        Custom = 0,
+        PlaceOrCommunityOrigin = 1,
+        Origin = PlaceOrCommunityOrigin,
+        HouseholdOrFamilyBackground = 2,
+        SocialStatusOrigin = 3,
+        EarlyEducation = 4,
+        ChildhoodOccupationExposure = 5,
+        CulturalUpbringing = 6,
+        ReligiousUpbringing = 7,
+        MilitaryUpbringing = 8,
+        InstitutionalUpbringing = 9,
+        MajorFormativeEvent = 10,
+        MentorOrInfluentialPerson = 11,
+        CustomBackgroundSubject = 12
+    }
+
+    public enum AspirationCategory
+    {
+        Custom = 0,
+        EnterProfession = 1,
+        CompleteEducation = 2,
+        EarnCredential = 3,
+        ReachRank = 4,
+        AchieveMastery = 5,
+        GainSpecialization = 6,
+        ObtainPosition = 7,
+        LeadOrganizationFoundation = 8,
+        CompleteImportantWork = 9,
+        CreateMasterwork = 10,
+        MakeDiscovery = 11,
+        TeachOthers = 12,
+        RetireSuccessfully = 13,
+        ChangeCareer = 14,
+        RestoreLostStatus = 15,
+        PersonalService = 16,
+        ProfessionalIdentity = 17
+    }
+
+    public enum LifeGoalCategory
+    {
+        Custom = 0,
+        EnterProfession = 1,
+        CompleteProgram = 2,
+        CompleteApprenticeship = 3,
+        GainExperience = 4,
+        EarnCredential = 5,
+        PassExamination = 6,
+        ReachRank = 7,
+        GainMastery = 8,
+        ObtainPosition = 9,
+        CompleteWorkOrder = 10,
+        ProduceQualifyingItem = 11,
+        TeachLearner = 12,
+        MakeDiscovery = 13,
+        ResumeCareer = 14,
+        Retire = 15
+    }
+
+    public enum LifePathTargetSubjectType
+    {
+        Custom = 0,
+        Profession = 1,
+        Specialization = 2,
+        Rank = 3,
+        Credential = 4,
+        Position = 5,
+        Organization = 6,
+        TrainingProgram = 7,
+        ProfessionalActivity = 8,
+        CareerEpisode = 9,
+        CareerTransition = 10,
+        Item = 11,
+        Achievement = 12,
+        Discovery = 13,
+        Person = 14,
+        HistoricalRecord = 15
+    }
+
+    public enum LifePathCompletionPolicy
+    {
+        Manual = 0,
+        AllRequiredGoalsComplete = 1,
+        AnyAlternativeGoalComplete = 2,
+        AuthoritativeTargetExists = 3,
+        Custom = 4
+    }
+
+    public enum LifePathFailurePolicy
+    {
+        Manual = 0,
+        AnyRequiredGoalFailed = 1,
+        DeadlineExpired = 2,
+        AuthoritativeTargetImpossible = 3,
+        Custom = 4
+    }
+
+    public enum PersonAspirationState
+    {
+        Desired = 0,
+        Considering = 1,
+        Active = 2,
+        Paused = 3,
+        Blocked = 4,
+        Conflicted = 5,
+        Fulfilled = 6,
+        Failed = 7,
+        Abandoned = 8,
+        Replaced = 9,
+        Superseded = 10,
+        Secret = 11,
+        Disputed = 12,
+        Custom = 13
+    }
+
+    public enum PersonGoalState
+    {
+        Planned = 0,
+        Active = 1,
+        Paused = 2,
+        Blocked = 3,
+        Completed = 4,
+        Failed = 5,
+        Abandoned = 6,
+        Replaced = 7,
+        Cancelled = 8,
+        Expired = 9,
+        Secret = 10,
+        Custom = 11
+    }
+
+    public enum LifeGoalProgressState
+    {
+        Unknown = 0,
+        NotStarted = 1,
+        InProgress = 2,
+        Blocked = 3,
+        Satisfied = 4,
+        Failed = 5,
+        Redacted = 6,
+        Custom = 7
+    }
+
+    public enum ProfessionalIdentityKind
+    {
+        Primary = 0,
+        Secondary = 1,
+        Aspirational = 2,
+        Former = 3,
+        Retired = 4,
+        Secret = 5,
+        Disputed = 6,
+        PublicFoundation = 7,
+        Custom = 8
+    }
+
+    public enum ProfessionalIdentityAlignmentState
+    {
+        Aligned = 0,
+        PartiallyAligned = 1,
+        Aspirational = 2,
+        Outdated = 3,
+        Conflicted = 4,
+        Disputed = 5,
+        Secret = 6,
+        Lost = 7,
+        Rebuilding = 8,
+        Unknown = 9,
+        Custom = 10
+    }
+
+    public enum LifePathAchievementSetbackKind
+    {
+        Custom = 0,
+        Achievement = 1,
+        Setback = 2,
+        ProfessionEntered = 3,
+        ProgramCompleted = 4,
+        CredentialEarned = 5,
+        RankGained = 6,
+        MasteryRecognized = 7,
+        ImportantPositionObtained = 8,
+        MajorWorkCompleted = 9,
+        MasterworkProduced = 10,
+        DiscoveryConfirmed = 11,
+        Promotion = 12,
+        Dismissal = 13,
+        CredentialRevoked = 14,
+        RankLost = 15,
+        FailedExamination = 16,
+        MajorProfessionalFailure = 17,
+        CareerAffectingInjuryFoundation = 18,
+        Retirement = 19,
+        ReturnFromRetirement = 20
+    }
+
+    public enum LifePathOperationStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        Duplicate = 2,
+        MissingDefinition = 3,
+        MissingPerson = 4,
+        MissingLifePath = 5,
+        MissingAspiration = 6,
+        MissingGoal = 7,
+        MissingIdentity = 8,
+        MissingSourceRecord = 9,
+        MissingRequirement = 10,
+        StaleProgress = 11,
+        InvalidRequest = 12,
+        InvalidState = 13,
+        InvalidTransition = 14,
+        InvalidDateRange = 15,
+        Conflict = 16,
+        Cycle = 17,
+        ValidationFailed = 18,
+        CorruptSave = 19
+    }
+
+    public enum LifePathProjectionAudience
+    {
+        SubjectPerson = 0,
+        Mentor = 1,
+        Instructor = 2,
+        EmployerFoundation = 3,
+        Organization = 4,
+        FriendOrFamilyFoundation = 5,
+        Public = 6,
+        PersonKnown = 7,
+        PersonBelieved = 8,
+        PrivilegedDebug = 9,
+        Redacted = 10
+    }
+
+    public enum LifePathHookKind
+    {
+        Unknown = 0,
+        LifePathCreated = 1,
+        AspirationAdopted = 2,
+        MajorGoalBegun = 3,
+        GoalCompleted = 4,
+        GoalFailed = 5,
+        AspirationFulfilled = 6,
+        AspirationAbandoned = 7,
+        ProfessionalIdentityChanged = 8,
+        IdentityConflictRecorded = 9,
+        IdentityConflictResolved = 10,
+        MajorSetback = 11,
+        AchievementRecorded = 12,
+        LifeDirectionChanged = 13,
+        PersonRetired = 14,
+        PersonReturnedToProfessionalLife = 15,
+        Corrected = 16
+    }
 }

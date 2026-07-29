@@ -392,6 +392,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionalRankRuntime professionalRanks,
             PositionEmploymentRuntime positionEmployment,
             CareerHistoryRuntime careerHistory,
+            LifePathRuntime lifePaths,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -423,6 +424,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionalRanks = professionalRanks;
             PositionEmployment = positionEmployment;
             CareerHistory = careerHistory;
+            LifePaths = lifePaths;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -456,6 +458,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ProfessionalRankRuntime ProfessionalRanks { get; }
         public PositionEmploymentRuntime PositionEmployment { get; }
         public CareerHistoryRuntime CareerHistory { get; }
+        public LifePathRuntime LifePaths { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -487,7 +490,8 @@ namespace UnityIsekaiGame.Development.Automation
             CredentialRuntime credentials = null,
             ProfessionalRankRuntime professionalRanks = null,
             PositionEmploymentRuntime positionEmployment = null,
-            CareerHistoryRuntime careerHistory = null)
+            CareerHistoryRuntime careerHistory = null,
+            LifePathRuntime lifePaths = null)
         {
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
             professionRuntime.Configure(definitionRegistry, knownPersonIds);
@@ -505,7 +509,9 @@ namespace UnityIsekaiGame.Development.Automation
             positionRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, knownPersonIds, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
             CareerHistoryRuntime careerRuntime = careerHistory ?? new CareerHistoryRuntime();
             careerRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, knownPersonIds, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, null);
+            LifePathRuntime lifePathRuntime = lifePaths ?? new LifePathRuntime();
+            lifePathRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, knownPersonIds, DefaultOrganizationIds);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -542,6 +548,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionalRankRuntime professionalRanks = new ProfessionalRankRuntime();
             PositionEmploymentRuntime positionEmployment = new PositionEmploymentRuntime();
             CareerHistoryRuntime careerHistory = new CareerHistoryRuntime();
+            LifePathRuntime lifePaths = new LifePathRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -560,8 +567,9 @@ namespace UnityIsekaiGame.Development.Automation
             professionalRanks.Configure(definitionRegistry, professions, training, professionalActivities, credentials, persons, DefaultCredentialAuthorityIds);
             positionEmployment.Configure(definitionRegistry, professions, training, professionalActivities, credentials, professionalRanks, persons, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
             careerHistory.Configure(definitionRegistry, professions, training, professionalActivities, credentials, professionalRanks, positionEmployment, persons, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
+            lifePaths.Configure(definitionRegistry, professions, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, persons, DefaultOrganizationIds);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -609,7 +617,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Credentials?.CreateSaveData(),
                 ProfessionalRanks?.CreateSaveData(),
                 PositionEmployment?.CreateSaveData(),
-                CareerHistory?.CreateSaveData());
+                CareerHistory?.CreateSaveData(),
+                LifePaths?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -639,7 +648,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Credentials", Credentials?.Revision ?? 0L, Credentials?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("ProfessionalRanks", ProfessionalRanks?.Revision ?? 0L, ProfessionalRanks?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("PositionEmployment", PositionEmployment?.Revision ?? 0L, PositionEmployment?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("CareerHistory", CareerHistory?.Revision ?? 0L, CareerHistory?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("CareerHistory", CareerHistory?.Revision ?? 0L, CareerHistory?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("LifePaths", LifePaths?.Revision ?? 0L, LifePaths?.CreateSaveData())
             });
         }
 
@@ -890,6 +900,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (LifePaths != null && snapshot.LifePaths != null)
+            {
+                LifePathOperationResult result = LifePaths.RestoreFromSaveData(snapshot.LifePaths, DefinitionRegistry, Professions, Training, ProfessionalActivities, Credentials, ProfessionalRanks, PositionEmployment, CareerHistory, KnownPersonIds, DefaultOrganizationIds, restoring: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Life path restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -969,7 +989,8 @@ namespace UnityIsekaiGame.Development.Automation
             CredentialRuntimeSaveData credentials,
             ProfessionalRankRuntimeSaveData professionalRanks,
             PositionEmploymentRuntimeSaveData positionEmployment,
-            CareerHistoryRuntimeSaveData careerHistory)
+            CareerHistoryRuntimeSaveData careerHistory,
+            LifePathRuntimeSaveData lifePaths)
         {
             Knowledge = knowledge;
             History = history;
@@ -995,6 +1016,7 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionalRanks = professionalRanks;
             PositionEmployment = positionEmployment;
             CareerHistory = careerHistory;
+            LifePaths = lifePaths;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1021,6 +1043,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ProfessionalRankRuntimeSaveData ProfessionalRanks { get; }
         public PositionEmploymentRuntimeSaveData PositionEmployment { get; }
         public CareerHistoryRuntimeSaveData CareerHistory { get; }
+        public LifePathRuntimeSaveData LifePaths { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint

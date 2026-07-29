@@ -30,6 +30,7 @@ namespace UnityIsekaiGame.Development.Automation
             registry.TryRegister(BuildProfessionalRanksMasterySpecializationsSuite(), out _);
             registry.TryRegister(BuildPositionsDutiesEmploymentFoundationsSuite(), out _);
             registry.TryRegister(BuildCareerHistoryTransitionsSuite(), out _);
+            registry.TryRegister(BuildLifePathsAspirationsProfessionalIdentitySuite(), out _);
         }
 
         private static ITestLabAutomationSuite BuildProfessionIdentitySuite()
@@ -72,6 +73,50 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeProfessionDefinitionFactory.FieldMedicProfessionId,
                     PrototypeProfessionDefinitionFactory.WeaponsmithSpecializationId,
                     PrototypeProfessionDefinitionFactory.AccessSecretId
+                });
+        }
+
+        private static ITestLabAutomationSuite BuildLifePathsAspirationsProfessionalIdentitySuite()
+        {
+            return new TestLabAutomationSuite(
+                "feature.10.9.life-paths-aspirations-professional-identity",
+                "Feature 10.9 Life Paths, Aspirations, and Professional Identity",
+                "10.9",
+                "Life-path records, aspirations, goals, progress, professional identity, access projection, persistence, and boundary automation.",
+                1090,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "LifePathRuntime", "AspirationDefinition", "LifeGoalDefinition", "CareerHistoryRuntime" },
+                scenarios: new ITestLabAutomationScenario[]
+                {
+                    LifePathScenario("definitions-and-records", "Life-path definitions and records validate", 10, Step("step10-life-definitions", LifePathDefinitionsAndRecords)),
+                    LifePathScenario("goal-progress-boundaries", "Goal progress evaluates authoritative sources and stale completion", 20, Step("step10-life-progress", LifePathGoalProgressBoundaries)),
+                    LifePathScenario("identity-and-access", "Professional identity remains separate and secret projections redact", 30, Step("step10-life-identity", LifePathIdentityAndAccess)),
+                    LifePathScenario("lifecycle-conflicts", "Aspiration and goal lifecycle transitions preserve conflicts", 40, Step("step10-life-lifecycle", LifePathLifecycleConflicts)),
+                    LifePathScenario("persistence-round-trip", "Life paths persist and corrupt restore is atomic", 50, Step("step10-life-persistence", LifePathPersistenceRoundTrip))
+                });
+        }
+
+        private static ITestLabAutomationScenario LifePathScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                order <= 20 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
+                includeInQuickRun: order <= 20,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
+                requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeProfessionDefinitionFactory.AspirationEnterBlacksmithProfessionId,
+                    PrototypeProfessionDefinitionFactory.AspirationReachMasterWeaponsmithId,
+                    PrototypeProfessionDefinitionFactory.GoalEnterBlacksmithProfessionId,
+                    PrototypeProfessionDefinitionFactory.GoalCompleteBlacksmithApprenticeshipId,
+                    PrototypeProfessionDefinitionFactory.GoalProduceMasterworkId
                 });
         }
 
@@ -1956,6 +2001,263 @@ namespace UnityIsekaiGame.Development.Automation
                 transactionId = context.ScenarioContext.ScopedId("profession-tx", "activity-blacksmith")
             });
         }
+
+        private static TestLabAutomationStepResult LifePathDefinitionsAndRecords(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (IDefinitionCatalogValidationParticipant participant in runtimes.DefinitionRegistry.DefinitionsById.Values.OfType<IDefinitionCatalogValidationParticipant>())
+            {
+                participant.ValidateCatalogDefinition(runtimes.DefinitionRegistry.DefinitionsById, report);
+            }
+
+            LifePathOperationResult path = EnsureLifePathRecord(context);
+            LifePathOperationResult aspiration = runtimes.LifePaths.AddAspiration(LifeAspiration(context, "definitions", PrototypeProfessionDefinitionFactory.AspirationEnterBlacksmithProfessionId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId), context.ScenarioContext.ScopedId("life-tx", "definitions-aspiration"));
+            LifePathOperationResult goal = runtimes.LifePaths.AddGoal(LifeGoal(context, "definitions", PrototypeProfessionDefinitionFactory.GoalEnterBlacksmithProfessionId, aspiration.Aspiration?.aspirationId, targetProfession: PrototypeProfessionDefinitionFactory.BlacksmithProfessionId), context.ScenarioContext.ScopedId("life-tx", "definitions-goal"));
+            LifePathSnapshot snapshot = runtimes.LifePaths.BuildSnapshot(runtimes.PersonId).Snapshot;
+            bool valid = report.ErrorCount == 0
+                && report.WarningCount == 0
+                && path.Succeeded
+                && aspiration.Succeeded
+                && goal.Succeeded
+                && snapshot != null
+                && snapshot.LifePaths.Count == 1
+                && snapshot.LifePaths[0].formativeReferences.Length == 1
+                && runtimes.DefinitionRegistry.TryGet(PrototypeProfessionDefinitionFactory.GoalCompleteBlacksmithApprenticeshipId, out LifeGoalDefinition trainingGoal)
+                && trainingGoal.RequiredTrainingProgramIds.Contains(PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId);
+            return TestLabAssertions.True("step10-life-definitions", "Life-path definitions and records validate without grants", valid, $"Errors={report.ErrorCount} Warnings={report.WarningCount} Path={path.Status} Aspiration={aspiration.Status} Goal={goal.Status} Snapshot={snapshot?.LifePaths.Count}/{snapshot?.Aspirations.Count}/{snapshot?.Goals.Count}");
+        }
+
+        private static TestLabAutomationStepResult LifePathGoalProgressBoundaries(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureLifePathRecord(context);
+            EnsureBlacksmithCredentialFoundation(context, "life-progress");
+            CredentialOperationResult license = EnsureGuildLicense(context, "life-progress");
+            EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, "life-progress");
+            CreateLifePositionEmployment(context, "life-progress");
+            ProfessionalActivityOperationResult crafting = RegisterLifeActivity(context, "life-crafting", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ProfessionalActivitySourceType.CraftingOperation);
+            ProfessionalActivityOperationResult discovery = RegisterLifeActivity(context, "life-discovery", PrototypeProfessionDefinitionFactory.BlacksmithExperimentationActivityDefinitionId, ProfessionalActivitySourceType.DiscoveryClaim);
+
+            PersonGoalData professionGoal = AddLifeGoal(context, "progress-profession", PrototypeProfessionDefinitionFactory.GoalEnterBlacksmithProfessionId, targetProfession: PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            PersonGoalData trainingGoal = AddLifeGoal(context, "progress-training", PrototypeProfessionDefinitionFactory.GoalCompleteBlacksmithApprenticeshipId, targetTraining: PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId);
+            PersonGoalData credentialGoal = AddLifeGoal(context, "progress-credential", PrototypeProfessionDefinitionFactory.GoalEarnBlacksmithGuildLicenseId, targetCredential: PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId);
+            PersonGoalData rankGoal = AddLifeGoal(context, "progress-rank", PrototypeProfessionDefinitionFactory.GoalReachJourneymanRankId, targetRank: PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId);
+            PersonGoalData positionGoal = AddLifeGoal(context, "progress-position", PrototypeProfessionDefinitionFactory.GoalObtainGuildClerkPositionId, targetPosition: PrototypeProfessionDefinitionFactory.GuildClerkPositionId);
+            PersonGoalData craftingGoal = AddLifeGoal(context, "progress-crafting", PrototypeProfessionDefinitionFactory.GoalProduceMasterworkId, targetActivity: PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId);
+            PersonGoalData discoveryGoal = AddLifeGoal(context, "progress-discovery", PrototypeProfessionDefinitionFactory.GoalConfirmDiscoveryId, targetActivity: PrototypeProfessionDefinitionFactory.BlacksmithExperimentationActivityDefinitionId);
+
+            LifePathOperationResult staleToken = runtimes.LifePaths.EvaluateGoalProgress(professionGoal.goalId);
+            RegisterLifeActivity(context, "life-stale-mutation", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ProfessionalActivitySourceType.CraftingOperation);
+            LifePathOperationResult stale = runtimes.LifePaths.CompleteGoal(professionGoal.goalId, staleToken.Progress, "70", context.ScenarioContext.ScopedId("life-tx", "stale-complete"));
+            LifePathOperationResult current = runtimes.LifePaths.EvaluateGoalProgress(professionGoal.goalId);
+            LifePathOperationResult complete = runtimes.LifePaths.CompleteGoal(professionGoal.goalId, current.Progress, "71", context.ScenarioContext.ScopedId("life-tx", "complete"));
+
+            bool valid = crafting.Succeeded
+                && discovery.Succeeded
+                && license.Succeeded
+                && GoalComplete(runtimes, trainingGoal.goalId)
+                && GoalComplete(runtimes, credentialGoal.goalId)
+                && GoalComplete(runtimes, rankGoal.goalId)
+                && GoalComplete(runtimes, positionGoal.goalId)
+                && GoalComplete(runtimes, craftingGoal.goalId)
+                && GoalComplete(runtimes, discoveryGoal.goalId)
+                && stale.Status == LifePathOperationStatus.StaleProgress
+                && complete.Succeeded;
+            return TestLabAssertions.True("step10-life-progress", "Goal progress evaluates authoritative sources and rejects stale completion", valid, $"License={license.Status} Crafting={crafting.Status} Discovery={discovery.Status} Stale={stale.Status} Complete={complete.Status} Training={trainingGoal.goalId} Credential={credentialGoal.goalId} Rank={rankGoal.goalId} Position={positionGoal.goalId}");
+        }
+
+        private static TestLabAutomationStepResult LifePathIdentityAndAccess(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureLifePathRecord(context);
+            long professionRevision = runtimes.Professions.Revision;
+            LifePathOperationResult identity = runtimes.LifePaths.SetProfessionalIdentity(new ProfessionalIdentityData
+            {
+                identityId = context.ScenarioContext.ScopedId("life-identity", "secret-spy"),
+                personId = runtimes.PersonId,
+                kind = ProfessionalIdentityKind.Primary,
+                alignment = ProfessionalIdentityAlignmentState.Conflicted,
+                professionId = PrototypeProfessionDefinitionFactory.SpyProfessionId,
+                selfPerceived = true,
+                publicDeclared = false,
+                active = true,
+                secret = true,
+                motivationTags = new[] { "secret.identity" },
+                accessPolicyId = PrototypeProfessionDefinitionFactory.AccessSecretId
+            }, context.ScenarioContext.ScopedId("life-tx", "identity"));
+            LifePathOperationResult conflict = runtimes.LifePaths.RecordIdentityConflict(new IdentityConflictData
+            {
+                conflictId = context.ScenarioContext.ScopedId("life-conflict", "secret-spy"),
+                personId = runtimes.PersonId,
+                state = ProfessionalIdentityAlignmentState.Conflicted,
+                identityIds = new[] { identity.Identity?.identityId },
+                accessPolicyId = PrototypeProfessionDefinitionFactory.AccessSecretId
+            }, context.ScenarioContext.ScopedId("life-tx", "identity-conflict"));
+            LifePathProjection<LifePathSnapshot> publicProjection = runtimes.LifePaths.ProjectSnapshot(runtimes.PersonId, LifePathProjectionAudience.Public);
+            LifePathProjection<LifePathSnapshot> privileged = runtimes.LifePaths.ProjectSnapshot(runtimes.PersonId, LifePathProjectionAudience.SubjectPerson);
+            bool valid = identity.Succeeded
+                && conflict.Succeeded
+                && runtimes.Professions.Revision == professionRevision
+                && runtimes.Professions.QueryByPerson(runtimes.PersonId).Count == 0
+                && publicProjection.Redacted
+                && publicProjection.Record.Identities.Count == 0
+                && privileged.Record.Identities.Any(item => item.professionId == PrototypeProfessionDefinitionFactory.SpyProfessionId);
+            return TestLabAssertions.True("step10-life-identity", "Professional identity stays separate from profession state and secret projections redact", valid, $"Identity={identity.Status} Conflict={conflict.Status} Redacted={publicProjection.Redacted} ProfRev={professionRevision}->{runtimes.Professions.Revision}");
+        }
+
+        private static TestLabAutomationStepResult LifePathLifecycleConflicts(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureLifePathRecord(context);
+            LifePathOperationResult aspiration = runtimes.LifePaths.AddAspiration(LifeAspiration(context, "lifecycle", PrototypeProfessionDefinitionFactory.AspirationEnterBlacksmithProfessionId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId), context.ScenarioContext.ScopedId("life-tx", "lifecycle-aspiration"));
+            LifePathOperationResult conflict = runtimes.LifePaths.AddAspiration(LifeAspiration(context, "lifecycle-conflict", PrototypeProfessionDefinitionFactory.AspirationEnterBlacksmithProfessionId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId), context.ScenarioContext.ScopedId("life-tx", "lifecycle-conflict"));
+            PersonGoalData goal = AddLifeGoal(context, "lifecycle-goal", PrototypeProfessionDefinitionFactory.GoalEnterBlacksmithProfessionId, aspiration.Aspiration?.aspirationId, targetProfession: PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            LifePathOperationResult pause = runtimes.LifePaths.SetAspirationState(aspiration.Aspiration?.aspirationId, PersonAspirationState.Paused, "20", "Paused.", context.ScenarioContext.ScopedId("life-tx", "pause"));
+            LifePathOperationResult resume = runtimes.LifePaths.SetAspirationState(aspiration.Aspiration?.aspirationId, PersonAspirationState.Active, "21", "Resumed.", context.ScenarioContext.ScopedId("life-tx", "resume"));
+            LifePathOperationResult fail = runtimes.LifePaths.SetGoalState(goal.goalId, PersonGoalState.Failed, "22", "Failed.", context.ScenarioContext.ScopedId("life-tx", "goal-fail"));
+            LifePathOperationResult revive = runtimes.LifePaths.SetGoalState(goal.goalId, PersonGoalState.Active, "23", "Invalid.", context.ScenarioContext.ScopedId("life-tx", "goal-revive"));
+            LifePathOperationResult achievement = runtimes.LifePaths.RecordAchievementOrSetback(new LifePathAchievementSetbackReferenceData
+            {
+                recordId = context.ScenarioContext.ScopedId("life-achievement", "lifecycle"),
+                personId = runtimes.PersonId,
+                lifePathId = context.ScenarioContext.ScopedId("life-path", "prototype"),
+                aspirationId = aspiration.Aspiration?.aspirationId,
+                goalId = goal.goalId,
+                kind = LifePathAchievementSetbackKind.Setback,
+                sourceRecordType = CareerTransitionSourceRecordType.Custom,
+                sourceRecordId = context.ScenarioContext.ScopedId("life-source", "setback"),
+                worldTime = "24",
+                exclusive = true,
+                accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId
+            }, context.ScenarioContext.ScopedId("life-tx", "setback"));
+            bool valid = aspiration.Succeeded
+                && conflict.Status == LifePathOperationStatus.Conflict
+                && pause.Succeeded
+                && resume.Succeeded
+                && fail.Succeeded
+                && revive.Status == LifePathOperationStatus.InvalidTransition
+                && achievement.Succeeded;
+            return TestLabAssertions.True("step10-life-lifecycle", "Aspiration and goal lifecycle transitions preserve conflicts and achievements", valid, $"Aspiration={aspiration.Status} Conflict={conflict.Status} Pause={pause.Status} Resume={resume.Status} Fail={fail.Status} Revive={revive.Status} Record={achievement.Status}");
+        }
+
+        private static TestLabAutomationStepResult LifePathPersistenceRoundTrip(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureLifePathRecord(context);
+            AddLifeGoal(context, "persist-goal", PrototypeProfessionDefinitionFactory.GoalEnterBlacksmithProfessionId, targetProfession: PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            LifePathRuntimeSaveData save = runtimes.LifePaths.CreateSaveData();
+            LifePathRuntime restored = new LifePathRuntime();
+            restored.Configure(runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.PositionEmployment, runtimes.CareerHistory, runtimes.KnownPersonIds, DefaultLifePathOrganizations());
+            LifePathOperationResult restore = restored.RestoreFromSaveData(save, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.PositionEmployment, runtimes.CareerHistory, runtimes.KnownPersonIds, DefaultLifePathOrganizations(), restoring: true);
+            LifePathRuntimeSaveData corrupt = save.Clone();
+            corrupt.goals[0].personId = "person.missing";
+            int beforeGoals = restored.GoalCount;
+            long beforeRevision = restored.Revision;
+            LifePathOperationResult rejected = restored.RestoreFromSaveData(corrupt, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.PositionEmployment, runtimes.CareerHistory, runtimes.KnownPersonIds, DefaultLifePathOrganizations(), restoring: true);
+            bool valid = restore.Succeeded
+                && restored.GoalCount == runtimes.LifePaths.GoalCount
+                && restored.HistoryHooks.Count == 0
+                && rejected.Status == LifePathOperationStatus.CorruptSave
+                && restored.GoalCount == beforeGoals
+                && restored.Revision == beforeRevision;
+            return TestLabAssertions.True("step10-life-persistence", "Life-path persistence restores atomically and rejects corrupt payloads", valid, $"Restore={restore.Status} Rejected={rejected.Status} Count={restored.GoalCount}/{runtimes.LifePaths.GoalCount} Hooks={restored.HistoryHooks.Count}");
+        }
+
+        private static LifePathOperationResult EnsureLifePathRecord(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            return runtimes.LifePaths.CreateOrUpdateLifePath(new LifePathRecordData
+            {
+                lifePathId = context.ScenarioContext.ScopedId("life-path", "prototype"),
+                personId = runtimes.PersonId,
+                state = LifePathState.Active,
+                startWorldTime = "1",
+                formativeReferences = new[] { new FormativeReferenceData { referenceId = context.ScenarioContext.ScopedId("life-origin", "village"), kind = FormativeReferenceKind.Origin, subjectId = "origin.prototype.village", weight = 10 } },
+                accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId
+            }, context.ScenarioContext.ScopedId("life-tx", "path"));
+        }
+
+        private static PersonAspirationData LifeAspiration(TestLabAutomationContext context, string slug, string definitionId, string targetProfession = "")
+        {
+            return new PersonAspirationData
+            {
+                aspirationId = context.ScenarioContext.ScopedId("life-aspiration", slug),
+                personId = context.ScenarioContext.Runtimes.PersonId,
+                aspirationDefinitionId = definitionId,
+                state = PersonAspirationState.Active,
+                targetProfessionId = targetProfession,
+                priority = 10,
+                startWorldTime = "2",
+                accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId
+            };
+        }
+
+        private static PersonGoalData LifeGoal(TestLabAutomationContext context, string slug, string definitionId, string parentAspiration = "", string targetProfession = "", string targetTraining = "", string targetCredential = "", string targetRank = "", string targetPosition = "", string targetActivity = "")
+        {
+            return new PersonGoalData
+            {
+                goalId = context.ScenarioContext.ScopedId("life-goal", slug),
+                personId = context.ScenarioContext.Runtimes.PersonId,
+                goalDefinitionId = definitionId,
+                parentAspirationId = parentAspiration ?? string.Empty,
+                state = PersonGoalState.Active,
+                targetProfessionId = targetProfession,
+                targetTrainingProgramId = targetTraining,
+                targetCredentialDefinitionId = targetCredential,
+                targetRankDefinitionId = targetRank,
+                targetPositionDefinitionId = targetPosition,
+                targetActivityDefinitionId = targetActivity,
+                priority = 10,
+                startWorldTime = "3",
+                accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId
+            };
+        }
+
+        private static PersonGoalData AddLifeGoal(TestLabAutomationContext context, string slug, string definitionId, string parentAspiration = "", string targetProfession = "", string targetTraining = "", string targetCredential = "", string targetRank = "", string targetPosition = "", string targetActivity = "")
+        {
+            LifePathOperationResult result = context.ScenarioContext.Runtimes.LifePaths.AddGoal(LifeGoal(context, slug, definitionId, parentAspiration, targetProfession, targetTraining, targetCredential, targetRank, targetPosition, targetActivity), context.ScenarioContext.ScopedId("life-tx", slug));
+            return result.Goal;
+        }
+
+        private static bool GoalComplete(TestLabRuntimeBundle runtimes, string goalId)
+        {
+            LifePathOperationResult result = runtimes.LifePaths.EvaluateGoalProgress(goalId);
+            return result.Succeeded && result.Progress != null && result.Progress.AuthoritativeComplete;
+        }
+
+        private static ProfessionalActivityOperationResult RegisterLifeActivity(TestLabAutomationContext context, string slug, string definitionId, ProfessionalActivitySourceType sourceType)
+        {
+            EnsureBlacksmithActivityProfession(context);
+            return context.ScenarioContext.Runtimes.ProfessionalActivities.RegisterAndValidateActivity(
+                ActivityRequest(context, slug, definitionId, ActivityCustomSource(context, sourceType, slug, sourceType == ProfessionalActivitySourceType.DiscoveryClaim ? "production.activity.experimentation" : "production.activity.forging", ProfessionalActivityDifficulty.Skilled), ProfessionalResponsibilityLevel.IndependentPractitioner),
+                context.ScenarioContext.ScopedId("professional-evidence", slug),
+                "authority.guild.prototype",
+                context.ScenarioContext.ScopedId("professional-tx", slug));
+        }
+
+        private static void CreateLifePositionEmployment(TestLabAutomationContext context, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            PositionEmploymentRuntimeSaveData save = runtimes.PositionEmployment.CreateSaveData();
+            string positionId = context.ScenarioContext.ScopedId("position-instance", slug);
+            string employmentId = context.ScenarioContext.ScopedId("employment", slug);
+            if (save.positions.All(item => !string.Equals(item.positionInstanceId, positionId, StringComparison.Ordinal)))
+            {
+                save.positions.Add(new PositionInstanceData { positionInstanceId = positionId, positionDefinitionId = PrototypeProfessionDefinitionFactory.GuildClerkPositionId, organizationId = "organization.prototype.guild", organizationTypeId = PrototypeProfessionDefinitionFactory.GuildOrganizationTypeId, state = PositionInstanceState.Filled, holderPersonIds = new[] { runtimes.PersonId }, maximumHolders = 2, vacancyAllowed = true, accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId });
+            }
+
+            if (save.employments.All(item => !string.Equals(item.employmentId, employmentId, StringComparison.Ordinal)))
+            {
+                save.employments.Add(new EmploymentRecordData { employmentId = employmentId, personId = runtimes.PersonId, employerOrganizationId = "organization.prototype.guild", positionInstanceId = positionId, positionDefinitionId = PrototypeProfessionDefinitionFactory.GuildClerkPositionId, classification = EmploymentClassification.PartTime, state = EmploymentState.Active, startWorldTime = "12", appointmentAuthorityId = PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId, accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId });
+            }
+
+            runtimes.PositionEmployment.RestoreFromSaveData(save, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, runtimes.KnownPersonIds, DefaultLifePathOrganizations(), DefaultLifePathAuthorities(), restoring: false);
+        }
+
+        private static string[] DefaultLifePathOrganizations() => new[] { "organization.prototype.guild", "organization.prototype.royal-forge", "organization.prototype.independent" };
+
+        private static string[] DefaultLifePathAuthorities() => new[] { "authority.guild.prototype", PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId, PrototypeProfessionDefinitionFactory.PositionDutyAssignAuthorityId, "organization.prototype.guild" };
 
         private static ProfessionalActivityRegistrationRequest ActivityRequest(
             TestLabAutomationContext context,

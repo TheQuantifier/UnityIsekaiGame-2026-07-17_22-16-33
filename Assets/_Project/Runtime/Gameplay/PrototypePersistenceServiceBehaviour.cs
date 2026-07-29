@@ -96,6 +96,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerProfessionalRanks = true;
         [SerializeField] private bool registerPlayerPositionEmployment = true;
         [SerializeField] private bool registerPlayerCareerHistory = true;
+        [SerializeField] private bool registerPlayerLifePaths = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -136,6 +137,7 @@ namespace UnityIsekaiGame.Gameplay
         private ProfessionalRankPersistenceParticipant playerProfessionalRankParticipant;
         private PositionEmploymentPersistenceParticipant playerPositionEmploymentParticipant;
         private CareerHistoryPersistenceParticipant playerCareerHistoryParticipant;
+        private LifePathPersistenceParticipant playerLifePathParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
@@ -167,6 +169,7 @@ namespace UnityIsekaiGame.Gameplay
         private ProfessionalRankRuntime playerProfessionalRanks;
         private PositionEmploymentRuntime playerPositionEmployment;
         private CareerHistoryRuntime playerCareerHistory;
+        private LifePathRuntime playerLifePaths;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
@@ -301,6 +304,20 @@ namespace UnityIsekaiGame.Gameplay
                 }
 
                 return playerCareerHistory;
+            }
+        }
+        public LifePathRuntime LifePaths
+        {
+            get
+            {
+                if (playerLifePaths == null)
+                {
+                    playerLifePaths = new LifePathRuntime();
+                    string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+                    playerLifePaths.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, ProfessionalRanks, PositionEmployment, CareerHistory, new[] { personId }, GetPrototypeOrganizations());
+                }
+
+                return playerLifePaths;
             }
         }
         public ItemInstanceIdentityRuntime ItemIdentities => playerItemIdentities ??= new ItemInstanceIdentityRuntime();
@@ -472,6 +489,12 @@ namespace UnityIsekaiGame.Gameplay
                 playerCareerHistoryParticipant = null;
             }
 
+            if (service != null && playerLifePathParticipant != null)
+            {
+                service.UnregisterParticipant(playerLifePathParticipant);
+                playerLifePathParticipant = null;
+            }
+
             if (service != null && statsVitalsStatusParticipant != null)
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
@@ -597,6 +620,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerProfessionalRankParticipant();
             EnsurePlayerPositionEmploymentParticipant();
             EnsurePlayerCareerHistoryParticipant();
+            EnsurePlayerLifePathParticipant();
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
@@ -1877,6 +1901,56 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerCareerHistoryParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerLifePathParticipant()
+        {
+            if (!registerPlayerLifePaths || playerLifePathParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Life-path persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            string[] knownPersons = new[] { personId, service.PlayerId };
+            string[] authorities = GetPrototypeCredentialAuthorities();
+            string[] organizations = GetPrototypeOrganizations();
+            Professions.Configure(GetDefinitionRegistry(), knownPersons);
+            Training.Configure(GetDefinitionRegistry(), Professions, InformationTransfers, knownPersons);
+            ProfessionalActivities.Configure(GetDefinitionRegistry(), Professions, knownPersons);
+            Credentials.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, knownPersons, authorities);
+            ProfessionalRanks.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, knownPersons, authorities);
+            PositionEmployment.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, ProfessionalRanks, knownPersons, organizations, authorities);
+            CareerHistory.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, ProfessionalRanks, PositionEmployment, knownPersons, organizations, authorities);
+            LifePaths.Configure(GetDefinitionRegistry(), Professions, Training, ProfessionalActivities, Credentials, ProfessionalRanks, PositionEmployment, CareerHistory, knownPersons, organizations);
+            playerLifePathParticipant = new LifePathPersistenceParticipant(
+                LifePaths,
+                GetDefinitionRegistry,
+                () => Professions,
+                () => Training,
+                () => ProfessionalActivities,
+                () => Credentials,
+                () => ProfessionalRanks,
+                () => PositionEmployment,
+                () => CareerHistory,
+                () => knownPersons,
+                () => organizations,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerLifePathParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerLifePathParticipant = null;
             }
         }
 
