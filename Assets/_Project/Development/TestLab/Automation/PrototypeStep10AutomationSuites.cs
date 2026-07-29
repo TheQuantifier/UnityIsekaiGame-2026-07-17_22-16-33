@@ -25,6 +25,7 @@ namespace UnityIsekaiGame.Development.Automation
             registry.TryRegister(BuildProfessionIdentitySuite(), out _);
             registry.TryRegister(BuildProfessionalEligibilityEntrySuite(), out _);
             registry.TryRegister(BuildEducationTrainingApprenticeshipSuite(), out _);
+            registry.TryRegister(BuildProfessionalActivityExperienceSuite(), out _);
         }
 
         private static ITestLabAutomationSuite BuildProfessionIdentitySuite()
@@ -170,6 +171,174 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeProfessionDefinitionFactory.TrainingDemonstrationTransferDefinitionId,
                     PrototypeProfessionDefinitionFactory.TrainingGuidedPracticeTransferDefinitionId
                 });
+        }
+
+        private static ITestLabAutomationSuite BuildProfessionalActivityExperienceSuite()
+        {
+            return new TestLabAutomationSuite(
+                "feature.10.4.professional-activity-experience",
+                "Feature 10.4 Professional Activity and Experience",
+                "10.4",
+                "Professional activity source adapters, validation, evidence summaries, boundaries, access, and persistence automation.",
+                1040,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "ProfessionalActivityRuntime", "ProfessionalActivityDefinition", "PersonProfessionRuntime" },
+                scenarios: new ITestLabAutomationScenario[]
+                {
+                    ActivityScenario("definitions-and-adapters", "Professional activity definitions and source adapters validate", 10, Step("step10-activity-definitions", ProfessionalActivityDefinitionsAndAdapters)),
+                    ActivityScenario("record-and-validate", "Validated professional activity creates experience evidence", 20, Step("step10-activity-validate", ProfessionalActivityRecordAndValidate)),
+                    ActivityScenario("duplicates-shared-credit", "Exclusive duplicates and shared role credit are deterministic", 30, Step("step10-activity-duplicates", ProfessionalActivityDuplicatesSharedCredit)),
+                    ActivityScenario("summary-requirements-boundaries", "Experience summaries and requirements do not mutate owning systems", 40, Step("step10-activity-summary", ProfessionalActivitySummaryRequirementsBoundaries)),
+                    ActivityScenario("access-persistence", "Activity projections redact and persistence restores atomically", 50, Step("step10-activity-persistence", ProfessionalActivityAccessPersistence))
+                });
+        }
+
+        private static ITestLabAutomationScenario ActivityScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                order <= 20 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
+                includeInQuickRun: order <= 20,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
+                requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                    PrototypeProfessionDefinitionFactory.WeaponsmithSpecializationId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithSupervisedPracticeActivityDefinitionId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithTeachingActivityDefinitionId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithExperimentationActivityDefinitionId
+                });
+        }
+
+        private static TestLabAutomationStepResult ProfessionalActivityDefinitionsAndAdapters(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (IGameDefinition definition in PrototypeProfessionDefinitionFactory.CreateDefinitions().OfType<IGameDefinition>())
+            {
+                if (definition is IDefinitionCatalogValidationParticipant participant)
+                {
+                    participant.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                }
+            }
+
+            ProfessionalActivitySourceSnapshot crafting = ActivityCustomSource(context, ProfessionalActivitySourceType.CraftingOperation, "adapter-craft", "production.activity.forging");
+            ProfessionalActivitySourceSnapshot practice = ActivityCustomSource(context, ProfessionalActivitySourceType.TrainingPracticalAssignment, "adapter-practice", "training.activity.practical");
+            bool definitions = registry.TryGet(PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, out ProfessionalActivityDefinition craftDefinition)
+                && craftDefinition.AcceptedSourceTypes.Contains(ProfessionalActivitySourceType.CraftingOperation)
+                && registry.TryGet(PrototypeProfessionDefinitionFactory.BlacksmithExperimentationActivityDefinitionId, out ProfessionalActivityDefinition experimentDefinition)
+                && experimentDefinition.FailureCreditPolicy == ProfessionalFailureCreditPolicy.CountsAsFailedAttempt;
+            bool adapters = crafting.Completed
+                && crafting.Reference.sourceType == ProfessionalActivitySourceType.CraftingOperation
+                && practice.Tags.Contains("training.activity.practical");
+            bool valid = report.ErrorCount == 0 && report.WarningCount == 0 && definitions && adapters;
+            return TestLabAssertions.True("step10-activity-definitions", "Professional activity definitions and source adapters validate", valid, $"Errors={report.ErrorCount} Warnings={report.WarningCount} Definitions={definitions} Adapters={adapters}");
+        }
+
+        private static TestLabAutomationStepResult ProfessionalActivityRecordAndValidate(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithActivityProfession(context);
+            long professionRevision = runtimes.Professions.Revision;
+            long knowledgeRevision = runtimes.Knowledge.KnowledgeRevision;
+            ProfessionalActivityOperationResult result = runtimes.ProfessionalActivities.RegisterAndValidateActivity(
+                ActivityRequest(context, "validated", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ActivityCustomSource(context, ProfessionalActivitySourceType.CraftingOperation, "validated-source", "production.activity.forging")),
+                context.ScenarioContext.ScopedId("professional-evidence", "validated"),
+                "authority.guild.prototype",
+                context.ScenarioContext.ScopedId("professional-tx", "validated"));
+            ProfessionalExperienceSummary summary = runtimes.ProfessionalActivities.BuildExperienceSummary(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+
+            bool valid = result.Succeeded
+                && result.Evidence != null
+                && summary.TotalValidatedActivities == 1
+                && summary.SuccessfulCount == 1
+                && runtimes.Professions.Revision == professionRevision
+                && runtimes.Knowledge.KnowledgeRevision == knowledgeRevision;
+            return TestLabAssertions.True("step10-activity-validate", "Validated professional activity creates experience evidence", valid, $"Result={result.Status} Evidence={result.Evidence?.evidenceId} Summary={summary.TotalValidatedActivities} Profession={professionRevision}->{runtimes.Professions.Revision} Knowledge={knowledgeRevision}->{runtimes.Knowledge.KnowledgeRevision}");
+        }
+
+        private static TestLabAutomationStepResult ProfessionalActivityDuplicatesSharedCredit(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithActivityProfession(context);
+            ProfessionalActivitySourceSnapshot source = ActivityCustomSource(context, ProfessionalActivitySourceType.CraftingOperation, "exclusive-source", "production.activity.forging");
+            ProfessionalActivityOperationResult first = runtimes.ProfessionalActivities.RegisterAndValidateActivity(ActivityRequest(context, "exclusive-a", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, source), context.ScenarioContext.ScopedId("professional-evidence", "exclusive-a"), "authority.guild.prototype", context.ScenarioContext.ScopedId("professional-tx", "exclusive-a"));
+            ProfessionalActivityOperationResult second = runtimes.ProfessionalActivities.RegisterAndValidateActivity(ActivityRequest(context, "exclusive-b", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, source), context.ScenarioContext.ScopedId("professional-evidence", "exclusive-b"), "authority.guild.prototype", context.ScenarioContext.ScopedId("professional-tx", "exclusive-b"));
+            ProfessionalActivitySourceSnapshot shared = ActivityCustomSource(context, ProfessionalActivitySourceType.TeachingSession, "shared-source", "training.activity.teaching", difficulty: ProfessionalActivityDifficulty.Skilled);
+            ProfessionalActivityOperationResult instructor = runtimes.ProfessionalActivities.RegisterAndValidateActivity(ActivityRequest(context, "shared-instructor", PrototypeProfessionDefinitionFactory.BlacksmithTeachingActivityDefinitionId, shared, ProfessionalResponsibilityLevel.Instructor, TrainingSupervisionLevel.IndependentWithReview), context.ScenarioContext.ScopedId("professional-evidence", "shared-instructor"), "authority.guild.prototype", context.ScenarioContext.ScopedId("professional-tx", "shared-instructor"));
+            ProfessionalActivityOperationResult assistant = runtimes.ProfessionalActivities.RegisterAndValidateActivity(ActivityRequest(context, "shared-assistant", PrototypeProfessionDefinitionFactory.BlacksmithTeachingActivityDefinitionId, shared, ProfessionalResponsibilityLevel.Assistant, TrainingSupervisionLevel.ObservationOnly), context.ScenarioContext.ScopedId("professional-evidence", "shared-assistant"), "authority.guild.prototype", context.ScenarioContext.ScopedId("professional-tx", "shared-assistant"));
+            ProfessionalExperienceSummary summary = runtimes.ProfessionalActivities.BuildExperienceSummary(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+
+            bool valid = first.Succeeded
+                && !second.Succeeded
+                && second.Status == ProfessionalActivityOperationStatus.DuplicateExclusiveSource
+                && instructor.Succeeded
+                && assistant.Succeeded
+                && summary.TotalValidatedActivities == 3;
+            return TestLabAssertions.True("step10-activity-duplicates", "Exclusive duplicates and shared role credit are deterministic", valid, $"First={first.Status} Second={second.Status} Instructor={instructor.Status} Assistant={assistant.Status} Summary={summary.TotalValidatedActivities}");
+        }
+
+        private static TestLabAutomationStepResult ProfessionalActivitySummaryRequirementsBoundaries(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithActivityProfession(context);
+            long professionRevision = runtimes.Professions.Revision;
+            long trainingRevision = runtimes.Training.Revision;
+            runtimes.ProfessionalActivities.RegisterAndValidateActivity(ActivityRequest(context, "summary-independent", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ActivityCustomSource(context, ProfessionalActivitySourceType.CraftingOperation, "summary-independent", "production.activity.forging"), ProfessionalResponsibilityLevel.IndependentPractitioner), context.ScenarioContext.ScopedId("professional-evidence", "summary-independent"), "authority.guild.prototype", context.ScenarioContext.ScopedId("professional-tx", "summary-independent"));
+            runtimes.ProfessionalActivities.RegisterAndValidateActivity(ActivityRequest(context, "summary-supervised", PrototypeProfessionDefinitionFactory.BlacksmithSupervisedPracticeActivityDefinitionId, ActivityCustomSource(context, ProfessionalActivitySourceType.TrainingPracticalAssignment, "summary-supervised", "training.activity.practical"), ProfessionalResponsibilityLevel.SupervisedWorker, TrainingSupervisionLevel.CloselySupervised), context.ScenarioContext.ScopedId("professional-evidence", "summary-supervised"), "authority.guild.prototype", context.ScenarioContext.ScopedId("professional-tx", "summary-supervised"));
+
+            bool requirement = runtimes.ProfessionalActivities.EvaluateExperienceRequirement(runtimes.PersonId, new ProfessionalExperienceRequirementData
+            {
+                professionId = PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                minimumValidatedActivities = 2,
+                minimumIndependentActivities = 1,
+                minimumSupervisedActivities = 1,
+                minimumQuality = 600,
+                minimumDifficulty = ProfessionalActivityDifficulty.Routine,
+                requireRecentActivity = true
+            }, out ProfessionalExperienceSummary summary);
+
+            bool valid = requirement
+                && summary.IndependentCount == 1
+                && summary.SupervisedCount == 1
+                && summary.BreadthScore >= 2
+                && runtimes.Professions.Revision == professionRevision
+                && runtimes.Training.Revision == trainingRevision;
+            return TestLabAssertions.True("step10-activity-summary", "Experience summaries and requirements do not mutate owning systems", valid, $"Requirement={requirement} Independent={summary.IndependentCount} Supervised={summary.SupervisedCount} Breadth={summary.BreadthScore} Profession={professionRevision}->{runtimes.Professions.Revision} Training={trainingRevision}->{runtimes.Training.Revision}");
+        }
+
+        private static TestLabAutomationStepResult ProfessionalActivityAccessPersistence(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureBlacksmithActivityProfession(context);
+            ProfessionalActivityOperationResult recorded = runtimes.ProfessionalActivities.RegisterAndValidateActivity(ActivityRequest(context, "persisted", PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId, ActivityCustomSource(context, ProfessionalActivitySourceType.CraftingOperation, "persisted-source", "production.activity.forging")), context.ScenarioContext.ScopedId("professional-evidence", "persisted"), "authority.guild.prototype", context.ScenarioContext.ScopedId("professional-tx", "persisted"));
+            InformationAccessDecision decision = new InformationAccessDecision("person.observer", ProfessionalActivityInformationSubject.Create(ProfessionalActivityInformationSubject.ActivityTag, recorded.Activity?.activityId, runtimes.PersonId), InformationAccessMode.Inspect, InformationAccessDecisionKind.RedactedAccess, InformationAccessDenialCode.DetailRestriction, false, InformationResharingPolicy.NoResharing, new[] { "profession-id", "state" }, ProfessionalActivityInformationSubject.ProtectedFields, Array.Empty<string>(), new[] { PrototypeProfessionDefinitionFactory.AccessPublicId }, 1d, "Redacted professional activity.", "Professional source hidden.", true);
+            ProfessionalActivityProjection<ProfessionalActivityRecordData> projection = runtimes.ProfessionalActivities.ProjectActivity(recorded.Activity?.activityId, ProfessionalActivityProjectionAudience.PublicInspection, decision);
+            ProfessionalActivityRuntimeSaveData save = runtimes.ProfessionalActivities.CreateSaveData();
+            ProfessionalActivityRuntime restored = new ProfessionalActivityRuntime();
+            ProfessionalActivityOperationResult restore = restored.RestoreFromSaveData(save, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.KnownPersonIds, restoring: true);
+            ProfessionalActivityRuntimeSaveData corrupt = save.Clone();
+            corrupt.activities[0].activityDefinitionId = "professional-activity.missing";
+            ProfessionalActivityOperationResult rejected = restored.RestoreFromSaveData(corrupt, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.KnownPersonIds, restoring: true);
+
+            bool valid = recorded.Succeeded
+                && projection.Redacted
+                && projection.Record != null
+                && string.IsNullOrWhiteSpace(projection.Record.personId)
+                && restore.Succeeded
+                && restored.EvidenceCount == 1
+                && restored.HistoryHooks.Count == 0
+                && !rejected.Succeeded
+                && restored.EvidenceCount == 1;
+            return TestLabAssertions.True("step10-activity-persistence", "Activity projections redact and persistence restores atomically", valid, $"Record={recorded.Status} Redacted={projection.Redacted} Restore={restore.Status} Rejected={rejected.Status} Evidence={restored.EvidenceCount}");
         }
 
         private static TestLabAutomationStepResult TrainingDefinitionsAndCurricula(TestLabAutomationContext context)
@@ -836,6 +1005,75 @@ namespace UnityIsekaiGame.Development.Automation
                 valueType = KnowledgeValueType.StableId,
                 stableValueId = "capability.profession.blacksmith-safety"
             };
+        }
+
+        private static void EnsureBlacksmithActivityProfession(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            if (runtimes.Professions.QueryByProfession(PrototypeProfessionDefinitionFactory.BlacksmithProfessionId, activeOnly: true).Any(item => string.Equals(item.PersonId, runtimes.PersonId, StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            runtimes.Professions.AddRelationship(new AddProfessionRelationshipRequest
+            {
+                relationshipId = context.ScenarioContext.ScopedId("profession-relationship", "activity-blacksmith"),
+                personId = runtimes.PersonId,
+                professionId = PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                specializationIds = new[] { PrototypeProfessionDefinitionFactory.WeaponsmithSpecializationId },
+                informalPractice = true,
+                selfDeclared = true,
+                active = true,
+                startWorldTime = "1",
+                transactionId = context.ScenarioContext.ScopedId("profession-tx", "activity-blacksmith")
+            });
+        }
+
+        private static ProfessionalActivityRegistrationRequest ActivityRequest(
+            TestLabAutomationContext context,
+            string slug,
+            string definitionId,
+            ProfessionalActivitySourceSnapshot source,
+            ProfessionalResponsibilityLevel responsibility = ProfessionalResponsibilityLevel.IndependentPractitioner,
+            TrainingSupervisionLevel supervision = TrainingSupervisionLevel.IndependentWithReview)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            return new ProfessionalActivityRegistrationRequest
+            {
+                ActivityId = context.ScenarioContext.ScopedId("professional-activity", slug),
+                PersonId = runtimes.PersonId,
+                ProfessionId = PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                SpecializationId = PrototypeProfessionDefinitionFactory.WeaponsmithSpecializationId,
+                ActivityDefinitionId = definitionId,
+                Source = source,
+                Responsibility = responsibility,
+                SupervisionLevel = supervision,
+                CompletionWorldTime = source?.WorldTime,
+                QuantityOrDuration = source?.QuantityOrDuration ?? 1f,
+                Quality = source?.Quality ?? 700,
+                Difficulty = source?.Difficulty ?? ProfessionalActivityDifficulty.Routine,
+                Outcome = source?.Outcome ?? ProfessionalActivityOutcomeState.Successful,
+                AccessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId,
+                Provenance = "test-lab"
+            };
+        }
+
+        private static ProfessionalActivitySourceSnapshot ActivityCustomSource(
+            TestLabAutomationContext context,
+            ProfessionalActivitySourceType sourceType,
+            string slug,
+            string tag,
+            ProfessionalActivityDifficulty difficulty = ProfessionalActivityDifficulty.Routine)
+        {
+            return ProfessionalActivitySourceAdapters.FromCustom(
+                sourceType,
+                context.ScenarioContext.ScopedId("professional-source", slug),
+                context.ScenarioContext.Runtimes.PersonId,
+                ProfessionalActivityOutcomeState.Successful,
+                quality: difficulty >= ProfessionalActivityDifficulty.Skilled ? 780 : 720,
+                difficulty: difficulty,
+                worldTime: context.ScenarioContext.ScopedId("professional-time", slug),
+                tags: tag);
         }
 
         private static TrainingModuleDefinitionData TrainingModule(string id, bool required, bool hidden, string[] dependencies = null)

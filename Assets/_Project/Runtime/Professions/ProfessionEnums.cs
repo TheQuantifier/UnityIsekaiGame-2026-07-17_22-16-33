@@ -376,4 +376,223 @@ namespace UnityIsekaiGame.Professions
         ApprenticeshipCompleted = 8,
         Corrected = 9
     }
+
+    public enum ProfessionalActivityCategory
+    {
+        Custom = 0,
+        Crafting = 1,
+        Production = 2,
+        Repair = 3,
+        Maintenance = 4,
+        Salvage = 5,
+        Experimentation = 6,
+        Research = 7,
+        Teaching = 8,
+        SupervisedPractice = 9,
+        Combat = 10,
+        MilitaryService = 11,
+        MedicalService = 12,
+        GovernmentService = 13,
+        ReligiousService = 14,
+        Trade = 15,
+        Exploration = 16,
+        ArtisticWork = 17,
+        AgriculturalWork = 18,
+        CriminalActivity = 19
+    }
+
+    public enum ProfessionalActivitySourceType
+    {
+        Custom = 0,
+        CraftingOperation = 1,
+        ProductionJob = 2,
+        ProductionStage = 3,
+        WorkOrder = 4,
+        RepairOperation = 5,
+        SalvageOperation = 6,
+        ExperimentTrial = 7,
+        DiscoveryClaim = 8,
+        TrainingPracticalAssignment = 9,
+        TrainingSupervisedWork = 10,
+        TeachingSession = 11,
+        CombatEncounter = 12,
+        DamageActivity = 13,
+        HealingActivity = 14,
+        OrganizationService = 15,
+        ExplorationRecord = 16
+    }
+
+    public enum ProfessionalActivityState
+    {
+        Proposed = 0,
+        Recorded = 1,
+        PendingValidation = 2,
+        Validated = 3,
+        Rejected = 4,
+        Disputed = 5,
+        Corrected = 6,
+        Revoked = 7,
+        Archived = 8,
+        Invalid = 9,
+        Custom = 10
+    }
+
+    public enum ProfessionalActivityOutcomeState
+    {
+        Unknown = 0,
+        Successful = 1,
+        PartialSuccess = 2,
+        Failed = 3,
+        Rejected = 4,
+        Revoked = 5,
+        DangerousMistake = 6,
+        RecoveredFailure = 7,
+        Innovative = 8
+    }
+
+    public enum ProfessionalExperienceCategory
+    {
+        Custom = 0,
+        Observation = 1,
+        AssistedWork = 2,
+        SupervisedWork = 3,
+        IndependentWork = 4,
+        Leadership = 5,
+        Teaching = 6,
+        Research = 7,
+        RoutineWork = 8,
+        ComplexWork = 9,
+        HighRiskWork = 10,
+        FailedAttempt = 11,
+        RecoveryFromFailure = 12,
+        Innovation = 13,
+        Administration = 14,
+        Service = 15
+    }
+
+    public enum ProfessionalResponsibilityLevel
+    {
+        Observer = 0,
+        Assistant = 1,
+        SupervisedWorker = 2,
+        IndependentWithReview = 3,
+        IndependentPractitioner = 4,
+        Supervisor = 5,
+        Leader = 6,
+        Instructor = 7,
+        Custom = 8
+    }
+
+    public enum ProfessionalActivityDifficulty
+    {
+        Unknown = 0,
+        Trivial = 1,
+        Routine = 2,
+        Skilled = 3,
+        Advanced = 4,
+        Dangerous = 5,
+        Unusual = 6,
+        Innovative = 7,
+        MasterworkFoundation = 8,
+        Custom = 9
+    }
+
+    public enum ProfessionalSupervisionPolicy
+    {
+        Any = 0,
+        ObservationOnly = 1,
+        RequiresSupervision = 2,
+        AllowsIndependent = 3,
+        RequiresIndependent = 4,
+        RequiresLeadership = 5
+    }
+
+    public enum ProfessionalIndependentWorkPolicy
+    {
+        Any = 0,
+        Disallowed = 1,
+        Allowed = 2,
+        Required = 3
+    }
+
+    public enum ProfessionalFailureCreditPolicy
+    {
+        NoCredit = 0,
+        RecordOnly = 1,
+        CountsAsFailedAttempt = 2,
+        CountsWithRecovery = 3,
+        Custom = 4
+    }
+
+    public enum ProfessionalRepetitionPolicy
+    {
+        PreserveAll = 0,
+        DiminishBySignature = 1,
+        RequireNoveltyForBreadth = 2,
+        Custom = 3
+    }
+
+    public enum ProfessionalCreditPolicy
+    {
+        Exclusive = 0,
+        Shared = 1,
+        RoleWeighted = 2,
+        ObservationOnly = 3,
+        NoProfessionalCredit = 4,
+        Custom = 5
+    }
+
+    public enum ProfessionalActivityOperationStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        Duplicate = 2,
+        MissingRuntime = 3,
+        MissingDefinition = 4,
+        MissingPerson = 5,
+        MissingProfession = 6,
+        MissingProfessionRelationship = 7,
+        MissingActivity = 8,
+        MissingSource = 9,
+        SourceActorMismatch = 10,
+        SourceInvalidState = 11,
+        ProfessionMismatch = 12,
+        SpecializationMismatch = 13,
+        RequirementBlocked = 14,
+        DuplicateExclusiveSource = 15,
+        InvalidRequest = 16,
+        InvalidState = 17,
+        EvidenceRejected = 18,
+        RestoreFailed = 19,
+        ValidationFailed = 20
+    }
+
+    public enum ProfessionalActivityProjectionAudience
+    {
+        AuthoritativeInternal = 0,
+        PrivilegedDebug = 1,
+        SubjectPerson = 2,
+        Supervisor = 3,
+        Instructor = 4,
+        ProfessionAuthority = 5,
+        Organization = 6,
+        Employer = 7,
+        PublicInspection = 8,
+        PersonKnown = 9,
+        PersonBelieved = 10
+    }
+
+    public enum ProfessionalActivityHistoryHookKind
+    {
+        FirstProfessionalActivity = 0,
+        MajorIndependentWork = 1,
+        ImportantFailure = 2,
+        SignificantRecovery = 3,
+        MasterworkFoundation = 4,
+        LeadershipOfMajorWork = 5,
+        ImportantInnovation = 6,
+        ExperienceRecordDisputed = 7,
+        ExperienceRecordCorrected = 8,
+        ExperienceRevoked = 9
+    }
 }

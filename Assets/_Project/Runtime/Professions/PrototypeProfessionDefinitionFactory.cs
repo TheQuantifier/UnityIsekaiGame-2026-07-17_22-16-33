@@ -36,6 +36,13 @@ namespace UnityIsekaiGame.Professions
         public const string BlacksmithSafetyLessonId = "training-lesson.blacksmith.safety";
         public const string BlacksmithDemonstrationLessonId = "training-lesson.blacksmith.demonstration";
         public const string BlacksmithPracticalAssignmentId = "training-assignment.blacksmith.practice-forging";
+        public const string BlacksmithCraftingActivityDefinitionId = "professional-activity.blacksmith.crafting";
+        public const string BlacksmithProductionActivityDefinitionId = "professional-activity.blacksmith.production";
+        public const string BlacksmithRepairActivityDefinitionId = "professional-activity.blacksmith.repair";
+        public const string BlacksmithSalvageActivityDefinitionId = "professional-activity.blacksmith.salvage";
+        public const string BlacksmithSupervisedPracticeActivityDefinitionId = "professional-activity.blacksmith.supervised-practice";
+        public const string BlacksmithTeachingActivityDefinitionId = "professional-activity.blacksmith.teaching";
+        public const string BlacksmithExperimentationActivityDefinitionId = "professional-activity.blacksmith.experimentation";
         public const string AccessPublicId = "information-access.profession.public";
         public const string AccessSecretId = "information-access.profession.secret";
 
@@ -62,6 +69,13 @@ namespace UnityIsekaiGame.Professions
             definitions.Add(EntryPath(SpySecretEntryPathId, SpyProfessionId, "Secret Spy Self-Declared Practice", ProfessionEntryType.SelfDeclaredPractice, ProfessionEntryFormality.Informal, ProfessionSelfDeclarationPolicy.Required, accessKeys: new[] { "access.profession.secret-practice" }, secret: true, restricted: true, accessPolicy: AccessSecretId));
             definitions.Add(EntryPath(WeaponsmithSpecializationEntryPathId, BlacksmithProfessionId, "Weaponsmith Specialization Entry", ProfessionEntryType.Specialization, ProfessionEntryFormality.Informal, ProfessionSelfDeclarationPolicy.Disallowed, specialization: WeaponsmithSpecializationId, skills: new[] { "skill.smithing" }, requiredActiveProfessions: new[] { BlacksmithProfessionId }));
             definitions.Add(EntryPath(BlacksmithReentryPathId, BlacksmithProfessionId, "Blacksmith Reentry", ProfessionEntryType.Reentry, ProfessionEntryFormality.Informal, ProfessionSelfDeclarationPolicy.Disallowed, reentry: ProfessionReentryPolicy.AllowFormerInactiveAbandonedRetired));
+            definitions.Add(ActivityDefinition(BlacksmithCraftingActivityDefinitionId, "Blacksmith Crafting Activity", ProfessionalActivityCategory.Crafting, new[] { BlacksmithProfessionId }, new[] { ProfessionalActivitySourceType.CraftingOperation }, specializationIds: new[] { WeaponsmithSpecializationId }, minQuality: 300, minDifficulty: ProfessionalActivityDifficulty.Routine, tags: new[] { "production.activity.forging" }));
+            definitions.Add(ActivityDefinition(BlacksmithProductionActivityDefinitionId, "Blacksmith Production Activity", ProfessionalActivityCategory.Production, new[] { BlacksmithProfessionId }, new[] { ProfessionalActivitySourceType.ProductionJob, ProfessionalActivitySourceType.ProductionStage, ProfessionalActivitySourceType.WorkOrder }, specializationIds: new[] { WeaponsmithSpecializationId }, minQuality: 300, minDifficulty: ProfessionalActivityDifficulty.Routine, tags: new[] { "production.activity.forging" }));
+            definitions.Add(ActivityDefinition(BlacksmithRepairActivityDefinitionId, "Blacksmith Repair Activity", ProfessionalActivityCategory.Repair, new[] { BlacksmithProfessionId }, new[] { ProfessionalActivitySourceType.RepairOperation }, minQuality: 250, minDifficulty: ProfessionalActivityDifficulty.Routine, tags: new[] { "production.activity.repair" }));
+            definitions.Add(ActivityDefinition(BlacksmithSalvageActivityDefinitionId, "Blacksmith Salvage Activity", ProfessionalActivityCategory.Salvage, new[] { BlacksmithProfessionId }, new[] { ProfessionalActivitySourceType.SalvageOperation }, minQuality: 100, minDifficulty: ProfessionalActivityDifficulty.Trivial, tags: new[] { "production.activity.salvage" }));
+            definitions.Add(ActivityDefinition(BlacksmithSupervisedPracticeActivityDefinitionId, "Blacksmith Supervised Practice Activity", ProfessionalActivityCategory.SupervisedPractice, new[] { BlacksmithProfessionId }, new[] { ProfessionalActivitySourceType.TrainingPracticalAssignment, ProfessionalActivitySourceType.TrainingSupervisedWork }, supervision: ProfessionalSupervisionPolicy.RequiresSupervision, minQuality: 300, minDifficulty: ProfessionalActivityDifficulty.Routine, tags: new[] { "training.activity.practical" }, credit: ProfessionalCreditPolicy.Shared));
+            definitions.Add(ActivityDefinition(BlacksmithTeachingActivityDefinitionId, "Blacksmith Teaching Activity", ProfessionalActivityCategory.Teaching, new[] { BlacksmithProfessionId }, new[] { ProfessionalActivitySourceType.TeachingSession }, minQuality: 300, minDifficulty: ProfessionalActivityDifficulty.Routine, tags: new[] { "training.activity.teaching" }, credit: ProfessionalCreditPolicy.Shared));
+            definitions.Add(ActivityDefinition(BlacksmithExperimentationActivityDefinitionId, "Blacksmith Experimentation Activity", ProfessionalActivityCategory.Experimentation, new[] { BlacksmithProfessionId }, new[] { ProfessionalActivitySourceType.ExperimentTrial, ProfessionalActivitySourceType.DiscoveryClaim }, minQuality: 200, minDifficulty: ProfessionalActivityDifficulty.Skilled, tags: new[] { "production.activity.experimentation" }, failureCredit: ProfessionalFailureCreditPolicy.CountsAsFailedAttempt, credit: ProfessionalCreditPolicy.Shared));
             definitions.Add(BlacksmithApprenticeshipCurriculum());
             definitions.Add(TrainingProgram(
                 BlacksmithApprenticeshipProgramId,
@@ -275,6 +289,29 @@ namespace UnityIsekaiGame.Professions
                 stations: stations,
                 completionRequirements: completionRequirements,
                 accessPolicy: accessPolicy);
+            return definition;
+        }
+
+        private static ProfessionalActivityDefinition ActivityDefinition(
+            string id,
+            string name,
+            ProfessionalActivityCategory category,
+            string[] professionIds,
+            ProfessionalActivitySourceType[] sourceTypes,
+            string[] specializationIds = null,
+            ProfessionalSupervisionPolicy supervision = ProfessionalSupervisionPolicy.Any,
+            ProfessionalIndependentWorkPolicy independent = ProfessionalIndependentWorkPolicy.Any,
+            ProfessionalCreditPolicy credit = ProfessionalCreditPolicy.Exclusive,
+            ProfessionalFailureCreditPolicy failureCredit = ProfessionalFailureCreditPolicy.NoCredit,
+            ProfessionalRepetitionPolicy repetition = ProfessionalRepetitionPolicy.PreserveAll,
+            int minQuality = 0,
+            ProfessionalActivityDifficulty minDifficulty = ProfessionalActivityDifficulty.Unknown,
+            string[] tags = null,
+            string accessPolicy = AccessPublicId)
+        {
+            ProfessionalActivityDefinition definition = ScriptableObject.CreateInstance<ProfessionalActivityDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(id, name, category, professionIds, sourceTypes, specializationIds, supervision, independent, credit, failureCredit, repetition, minQuality, minDifficulty, tags, accessPolicy);
             return definition;
         }
 
