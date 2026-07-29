@@ -795,4 +795,132 @@ namespace UnityIsekaiGame.Professions
         ForgedCredentialExposed = 13,
         Corrected = 14
     }
+
+    public enum ProfessionalRankCategory
+    {
+        Custom = 0,
+        Novice = 1,
+        Student = 2,
+        Apprentice = 3,
+        JuniorPractitioner = 4,
+        QualifiedPractitioner = 5,
+        Journeyman = 6,
+        SeniorPractitioner = 7,
+        Expert = 8,
+        Master = 9,
+        GrandmasterFoundation = 10,
+        Veteran = 11,
+        OfficerFoundation = 12,
+        AcademicRankFoundation = 13,
+        ReligiousRankFoundation = 14,
+        InformalRecognizedRank = 15
+    }
+
+    public enum ProfessionalRankTrackKind
+    {
+        Formal = 0,
+        Informal = 1,
+        Either = 2
+    }
+
+    public enum ProfessionalRankState
+    {
+        Proposed = 0,
+        PendingEvaluation = 1,
+        Active = 2,
+        Provisional = 3,
+        Suspended = 4,
+        Demoted = 5,
+        Revoked = 6,
+        ExpiredFoundation = 7,
+        Retired = 8,
+        Former = 9,
+        Disputed = 10,
+        Replaced = 11,
+        Invalid = 12,
+        Custom = 13
+    }
+
+    public enum ProfessionalRankApplicationState
+    {
+        Draft = 0,
+        Submitted = 1,
+        UnderReview = 2,
+        AwaitingEvidence = 3,
+        AwaitingExamination = 4,
+        Approved = 5,
+        Rejected = 6,
+        Withdrawn = 7,
+        Expired = 8,
+        Cancelled = 9,
+        Invalid = 10,
+        Custom = 11
+    }
+
+    public enum ProfessionalRankOperationStatus
+    {
+        Succeeded = 0,
+        Preview = 1,
+        Duplicate = 2,
+        MissingDefinition = 3,
+        MissingLadder = 4,
+        MissingPerson = 5,
+        MissingProfession = 6,
+        MissingRank = 7,
+        MissingApplication = 8,
+        MissingCredential = 9,
+        MissingTraining = 10,
+        MissingExperience = 11,
+        MissingExamination = 12,
+        MissingMastery = 13,
+        MissingAchievement = 14,
+        MissingQualification = 15,
+        UnauthorizedAuthority = 16,
+        StaleEvaluation = 17,
+        InvalidRequest = 18,
+        InvalidState = 19,
+        InvalidTransition = 20,
+        InvalidSpecialization = 21,
+        InvalidRankSkipping = 22,
+        DuplicateActiveApplication = 23,
+        DuplicateActiveRank = 24,
+        DuplicateActiveMastery = 25,
+        ValidationFailed = 26,
+        CorruptSave = 27
+    }
+
+    public enum ProfessionalRankProjectionAudience
+    {
+        Holder = 0,
+        Applicant = 1,
+        RecognizingAuthority = 2,
+        ProfessionOrganization = 3,
+        InstructorOrSupervisor = 4,
+        EmployerFoundation = 5,
+        Public = 6,
+        PersonKnown = 7,
+        PersonBelieved = 8,
+        PrivilegedDebug = 9,
+        Redacted = 10
+    }
+
+    public enum ProfessionalRankHistoryHookKind
+    {
+        Unknown = 0,
+        ApplicationSubmitted = 1,
+        PromotionApproved = 2,
+        PersonPromoted = 3,
+        InformalRankRecognized = 4,
+        LateralRankChanged = 5,
+        MasteryRecognized = 6,
+        RankSuspended = 7,
+        RankReinstated = 8,
+        PersonDemoted = 9,
+        RankRevoked = 10,
+        PersonRetired = 11,
+        SecretRankRevealed = 12,
+        RankDisputeResolved = 13,
+        RankReplaced = 14,
+        RankCorrected = 15
+    }
 }

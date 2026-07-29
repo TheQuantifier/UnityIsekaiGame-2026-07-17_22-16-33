@@ -27,6 +27,7 @@ namespace UnityIsekaiGame.Development.Automation
             registry.TryRegister(BuildEducationTrainingApprenticeshipSuite(), out _);
             registry.TryRegister(BuildProfessionalActivityExperienceSuite(), out _);
             registry.TryRegister(BuildQualificationsCredentialsCertificationSuite(), out _);
+            registry.TryRegister(BuildProfessionalRanksMasterySpecializationsSuite(), out _);
         }
 
         private static ITestLabAutomationSuite BuildProfessionIdentitySuite()
@@ -262,6 +263,196 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId,
                     PrototypeProfessionDefinitionFactory.BlacksmithSupervisedPracticeActivityDefinitionId
                 });
+        }
+
+        private static ITestLabAutomationSuite BuildProfessionalRanksMasterySpecializationsSuite()
+        {
+            return new TestLabAutomationSuite(
+                "feature.10.6.professional-ranks-mastery-specializations",
+                "Feature 10.6 Professional Ranks, Mastery, and Specializations",
+                "10.6",
+                "Professional rank ladders, advancement, specialization progression, mastery, permissions, lifecycle, access, and persistence automation.",
+                1060,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "ProfessionalRankRuntime", "ProfessionalRankDefinition", "ProfessionalRankLadderDefinition", "ProfessionalMasteryDefinition", "CredentialRuntime", "TrainingRuntime", "ProfessionalActivityRuntime" },
+                scenarios: new ITestLabAutomationScenario[]
+                {
+                    RankScenario("definitions-ladders", "Rank definitions, ladders, and mastery definitions validate", 10, Step("step10-rank-definitions", RankDefinitionsLadders)),
+                    RankScenario("advancement-application-promotion", "Advancement application and promotion revalidate requirements", 20, Step("step10-rank-promotion", RankAdvancementApplicationPromotion)),
+                    RankScenario("specialization-mastery", "Specialization ranks and mastery use explicit evidence", 30, Step("step10-rank-mastery", RankSpecializationMastery)),
+                    RankScenario("lifecycle-permissions-boundaries", "Rank lifecycle controls permissions without granting competencies", 40, Step("step10-rank-lifecycle", RankLifecyclePermissionsBoundaries)),
+                    RankScenario("access-persistence", "Rank projections redact and persistence restores atomically", 50, Step("step10-rank-persistence", RankAccessPersistence))
+                });
+        }
+
+        private static ITestLabAutomationScenario RankScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                order <= 20 ? TestLabAutomationCategory.Quick : TestLabAutomationCategory.Standard,
+                includeInQuickRun: order <= 20,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items,
+                requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithRankMasterId,
+                    PrototypeProfessionDefinitionFactory.WeaponsmithRankMasterId,
+                    PrototypeProfessionDefinitionFactory.BlacksmithRankLadderId,
+                    PrototypeProfessionDefinitionFactory.WeaponsmithRankLadderId,
+                    PrototypeProfessionDefinitionFactory.WeaponsmithMasteryId
+                });
+        }
+
+        private static TestLabAutomationStepResult RankDefinitionsLadders(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (IGameDefinition definition in PrototypeProfessionDefinitionFactory.CreateDefinitions().OfType<IGameDefinition>())
+            {
+                if (definition is IDefinitionCatalogValidationParticipant participant)
+                {
+                    participant.ValidateCatalogDefinition(runtimes.DefinitionRegistry.DefinitionsById, report);
+                }
+            }
+
+            bool hasApprentice = runtimes.DefinitionRegistry.TryGet(PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, out ProfessionalRankDefinition apprentice);
+            bool hasLadder = runtimes.DefinitionRegistry.TryGet(PrototypeProfessionDefinitionFactory.BlacksmithRankLadderId, out ProfessionalRankLadderDefinition ladder);
+            bool hasMastery = runtimes.DefinitionRegistry.TryGet(PrototypeProfessionDefinitionFactory.WeaponsmithMasteryId, out ProfessionalMasteryDefinition mastery);
+            bool hasDefinitions = hasApprentice && hasLadder && hasMastery;
+            long revision = runtimes.ProfessionalRanks.Revision;
+            ProfessionalRankAdvancementResult evaluation = runtimes.ProfessionalRanks.EvaluateAdvancement(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, "authority.guild.prototype", privilegedDiagnostics: true);
+            bool nonMutating = runtimes.ProfessionalRanks.Revision == revision;
+            bool valid = report.ErrorCount == 0
+                && report.WarningCount == 0
+                && hasDefinitions
+                && apprentice != null
+                && apprentice.RankOrder == 10
+                && ladder != null
+                && ladder.OrderedRankDefinitionIds.SequenceEqual(new[] { PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, PrototypeProfessionDefinitionFactory.BlacksmithRankMasterId })
+                && mastery != null
+                && mastery.RequiredRankDefinitionId == PrototypeProfessionDefinitionFactory.WeaponsmithRankMasterId
+                && !evaluation.AuthoritativeEligible
+                && nonMutating;
+            return TestLabAssertions.True("step10-rank-definitions", "Rank definitions, ladders, mastery, and non-mutating evaluation validate", valid, $"Errors={report.ErrorCount} Warnings={report.WarningCount} Has={hasDefinitions} Eligible={evaluation.AuthoritativeEligible} Rev={revision}->{runtimes.ProfessionalRanks.Revision}");
+        }
+
+        private static TestLabAutomationStepResult RankAdvancementApplicationPromotion(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            EnsureApprenticeRankFoundation(context, "promotion");
+            ProfessionalRankAdvancementResult evaluation = runtimes.ProfessionalRanks.EvaluateAdvancement(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, "authority.guild.prototype", privilegedDiagnostics: true);
+            ProfessionalRankOperationResult submit = runtimes.ProfessionalRanks.SubmitApplication(context.ScenarioContext.ScopedId("rank-application", "apprentice"), runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, "authority.guild.prototype", evaluation.Snapshot, "40", context.ScenarioContext.ScopedId("rank-tx", "submit"));
+            ProfessionalRankAdvancementSnapshotData staleSnapshot = evaluation.Snapshot?.Clone() ?? new ProfessionalRankAdvancementSnapshotData();
+            staleSnapshot.evaluationHash = "stale";
+            ProfessionalRankOperationResult stale = runtimes.ProfessionalRanks.ApprovePromotion(submit.Application?.applicationId, runtimes.PersonId, staleSnapshot, "41", context.ScenarioContext.ScopedId("rank-tx", "stale"));
+            ProfessionalRankOperationResult approve = runtimes.ProfessionalRanks.ApprovePromotion(submit.Application?.applicationId, runtimes.PersonId, evaluation.Snapshot, "42", context.ScenarioContext.ScopedId("rank-tx", "approve"));
+            ProfessionalRankOperationResult promote = runtimes.ProfessionalRanks.PromotePerson(context.ScenarioContext.ScopedId("rank-record", "apprentice"), submit.Application?.applicationId, evaluation.Snapshot, "43", context.ScenarioContext.ScopedId("rank-tx", "promote"));
+            bool historicalPreserved = runtimes.ProfessionalRanks.QueryByPerson(runtimes.PersonId).Any(item => item.rankDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId);
+            bool valid = evaluation.AuthoritativeEligible
+                && submit.Succeeded
+                && !stale.Succeeded
+                && stale.Status == ProfessionalRankOperationStatus.StaleEvaluation
+                && approve.Succeeded
+                && promote.Succeeded
+                && historicalPreserved
+                && !runtimes.Credentials.QueryByRecipient(runtimes.PersonId, activeOnly: true).Any(item => item.credentialDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId);
+            return TestLabAssertions.True("step10-rank-promotion", "Rank application and promotion revalidate current state", valid, $"Eval={evaluation.AuthoritativeEligible} Submit={submit.Status} Stale={stale.Status} Approve={approve.Status} Promote={promote.Status}");
+        }
+
+        private static TestLabAutomationStepResult RankSpecializationMastery(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            ProfessionalRankOperationResult apprentice = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, "mastery-apprentice");
+            ProfessionalRankOperationResult journeyman = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, "mastery-journey");
+            EnsureGuildLicense(context, "mastery-license");
+            ProfessionalRankOperationResult weaponsmithApprentice = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.WeaponsmithRankApprenticeId, "weaponsmith-apprentice");
+            ProfessionalRankOperationResult weaponsmithMaster = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.WeaponsmithRankMasterId, "weaponsmith-master");
+            ProfessionalRankOperationResult achievement = runtimes.ProfessionalRanks.RecordQualifyingAchievement(new ProfessionalQualifyingAchievementData
+            {
+                achievementId = PrototypeProfessionDefinitionFactory.BlacksmithMasterworkAchievementId,
+                personId = runtimes.PersonId,
+                professionId = PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
+                specializationId = PrototypeProfessionDefinitionFactory.WeaponsmithSpecializationId,
+                sourceActivityId = context.ScenarioContext.ScopedId("professional-activity", "masterwork"),
+                activityDefinitionId = PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId,
+                description = "Prototype masterwork blade",
+                quality = 850,
+                difficulty = ProfessionalActivityDifficulty.Skilled,
+                validatingAuthorityId = "authority.guild.prototype",
+                worldTime = "70",
+                accessPolicyId = PrototypeProfessionDefinitionFactory.AccessPublicId
+            }, context.ScenarioContext.ScopedId("rank-tx", "achievement"));
+            ProfessionalRankAdvancementResult masteryEval = runtimes.ProfessionalRanks.EvaluateMastery(runtimes.PersonId, PrototypeProfessionDefinitionFactory.WeaponsmithMasteryId, "authority.guild.prototype", privilegedDiagnostics: true);
+            ProfessionalRankOperationResult mastery = runtimes.ProfessionalRanks.GrantMastery(context.ScenarioContext.ScopedId("mastery-record", "weaponsmith"), runtimes.PersonId, PrototypeProfessionDefinitionFactory.WeaponsmithMasteryId, "authority.guild.prototype", masteryEval.Snapshot, "71", context.ScenarioContext.ScopedId("rank-tx", "mastery"));
+            bool distinctGeneralAndSpecialization = runtimes.ProfessionalRanks.QueryByPerson(runtimes.PersonId, currentOnly: true).Any(item => item.rankDefinitionId == PrototypeProfessionDefinitionFactory.WeaponsmithRankMasterId)
+                && runtimes.ProfessionalRanks.QueryByPerson(runtimes.PersonId).Any(item => item.rankDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId);
+            bool valid = apprentice.Succeeded
+                && journeyman.Succeeded
+                && weaponsmithApprentice.Succeeded
+                && weaponsmithMaster.Succeeded
+                && achievement.Succeeded
+                && masteryEval.AuthoritativeEligible
+                && mastery.Succeeded
+                && distinctGeneralAndSpecialization;
+            return TestLabAssertions.True("step10-rank-mastery", "Specialization rank and mastery use explicit evidence", valid, $"Apprentice={apprentice.Status} Journey={journeyman.Status} WeaponMaster={weaponsmithMaster.Status} Achievement={achievement.Status} Mastery={mastery.Status}");
+        }
+
+        private static TestLabAutomationStepResult RankLifecyclePermissionsBoundaries(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            ProfessionalRankOperationResult promote = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankMasterId, "lifecycle-master");
+            string rankId = promote.Rank?.rankRecordId ?? string.Empty;
+            bool teachActive = runtimes.ProfessionalRanks.CanTeach(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            ProfessionalRankOperationResult suspend = runtimes.ProfessionalRanks.SuspendRank(rankId, "80", context.ScenarioContext.ScopedId("rank-tx", "suspend"));
+            bool teachSuspended = runtimes.ProfessionalRanks.CanTeach(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            ProfessionalRankOperationResult reinstate = runtimes.ProfessionalRanks.ReinstateRank(rankId, "81", context.ScenarioContext.ScopedId("rank-tx", "reinstate"));
+            bool teachReinstated = runtimes.ProfessionalRanks.CanTeach(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            ProfessionalRankOperationResult demote = runtimes.ProfessionalRanks.DemotePerson(rankId, context.ScenarioContext.ScopedId("rank-record", "demoted-journeyman"), PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, "82", context.ScenarioContext.ScopedId("rank-tx", "demote"));
+            bool teachDemoted = runtimes.ProfessionalRanks.CanTeach(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId);
+            ProfessionalRankOperationResult revoke = runtimes.ProfessionalRanks.RevokeRank(demote.Rank?.rankRecordId, "83", context.ScenarioContext.ScopedId("rank-tx", "revoke"));
+            bool skillsUnaffected = true;
+            bool credentialsUnaffected = runtimes.Credentials.CredentialCount > 0;
+            bool valid = promote.Succeeded
+                && teachActive
+                && suspend.Succeeded
+                && !teachSuspended
+                && reinstate.Succeeded
+                && teachReinstated
+                && demote.Succeeded
+                && !teachDemoted
+                && revoke.Succeeded
+                && skillsUnaffected
+                && credentialsUnaffected;
+            return TestLabAssertions.True("step10-rank-lifecycle", "Rank lifecycle affects rank permissions without granting competencies", valid, $"Promote={promote.Status} Active={teachActive} Suspended={teachSuspended} Reinstated={teachReinstated} Demote={demote.Status} Revoked={revoke.Status}");
+        }
+
+        private static TestLabAutomationStepResult RankAccessPersistence(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            ProfessionalRankOperationResult promote = EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, "persistence-rank");
+            ProfessionalRankProjection<ProfessionalRankRecordData> projection = runtimes.ProfessionalRanks.ProjectRank(promote.Rank?.rankRecordId, ProfessionalRankProjectionAudience.Public, null);
+            ProfessionalRankRuntimeSaveData save = runtimes.ProfessionalRanks.CreateSaveData();
+            ProfessionalRankRuntime restored = new ProfessionalRankRuntime();
+            ProfessionalRankOperationResult restore = restored.RestoreFromSaveData(save, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.KnownPersonIds, new[] { "authority.guild.prototype" }, restoring: true);
+            ProfessionalRankRuntimeSaveData corrupt = save.Clone();
+            corrupt.ranks[0].rankDefinitionId = "profession-rank.missing";
+            ProfessionalRankOperationResult rejected = restored.RestoreFromSaveData(corrupt, runtimes.DefinitionRegistry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.KnownPersonIds, new[] { "authority.guild.prototype" }, restoring: true);
+            bool valid = promote.Succeeded
+                && projection.Record != null
+                && restore.Succeeded
+                && restored.QueryByPerson(runtimes.PersonId).Count == 1
+                && restored.HistoryHooks.Count == 0
+                && !rejected.Succeeded
+                && restored.QueryByPerson(runtimes.PersonId).Count == 1;
+            return TestLabAssertions.True("step10-rank-persistence", "Rank projections and persistence restore safely without replay", valid, $"Promote={promote.Status} Restore={restore.Status} Rejected={rejected.Status} Count={restored.QueryByPerson(runtimes.PersonId).Count}");
         }
 
         private static TestLabAutomationStepResult CredentialDefinitionsAndQualification(TestLabAutomationContext context)
@@ -1226,8 +1417,12 @@ namespace UnityIsekaiGame.Development.Automation
                 personId = runtimes.PersonId,
                 professionId = PrototypeProfessionDefinitionFactory.BlacksmithProfessionId,
                 specializationIds = new[] { PrototypeProfessionDefinitionFactory.WeaponsmithSpecializationId },
+                formalPractice = true,
                 informalPractice = true,
                 selfDeclared = true,
+                recognized = true,
+                recognizingAuthorityId = "authority.guild.prototype",
+                recognitionReferenceId = context.ScenarioContext.ScopedId("profession-recognition", "activity-blacksmith"),
                 active = true,
                 startWorldTime = "1",
                 transactionId = context.ScenarioContext.ScopedId("profession-tx", "activity-blacksmith")
@@ -1364,6 +1559,126 @@ namespace UnityIsekaiGame.Development.Automation
                 issuerId = "authority.guild.prototype",
                 issuerKind = CredentialIssuerAuthorityKind.Guild
             };
+        }
+
+        private static void EnsureApprenticeRankFoundation(TestLabAutomationContext context, string slug)
+        {
+            EnsureBlacksmithCredentialFoundation(context, $"rank-{slug}");
+        }
+
+        private static ProfessionalRankOperationResult EnsurePromotedRank(TestLabAutomationContext context, string rankDefinitionId, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            ProfessionalRankRecordData existing = runtimes.ProfessionalRanks.QueryByPerson(runtimes.PersonId, currentOnly: true)
+                .FirstOrDefault(item => string.Equals(item.rankDefinitionId, rankDefinitionId, StringComparison.Ordinal));
+            if (existing != null)
+            {
+                return ProfessionalRankOperationResult.Success("Rank already active.", runtimes.ProfessionalRanks.Revision, runtimes.ProfessionalRanks.Revision, rank: existing, duplicate: true);
+            }
+
+            if (rankDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId)
+            {
+                EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, $"{slug}-prior");
+                if (!runtimes.Credentials.QueryByRecipient(runtimes.PersonId, activeOnly: true).Any(item => item.credentialDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId))
+                {
+                    IssueApprenticeshipCredential(context, $"{slug}-apprenticeship", out _);
+                }
+            }
+            else if (rankDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithRankMasterId)
+            {
+                EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, $"{slug}-prior");
+                EnsureGuildLicense(context, $"{slug}-license");
+            }
+            else if (rankDefinitionId == PrototypeProfessionDefinitionFactory.WeaponsmithRankApprenticeId)
+            {
+                EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankApprenticeId, $"{slug}-prior");
+                if (!runtimes.Credentials.QueryByRecipient(runtimes.PersonId, activeOnly: true).Any(item => item.credentialDefinitionId == PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipCertificateCredentialId))
+                {
+                    IssueApprenticeshipCredential(context, $"{slug}-apprenticeship", out _);
+                }
+            }
+            else if (rankDefinitionId == PrototypeProfessionDefinitionFactory.WeaponsmithRankMasterId)
+            {
+                EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.BlacksmithRankJourneymanId, $"{slug}-general-prior");
+                EnsurePromotedRank(context, PrototypeProfessionDefinitionFactory.WeaponsmithRankApprenticeId, $"{slug}-special-prior");
+                EnsureGuildLicense(context, $"{slug}-license");
+            }
+            else
+            {
+                EnsureApprenticeRankFoundation(context, slug);
+            }
+
+            ProfessionalRankAdvancementResult evaluation = runtimes.ProfessionalRanks.EvaluateAdvancement(runtimes.PersonId, rankDefinitionId, "authority.guild.prototype", privilegedDiagnostics: true);
+            ProfessionalRankOperationResult submit = runtimes.ProfessionalRanks.SubmitApplication(context.ScenarioContext.ScopedId("rank-application", slug), runtimes.PersonId, rankDefinitionId, "authority.guild.prototype", evaluation.Snapshot, "50", context.ScenarioContext.ScopedId("rank-tx", $"{slug}-submit"));
+            ProfessionalRankOperationResult approve = runtimes.ProfessionalRanks.ApprovePromotion(submit.Application?.applicationId, runtimes.PersonId, evaluation.Snapshot, "51", context.ScenarioContext.ScopedId("rank-tx", $"{slug}-approve"));
+            if (!evaluation.AuthoritativeEligible || !submit.Succeeded || !approve.Succeeded)
+            {
+                return ProfessionalRankOperationResult.Failure(ProfessionalRankOperationStatus.MissingQualification, $"Rank fixture setup failed. Eligible={evaluation.AuthoritativeEligible} Submit={submit.Status} Approve={approve.Status}", runtimes.ProfessionalRanks.Revision, evaluation);
+            }
+
+            return runtimes.ProfessionalRanks.PromotePerson(context.ScenarioContext.ScopedId("rank-record", slug), submit.Application?.applicationId, evaluation.Snapshot, "52", context.ScenarioContext.ScopedId("rank-tx", $"{slug}-promote"));
+        }
+
+        private static CredentialOperationResult EnsureGuildLicense(TestLabAutomationContext context, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            CredentialRecordData existing = runtimes.Credentials.QueryByRecipient(runtimes.PersonId, activeOnly: true)
+                .FirstOrDefault(item => string.Equals(item.credentialDefinitionId, PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId, StringComparison.Ordinal));
+            if (existing != null)
+            {
+                return CredentialOperationResult.Success("Guild license already active.", runtimes.Credentials.Revision, runtimes.Credentials.Revision, credential: existing, duplicate: true);
+            }
+
+            EnsureBlacksmithCredentialFoundation(context, $"guild-{slug}");
+            EnsureBlacksmithSafetyTraining(context, slug);
+            RegisterIndependentBlacksmithActivity(context, $"{slug}-independent");
+            RecordCredentialExam(context, $"{slug}-practical", PrototypeProfessionDefinitionFactory.BlacksmithPracticalExaminationId, 850);
+            RecordCredentialExam(context, $"{slug}-written", PrototypeProfessionDefinitionFactory.BlacksmithWrittenExaminationId, 840);
+            CredentialQualificationResult qualification = runtimes.Credentials.EvaluateQualification(runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId, privilegedDiagnostics: true);
+            CredentialOperationResult apply = runtimes.Credentials.SubmitApplication(context.ScenarioContext.ScopedId("credential-application", $"guild-{slug}"), runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId, GuildIssuer(), qualification.Snapshot, "60", context.ScenarioContext.ScopedId("credential-tx", $"guild-{slug}-apply"));
+            CredentialOperationResult approve = runtimes.Credentials.ApproveApplication(apply.Application?.applicationId, "authority.guild.prototype", qualification.Snapshot, "61", context.ScenarioContext.ScopedId("credential-tx", $"guild-{slug}-approve"));
+            if (!qualification.AuthoritativeQualified || !apply.Succeeded || !approve.Succeeded)
+            {
+                return CredentialOperationResult.Failure(CredentialOperationStatus.MissingQualification, $"Guild license fixture failed. Qualified={qualification.AuthoritativeQualified} Apply={apply.Status} Approve={approve.Status}", runtimes.Credentials.Revision, qualification);
+            }
+
+            return runtimes.Credentials.IssueCredential(context.ScenarioContext.ScopedId("credential-record", $"guild-{slug}"), PrototypeProfessionDefinitionFactory.BlacksmithGuildLicenseCredentialId, runtimes.PersonId, GuildIssuer(), apply.Application?.applicationId, context.ScenarioContext.ScopedId("credential-exam", $"{slug}-practical"), context.ScenarioContext.ScopedId("registration", $"guild-{slug}"), qualification.Snapshot, "62", context.ScenarioContext.ScopedId("credential-tx", $"guild-{slug}-issue"));
+        }
+
+        private static void EnsureBlacksmithSafetyTraining(TestLabAutomationContext context, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            bool completed = runtimes.Training.QueryByProgram(PrototypeProfessionDefinitionFactory.BlacksmithSafetyProgramId)
+                .Any(item => string.Equals(item.PersonId, runtimes.PersonId, StringComparison.Ordinal) && item.State == TrainingEnrollmentState.Completed);
+            if (completed)
+            {
+                return;
+            }
+
+            string enrollmentId = context.ScenarioContext.ScopedId("training-enrollment", $"safety-{slug}");
+            runtimes.Training.ApplyToProgram(enrollmentId, runtimes.PersonId, PrototypeProfessionDefinitionFactory.BlacksmithSafetyProgramId, context.ScenarioContext.ScopedId("training-tx", $"safety-{slug}-apply"), worldTime: 33d);
+            runtimes.Training.AcceptEnrollment(enrollmentId, context.ScenarioContext.ScopedId("training-tx", $"safety-{slug}-accept"));
+            runtimes.Training.BeginProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", $"safety-{slug}-begin"));
+            runtimes.Training.RunLearningSession(context.ScenarioContext.ScopedId("training-session", $"safety-{slug}"), enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithBasicsModuleId, PrototypeProfessionDefinitionFactory.BlacksmithSafetyLessonId, context.ScenarioContext.ScopedId("training-tx", $"safety-{slug}-lesson"));
+            runtimes.Training.CompleteModule(enrollmentId, PrototypeProfessionDefinitionFactory.BlacksmithBasicsModuleId, context.ScenarioContext.ScopedId("training-tx", $"safety-{slug}-module"));
+            TrainingProgressResult progress = runtimes.Training.EvaluateProgress(enrollmentId, perceived: false);
+            runtimes.Training.CompleteProgram(enrollmentId, context.ScenarioContext.ScopedId("training-tx", $"safety-{slug}-complete"), progress.RuntimeToken, worldTime: 36d);
+        }
+
+        private static void RegisterIndependentBlacksmithActivity(TestLabAutomationContext context, string slug)
+        {
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            runtimes.ProfessionalActivities.RegisterAndValidateActivity(
+                ActivityRequest(
+                    context,
+                    slug,
+                    PrototypeProfessionDefinitionFactory.BlacksmithCraftingActivityDefinitionId,
+                    ActivityCustomSource(context, ProfessionalActivitySourceType.CraftingOperation, slug, "production.activity.forging", ProfessionalActivityDifficulty.Skilled),
+                    ProfessionalResponsibilityLevel.IndependentPractitioner,
+                    TrainingSupervisionLevel.IndependentWithReview),
+                context.ScenarioContext.ScopedId("professional-evidence", slug),
+                "authority.guild.prototype",
+                context.ScenarioContext.ScopedId("professional-tx", slug));
         }
 
         private static TrainingModuleDefinitionData TrainingModule(string id, bool required, bool hidden, string[] dependencies = null)

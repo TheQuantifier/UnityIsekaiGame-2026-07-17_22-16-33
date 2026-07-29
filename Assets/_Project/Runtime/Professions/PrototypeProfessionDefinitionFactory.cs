@@ -51,6 +51,17 @@ namespace UnityIsekaiGame.Professions
         public const string BlacksmithPracticePermissionId = "permission.profession.blacksmith.practice";
         public const string BlacksmithTeachPermissionId = "permission.profession.blacksmith.teach";
         public const string ForgeRestrictedStationPermissionId = "permission.station.forge.restricted";
+        public const string BlacksmithRankApprenticeId = "profession-rank.blacksmith.apprentice";
+        public const string BlacksmithRankJourneymanId = "profession-rank.blacksmith.journeyman";
+        public const string BlacksmithRankMasterId = "profession-rank.blacksmith.master";
+        public const string WeaponsmithRankApprenticeId = "profession-rank.blacksmith.weaponsmith.apprentice";
+        public const string WeaponsmithRankMasterId = "profession-rank.blacksmith.weaponsmith.master";
+        public const string BlacksmithRankLadderId = "profession-rank-ladder.blacksmith.guild";
+        public const string WeaponsmithRankLadderId = "profession-rank-ladder.blacksmith.weaponsmith";
+        public const string WeaponsmithMasteryId = "profession-mastery.blacksmith.weaponsmith.mastery";
+        public const string BlacksmithMasterworkAchievementId = "achievement.blacksmith.masterwork.prototype";
+        public const string BlacksmithExaminePermissionId = "permission.profession.blacksmith.examine";
+        public const string BlacksmithSupervisePermissionId = "permission.profession.blacksmith.supervise";
         public const string AccessPublicId = "information-access.profession.public";
         public const string AccessSecretId = "information-access.profession.secret";
 
@@ -200,6 +211,129 @@ namespace UnityIsekaiGame.Professions
                 expiration: CredentialExpirationPolicy.FixedDuration,
                 renewal: CredentialRenewalPolicy.RenewWithRecentExperience,
                 policyId: AccessPublicId));
+            definitions.Add(Rank(
+                BlacksmithRankApprenticeId,
+                "Apprentice Blacksmith",
+                BlacksmithProfessionId,
+                10,
+                ProfessionalRankCategory.Apprentice,
+                requiredTraining: new[] { BlacksmithApprenticeshipProgramId },
+                requiredAuthorities: new[] { "authority.guild.prototype" },
+                permissions: new[] { BlacksmithPracticePermissionId },
+                canSupervise: false));
+            definitions.Add(Rank(
+                BlacksmithRankJourneymanId,
+                "Journeyman Blacksmith",
+                BlacksmithProfessionId,
+                20,
+                ProfessionalRankCategory.Journeyman,
+                priorRanks: new[] { BlacksmithRankApprenticeId },
+                requiredCredentials: new[] { BlacksmithApprenticeshipCertificateCredentialId },
+                requiredTraining: new[] { BlacksmithApprenticeshipProgramId },
+                experience: new ProfessionalExperienceRequirementData
+                {
+                    professionId = BlacksmithProfessionId,
+                    minimumValidatedActivities = 1,
+                    minimumSupervisedActivities = 1,
+                    minimumQuality = 500,
+                    minimumDifficulty = ProfessionalActivityDifficulty.Routine
+                },
+                requiredExaminations: new[] { BlacksmithPracticalExaminationId },
+                requiredAuthorities: new[] { "authority.guild.prototype" },
+                permissions: new[] { BlacksmithPracticePermissionId, ForgeRestrictedStationPermissionId },
+                canSupervise: true,
+                apprenticeCapacity: 1));
+            definitions.Add(Rank(
+                BlacksmithRankMasterId,
+                "Master Blacksmith",
+                BlacksmithProfessionId,
+                30,
+                ProfessionalRankCategory.Master,
+                priorRanks: new[] { BlacksmithRankJourneymanId },
+                requiredCredentials: new[] { BlacksmithGuildLicenseCredentialId },
+                experience: new ProfessionalExperienceRequirementData
+                {
+                    professionId = BlacksmithProfessionId,
+                    minimumValidatedActivities = 2,
+                    minimumIndependentActivities = 1,
+                    minimumQuality = 650,
+                    minimumDifficulty = ProfessionalActivityDifficulty.Skilled
+                },
+                requiredExaminations: new[] { BlacksmithPracticalExaminationId, BlacksmithWrittenExaminationId },
+                requiredAuthorities: new[] { "authority.guild.prototype" },
+                permissions: new[] { BlacksmithPracticePermissionId, BlacksmithTeachPermissionId, ForgeRestrictedStationPermissionId, BlacksmithSupervisePermissionId, BlacksmithExaminePermissionId },
+                canTeach: true,
+                canSupervise: true,
+                apprenticeCapacity: 3));
+            definitions.Add(Rank(
+                WeaponsmithRankApprenticeId,
+                "Apprentice Weaponsmith",
+                BlacksmithProfessionId,
+                10,
+                ProfessionalRankCategory.Apprentice,
+                specialization: WeaponsmithSpecializationId,
+                priorRanks: new[] { BlacksmithRankApprenticeId },
+                requiredCredentials: new[] { BlacksmithApprenticeshipCertificateCredentialId },
+                experience: new ProfessionalExperienceRequirementData
+                {
+                    professionId = BlacksmithProfessionId,
+                    specializationId = WeaponsmithSpecializationId,
+                    minimumValidatedActivities = 1,
+                    minimumSupervisedActivities = 1,
+                    minimumQuality = 500,
+                    minimumDifficulty = ProfessionalActivityDifficulty.Routine
+                },
+                requiredAuthorities: new[] { "authority.guild.prototype" },
+                permissions: new[] { BlacksmithPracticePermissionId }));
+            definitions.Add(Rank(
+                WeaponsmithRankMasterId,
+                "Master Weaponsmith",
+                BlacksmithProfessionId,
+                20,
+                ProfessionalRankCategory.Master,
+                specialization: WeaponsmithSpecializationId,
+                priorRanks: new[] { WeaponsmithRankApprenticeId, BlacksmithRankJourneymanId },
+                requiredCredentials: new[] { BlacksmithGuildLicenseCredentialId },
+                experience: new ProfessionalExperienceRequirementData
+                {
+                    professionId = BlacksmithProfessionId,
+                    specializationId = WeaponsmithSpecializationId,
+                    minimumValidatedActivities = 2,
+                    minimumIndependentActivities = 1,
+                    minimumQuality = 650,
+                    minimumDifficulty = ProfessionalActivityDifficulty.Skilled
+                },
+                requiredExaminations: new[] { BlacksmithPracticalExaminationId },
+                requiredAuthorities: new[] { "authority.guild.prototype" },
+                permissions: new[] { BlacksmithPracticePermissionId, BlacksmithTeachPermissionId, BlacksmithSupervisePermissionId },
+                canTeach: true,
+                canSupervise: true,
+                apprenticeCapacity: 2));
+            definitions.Add(Ladder(BlacksmithRankLadderId, "Blacksmith Guild Rank Ladder", BlacksmithProfessionId, new[] { BlacksmithRankApprenticeId, BlacksmithRankJourneymanId, BlacksmithRankMasterId }, terminalRanks: new[] { BlacksmithRankMasterId }, demotionRanks: new[] { BlacksmithRankJourneymanId, BlacksmithRankApprenticeId }));
+            definitions.Add(Ladder(WeaponsmithRankLadderId, "Weaponsmith Rank Ladder", BlacksmithProfessionId, new[] { WeaponsmithRankApprenticeId, WeaponsmithRankMasterId }, WeaponsmithSpecializationId, terminalRanks: new[] { WeaponsmithRankMasterId }, demotionRanks: new[] { WeaponsmithRankApprenticeId }));
+            definitions.Add(Mastery(
+                WeaponsmithMasteryId,
+                "Weaponsmith Mastery",
+                BlacksmithProfessionId,
+                WeaponsmithRankMasterId,
+                WeaponsmithSpecializationId,
+                new ProfessionalExperienceRequirementData
+                {
+                    professionId = BlacksmithProfessionId,
+                    specializationId = WeaponsmithSpecializationId,
+                    minimumValidatedActivities = 2,
+                    minimumIndependentActivities = 1,
+                    minimumQuality = 700,
+                    minimumDifficulty = ProfessionalActivityDifficulty.Skilled
+                },
+                breadth: 1,
+                depthQuality: 700,
+                independentWork: 1,
+                teachingOrLeadership: 0,
+                credentials: new[] { BlacksmithGuildLicenseCredentialId },
+                examinations: new[] { BlacksmithPracticalExaminationId },
+                achievements: new[] { BlacksmithMasterworkAchievementId },
+                authorities: new[] { "authority.guild.prototype" }));
             return definitions;
         }
 
@@ -472,6 +606,73 @@ namespace UnityIsekaiGame.Professions
                 skillOrCapabilityIds,
                 practicalActivityIds,
                 policyId);
+            return definition;
+        }
+
+        private static ProfessionalRankDefinition Rank(
+            string id,
+            string name,
+            string professionId,
+            int order,
+            ProfessionalRankCategory category,
+            string specialization = "",
+            string[] priorRanks = null,
+            string[] requiredCredentials = null,
+            string[] requiredTraining = null,
+            ProfessionalExperienceRequirementData experience = null,
+            string[] requiredExaminations = null,
+            string[] requiredAuthorities = null,
+            string[] permissions = null,
+            bool canTeach = false,
+            bool canSupervise = false,
+            int apprenticeCapacity = 0,
+            ProfessionalRankTrackKind track = ProfessionalRankTrackKind.Formal,
+            bool allowSelfClaim = false,
+            string policyId = AccessPublicId)
+        {
+            ProfessionalRankDefinition definition = ScriptableObject.CreateInstance<ProfessionalRankDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(id, name, professionId, order, category, specialization, priorRanks, requiredCredentials, requiredTraining, experience, requiredExaminations, requiredAuthorities, allowSelfClaim, track, permissions, null, canTeach, canSupervise, apprenticeCapacity, policyId: policyId);
+            return definition;
+        }
+
+        private static ProfessionalRankLadderDefinition Ladder(
+            string id,
+            string name,
+            string professionId,
+            string[] orderedRanks,
+            string specialization = "",
+            string[] terminalRanks = null,
+            string[] lateralRanks = null,
+            string[] demotionRanks = null,
+            string policyId = AccessPublicId)
+        {
+            ProfessionalRankLadderDefinition definition = ScriptableObject.CreateInstance<ProfessionalRankLadderDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(id, name, professionId, orderedRanks, specialization, terminalRanks, lateralRanks, demotionRanks, policyId: policyId);
+            return definition;
+        }
+
+        private static ProfessionalMasteryDefinition Mastery(
+            string id,
+            string name,
+            string professionId,
+            string requiredRank,
+            string specialization,
+            ProfessionalExperienceRequirementData experience,
+            int breadth,
+            int depthQuality,
+            int independentWork,
+            int teachingOrLeadership,
+            string[] credentials,
+            string[] examinations,
+            string[] achievements,
+            string[] authorities,
+            string policyId = AccessPublicId)
+        {
+            ProfessionalMasteryDefinition definition = ScriptableObject.CreateInstance<ProfessionalMasteryDefinition>();
+            definition.name = name.Replace(" ", string.Empty);
+            definition.DevelopmentConfigure(id, name, professionId, requiredRank, specialization, experience, breadth, depthQuality, independentWork, teachingOrLeadership, credentials, examinations, achievements, authorities, policyId: policyId);
             return definition;
         }
 
