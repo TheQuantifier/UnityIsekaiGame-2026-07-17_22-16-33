@@ -1,13 +1,18 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
 
 namespace UnityIsekaiGame.Tests
 {
     public sealed class PrototypeSceneUsabilityTests
     {
         private const string ScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
+        private const string PrototypeVegetationPrefabRoot = "Assets/_Project/Prototype/Environment/Vegetation/Prefabs";
 
         [Test]
         public void PrototypeSceneKeepsCleanPlayableTestingShell()
@@ -38,10 +43,9 @@ namespace UnityIsekaiGame.Tests
             AssertSceneContains(scene, "UI");
             AssertSceneContains(scene, "Test Infrastructure");
             AssertSceneContains(scene, "Prototype Persistence Service");
-            AssertSceneContains(scene, "Ground - Main Prototype");
-            Assert.That(scene, Does.Contain("guid: e3dc3f70f41944be9ee51eac14956a39"), "Ground should use PrototypeGround material.");
 
             AssertSceneDoesNotContain(scene, "Prototype Ground");
+            AssertSceneDoesNotContain(scene, "Ground - Main Prototype");
             AssertSceneDoesNotContain(scene, "Prototype Systems World");
             AssertSceneDoesNotContain(scene, "Systems World Safety Floor");
             AssertSceneDoesNotContain(scene, "Hub - Systems World");
@@ -85,6 +89,63 @@ namespace UnityIsekaiGame.Tests
             MatchCollection matches = Regex.Matches(scene, @"m_Name:\s*EventSystem\b");
 
             Assert.That(matches.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void PrototypeVegetationPaintPrefabsHaveRenderableMeshesAndMaterials()
+        {
+            string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { PrototypeVegetationPrefabRoot });
+
+            Assert.That(prefabGuids.Length, Is.GreaterThanOrEqualTo(12));
+
+            foreach (string guid in prefabGuids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+
+                Assert.That(prefab, Is.Not.Null, path);
+
+                MeshFilter[] meshFilters = prefab.GetComponentsInChildren<MeshFilter>(true);
+                MeshRenderer[] renderers = prefab.GetComponentsInChildren<MeshRenderer>(true);
+
+                Assert.That(prefab.transform.localScale.x, Is.GreaterThan(1.5f), path);
+                Assert.That(prefab.transform.localScale.y, Is.GreaterThan(1.5f), path);
+                Assert.That(prefab.transform.localScale.z, Is.GreaterThan(1.5f), path);
+                Assert.That(meshFilters.Any(meshFilter => meshFilter != null && meshFilter.sharedMesh != null), Is.True, path);
+                Assert.That(renderers.Length, Is.GreaterThan(0), path);
+
+                foreach (MeshRenderer renderer in renderers)
+                {
+                    Assert.That(renderer.sharedMaterials.Length, Is.GreaterThan(0), path);
+                    Assert.That(renderer.sharedMaterials.All(material => material != null && material.shader != null), Is.True, path);
+                }
+            }
+        }
+
+        [Test]
+        public void PrototypeTerrainsUseGeneratedVegetationPaintPalette()
+        {
+            UnityEngine.SceneManagement.Scene scene = EditorSceneManager.OpenScene(ScenePath);
+            Terrain[] terrains = scene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<Terrain>(true))
+                .ToArray();
+
+            Assert.That(terrains.Length, Is.GreaterThanOrEqualTo(1));
+
+            foreach (Terrain terrain in terrains)
+            {
+                Assert.That(terrain.drawTreesAndFoliage, Is.True, terrain.name);
+                Assert.That(terrain.terrainData, Is.Not.Null, terrain.name);
+                Assert.That(terrain.terrainData.treePrototypes.Length, Is.GreaterThanOrEqualTo(12), terrain.name);
+
+                foreach (TreePrototype treePrototype in terrain.terrainData.treePrototypes)
+                {
+                    Assert.That(treePrototype.prefab, Is.Not.Null, terrain.name);
+
+                    string prefabPath = AssetDatabase.GetAssetPath(treePrototype.prefab);
+                    Assert.That(prefabPath, Does.StartWith(PrototypeVegetationPrefabRoot), terrain.name);
+                }
+            }
         }
 
         private static void AssertSceneContains(string scene, string expectedName)
