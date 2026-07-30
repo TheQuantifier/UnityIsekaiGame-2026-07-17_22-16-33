@@ -7,11 +7,13 @@ using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Markets;
+using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Knowledge.Access;
+using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Progression;
 
 namespace UnityIsekaiGame.Development.Automation
@@ -111,6 +113,33 @@ namespace UnityIsekaiGame.Development.Automation
                     "Valuation, receipts, persistence, and projections remain explicit",
                     40,
                     Step("step11-trade-persistence", "Persist and project trades", TradeValuationPersistenceProjection))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.4.wages-employment-payroll",
+                "Wages and Payroll",
+                "11.4",
+                11040,
+                new[] { "PayrollRuntime", "PositionEmploymentRuntime", "EconomyRuntime", "CurrencyDefinition", "InformationAccessRuntime" },
+                PayrollScenario(
+                    "agreements-schedules-evidence",
+                    "Compensation agreements, schedules, and work evidence validate against employment",
+                    10,
+                    Step("step11-payroll-agreement", "Create payroll agreement", PayrollAgreementsSchedulesEvidence)),
+                PayrollScenario(
+                    "gross-net-deductions",
+                    "Gross, net, adjustments, and deductions calculate exactly",
+                    20,
+                    Step("step11-payroll-calculate", "Calculate payroll", PayrollGrossNetDeductions)),
+                PayrollScenario(
+                    "execution-rollback-debt",
+                    "Payroll execution reserves funds, rolls back failures, and records wage debt",
+                    30,
+                    Step("step11-payroll-execute", "Execute payroll", PayrollExecutionRollbackDebt)),
+                PayrollScenario(
+                    "persistence-projections-corrections",
+                    "Payroll persistence, projections, corrections, and overpayments are explicit",
+                    40,
+                    Step("step11-payroll-persist", "Persist and project payroll", PayrollPersistenceProjectionCorrection))), out _);
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -854,6 +883,383 @@ namespace UnityIsekaiGame.Development.Automation
             }
         }
 
+        private static TestLabAutomationStepResult PayrollAgreementsSchedulesEvidence(TestLabAutomationContext context)
+        {
+            if (!TryGetPayrollFixture(context, out PayrollFixture fixture, out string failure))
+            {
+                return Fail("step11-payroll-agreement", failure);
+            }
+
+            PayrollOperationResult agreement = fixture.CreateAgreement("primary");
+            PayrollOperationResult overlap = fixture.CreateAgreement("overlap", start: 10d, end: 50d);
+            PayrollOperationResult schedule = fixture.Payroll.CreateSchedule(new WorkScheduleData
+            {
+                scheduleId = Scoped(context, "payroll-schedule", "weekly"),
+                agreementId = fixture.AgreementId,
+                category = WorkScheduleCategory.FixedShift,
+                expectedMinutesPerPeriod = 2400L,
+                startWorldTime = 0d
+            }, Tx(context, "payroll-schedule"));
+            PayrollOperationResult session = fixture.RecordSession("shift-a", 0d, 8d * 60d, 480L, evidence: "evidence.shift-a");
+            PayrollOperationResult duplicateEvidence = fixture.RecordSession("shift-b", 9d * 60d, 17d * 60d, 480L, evidence: "evidence.shift-a");
+            PayrollOperationResult timesheet = fixture.Payroll.SubmitTimesheet(new TimesheetData
+            {
+                timesheetId = Scoped(context, "payroll-timesheet", "week-one"),
+                agreementId = fixture.AgreementId,
+                workSessionIds = new[] { session.WorkSession?.workSessionId },
+                submittedByPersonId = fixture.EmployeePersonId,
+                submittedWorldTime = 10d
+            }, Tx(context, "payroll-timesheet"));
+            PayrollOperationResult approve = fixture.Payroll.ApproveTimesheet(timesheet.Timesheet?.timesheetId, fixture.AuthorityId, 11d, Tx(context, "payroll-timesheet-approve"));
+
+            bool valid = agreement.Succeeded
+                && !overlap.Succeeded
+                && overlap.Code == PayrollOperationCode.AgreementOverlap
+                && schedule.Succeeded
+                && session.Succeeded
+                && !duplicateEvidence.Succeeded
+                && timesheet.Succeeded
+                && approve.Succeeded
+                && fixture.Payroll.AgreementCount == 1;
+            return TestLabAssertions.True("step11-payroll-agreement", "Compensation agreements, schedules, and work evidence validate against employment", valid, $"Agreement={agreement.Code} Overlap={overlap.Code} Schedule={schedule.Code} Session={session.Code} DuplicateEvidence={duplicateEvidence.Code} Timesheet={timesheet.Code} Approve={approve.Code}");
+        }
+
+        private static TestLabAutomationStepResult PayrollGrossNetDeductions(TestLabAutomationContext context)
+        {
+            if (!TryGetPayrollFixture(context, out PayrollFixture fixture, out string failure))
+            {
+                return Fail("step11-payroll-calculate", failure);
+            }
+
+            fixture.CreateAgreement("calc");
+            PayrollOperationResult session = fixture.RecordSession("calc-shift", 0d, 8d * 60d, 480L);
+            fixture.Payroll.CreatePayPeriod(new PayPeriodData
+            {
+                payPeriodId = fixture.PayPeriodId,
+                agreementId = fixture.AgreementId,
+                startWorldTime = 0d,
+                endWorldTime = 7d * 24d * 60d * 60d,
+                dueWorldTime = 8d * 24d * 60d * 60d
+            }, Tx(context, "payroll-period"));
+            fixture.Payroll.RecordAdjustment(new CompensationAdjustmentData
+            {
+                adjustmentId = Scoped(context, "payroll-adjustment", "hazard"),
+                agreementId = fixture.AgreementId,
+                payPeriodId = fixture.PayPeriodId,
+                category = CompensationAdjustmentCategory.Premium,
+                currencyId = fixture.Gold.Id,
+                units = 10L
+            }, Tx(context, "payroll-adjustment-hazard"));
+            fixture.Payroll.RecordAdjustment(new CompensationAdjustmentData
+            {
+                adjustmentId = Scoped(context, "payroll-adjustment", "meal"),
+                agreementId = fixture.AgreementId,
+                payPeriodId = fixture.PayPeriodId,
+                category = CompensationAdjustmentCategory.Reimbursement,
+                currencyId = fixture.Gold.Id,
+                units = 5L
+            }, Tx(context, "payroll-adjustment-meal"));
+
+            PayrollOperationResult preview = fixture.Payroll.CalculatePay(Scoped(context, "payroll-calculation", "preview"), fixture.PayPeriodId, new[] { session.WorkSession.workSessionId }, new[] { Scoped(context, "payroll-adjustment", "hazard"), Scoped(context, "payroll-adjustment", "meal") }, preview: true);
+            PayrollOperationResult execute = fixture.Payroll.CalculatePay(fixture.CalculationId, fixture.PayPeriodId, new[] { session.WorkSession.workSessionId }, new[] { Scoped(context, "payroll-adjustment", "hazard"), Scoped(context, "payroll-adjustment", "meal") }, Tx(context, "payroll-calculate"));
+
+            PayrollCalculationData calc = execute.Calculation;
+            bool valid = preview.Succeeded
+                && preview.Preview
+                && execute.Succeeded
+                && calc.regularGrossUnits == 80L
+                && calc.adjustmentGrossUnits == 10L
+                && calc.reimbursementUnits == 5L
+                && calc.deductionUnits == 9L
+                && calc.netPayUnits == 86L
+                && calc.deductions.Count == 1;
+            return TestLabAssertions.True("step11-payroll-calculate", "Gross, net, adjustments, and deductions calculate exactly", valid, $"Preview={preview.Code} Execute={execute.Code} Gross={calc?.regularGrossUnits}+{calc?.adjustmentGrossUnits} Reimburse={calc?.reimbursementUnits} Deduct={calc?.deductionUnits} Net={calc?.netPayUnits}");
+        }
+
+        private static TestLabAutomationStepResult PayrollExecutionRollbackDebt(TestLabAutomationContext context)
+        {
+            if (!TryGetPayrollFixture(context, out PayrollFixture fixture, out string failure))
+            {
+                return Fail("step11-payroll-execute", failure);
+            }
+
+            fixture.BuildCalculatedObligation("execute", 500L);
+            fixture.Payroll.CreatePayrollRun(fixture.PayRunId, fixture.EmployerId, fixture.EmployerAccountId, new[] { fixture.ObligationId }, PayrollPaymentPolicy.AllOrNothing, 20d, Tx(context, "payroll-run"));
+            PayrollRuntimeSaveData beforePayroll = fixture.Payroll.CreateSaveData();
+            EconomyRuntimeSaveData beforeEconomy = fixture.Economy.CreateSaveData();
+            PayrollOperationResult failed = fixture.Payroll.ExecutePayrollRun(fixture.PayRunId, fixture.Economy, Tx(context, "payroll-run-fail"), injectFailureStage: "before-run-commit");
+            bool rolledBack = !failed.Succeeded
+                && JsonUtility.ToJson(beforePayroll) == JsonUtility.ToJson(fixture.Payroll.CreateSaveData())
+                && JsonUtility.ToJson(beforeEconomy) == JsonUtility.ToJson(fixture.Economy.CreateSaveData());
+
+            PayrollOperationResult reserve = fixture.Payroll.ReservePayrollFunds(fixture.PayRunId, fixture.Economy, Tx(context, "payroll-run-reserve"));
+            PayrollOperationResult execute = fixture.Payroll.ExecutePayrollRun(fixture.PayRunId, fixture.Economy, Tx(context, "payroll-run-execute"));
+            bool hasEmployee = fixture.Economy.TryGetAccount(fixture.EmployeeAccountId, out EconomyAccountSnapshot employee);
+
+            PayrollFixture partial = fixture.CreateSibling("partial");
+            partial.BuildCalculatedObligation("partial", 60L);
+            partial.Payroll.CreatePayrollRun(partial.PayRunId, partial.EmployerId, partial.EmployerAccountId, new[] { partial.ObligationId }, PayrollPaymentPolicy.PartialWithDebt, 30d, Tx(context, "payroll-partial-run"));
+            PayrollOperationResult partialExecute = partial.Payroll.ExecutePayrollRun(partial.PayRunId, partial.Economy, Tx(context, "payroll-partial-execute"));
+            bool hasPartialObligation = partial.Payroll.TryGetObligation(partial.ObligationId, out PayrollObligationData partialObligation);
+            bool valid = rolledBack
+                && reserve.Succeeded
+                && execute.Succeeded
+                && hasEmployee
+                && employee.BalanceUnits == 72L
+                && partialExecute.Succeeded
+                && hasPartialObligation
+                && partialObligation.amountOutstandingUnits > 0L
+                && partial.Payroll.WageDebts.Count == 1;
+            return TestLabAssertions.True("step11-payroll-execute", "Payroll execution reserves funds, rolls back failures, and records wage debt", valid, $"Rollback={rolledBack} Reserve={reserve.Code} Execute={execute.Code} HasEmployee={hasEmployee} Employee={employee?.BalanceUnits} Partial={partialExecute.Code} HasPartialObligation={hasPartialObligation} Debt={partialObligation?.amountOutstandingUnits}");
+        }
+
+        private static TestLabAutomationStepResult PayrollPersistenceProjectionCorrection(TestLabAutomationContext context)
+        {
+            if (!TryGetPayrollFixture(context, out PayrollFixture fixture, out string failure))
+            {
+                return Fail("step11-payroll-persist", failure);
+            }
+
+            fixture.BuildCalculatedObligation("persist", 200L);
+            fixture.Payroll.CreatePayrollRun(fixture.PayRunId, fixture.EmployerId, fixture.EmployerAccountId, new[] { fixture.ObligationId }, PayrollPaymentPolicy.AllOrNothing, 20d, Tx(context, "payroll-persist-run"));
+            PayrollOperationResult execute = fixture.Payroll.ExecutePayrollRun(fixture.PayRunId, fixture.Economy, Tx(context, "payroll-persist-execute"));
+            string statementId = execute.PayRun?.statementIds?.FirstOrDefault() ?? string.Empty;
+            PayrollProjection<PayStatementData> redacted = fixture.Payroll.ProjectPayStatement(statementId, PayrollProjectionAudience.Public, null);
+            PayrollOperationResult correction = fixture.Payroll.RecordCorrection(new PayrollCorrectionData
+            {
+                correctionId = Scoped(context, "payroll-correction", "statement"),
+                correctedRecordId = statementId,
+                replacementRecordId = Scoped(context, "payroll-statement", "replacement"),
+                authorityId = fixture.AuthorityId,
+                reason = "Prototype correction",
+                worldTime = 25d
+            }, Tx(context, "payroll-correction"));
+            PayrollOperationResult overpayment = fixture.Payroll.RecordOverpayment(new OverpaymentRecordData
+            {
+                overpaymentId = Scoped(context, "payroll-overpayment", "statement"),
+                originalPaymentRecordId = execute.PayRun?.paymentRecordIds?.FirstOrDefault() ?? string.Empty,
+                employeePersonId = fixture.EmployeePersonId,
+                employerSubjectId = fixture.EmployerId,
+                currencyId = fixture.Gold.Id,
+                overpaidUnits = 1L,
+                createdWorldTime = 26d
+            }, Tx(context, "payroll-overpayment"));
+
+            PayrollRuntimeSaveData save = fixture.Payroll.CreateSaveData();
+            bool validSave = PayrollRuntime.ValidateSaveData(save, fixture.Registry, out string saveFailure);
+            PayrollRuntime restored = new PayrollRuntime();
+            restored.Configure(fixture.Registry, context.ScenarioContext.Runtimes.WorldId);
+            PayrollOperationResult restore = restored.RestoreFromSaveData(save, fixture.Registry);
+            PayrollRuntimeSaveData corrupt = save.Clone();
+            corrupt.agreements[0].compensationDefinitionId = "compensation.missing";
+            bool rejected = !PayrollRuntime.ValidateSaveData(corrupt, fixture.Registry, out string corruptFailure);
+
+            bool valid = execute.Succeeded
+                && redacted.Redacted
+                && redacted.Record.netUnits == 0L
+                && correction.Succeeded
+                && overpayment.Succeeded
+                && validSave
+                && restore.Succeeded
+                && restored.StatementCount == fixture.Payroll.StatementCount
+                && rejected;
+            return TestLabAssertions.True("step11-payroll-persist", "Payroll persistence, projections, corrections, and overpayments are explicit", valid, $"Execute={execute.Code} Redacted={redacted.Redacted} Correction={correction.Code} Overpay={overpayment.Code} Save={validSave}:{saveFailure} Restore={restore.Code} Rejected={rejected}:{corruptFailure}");
+        }
+
+        private static bool TryGetPayrollFixture(TestLabAutomationContext context, out PayrollFixture fixture, out string failure)
+        {
+            fixture = null;
+            failure = string.Empty;
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            if (runtimes?.Payroll == null || runtimes.Economy == null || runtimes.PositionEmployment == null)
+            {
+                failure = "Payroll, Economy, or Position Employment runtime is missing.";
+                return false;
+            }
+
+            if (!runtimes.DefinitionRegistry.TryGet(GoldCurrencyId, out CurrencyDefinition gold))
+            {
+                failure = $"Currency definition '{GoldCurrencyId}' is missing.";
+                return false;
+            }
+
+            CurrencyDefinition currency = gold;
+            string employerAccount = Account(context, "payroll-employer");
+            string employeeAccount = Account(context, "payroll-employee");
+            string deductionAccount = Account(context, "payroll-tax");
+            CompensationDefinition compensation = ScriptableObject.CreateInstance<CompensationDefinition>();
+            compensation.Initialize(Scoped(context, "compensation", "hourly"), "Prototype Hourly Wage", currency, CompensationCategory.HourlyWage, CompensationRateBasis.PerDurationUnit, 10L, duration: PayrollDurationUnit.Hour);
+            PayrollDeductionDefinition deduction = ScriptableObject.CreateInstance<PayrollDeductionDefinition>();
+            deduction.Initialize(Scoped(context, "payroll-deduction", "tax"), "Prototype Payroll Tax", currency, DeductionCategory.Tax, 0L, new PayrollRationalData { numerator = 1L, denominator = 10L }, 10, deductionAccount);
+            PositionDefinition position = ScriptableObject.CreateInstance<PositionDefinition>();
+            position.DevelopmentConfigure(
+                Scoped(context, "position", "payroll-worker"),
+                "Prototype Payroll Worker",
+                PositionCategory.Custom,
+                authorities: new[] { PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId },
+                compensationPolicy: compensation.Id,
+                paymentSchedule: "pay-schedule.prototype.weekly",
+                wageOrSalary: compensation.Id,
+                maxHolders: 4,
+                exclusive: false);
+            DefinitionRegistry registry = new DefinitionRegistry(runtimes.DefinitionRegistry.DefinitionsById.Values.Concat(new IGameDefinition[] { compensation, deduction, position }));
+            runtimes.Economy.Configure(registry, runtimes.WorldId);
+            runtimes.Payroll.Configure(registry, runtimes.WorldId);
+            runtimes.PositionEmployment.Configure(registry, runtimes.Professions, runtimes.Training, runtimes.ProfessionalActivities, runtimes.Credentials, runtimes.ProfessionalRanks, new[] { runtimes.PersonId, "person.prototype.payroll-worker" }, new[] { "organization.prototype.guild" }, new[] { PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId, "organization.prototype.guild" });
+            runtimes.Economy.CreateAccount(employerAccount, currency, "organization.prototype.guild", EconomyAccountKind.OrganizationAccount, 1000L, Tx(context, "payroll-employer-open"));
+            runtimes.Economy.CreateAccount(employeeAccount, currency, "person.prototype.payroll-worker", EconomyAccountKind.PersonWallet, 0L, Tx(context, "payroll-employee-open"));
+            runtimes.Economy.CreateAccount(deductionAccount, currency, "organization.prototype.tax", EconomyAccountKind.OrganizationAccount, 0L, Tx(context, "payroll-tax-open"));
+
+            string positionInstanceId = Scoped(context, "position-instance", "payroll-worker");
+            runtimes.PositionEmployment.CreatePosition(new PositionInstanceData
+            {
+                positionInstanceId = positionInstanceId,
+                positionDefinitionId = position.Id,
+                organizationId = "organization.prototype.guild",
+                state = PositionInstanceState.Vacant,
+                maximumHolders = 4,
+                vacancyAllowed = true,
+                createdWorldTime = "0"
+            }, Tx(context, "payroll-position"));
+            PositionEligibilityResult eligibility = runtimes.PositionEmployment.EvaluateEligibility("person.prototype.payroll-worker", positionInstanceId, privilegedDiagnostics: true);
+            PositionEmploymentOperationResult employment = runtimes.PositionEmployment.AppointPerson(Scoped(context, "employment", "payroll-worker"), string.Empty, "person.prototype.payroll-worker", positionInstanceId, PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId, eligibility.Snapshot, "0", Tx(context, "payroll-appoint"));
+            if (!employment.Succeeded)
+            {
+                failure = $"Payroll employment fixture failed: {employment.Status} {employment.Message}";
+                return false;
+            }
+
+            fixture = new PayrollFixture(context, registry, runtimes.Payroll, runtimes.Economy, runtimes.PositionEmployment, currency, compensation.Id, deduction.Id, employment.Employment.employmentId, employerAccount, employeeAccount, deductionAccount, "person.prototype.payroll-worker");
+            return true;
+        }
+
+        private sealed class PayrollFixture
+        {
+            private readonly TestLabAutomationContext context;
+            private readonly string employeePersonId;
+
+            public PayrollFixture(TestLabAutomationContext context, DefinitionRegistry registry, PayrollRuntime payroll, EconomyRuntime economy, PositionEmploymentRuntime employmentRuntime, CurrencyDefinition gold, string compensationId, string deductionId, string employmentId, string employerAccountId, string employeeAccountId, string deductionAccountId, string employeePersonId)
+            {
+                this.context = context;
+                this.employeePersonId = string.IsNullOrWhiteSpace(employeePersonId) ? "person.prototype.payroll-worker" : employeePersonId;
+                Registry = registry;
+                Payroll = payroll;
+                Economy = economy;
+                EmploymentRuntime = employmentRuntime;
+                Gold = gold;
+                CompensationId = compensationId;
+                DeductionId = deductionId;
+                EmploymentId = employmentId;
+                EmployerAccountId = employerAccountId;
+                EmployeeAccountId = employeeAccountId;
+                DeductionAccountId = deductionAccountId;
+                AgreementId = Scoped(context, "payroll-agreement", "primary");
+                PayPeriodId = Scoped(context, "payroll-period", "primary");
+                CalculationId = Scoped(context, "payroll-calculation", "primary");
+                ObligationId = Scoped(context, "payroll-obligation", "primary");
+                PayRunId = Scoped(context, "payroll-run", "primary");
+            }
+
+            public DefinitionRegistry Registry { get; }
+            public PayrollRuntime Payroll { get; }
+            public EconomyRuntime Economy { get; }
+            public PositionEmploymentRuntime EmploymentRuntime { get; }
+            public CurrencyDefinition Gold { get; }
+            public string CompensationId { get; }
+            public string DeductionId { get; }
+            public string EmploymentId { get; }
+            public string EmployerAccountId { get; }
+            public string EmployeeAccountId { get; }
+            public string DeductionAccountId { get; }
+            public string AgreementId { get; private set; }
+            public string PayPeriodId { get; private set; }
+            public string CalculationId { get; private set; }
+            public string ObligationId { get; private set; }
+            public string PayRunId { get; private set; }
+            public string EmployeePersonId => employeePersonId;
+            public string EmployerId => "organization.prototype.guild";
+            public string AuthorityId => PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId;
+
+            public PayrollOperationResult CreateAgreement(string slug, double start = 0d, double end = -1d)
+            {
+                string id = slug == "primary" || slug == "calc" ? AgreementId : Scoped(context, "payroll-agreement", slug);
+                return Payroll.ActivateAgreement(new CompensationAgreementData
+                {
+                    agreementId = id,
+                    compensationDefinitionId = CompensationId,
+                    employmentId = EmploymentId,
+                    employeePersonId = EmployeePersonId,
+                    employerSubjectId = EmployerId,
+                    employerFundingAccountId = EmployerAccountId,
+                    employeeAccountId = EmployeeAccountId,
+                    deductionDefinitionIds = new[] { DeductionId },
+                    state = CompensationAgreementState.Active,
+                    effectiveStartWorldTime = start,
+                    effectiveEndWorldTime = end
+                }, EmploymentRuntime, Economy, Tx(context, $"payroll-agreement-{slug}"));
+            }
+
+            public PayrollOperationResult RecordSession(string slug, double start, double end, long minutes, string evidence = "")
+            {
+                return Payroll.RecordWorkSession(new WorkSessionData
+                {
+                    workSessionId = Scoped(context, "payroll-session", slug),
+                    agreementId = AgreementId,
+                    startWorldTime = start,
+                    endWorldTime = end,
+                    durationMinutes = minutes,
+                    evidenceIds = string.IsNullOrWhiteSpace(evidence) ? Array.Empty<string>() : new[] { evidence }
+                }, EmploymentRuntime, Tx(context, $"payroll-session-{slug}"));
+            }
+
+            public void BuildCalculatedObligation(string slug, long employerOpeningBalance)
+            {
+                if (!Payroll.TryGetAgreement(AgreementId, out _))
+                {
+                    CreateAgreement("primary");
+                }
+
+                PayrollOperationResult session = RecordSession($"{slug}-shift", 0d, 8d * 60d, 480L);
+                if (!session.Succeeded || session.WorkSession == null)
+                {
+                    return;
+                }
+
+                Payroll.CreatePayPeriod(new PayPeriodData
+                {
+                    payPeriodId = PayPeriodId,
+                    agreementId = AgreementId,
+                    startWorldTime = 0d,
+                    endWorldTime = 7d * 24d * 60d * 60d,
+                    dueWorldTime = 8d * 24d * 60d * 60d
+                }, Tx(context, $"payroll-period-{slug}"));
+                Payroll.CalculatePay(CalculationId, PayPeriodId, new[] { session.WorkSession.workSessionId }, Array.Empty<string>(), Tx(context, $"payroll-calc-{slug}"));
+                Payroll.CreateObligation(ObligationId, CalculationId, 8d * 24d * 60d * 60d, Tx(context, $"payroll-obligation-{slug}"));
+            }
+
+            public PayrollFixture CreateSibling(string slug)
+            {
+                string personId = $"person.prototype.payroll-worker-{slug}";
+                EmploymentRuntime.Configure(Registry, context.ScenarioContext.Runtimes.Professions, context.ScenarioContext.Runtimes.Training, context.ScenarioContext.Runtimes.ProfessionalActivities, context.ScenarioContext.Runtimes.Credentials, context.ScenarioContext.Runtimes.ProfessionalRanks, new[] { "person.prototype.payroll-worker", personId }, new[] { EmployerId }, new[] { PrototypeProfessionDefinitionFactory.PositionAppointAuthorityId, EmployerId });
+                string positionInstanceId = Scoped(context, "position-instance", "payroll-worker");
+                PositionEligibilityResult eligibility = EmploymentRuntime.EvaluateEligibility(personId, positionInstanceId, privilegedDiagnostics: true);
+                PositionEmploymentOperationResult employment = EmploymentRuntime.AppointPerson(Scoped(context, "employment", $"payroll-worker-{slug}"), string.Empty, personId, positionInstanceId, AuthorityId, eligibility.Snapshot, "0", Tx(context, $"payroll-appoint-{slug}"));
+                string employer = Account(context, $"payroll-employer-{slug}");
+                string employee = Account(context, $"payroll-employee-{slug}");
+                string deduction = Account(context, $"payroll-tax-{slug}");
+                Economy.CreateAccount(employer, Gold, EmployerId, EconomyAccountKind.OrganizationAccount, 60L, Tx(context, $"payroll-employer-{slug}"));
+                Economy.CreateAccount(employee, Gold, personId, EconomyAccountKind.PersonWallet, 0L, Tx(context, $"payroll-employee-{slug}"));
+                Economy.CreateAccount(deduction, Gold, "organization.prototype.tax", EconomyAccountKind.OrganizationAccount, 0L, Tx(context, $"payroll-tax-{slug}"));
+                PayrollFixture sibling = new PayrollFixture(context, Registry, Payroll, Economy, EmploymentRuntime, Gold, CompensationId, DeductionId, employment.Employment?.employmentId ?? EmploymentId, employer, employee, deduction, personId);
+                sibling.AgreementId = Scoped(context, "payroll-agreement", slug);
+                sibling.PayPeriodId = Scoped(context, "payroll-period", slug);
+                sibling.CalculationId = Scoped(context, "payroll-calculation", slug);
+                sibling.ObligationId = Scoped(context, "payroll-obligation", slug);
+                sibling.PayRunId = Scoped(context, "payroll-run", slug);
+                return sibling;
+            }
+        }
+
         private static bool TryGetMarketFixture(
             TestLabAutomationContext context,
             out MarketRuntime markets,
@@ -1057,6 +1463,21 @@ namespace UnityIsekaiGame.Development.Automation
                 steps: steps,
                 isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
                 requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[] { GoldCurrencyId });
+        }
+
+        private static ITestLabAutomationScenario PayrollScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory,
                 requiredDefinitionIds: new[] { GoldCurrencyId });
         }
 

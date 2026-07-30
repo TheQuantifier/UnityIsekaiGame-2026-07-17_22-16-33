@@ -8,6 +8,7 @@ using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Markets;
+using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -80,6 +81,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldEconomy = true;
         [SerializeField] private bool registerWorldMarkets = true;
         [SerializeField] private bool registerWorldTrades = true;
+        [SerializeField] private bool registerWorldPayroll = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -149,6 +151,7 @@ namespace UnityIsekaiGame.Gameplay
         private EconomyPersistenceParticipant economyParticipant;
         private MarketPersistenceParticipant marketParticipant;
         private TradePersistenceParticipant tradeParticipant;
+        private PayrollPersistenceParticipant payrollParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -183,6 +186,7 @@ namespace UnityIsekaiGame.Gameplay
         private EconomyRuntime worldEconomy;
         private MarketRuntime worldMarkets;
         private TradeRuntime worldTrades;
+        private PayrollRuntime worldPayroll;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -372,6 +376,19 @@ namespace UnityIsekaiGame.Gameplay
                 return worldTrades;
             }
         }
+        public PayrollRuntime Payroll
+        {
+            get
+            {
+                if (worldPayroll == null)
+                {
+                    worldPayroll = new PayrollRuntime();
+                }
+
+                worldPayroll.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
+                return worldPayroll;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -424,6 +441,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(tradeParticipant);
                 tradeParticipant = null;
+            }
+
+            if (service != null && payrollParticipant != null)
+            {
+                service.UnregisterParticipant(payrollParticipant);
+                payrollParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -696,6 +719,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldEconomyParticipant();
             EnsureWorldMarketParticipant();
             EnsureWorldTradeParticipant();
+            EnsureWorldPayrollParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1113,6 +1137,33 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 tradeParticipant = null;
+            }
+        }
+
+        private void EnsureWorldPayrollParticipant()
+        {
+            if (!registerWorldPayroll || payrollParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World payroll persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            payrollParticipant = new PayrollPersistenceParticipant(
+                Payroll,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(payrollParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                payrollParticipant = null;
             }
         }
 
