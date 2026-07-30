@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.Development.Automation.Fixtures.Core;
 using UnityIsekaiGame.Development.Automation.Fixtures.History;
+using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory.Crafting;
@@ -393,6 +394,7 @@ namespace UnityIsekaiGame.Development.Automation
             PositionEmploymentRuntime positionEmployment,
             CareerHistoryRuntime careerHistory,
             LifePathRuntime lifePaths,
+            EconomyRuntime economy,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -425,6 +427,7 @@ namespace UnityIsekaiGame.Development.Automation
             PositionEmployment = positionEmployment;
             CareerHistory = careerHistory;
             LifePaths = lifePaths;
+            Economy = economy;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -459,6 +462,7 @@ namespace UnityIsekaiGame.Development.Automation
         public PositionEmploymentRuntime PositionEmployment { get; }
         public CareerHistoryRuntime CareerHistory { get; }
         public LifePathRuntime LifePaths { get; }
+        public EconomyRuntime Economy { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -491,7 +495,8 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionalRankRuntime professionalRanks = null,
             PositionEmploymentRuntime positionEmployment = null,
             CareerHistoryRuntime careerHistory = null,
-            LifePathRuntime lifePaths = null)
+            LifePathRuntime lifePaths = null,
+            EconomyRuntime economy = null)
         {
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
             professionRuntime.Configure(definitionRegistry, knownPersonIds);
@@ -511,7 +516,9 @@ namespace UnityIsekaiGame.Development.Automation
             careerRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, knownPersonIds, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
             LifePathRuntime lifePathRuntime = lifePaths ?? new LifePathRuntime();
             lifePathRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, knownPersonIds, DefaultOrganizationIds);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, null);
+            EconomyRuntime economyRuntime = economy ?? new EconomyRuntime();
+            economyRuntime.Configure(definitionRegistry, worldId);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -549,6 +556,7 @@ namespace UnityIsekaiGame.Development.Automation
             PositionEmploymentRuntime positionEmployment = new PositionEmploymentRuntime();
             CareerHistoryRuntime careerHistory = new CareerHistoryRuntime();
             LifePathRuntime lifePaths = new LifePathRuntime();
+            EconomyRuntime economy = new EconomyRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -568,8 +576,9 @@ namespace UnityIsekaiGame.Development.Automation
             positionEmployment.Configure(definitionRegistry, professions, training, professionalActivities, credentials, professionalRanks, persons, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
             careerHistory.Configure(definitionRegistry, professions, training, professionalActivities, credentials, professionalRanks, positionEmployment, persons, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
             lifePaths.Configure(definitionRegistry, professions, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, persons, DefaultOrganizationIds);
+            economy.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -618,7 +627,8 @@ namespace UnityIsekaiGame.Development.Automation
                 ProfessionalRanks?.CreateSaveData(),
                 PositionEmployment?.CreateSaveData(),
                 CareerHistory?.CreateSaveData(),
-                LifePaths?.CreateSaveData());
+                LifePaths?.CreateSaveData(),
+                Economy?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -649,7 +659,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("ProfessionalRanks", ProfessionalRanks?.Revision ?? 0L, ProfessionalRanks?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("PositionEmployment", PositionEmployment?.Revision ?? 0L, PositionEmployment?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("CareerHistory", CareerHistory?.Revision ?? 0L, CareerHistory?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("LifePaths", LifePaths?.Revision ?? 0L, LifePaths?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("LifePaths", LifePaths?.Revision ?? 0L, LifePaths?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Economy", Economy?.Revision ?? 0L, Economy?.CreateSaveData())
             });
         }
 
@@ -910,6 +921,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (Economy != null && snapshot.Economy != null)
+            {
+                EconomyOperationResult result = Economy.RestoreFromSaveData(snapshot.Economy, DefinitionRegistry);
+                if (!result.Succeeded)
+                {
+                    failure = $"Economy restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -990,7 +1011,8 @@ namespace UnityIsekaiGame.Development.Automation
             ProfessionalRankRuntimeSaveData professionalRanks,
             PositionEmploymentRuntimeSaveData positionEmployment,
             CareerHistoryRuntimeSaveData careerHistory,
-            LifePathRuntimeSaveData lifePaths)
+            LifePathRuntimeSaveData lifePaths,
+            EconomyRuntimeSaveData economy)
         {
             Knowledge = knowledge;
             History = history;
@@ -1017,6 +1039,7 @@ namespace UnityIsekaiGame.Development.Automation
             PositionEmployment = positionEmployment;
             CareerHistory = careerHistory;
             LifePaths = lifePaths;
+            Economy = economy;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1044,6 +1067,7 @@ namespace UnityIsekaiGame.Development.Automation
         public PositionEmploymentRuntimeSaveData PositionEmployment { get; }
         public CareerHistoryRuntimeSaveData CareerHistory { get; }
         public LifePathRuntimeSaveData LifePaths { get; }
+        public EconomyRuntimeSaveData Economy { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
@@ -1393,7 +1417,7 @@ namespace UnityIsekaiGame.Development.Automation
             return new string(chars).Trim('.', '-');
         }
 
-        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions;
+        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy;
 
         private static bool CanIsolate(TestLabRuntimeArea supported, TestLabRuntimeArea required)
         {

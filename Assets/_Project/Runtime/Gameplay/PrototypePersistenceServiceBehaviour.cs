@@ -6,6 +6,7 @@ using UnityIsekaiGame.CharacterSystem;
 using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
+using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -74,6 +75,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private string defaultPlayerSpeciesId = "species.human";
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
         [SerializeField] private bool registerPlayerItemIdentities = true;
+        [SerializeField] private bool registerWorldEconomy = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -140,6 +142,7 @@ namespace UnityIsekaiGame.Gameplay
         private LifePathPersistenceParticipant playerLifePathParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
+        private EconomyPersistenceParticipant economyParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -171,6 +174,7 @@ namespace UnityIsekaiGame.Gameplay
         private CareerHistoryRuntime playerCareerHistory;
         private LifePathRuntime playerLifePaths;
         private ItemInstanceIdentityRuntime playerItemIdentities;
+        private EconomyRuntime worldEconomy;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -321,6 +325,19 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
         public ItemInstanceIdentityRuntime ItemIdentities => playerItemIdentities ??= new ItemInstanceIdentityRuntime();
+        public EconomyRuntime Economy
+        {
+            get
+            {
+                if (worldEconomy == null)
+                {
+                    worldEconomy = new EconomyRuntime();
+                }
+
+                worldEconomy.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
+                return worldEconomy;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -355,6 +372,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(itemIdentityParticipant);
                 itemIdentityParticipant = null;
+            }
+
+            if (service != null && economyParticipant != null)
+            {
+                service.UnregisterParticipant(economyParticipant);
+                economyParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -624,6 +647,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
+            EnsureWorldEconomyParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -960,6 +984,33 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 itemIdentityParticipant = null;
+            }
+        }
+
+        private void EnsureWorldEconomyParticipant()
+        {
+            if (!registerWorldEconomy || economyParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World economy persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            economyParticipant = new EconomyPersistenceParticipant(
+                Economy,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(economyParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                economyParticipant = null;
             }
         }
 

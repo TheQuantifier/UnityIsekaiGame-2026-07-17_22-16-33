@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Inventory;
 
 namespace UnityIsekaiGame.Progression
 {
@@ -19,6 +20,11 @@ namespace UnityIsekaiGame.Progression
         [SerializeField] private bool enabledForAlpha = true;
         [SerializeField] private string stackDisplayPolicy = "WholeUnits";
         [SerializeField] private string futureExchangeSupport;
+        [SerializeField] private bool abstractBalancesAllowed = true;
+        [SerializeField] private bool physicalCurrencyAllowed = true;
+        [SerializeField, Min(1)] private long unitsPerPhysicalItem = 1L;
+        [SerializeField] private ItemDefinition physicalCurrencyItem;
+        [SerializeField] private string issuerId;
 
         public string CurrencyId => currencyId;
         public string Id => currencyId;
@@ -34,10 +40,38 @@ namespace UnityIsekaiGame.Progression
         public bool EnabledForAlpha => enabledForAlpha;
         public string StackDisplayPolicy => stackDisplayPolicy ?? string.Empty;
         public string FutureExchangeSupport => futureExchangeSupport ?? string.Empty;
+        public bool AbstractBalancesAllowed => abstractBalancesAllowed;
+        public bool PhysicalCurrencyAllowed => physicalCurrencyAllowed;
+        public long UnitsPerPhysicalItem => unitsPerPhysicalItem <= 0L ? 1L : unitsPerPhysicalItem;
+        public ItemDefinition PhysicalCurrencyItem => physicalCurrencyItem;
+        public string IssuerId => issuerId ?? string.Empty;
+
+        public void Initialize(
+            string id,
+            string display,
+            string currencySymbol = "G",
+            int precision = 0,
+            ItemDefinition physicalItem = null,
+            long physicalUnits = 1L,
+            bool allowAbstractBalances = true,
+            bool allowPhysicalCurrency = true,
+            string issuer = "")
+        {
+            currencyId = id ?? string.Empty;
+            displayName = display ?? string.Empty;
+            symbol = currencySymbol ?? string.Empty;
+            minorUnitPrecision = Mathf.Max(0, precision);
+            physicalCurrencyItem = physicalItem;
+            unitsPerPhysicalItem = System.Math.Max(1L, physicalUnits);
+            abstractBalancesAllowed = allowAbstractBalances;
+            physicalCurrencyAllowed = allowPhysicalCurrency;
+            issuerId = issuer ?? string.Empty;
+        }
 
         private void OnValidate()
         {
             minorUnitPrecision = Mathf.Max(0, minorUnitPrecision);
+            unitsPerPhysicalItem = System.Math.Max(1L, unitsPerPhysicalItem);
         }
 
         public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
@@ -55,6 +89,19 @@ namespace UnityIsekaiGame.Progression
             if (MinorUnitPrecision < 0)
             {
                 report.AddError($"Currency '{DisplayName}' has invalid precision.");
+            }
+
+            if (UnitsPerPhysicalItem <= 0L)
+            {
+                report.AddError($"Currency '{DisplayName}' has invalid physical item unit conversion.");
+            }
+
+            if (physicalCurrencyItem != null
+                && (definitionsById == null
+                    || !definitionsById.TryGetValue(physicalCurrencyItem.Id, out IGameDefinition found)
+                    || found is not ItemDefinition))
+            {
+                report.AddError($"Currency '{DisplayName}' physical currency item '{physicalCurrencyItem.Id}' is not in the configured catalog.");
             }
         }
     }
