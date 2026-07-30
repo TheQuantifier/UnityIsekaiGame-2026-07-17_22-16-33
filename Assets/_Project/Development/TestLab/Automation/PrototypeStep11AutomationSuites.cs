@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Economy;
+using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
@@ -20,6 +21,7 @@ namespace UnityIsekaiGame.Development.Automation
         private const string GoldCurrencyId = "currency.gold";
         private const string CoinCurrencyId = "currency.prototype.coin";
         private const string CoinItemId = "item.prototype-gold-coin";
+        private const string PrototypeSwordItemId = "item.prototype-sword";
 
         public static void RegisterDefaults(TestLabAutomationRegistry registry)
         {
@@ -54,6 +56,33 @@ namespace UnityIsekaiGame.Development.Automation
                     "Persistence and access projections validate economy state",
                     50,
                     Step("step11-economy-persistence", "Persist and project", PersistenceProjectionAndValidation))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.2.markets-price-formation",
+                "Markets and Price Formation",
+                "11.2",
+                11020,
+                new[] { "MarketRuntime", "EconomyRuntime", "CurrencyDefinition", "ItemInstanceIdentityRuntime", "InformationAccessRuntime" },
+                Scenario(
+                    "supply-demand-scarcity",
+                    "Supply and demand observations produce deterministic scarcity",
+                    10,
+                    Step("step11-markets-scarcity", "Evaluate scarcity", MarketSupplyDemandScarcity)),
+                Scenario(
+                    "reference-prices-regional-history",
+                    "Reference prices use regional scarcity and immutable history",
+                    20,
+                    Step("step11-markets-prices", "Form regional prices", MarketReferencePrices)),
+                Scenario(
+                    "merchant-quotes-adjustments",
+                    "Merchant quotes apply margins and item adjustments without trade mutation",
+                    30,
+                    Step("step11-markets-quotes", "Create merchant quotes", MarketMerchantQuotes)),
+                Scenario(
+                    "observations-persistence-projections",
+                    "Transaction observations, persistence, and projections are explicit",
+                    40,
+                    Step("step11-markets-persistence", "Persist and project markets", MarketPersistenceAndProjection))), out _);
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -233,6 +262,304 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step11-economy-persistence", "Persistence and access projections validate economy state", valid, $"Policy={policy.Code} Grant={grant.Code} Redacted={projection.Redacted} Save={validSave}:{validFailure} Restore={restore.Code} Rejected={rejected}:{corruptFailure}");
         }
 
+        private static TestLabAutomationStepResult MarketSupplyDemandScarcity(TestLabAutomationContext context)
+        {
+            if (!TryGetMarketFixture(context, out MarketRuntime markets, out _, out MarketDefinition marketDefinition, out MarketSubjectDefinition subject, out _, out string failure))
+            {
+                return Fail("step11-markets-scarcity", failure);
+            }
+
+            string marketId = MarketId(context, "village");
+            MarketOperationResult create = markets.CreateMarketInstance(marketDefinition, marketId, "region.prototype.village");
+            MarketOperationResult supply = markets.RecordSupply(Supply(context, marketId, subject.Id, "granary", 120L, 40L, 90L, 1d));
+            MarketOperationResult duplicateSource = markets.RecordSupply(Supply(context, marketId, subject.Id, "granary", 120L, 0L, 120L, 2d));
+            MarketOperationResult expired = markets.RecordSupply(Supply(context, marketId, subject.Id, "old-cart", 30L, 0L, 30L, 0d, expires: 1d));
+            MarketOperationResult demand = markets.RecordDemand(Demand(context, marketId, subject.Id, "villagers", 150L, 30L, 3d));
+            MarketOperationResult scarcity = markets.EvaluateScarcity(Scoped(context, "market-scarcity", "main"), marketId, subject.Id, 3d);
+
+            bool valid = create.Succeeded
+                && supply.Succeeded
+                && !duplicateSource.Succeeded
+                && expired.Succeeded
+                && demand.Succeeded
+                && scarcity.Succeeded
+                && scarcity.Scarcity.availableSupply == 90L
+                && scarcity.Scarcity.currentDemand == 150L
+                && scarcity.Scarcity.scarcityClass == MarketScarcityClass.Scarce;
+            return TestLabAssertions.True("step11-markets-scarcity", "Supply and demand observations produce deterministic scarcity", valid, $"Create={create.Code} Supply={supply.Code} Duplicate={duplicateSource.Code} Expired={expired.Code} Demand={demand.Code} Scarcity={scarcity.Scarcity?.scarcityClass} Available={scarcity.Scarcity?.availableSupply} Demand={scarcity.Scarcity?.currentDemand}");
+        }
+
+        private static TestLabAutomationStepResult MarketReferencePrices(TestLabAutomationContext context)
+        {
+            if (!TryGetMarketFixture(context, out MarketRuntime markets, out _, out MarketDefinition marketDefinition, out MarketSubjectDefinition subject, out _, out string failure))
+            {
+                return Fail("step11-markets-prices", failure);
+            }
+
+            string scarceMarket = MarketId(context, "scarce");
+            string abundantMarket = MarketId(context, "abundant");
+            markets.CreateMarketInstance(marketDefinition, scarceMarket, "region.prototype.mountains");
+            markets.CreateMarketInstance(marketDefinition, abundantMarket, "region.prototype.farms");
+            markets.RecordSupply(Supply(context, scarceMarket, subject.Id, "scarce-source", 30L, 0L, 30L, 1d));
+            markets.RecordDemand(Demand(context, scarceMarket, subject.Id, "scarce-demand", 120L, 0L, 1d));
+            markets.RecordSupply(Supply(context, abundantMarket, subject.Id, "abundant-source", 200L, 0L, 200L, 1d));
+            markets.RecordDemand(Demand(context, abundantMarket, subject.Id, "abundant-demand", 20L, 0L, 1d));
+
+            MarketOperationResult scarcePrice = markets.UpdateMarketSubject(scarceMarket, subject.Id, 5d);
+            MarketOperationResult duplicate = markets.UpdateMarketSubject(scarceMarket, subject.Id, 5d);
+            MarketOperationResult abundantPrice = markets.UpdateMarketSubject(abundantMarket, subject.Id, 5d);
+            IReadOnlyList<MarketPriceRecordData> history = markets.QueryPriceHistory(scarceMarket, subject.Id);
+
+            bool valid = scarcePrice.Succeeded
+                && duplicate.Succeeded
+                && duplicate.Duplicate
+                && abundantPrice.Succeeded
+                && scarcePrice.Price.referenceAmountUnits > subject.BaselinePriceUnits
+                && abundantPrice.Price.referenceAmountUnits < subject.BaselinePriceUnits
+                && scarcePrice.Price.referenceAmountUnits > abundantPrice.Price.referenceAmountUnits
+                && history.Count == 1;
+            return TestLabAssertions.True("step11-markets-prices", "Reference prices use regional scarcity and immutable history", valid, $"Scarce={scarcePrice.Price?.referenceAmountUnits} Abundant={abundantPrice.Price?.referenceAmountUnits} Duplicate={duplicate.Duplicate} History={history.Count}");
+        }
+
+        private static TestLabAutomationStepResult MarketMerchantQuotes(TestLabAutomationContext context)
+        {
+            if (!TryGetMarketFixture(context, out MarketRuntime markets, out _, out MarketDefinition marketDefinition, out MarketSubjectDefinition subject, out _, out string failure))
+            {
+                return Fail("step11-markets-quotes", failure);
+            }
+
+            string marketId = MarketId(context, "quotes");
+            markets.CreateMarketInstance(marketDefinition, marketId, "region.prototype.shop");
+            markets.RecordSupply(Supply(context, marketId, subject.Id, "merchant-stock", 20L, 0L, 20L, 1d));
+            markets.RecordDemand(Demand(context, marketId, subject.Id, "buyers", 20L, 0L, 1d));
+            MarketOperationResult price = markets.UpdateMarketSubject(marketId, subject.Id, 2d);
+            ItemInstanceSnapshot item = new ItemInstanceSnapshot(new ItemInstanceRecordData
+            {
+                itemInstanceId = Scoped(context, "item-instance", "quote-sword"),
+                itemDefinitionId = PrototypeSwordItemId,
+                condition = new ItemConditionStateData { state = ItemConditionState.Good, normalized = 0.5f },
+                quality = new ItemQualityStateData { tier = ItemQualityTier.Fine, source = ItemQualitySource.Authored, assessed = true },
+                labels = new ItemIdentityLabelData { makerMark = "maker.secret" },
+                revision = 1L
+            });
+
+            MarketOperationResult preview = markets.CreateMerchantQuote(Scoped(context, "quote", "preview"), "merchant.prototype", marketId, subject.Id, MerchantQuoteDirection.MerchantSells, 1L, 3d, 7d, item: item, preview: true);
+            MarketOperationResult sell = markets.CreateMerchantQuote(Scoped(context, "quote", "sell"), "merchant.prototype", marketId, subject.Id, MerchantQuoteDirection.MerchantSells, 1L, 3d, 7d, item: item);
+            MarketOperationResult buy = markets.CreateMerchantQuote(Scoped(context, "quote", "buy"), "merchant.prototype", marketId, subject.Id, MerchantQuoteDirection.MerchantBuys, 1L, 3d, 7d, item: item);
+            MarketOperationResult hidden = markets.CreateMerchantQuote(Scoped(context, "quote", "hidden"), "merchant.prototype", marketId, subject.Id, MerchantQuoteDirection.MerchantSells, 1L, 3d, 7d, item: item, privilegedHiddenFactors: true);
+            bool validNow = markets.ValidateQuoteForExecution(sell.Quote.quoteId, 4d, out _);
+            bool expired = !markets.ValidateQuoteForExecution(sell.Quote.quoteId, 8d, out string expiredReason);
+
+            bool valid = price.Succeeded
+                && preview.Succeeded
+                && preview.Preview
+                && sell.Succeeded
+                && buy.Succeeded
+                && hidden.Succeeded
+                && buy.Quote.finalAmountUnits < sell.Quote.finalAmountUnits
+                && hidden.Quote.finalAmountUnits > sell.Quote.finalAmountUnits
+                && !sell.Quote.hiddenFactorsApplied
+                && hidden.Quote.hiddenFactorsApplied
+                && markets.QuoteCount == 3
+                && validNow
+                && expired;
+            return TestLabAssertions.True("step11-markets-quotes", "Merchant quotes apply margins and item adjustments without trade mutation", valid, $"Price={price.Code} Preview={preview.Code} Sell={sell.Quote?.finalAmountUnits} Buy={buy.Quote?.finalAmountUnits} Hidden={hidden.Quote?.finalAmountUnits} Count={markets.QuoteCount} Expired={expired}:{expiredReason}");
+        }
+
+        private static TestLabAutomationStepResult MarketPersistenceAndProjection(TestLabAutomationContext context)
+        {
+            if (!TryGetMarketFixture(context, out MarketRuntime markets, out DefinitionRegistry registry, out MarketDefinition marketDefinition, out MarketSubjectDefinition subject, out CurrencyDefinition gold, out string failure))
+            {
+                return Fail("step11-markets-persistence", failure);
+            }
+
+            string marketId = MarketId(context, "persist");
+            markets.CreateMarketInstance(marketDefinition, marketId, "region.prototype.private");
+            markets.RecordSupply(Supply(context, marketId, subject.Id, "private-stock", 10L, 0L, 10L, 1d));
+            markets.RecordDemand(Demand(context, marketId, subject.Id, "private-demand", 10L, 0L, 1d));
+            MarketOperationResult price = markets.UpdateMarketSubject(marketId, subject.Id, 2d);
+
+            EconomyRuntime economy = context.ScenarioContext.Runtimes.Economy;
+            economy.Configure(registry, context.ScenarioContext.Runtimes.WorldId);
+            string buyer = Account(context, "market-buyer");
+            string seller = Account(context, "market-seller");
+            economy.CreateAccount(buyer, gold, "person.buyer", EconomyAccountKind.PersonWallet, 500L, Tx(context, "market-buyer"));
+            economy.CreateAccount(seller, gold, "person.seller", EconomyAccountKind.PersonWallet, 0L, Tx(context, "market-seller"));
+            EconomyOperationResult transfer = economy.Transfer(Tx(context, "market-observed"), buyer, seller, new MoneyAmount(gold.Id, price.Price.referenceAmountUnits), EconomyTransactionKind.Payment);
+            MarketOperationResult observation = markets.AddTransactionObservation(Scoped(context, "market-transaction-observation", "sale"), transfer.Transaction, marketId, subject.Id, MarketTransactionObservationPolicy.IncludeCommitted, publicObservation: true, worldTime: 3d);
+
+            InformationAccessRuntime access = context.ScenarioContext.Runtimes.Access;
+            string policyId = Scoped(context, "information-access-policy", "market-price");
+            access.RegisterPolicy(new InformationAccessPolicyData
+            {
+                policyId = policyId,
+                subject = price.Price.CreateInformationSubject(),
+                classification = InformationVisibilityClassification.Secret,
+                detailVisibilityPolicy = InformationDetailVisibilityPolicy.Selected,
+                defaultVisibleDetails = new[] { "detail.market", "detail.subject", "detail.reference-price" },
+                defaultRedactedDetails = new[] { "detail.supply", "detail.demand", "detail.scarcity", "detail.source" },
+                redactedAccessAcceptable = true
+            }, Tx(context, "market-policy"));
+            access.GrantAccess(new InformationAccessGrantData
+            {
+                grantId = Scoped(context, "information-access-grant", "market-price"),
+                policyId = policyId,
+                subject = price.Price.CreateInformationSubject(),
+                granteeKind = InformationGranteeKind.Person,
+                granteeId = "person.viewer",
+                grantorId = "merchant.prototype",
+                accessModes = new[] { InformationAccessMode.Inspect },
+                detailIds = new[] { "detail.market", "detail.subject", "detail.reference-price" }
+            }, Tx(context, "market-grant"));
+            MarketProjection<MarketPriceRecordData> projection = markets.GetPriceProjection(price.Price.marketPriceId, access, new InformationAccessContext
+            {
+                RequestingPersonId = "person.viewer",
+                HasDiscoveredSubject = true,
+                RevealDenialReasons = true
+            }, policyId);
+
+            MarketRuntimeSaveData save = markets.CreateSaveData();
+            bool validSave = MarketRuntime.ValidateSaveData(save, registry, out string validFailure);
+            MarketRuntime restored = new MarketRuntime();
+            MarketOperationResult restore = restored.RestoreFromSaveData(save, registry);
+            MarketRuntimeSaveData corrupt = save.Clone();
+            corrupt.currentPrices[0].marketPriceId = "market-price.missing";
+            bool rejected = !MarketRuntime.ValidateSaveData(corrupt, registry, out string corruptFailure);
+
+            bool valid = price.Succeeded
+                && transfer.Succeeded
+                && observation.Succeeded
+                && projection.Succeeded
+                && projection.Redacted
+                && projection.Record.supplyAvailable == 0L
+                && validSave
+                && restore.Succeeded
+                && rejected
+                && restored.TryGetCurrentPrice(marketId, subject.Id, out MarketPriceRecordData restoredPrice)
+                && restoredPrice.referenceAmountUnits == price.Price.referenceAmountUnits;
+            return TestLabAssertions.True("step11-markets-persistence", "Transaction observations, persistence, and projections are explicit", valid, $"Price={price.Code} Transfer={transfer.Code} Observation={observation.Code} Redacted={projection.Redacted} Save={validSave}:{validFailure} Restore={restore.Code} Rejected={rejected}:{corruptFailure}");
+        }
+
+        private static bool TryGetMarketFixture(
+            TestLabAutomationContext context,
+            out MarketRuntime markets,
+            out DefinitionRegistry extendedRegistry,
+            out MarketDefinition marketDefinition,
+            out MarketSubjectDefinition subject,
+            out CurrencyDefinition gold,
+            out string failure)
+        {
+            markets = context?.ScenarioContext?.Runtimes?.Markets;
+            extendedRegistry = null;
+            marketDefinition = null;
+            subject = null;
+            gold = null;
+            failure = string.Empty;
+            DefinitionRegistry registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (markets == null)
+            {
+                failure = "Market runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            if (registry == null)
+            {
+                failure = "Definition registry is missing.";
+                return false;
+            }
+
+            if (!registry.TryGet(GoldCurrencyId, out gold))
+            {
+                failure = $"Currency definition '{GoldCurrencyId}' is missing.";
+                return false;
+            }
+
+            ItemDefinition sword = registry.TryGet(PrototypeSwordItemId, out ItemDefinition foundSword)
+                ? foundSword
+                : CreateItemDefinition(PrototypeSwordItemId, "Prototype Sword");
+            marketDefinition = ScriptableObject.CreateInstance<MarketDefinition>();
+            marketDefinition.Initialize(
+                "market.prototype.local",
+                "Prototype Local Market",
+                gold,
+                MarketCategory.LocalSettlement,
+                MarketScopeType.Settlement,
+                new[] { MarketSubjectKind.ItemDefinition });
+
+            subject = ScriptableObject.CreateInstance<MarketSubjectDefinition>();
+            subject.Initialize(
+                "market-subject.prototype-sword",
+                "Prototype Sword",
+                MarketSubjectKind.ItemDefinition,
+                sword.Id,
+                gold,
+                100L,
+                MarketQuantityUnit.Each,
+                1L);
+            SetPrivate(subject, "minimumPriceUnits", 1L);
+            SetPrivate(subject, "maximumPriceUnits", 1000L);
+
+            List<IGameDefinition> definitions = registry.DefinitionsById.Values.ToList();
+            if (!registry.Contains(sword.Id))
+            {
+                definitions.Add(sword);
+            }
+
+            definitions.Add(marketDefinition);
+            definitions.Add(subject);
+            extendedRegistry = new DefinitionRegistry(definitions);
+            markets.Configure(extendedRegistry, context.ScenarioContext.Runtimes.WorldId);
+            context.ScenarioContext.Runtimes.Economy?.Configure(extendedRegistry, context.ScenarioContext.Runtimes.WorldId);
+            return true;
+        }
+
+        private static MarketObservationRecordData Supply(TestLabAutomationContext context, string marketId, string subjectId, string source, long quantity, long reserved, long available, double observed, double expires = -1d)
+        {
+            return new MarketObservationRecordData
+            {
+                observationId = Scoped(context, "market-supply", source),
+                marketInstanceId = marketId,
+                marketSubjectId = subjectId,
+                unit = MarketQuantityUnit.Each,
+                quantity = quantity,
+                reservedQuantity = reserved,
+                availableNowQuantity = available,
+                supplySourceCategory = MarketSupplySourceCategory.MerchantInventory,
+                sourceReferenceId = source,
+                observedWorldTime = observed,
+                expiresWorldTime = expires,
+                reliability = 9000
+            };
+        }
+
+        private static MarketObservationRecordData Demand(TestLabAutomationContext context, string marketId, string subjectId, string source, long quantity, long expected, double observed)
+        {
+            return new MarketObservationRecordData
+            {
+                observationId = Scoped(context, "market-demand", source),
+                marketInstanceId = marketId,
+                marketSubjectId = subjectId,
+                unit = MarketQuantityUnit.Each,
+                quantity = quantity,
+                expectedFutureQuantity = expected,
+                demandCategory = MarketDemandCategory.Consumer,
+                sourceReferenceId = source,
+                observedWorldTime = observed,
+                reliability = 9000
+            };
+        }
+
+        private static ItemDefinition CreateItemDefinition(string id, string display)
+        {
+            ItemDefinition item = ScriptableObject.CreateInstance<ItemDefinition>();
+            SetPrivate(item, "itemId", id);
+            SetPrivate(item, "displayName", display);
+            SetPrivate(item, "stackable", false);
+            SetPrivate(item, "maximumStackSize", 1);
+            SetPrivate(item, "instanceMode", ItemInstanceMode.AlwaysInstanced);
+            return item;
+        }
+
         private static bool TryGetRuntime(TestLabAutomationContext context, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure)
         {
             economy = context?.ScenarioContext?.Runtimes?.Economy;
@@ -326,6 +653,16 @@ namespace UnityIsekaiGame.Development.Automation
         private static string Tx(TestLabAutomationContext context, string slug)
         {
             return context.ScenarioContext.ScopedId("economy-tx", slug);
+        }
+
+        private static string MarketId(TestLabAutomationContext context, string slug)
+        {
+            return Scoped(context, "market-instance", slug);
+        }
+
+        private static string Scoped(TestLabAutomationContext context, string prefix, string slug)
+        {
+            return context.ScenarioContext.ScopedId(prefix, slug);
         }
 
         private static void SetPrivate(object target, string fieldName, object value)
