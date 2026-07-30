@@ -6,12 +6,15 @@ using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Economy;
+using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Inventory.Production;
+using UnityIsekaiGame.Inventory.Recipes;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Progression;
@@ -140,6 +143,33 @@ namespace UnityIsekaiGame.Development.Automation
                     "Payroll persistence, projections, corrections, and overpayments are explicit",
                     40,
                     Step("step11-payroll-persist", "Persist and project payroll", PayrollPersistenceProjectionCorrection))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.5.businesses-production-ownership",
+                "Businesses and Production Ownership",
+                "11.5",
+                11050,
+                new[] { "BusinessRuntime", "EconomyRuntime", "ProductionWorkflowRuntime", "PayrollRuntime", "ItemInstanceIdentityRuntime", "InformationAccessRuntime" },
+                BusinessScenario(
+                    "formation-ownership-control",
+                    "Businesses form with exact ownership and separate control",
+                    10,
+                    Step("step11-business-form", "Form business", BusinessFormationOwnershipControl)),
+                BusinessScenario(
+                    "establishments-accounts-inventory-stock",
+                    "Establishments, accounts, inventory assignments, and stock remain references",
+                    20,
+                    Step("step11-business-stock", "Assign operating resources", BusinessEstablishmentsAccountsInventoryStock)),
+                BusinessScenario(
+                    "production-financial-statements",
+                    "Production ownership, revenue, expenses, profit, and cash flow remain distinct",
+                    30,
+                    Step("step11-business-accounting", "Close accounting period", BusinessProductionFinancialStatements)),
+                BusinessScenario(
+                    "access-persistence-rollback",
+                    "Access projections, persistence, and failed operations preserve state",
+                    40,
+                    Step("step11-business-persist", "Persist and project business", BusinessAccessPersistenceRollback))), out _);
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -317,6 +347,292 @@ namespace UnityIsekaiGame.Development.Automation
                 && restored.TryGetAccount(wallet, out EconomyAccountSnapshot restoredWallet)
                 && restoredWallet.BalanceUnits == 77L;
             return TestLabAssertions.True("step11-economy-persistence", "Persistence and access projections validate economy state", valid, $"Policy={policy.Code} Grant={grant.Code} Redacted={projection.Redacted} Save={validSave}:{validFailure} Restore={restore.Code} Rejected={rejected}:{corruptFailure}");
+        }
+
+        private static TestLabAutomationStepResult BusinessFormationOwnershipControl(TestLabAutomationContext context)
+        {
+            if (!TryGetBusinessRuntime(context, out BusinessRuntime businesses, out _, out CurrencyDefinition gold, out string failure))
+            {
+                return Fail("step11-business-form", failure);
+            }
+
+            string businessId = BusinessId(context, "sole-shop");
+            BusinessOperationResult create = businesses.CreateBusiness(new BusinessInstanceData
+            {
+                businessId = businessId,
+                businessDefinitionId = "business.prototype-merchant-shop",
+                displayName = "Prototype Merchant Shop",
+                linkedOrganizationId = "organization.prototype.independent",
+                founderSubjectIds = new[] { context.ScenarioContext.Runtimes.PersonId },
+                operatingCurrencyIds = new[] { gold.Id },
+                createdWorldTime = 10d,
+                state = BusinessState.Planned
+            });
+            BusinessOperationResult owner = businesses.AddOwnership(new BusinessOwnershipRecordData
+            {
+                ownershipRecordId = BusinessId(context, "sole-owner"),
+                businessId = businessId,
+                owner = new BusinessSubjectReferenceData { kind = BusinessOwnerSubjectKind.Person, subjectId = context.ScenarioContext.Runtimes.PersonId },
+                category = BusinessOwnershipCategory.SoleOwner,
+                economicShare = new BusinessRationalData { numerator = 10000L, denominator = 10000L },
+                votingShare = new BusinessRationalData { numerator = 10000L, denominator = 10000L },
+                effectiveStartWorldTime = 10d
+            }, 10d);
+            BusinessOperationResult control = businesses.AssignController(new BusinessControlRecordData
+            {
+                controlRecordId = BusinessId(context, "controller"),
+                businessId = businessId,
+                controllerSubjectId = "position.prototype.shop-manager",
+                authorityKinds = new[] { BusinessAuthorityKind.ViewBusinessState, BusinessAuthorityKind.ManageInventory, BusinessAuthorityKind.SellStock },
+                effectiveStartWorldTime = 10d,
+                sourceReferenceId = "position.prototype.shop-manager"
+            }, 10d);
+            BusinessOperationResult active = businesses.TransitionBusiness(businessId, BusinessState.Active, 12d);
+            bool valid = create.Succeeded
+                && owner.Succeeded
+                && control.Succeeded
+                && active.Succeeded
+                && businesses.TryGetBusiness(businessId, out BusinessInstanceData snapshot)
+                && snapshot.state == BusinessState.Active
+                && snapshot.controllerSubjectId == "position.prototype.shop-manager"
+                && businesses.OwnershipRecords.Count(record => record.businessId == businessId) == 1;
+            return TestLabAssertions.True("step11-business-form", "Businesses form with exact ownership and separate control", valid, $"Create={create.Code} Owner={owner.Code} Control={control.Code} Active={active.Code}");
+        }
+
+        private static TestLabAutomationStepResult BusinessEstablishmentsAccountsInventoryStock(TestLabAutomationContext context)
+        {
+            if (!PrepareBusinessFixture(context, out BusinessRuntime businesses, out EconomyRuntime economy, out ItemInstanceIdentityRuntime items, out CurrencyDefinition gold, out string businessId, out string failure))
+            {
+                return Fail("step11-business-stock", failure);
+            }
+
+            string accountId = Account(context, "business-operating");
+            economy.CreateAccount(accountId, gold, businessId, EconomyAccountKind.OrganizationAccount, 500L, Tx(context, "business-open"));
+            string establishmentId = BusinessId(context, "stall");
+            BusinessOperationResult establishment = businesses.AddEstablishment(new BusinessEstablishmentData
+            {
+                establishmentId = establishmentId,
+                businessId = businessId,
+                type = BusinessEstablishmentType.Stall,
+                displayName = "Prototype Stall",
+                state = BusinessEstablishmentState.Open,
+                openedWorldTime = 20d,
+                locationReferenceId = "location.prototype.market"
+            });
+            BusinessOperationResult account = businesses.AssignAccount(new BusinessAccountAssignmentData
+            {
+                assignmentId = BusinessId(context, "account-operating"),
+                businessId = businessId,
+                accountId = accountId,
+                purpose = BusinessAccountPurpose.OperatingFunds,
+                establishmentId = establishmentId,
+                authorizedSpenderSubjectIds = new[] { context.ScenarioContext.Runtimes.PersonId },
+                effectiveStartWorldTime = 20d
+            }, economy);
+            BusinessOperationResult inventory = businesses.AssignInventory(new BusinessInventoryAssignmentData
+            {
+                assignmentId = BusinessId(context, "inventory-retail"),
+                businessId = businessId,
+                inventoryId = "inventory.prototype.business.retail",
+                establishmentId = establishmentId,
+                purpose = BusinessInventoryPurpose.RetailStock,
+                responsibleCustodianSubjectId = context.ScenarioContext.Runtimes.PersonId,
+                effectiveStartWorldTime = 20d
+            });
+            ItemDefinition sword = CreateItemDefinition("item.business.prototype-sword", "Business Prototype Sword");
+            string itemId = RunGuid(context, "business-stock-item");
+            ItemInstanceOperationResult item = items.CreateItem(sword, ItemInstanceClassification.IndividuallyTracked, itemId, ownerPersonId: context.ScenarioContext.Runtimes.PersonId, custodianPersonId: context.ScenarioContext.Runtimes.PersonId);
+            BusinessOperationResult stock = businesses.ClassifyStock(new BusinessStockClassificationData
+            {
+                stockClassificationId = BusinessId(context, "stock"),
+                businessId = businessId,
+                establishmentId = establishmentId,
+                inventoryId = "inventory.prototype.business.retail",
+                itemInstanceId = itemId,
+                category = BusinessStockCategory.ForSale,
+                saleEligible = true,
+                productionEligible = false
+            }, items);
+
+            items.TryGetSnapshot(itemId, out ItemInstanceSnapshot itemAfter);
+            bool valid = establishment.Succeeded
+                && account.Succeeded
+                && inventory.Succeeded
+                && item.Succeeded
+                && stock.Succeeded
+                && itemAfter.OwnerPersonId == context.ScenarioContext.Runtimes.PersonId
+                && businesses.AccountAssignments.Count == 1
+                && businesses.InventoryAssignments.Count == 1
+                && businesses.StockClassifications.Count == 1;
+            return TestLabAssertions.True("step11-business-stock", "Establishments, accounts, inventory assignments, and stock remain references", valid, $"Establishment={establishment.Code} Account={account.Code} Inventory={inventory.Code} Stock={stock.Code} Owner={itemAfter?.OwnerPersonId}");
+        }
+
+        private static TestLabAutomationStepResult BusinessProductionFinancialStatements(TestLabAutomationContext context)
+        {
+            if (!PrepareBusinessFixture(context, out BusinessRuntime businesses, out EconomyRuntime economy, out _, out CurrencyDefinition gold, out string businessId, out string failure))
+            {
+                return Fail("step11-business-accounting", failure);
+            }
+
+            ProductionWorkflowRuntime workflow = context.ScenarioContext.Runtimes.ProductionWorkflow;
+            DefinitionRegistry registry = BusinessRegistry(context, out _);
+            string recipeId = "recipe.prototype.business-output";
+            RecipeDefinition recipe = ScriptableObject.CreateInstance<RecipeDefinition>();
+            SetPrivate(recipe, "recipeId", recipeId);
+            SetPrivate(recipe, "displayName", "Prototype Business Output");
+            SetPrivate(recipe, "category", RecipeCategory.Crafting);
+            SetPrivate(recipe, "currentVersionId", "v1");
+            registry = ExtendRegistry(registry, recipe);
+            string workOrderId = BusinessId(context, "work-order");
+            ProductionWorkflowResult order = workflow.CreateWorkOrder(new ProductionWorkOrderData
+            {
+                workOrderId = workOrderId,
+                requesterPersonId = context.ScenarioContext.Runtimes.PersonId,
+                recipeDefinitionId = recipeId,
+                requestedQuantity = 1,
+                ownerPersonId = context.ScenarioContext.Runtimes.PersonId,
+                custodianPersonId = context.ScenarioContext.Runtimes.PersonId,
+                state = ProductionWorkOrderState.Approved
+            }, registry);
+            string jobId = BusinessId(context, "production-job");
+            ProductionWorkflowResult job = workflow.CreateJobFromWorkOrder(jobId, workOrderId, registry);
+            string account = Account(context, "business-accounting");
+            string customer = Account(context, "business-customer");
+            string vendor = Account(context, "business-vendor");
+            string ownerAccount = Account(context, "business-owner");
+            economy.CreateAccount(account, gold, businessId, EconomyAccountKind.OrganizationAccount, 0L, Tx(context, "business-accounting-open"));
+            economy.CreateAccount(customer, gold, "person.customer", EconomyAccountKind.PersonWallet, 200L, Tx(context, "customer-open"));
+            economy.CreateAccount(vendor, gold, "person.vendor", EconomyAccountKind.PersonWallet, 0L, Tx(context, "vendor-open"));
+            economy.CreateAccount(ownerAccount, gold, context.ScenarioContext.Runtimes.PersonId, EconomyAccountKind.PersonWallet, 50L, Tx(context, "owner-open"));
+            EconomyOperationResult sale = economy.Transfer(Tx(context, "sale"), customer, account, new MoneyAmount(gold.Id, 120L), EconomyTransactionKind.Payment);
+            EconomyOperationResult expensePayment = economy.Transfer(Tx(context, "expense-source"), account, vendor, new MoneyAmount(gold.Id, 30L), EconomyTransactionKind.Payment);
+            EconomyOperationResult capitalPayment = economy.Transfer(Tx(context, "capital-source"), ownerAccount, account, new MoneyAmount(gold.Id, 50L), EconomyTransactionKind.Transfer);
+            BusinessOperationResult production = businesses.SponsorProduction(new BusinessProductionOwnershipData
+            {
+                productionOwnershipId = BusinessId(context, "production-owner"),
+                businessId = businessId,
+                productionJobId = jobId,
+                productionSponsorSubjectId = businessId,
+                inputOwnerSubjectId = businessId,
+                outputOwnerPolicy = ProductionOutputOwnerPolicy.BusinessOwnsOutputs,
+                responsibleProducerSubjectId = context.ScenarioContext.Runtimes.PersonId,
+                fundingAccountId = account,
+                inputInventoryIds = new[] { "inventory.prototype.business.inputs" },
+                outputInventoryIds = new[] { "inventory.prototype.business.finished" }
+            }, workflow, economy);
+            BusinessOperationResult revenue = businesses.RecordRevenue(new BusinessRevenueRecordData
+            {
+                revenueRecordId = BusinessId(context, "revenue"),
+                businessId = businessId,
+                category = BusinessRevenueCategory.RetailSale,
+                amount = BusinessModelHelpers.Money(gold.Id, 120L),
+                transactionId = sale.Transaction.TransactionId,
+                recognitionWorldTime = 40d
+            }, economy);
+            BusinessOperationResult expense = businesses.RecordExpense(new BusinessExpenseRecordData
+            {
+                expenseRecordId = BusinessId(context, "expense"),
+                businessId = businessId,
+                category = BusinessExpenseCategory.MaterialPurchase,
+                amount = BusinessModelHelpers.Money(gold.Id, 30L),
+                transactionId = expensePayment.Transaction.TransactionId,
+                productionJobId = jobId,
+                recognitionWorldTime = 45d
+            }, economy);
+            BusinessOperationResult capital = businesses.AddCapitalContribution(new BusinessCapitalContributionData
+            {
+                contributionId = BusinessId(context, "capital"),
+                businessId = businessId,
+                contributingSubjectId = context.ScenarioContext.Runtimes.PersonId,
+                monetaryValue = BusinessModelHelpers.Money(gold.Id, 50L),
+                transactionOrTransferReferenceId = capitalPayment.Transaction.TransactionId,
+                worldTime = 35d
+            }, economy);
+            BusinessOperationResult period = businesses.OpenAccountingPeriod(new BusinessAccountingPeriodData
+            {
+                accountingPeriodId = BusinessId(context, "period"),
+                businessId = businessId,
+                currencyId = gold.Id,
+                startWorldTime = 0d,
+                endWorldTime = 100d
+            });
+            BusinessOperationResult close = businesses.CloseAccountingPeriod(BusinessId(context, "period"), BusinessId(context, "pnl"), BusinessId(context, "cashflow"), 100d);
+
+            bool valid = order.Succeeded
+                && job.Succeeded
+                && sale.Succeeded
+                && expensePayment.Succeeded
+                && capitalPayment.Succeeded
+                && production.Succeeded
+                && revenue.Succeeded
+                && expense.Succeeded
+                && capital.Succeeded
+                && period.Succeeded
+                && close.Succeeded
+                && close.ProfitAndLossStatement.netOperatingResult.units == 90L
+                && close.CashFlowSummary.netCashChange.units == 140L;
+            return TestLabAssertions.True("step11-business-accounting", "Production ownership, revenue, expenses, profit, and cash flow remain distinct", valid, $"Order={order.Status} Job={job.Status} Production={production.Code} Revenue={revenue.Code} Expense={expense.Code} PnL={close.ProfitAndLossStatement?.netOperatingResult.units} Cash={close.CashFlowSummary?.netCashChange.units}");
+        }
+
+        private static TestLabAutomationStepResult BusinessAccessPersistenceRollback(TestLabAutomationContext context)
+        {
+            if (!PrepareBusinessFixture(context, out BusinessRuntime businesses, out EconomyRuntime economy, out ItemInstanceIdentityRuntime _, out CurrencyDefinition gold, out string businessId, out string failure))
+            {
+                return Fail("step11-business-persist", failure);
+            }
+
+            BusinessRuntimeSaveData before = businesses.CreateSaveData();
+            BusinessOperationResult invalidExpense = businesses.RecordExpense(new BusinessExpenseRecordData
+            {
+                expenseRecordId = BusinessId(context, "invalid-expense"),
+                businessId = businessId,
+                category = BusinessExpenseCategory.OwnerWithdrawalExclusion,
+                amount = BusinessModelHelpers.Money(gold.Id, 25L),
+                transactionId = "missing.transaction",
+                recognitionWorldTime = 50d
+            }, economy);
+            bool noMutation = before.revision == businesses.Revision && before.expenseRecords.Length == businesses.ExpenseRecords.Count;
+            InformationAccessRuntime access = context.ScenarioContext.Runtimes.Access;
+            businesses.TryGetBusiness(businessId, out BusinessInstanceData business);
+            access.RegisterPolicy(new InformationAccessPolicyData
+            {
+                policyId = BusinessId(context, "fixture-policy"),
+                subject = business.CreateInformationSubject(),
+                classification = InformationVisibilityClassification.Secret,
+                detailVisibilityPolicy = InformationDetailVisibilityPolicy.Selected,
+                defaultVisibleDetails = new[] { "business.public" },
+                defaultRedactedDetails = new[] { "business.owners", "business.control", "business.accounts", "business.financials" },
+                redactedAccessAcceptable = true
+            }, Tx(context, "business-access-policy"));
+            access.GrantAccess(new InformationAccessGrantData
+            {
+                grantId = BusinessId(context, "fixture-grant"),
+                policyId = BusinessId(context, "fixture-policy"),
+                subject = business.CreateInformationSubject(),
+                granteeKind = InformationGranteeKind.Person,
+                granteeId = "person.prototype.viewer",
+                grantorId = context.ScenarioContext.Runtimes.PersonId,
+                accessModes = new[] { InformationAccessMode.Query },
+                detailIds = new[] { "business.public" }
+            }, Tx(context, "business-access-grant"));
+            BusinessProjection projection = businesses.ProjectBusiness(businessId, access, new InformationAccessContext
+            {
+                RequestingPersonId = "person.prototype.viewer",
+                HasDiscoveredSubject = true,
+                RevealDenialReasons = true
+            }, BusinessProjectionKind.Public);
+            BusinessRuntime restored = new BusinessRuntime();
+            BusinessOperationResult restore = restored.RestoreFromSaveData(businesses.CreateSaveData(), BusinessRegistry(context, out _));
+            bool valid = !invalidExpense.Succeeded
+                && invalidExpense.Code == BusinessOperationCode.PolicyViolation
+                && noMutation
+                && projection != null
+                && !projection.Denied
+                && projection.Redacted
+                && projection.Business.founderSubjectIds.Length == 0
+                && restore.Succeeded
+                && restored.BusinessCount == businesses.BusinessCount;
+            return TestLabAssertions.True("step11-business-persist", "Access projections, persistence, and failed operations preserve state", valid, $"Invalid={invalidExpense.Code} NoMutation={noMutation} ProjectionDenied={projection?.Denied} Restore={restore.Code}");
         }
 
         private static TestLabAutomationStepResult MarketSupplyDemandScarcity(TestLabAutomationContext context)
@@ -1260,6 +1576,145 @@ namespace UnityIsekaiGame.Development.Automation
             }
         }
 
+        private static bool TryGetBusinessRuntime(
+            TestLabAutomationContext context,
+            out BusinessRuntime businesses,
+            out DefinitionRegistry extendedRegistry,
+            out CurrencyDefinition gold,
+            out string failure)
+        {
+            businesses = context?.ScenarioContext?.Runtimes?.Businesses;
+            extendedRegistry = null;
+            gold = null;
+            failure = string.Empty;
+            DefinitionRegistry registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (businesses == null)
+            {
+                failure = "Business runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            if (registry == null)
+            {
+                failure = "Definition registry is missing.";
+                return false;
+            }
+
+            if (!registry.TryGet(GoldCurrencyId, out gold))
+            {
+                failure = $"Currency definition '{GoldCurrencyId}' is missing.";
+                return false;
+            }
+
+            extendedRegistry = BusinessRegistry(context, out _);
+            businesses.Configure(extendedRegistry, context.ScenarioContext.Runtimes.WorldId);
+            context.ScenarioContext.Runtimes.Economy?.Configure(extendedRegistry, context.ScenarioContext.Runtimes.WorldId);
+            context.ScenarioContext.Runtimes.Markets?.Configure(extendedRegistry, context.ScenarioContext.Runtimes.WorldId);
+            context.ScenarioContext.Runtimes.Trades?.Configure(extendedRegistry, context.ScenarioContext.Runtimes.WorldId);
+            context.ScenarioContext.Runtimes.Payroll?.Configure(extendedRegistry, context.ScenarioContext.Runtimes.WorldId);
+            return true;
+        }
+
+        private static bool PrepareBusinessFixture(
+            TestLabAutomationContext context,
+            out BusinessRuntime businesses,
+            out EconomyRuntime economy,
+            out ItemInstanceIdentityRuntime items,
+            out CurrencyDefinition gold,
+            out string businessId,
+            out string failure)
+        {
+            businesses = null;
+            economy = context?.ScenarioContext?.Runtimes?.Economy;
+            items = context?.ScenarioContext?.Runtimes?.ItemInstances;
+            gold = null;
+            businessId = string.Empty;
+            if (!TryGetBusinessRuntime(context, out businesses, out _, out gold, out failure))
+            {
+                return false;
+            }
+
+            if (economy == null)
+            {
+                failure = "Economy runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            if (items == null)
+            {
+                failure = "Item instance runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            businessId = BusinessId(context, "fixture-shop");
+            BusinessOperationResult create = businesses.CreateBusiness(new BusinessInstanceData
+            {
+                businessId = businessId,
+                businessDefinitionId = "business.prototype-merchant-shop",
+                displayName = "Prototype Fixture Shop",
+                linkedOrganizationId = "organization.prototype.independent",
+                founderSubjectIds = new[] { context.ScenarioContext.Runtimes.PersonId },
+                operatingCurrencyIds = new[] { gold.Id },
+                accessPolicyId = BusinessId(context, "fixture-policy"),
+                createdWorldTime = 5d,
+                state = BusinessState.Active
+            }, Tx(context, "business-fixture-create"));
+            BusinessOperationResult owner = businesses.AddOwnership(new BusinessOwnershipRecordData
+            {
+                ownershipRecordId = BusinessId(context, "fixture-owner"),
+                businessId = businessId,
+                owner = new BusinessSubjectReferenceData { kind = BusinessOwnerSubjectKind.Person, subjectId = context.ScenarioContext.Runtimes.PersonId },
+                category = BusinessOwnershipCategory.SoleOwner,
+                economicShare = new BusinessRationalData { numerator = 10000L, denominator = 10000L },
+                votingShare = new BusinessRationalData { numerator = 10000L, denominator = 10000L },
+                effectiveStartWorldTime = 5d
+            }, 5d);
+
+            if (!create.Succeeded || !owner.Succeeded)
+            {
+                failure = $"Business fixture failed. Create={create.Code} '{create.Message}' Owner={owner.Code} '{owner.Message}'";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static DefinitionRegistry BusinessRegistry(TestLabAutomationContext context, out BusinessDefinition businessDefinition)
+        {
+            DefinitionRegistry registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            businessDefinition = PrototypeBusinessDefinition();
+            if (registry == null)
+            {
+                return new DefinitionRegistry(new IGameDefinition[] { businessDefinition });
+            }
+
+            return registry.Contains(businessDefinition.Id)
+                ? registry
+                : new DefinitionRegistry(registry.DefinitionsById.Values.Concat(new IGameDefinition[] { businessDefinition }));
+        }
+
+        private static DefinitionRegistry ExtendRegistry(DefinitionRegistry registry, IGameDefinition definition)
+        {
+            if (registry == null)
+            {
+                return new DefinitionRegistry(definition == null ? Array.Empty<IGameDefinition>() : new[] { definition });
+            }
+
+            if (definition == null || registry.Contains(definition.Id))
+            {
+                return registry;
+            }
+
+            return new DefinitionRegistry(registry.DefinitionsById.Values.Concat(new[] { definition }));
+        }
+
+        private static BusinessDefinition PrototypeBusinessDefinition()
+        {
+            BusinessDefinition definition = ScriptableObject.CreateInstance<BusinessDefinition>();
+            definition.Initialize("business.prototype-merchant-shop", "Prototype Merchant Shop", BusinessCategory.MerchantShop);
+            return definition;
+        }
+
         private static bool TryGetMarketFixture(
             TestLabAutomationContext context,
             out MarketRuntime markets,
@@ -1481,6 +1936,21 @@ namespace UnityIsekaiGame.Development.Automation
                 requiredDefinitionIds: new[] { GoldCurrencyId });
         }
 
+        private static ITestLabAutomationScenario BusinessScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[] { GoldCurrencyId });
+        }
+
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
         {
             return new TestLabScenarioStep(stepId, displayName, action);
@@ -1504,6 +1974,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static string MarketId(TestLabAutomationContext context, string slug)
         {
             return Scoped(context, "market-instance", slug);
+        }
+
+        private static string BusinessId(TestLabAutomationContext context, string slug)
+        {
+            return Scoped(context, "business", slug);
         }
 
         private static string Scoped(TestLabAutomationContext context, string prefix, string slug)
