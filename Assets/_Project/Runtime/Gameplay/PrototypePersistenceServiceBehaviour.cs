@@ -7,6 +7,7 @@ using UnityIsekaiGame.Combat;
 using UnityIsekaiGame.Combat.Execution;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Economy;
+using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -76,6 +77,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerInventoryEquipment = true;
         [SerializeField] private bool registerPlayerItemIdentities = true;
         [SerializeField] private bool registerWorldEconomy = true;
+        [SerializeField] private bool registerWorldMarkets = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -143,6 +145,7 @@ namespace UnityIsekaiGame.Gameplay
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private EconomyPersistenceParticipant economyParticipant;
+        private MarketPersistenceParticipant marketParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -175,6 +178,7 @@ namespace UnityIsekaiGame.Gameplay
         private LifePathRuntime playerLifePaths;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private EconomyRuntime worldEconomy;
+        private MarketRuntime worldMarkets;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -336,6 +340,19 @@ namespace UnityIsekaiGame.Gameplay
 
                 worldEconomy.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
                 return worldEconomy;
+            }
+        }
+        public MarketRuntime Markets
+        {
+            get
+            {
+                if (worldMarkets == null)
+                {
+                    worldMarkets = new MarketRuntime();
+                }
+
+                worldMarkets.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
+                return worldMarkets;
             }
         }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
@@ -648,6 +665,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
             EnsureWorldEconomyParticipant();
+            EnsureWorldMarketParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1011,6 +1029,33 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 economyParticipant = null;
+            }
+        }
+
+        private void EnsureWorldMarketParticipant()
+        {
+            if (!registerWorldMarkets || marketParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World market persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            marketParticipant = new MarketPersistenceParticipant(
+                Markets,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(marketParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                marketParticipant = null;
             }
         }
 
