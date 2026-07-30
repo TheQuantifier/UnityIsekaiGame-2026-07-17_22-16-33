@@ -12,7 +12,9 @@ namespace UnityIsekaiGame.Tests
     public sealed class PrototypeSceneUsabilityTests
     {
         private const string ScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
+        private const string PrototypeTerrainRoot = "Assets/_Project/Prototype/Environment/Terrain";
         private const string PrototypeVegetationPrefabRoot = "Assets/_Project/Prototype/Environment/Vegetation/Prefabs";
+        private const string PrototypeMedievalHousePrefabPath = "Assets/_Project/Prototype/Environment/Buildings/MedievalHouseLite/Prefabs/medieval_house_lite_v2.prefab";
 
         [Test]
         public void PrototypeSceneKeepsCleanPlayableTestingShell()
@@ -29,6 +31,7 @@ namespace UnityIsekaiGame.Tests
             AssertSceneContains(scene, "Boundaries");
             AssertSceneContains(scene, "Lighting");
             AssertSceneContains(scene, "Landmarks");
+            AssertSceneContains(scene, "Buildings");
             AssertSceneContains(scene, "Player");
             AssertSceneContains(scene, "Prototype Player");
             AssertSceneContains(scene, "Spawn Points");
@@ -108,9 +111,6 @@ namespace UnityIsekaiGame.Tests
                 MeshFilter[] meshFilters = prefab.GetComponentsInChildren<MeshFilter>(true);
                 MeshRenderer[] renderers = prefab.GetComponentsInChildren<MeshRenderer>(true);
 
-                Assert.That(prefab.transform.localScale.x, Is.GreaterThan(1.5f), path);
-                Assert.That(prefab.transform.localScale.y, Is.GreaterThan(1.5f), path);
-                Assert.That(prefab.transform.localScale.z, Is.GreaterThan(1.5f), path);
                 Assert.That(meshFilters.Any(meshFilter => meshFilter != null && meshFilter.sharedMesh != null), Is.True, path);
                 Assert.That(renderers.Length, Is.GreaterThan(0), path);
 
@@ -118,6 +118,19 @@ namespace UnityIsekaiGame.Tests
                 {
                     Assert.That(renderer.sharedMaterials.Length, Is.GreaterThan(0), path);
                     Assert.That(renderer.sharedMaterials.All(material => material != null && material.shader != null), Is.True, path);
+                }
+
+                Bounds bounds = CalculateMeshRendererBounds(prefab);
+                bool isTree = prefab.name.StartsWith("prototype-tree-", System.StringComparison.Ordinal);
+                if (isTree)
+                {
+                    Assert.That(bounds.size.y, Is.InRange(5.5f, 12.1f), path);
+                    Assert.That(Mathf.Max(bounds.size.x, bounds.size.z), Is.LessThanOrEqualTo(12.1f), path);
+                }
+                else
+                {
+                    Assert.That(bounds.size.y, Is.InRange(0.6f, 2.7f), path);
+                    Assert.That(Mathf.Max(bounds.size.x, bounds.size.z), Is.LessThanOrEqualTo(3.1f), path);
                 }
             }
         }
@@ -174,8 +187,23 @@ namespace UnityIsekaiGame.Tests
             foreach (Terrain terrain in terrains)
             {
                 Assert.That(terrain.drawTreesAndFoliage, Is.True, terrain.name);
+                Assert.That(terrain.materialTemplate, Is.Not.Null, $"{terrain.name} should use the project-owned prototype terrain material.");
+                Assert.That(AssetDatabase.GetAssetPath(terrain.materialTemplate), Does.StartWith("Assets/_Project/Prototype/Environment/Terrain/Materials/"), terrain.name);
+                Assert.That(terrain.materialTemplate.shader, Is.Not.Null, terrain.name);
+                Assert.That(terrain.materialTemplate.shader.name, Does.Contain("Terrain"), terrain.name);
+                Assert.That(terrain.materialTemplate.shader.name, Does.Not.Contain("Error"), terrain.name);
+                Assert.That(terrain.materialTemplate.shader.isSupported, Is.True, terrain.name);
                 Assert.That(terrain.terrainData, Is.Not.Null, terrain.name);
+                Assert.That(terrain.terrainData.terrainLayers.Length, Is.GreaterThanOrEqualTo(4), terrain.name);
                 Assert.That(terrain.terrainData.treePrototypes.Length, Is.GreaterThanOrEqualTo(12), terrain.name);
+
+                foreach (TerrainLayer terrainLayer in terrain.terrainData.terrainLayers)
+                {
+                    Assert.That(terrainLayer, Is.Not.Null, terrain.name);
+                    Assert.That(IsApprovedTerrainLayerPath(AssetDatabase.GetAssetPath(terrainLayer)), Is.True, $"{terrain.name}:{terrainLayer.name}");
+                    Assert.That(terrainLayer.diffuseTexture, Is.Not.Null, $"{terrain.name}:{terrainLayer.name}");
+                    Assert.That(terrainLayer.smoothness, Is.EqualTo(0f), $"{terrain.name}:{terrainLayer.name}");
+                }
 
                 foreach (TreePrototype treePrototype in terrain.terrainData.treePrototypes)
                 {
@@ -187,6 +215,67 @@ namespace UnityIsekaiGame.Tests
             }
         }
 
+        [Test]
+        public void PrototypeMedievalHouseIsPlacedAsReusablePrototypeBuilding()
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrototypeMedievalHousePrefabPath);
+            Assert.That(prefab, Is.Not.Null, PrototypeMedievalHousePrefabPath);
+
+            UnityEngine.SceneManagement.Scene scene = EditorSceneManager.OpenScene(ScenePath);
+            GameObject house = FindScenePath(scene, "PrototypeScene/Environment/Landmarks/Buildings/Prototype Medieval House");
+
+            Assert.That(house, Is.Not.Null);
+            Assert.That(PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(house), Is.EqualTo(PrototypeMedievalHousePrefabPath));
+            Assert.That(house.transform.position.y, Is.GreaterThanOrEqualTo(-0.1f));
+            Assert.That(float.IsNaN(house.transform.position.y), Is.False);
+            Bounds houseBounds = CalculateMeshRendererBounds(house);
+            Assert.That(houseBounds.size.x, Is.InRange(8f, 13f));
+            Assert.That(houseBounds.size.y, Is.InRange(8f, 10f));
+            Assert.That(houseBounds.size.z, Is.InRange(7f, 12f));
+
+            MeshRenderer[] renderers = house.GetComponentsInChildren<MeshRenderer>(true);
+            Assert.That(renderers.Any(renderer => renderer != null), Is.True);
+            foreach (Renderer renderer in renderers)
+            {
+                Assert.That(renderer.sharedMaterials.Length, Is.GreaterThan(0), renderer.name);
+                Assert.That(renderer.sharedMaterials.All(material => material != null && material.shader != null), Is.True, renderer.name);
+            }
+
+            Collider[] colliders = house.GetComponentsInChildren<Collider>(true);
+            Assert.That(colliders.Any(collider => collider != null && !collider.isTrigger), Is.True);
+
+            Light[] lights = house.GetComponentsInChildren<Light>(true);
+            foreach (Light light in lights)
+            {
+                if (light.type != LightType.Directional)
+                {
+                    Assert.That(light.shadows, Is.Not.EqualTo(LightShadows.None), light.name);
+                    Assert.That(light.shadowResolution, Is.EqualTo(UnityEngine.Rendering.LightShadowResolution.Low), light.name);
+                }
+            }
+
+            foreach (MonoBehaviour behaviour in house.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (behaviour == null)
+                {
+                    continue;
+                }
+
+                SerializedObject serialized = new SerializedObject(behaviour);
+                SerializedProperty tierProperty = serialized.FindProperty("m_AdditionalLightsShadowResolutionTier");
+                if (tierProperty != null && tierProperty.propertyType == SerializedPropertyType.Integer)
+                {
+                    Assert.That(tierProperty.intValue, Is.EqualTo(0), behaviour.name);
+                }
+            }
+        }
+
+        private static bool IsApprovedTerrainLayerPath(string assetPath)
+        {
+            return assetPath.StartsWith(PrototypeTerrainRoot + "/Layers/", System.StringComparison.Ordinal) ||
+                assetPath.StartsWith("Assets/ThirdParty/", System.StringComparison.Ordinal);
+        }
+
         private static void AssertSceneContains(string scene, string expectedName)
         {
             Assert.That(scene, Does.Contain($"m_Name: {expectedName}"), expectedName);
@@ -195,6 +284,32 @@ namespace UnityIsekaiGame.Tests
         private static void AssertSceneDoesNotContain(string scene, string removedName)
         {
             Assert.That(scene, Does.Not.Contain($"m_Name: {removedName}"), removedName);
+        }
+
+        private static GameObject FindScenePath(UnityEngine.SceneManagement.Scene scene, string path)
+        {
+            string[] parts = path.Split('/');
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                if (!string.Equals(root.name, parts[0], System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Transform current = root.transform;
+                for (int i = 1; i < parts.Length; i++)
+                {
+                    current = current.Find(parts[i]);
+                    if (current == null)
+                    {
+                        return null;
+                    }
+                }
+
+                return current.gameObject;
+            }
+
+            return null;
         }
 
         private static Bounds CalculateBottomMeshFootprint(GameObject root)
@@ -246,6 +361,23 @@ namespace UnityIsekaiGame.Tests
 
             Assert.That(hasFootprint, Is.True, root.name);
             return footprint;
+        }
+
+        private static Bounds CalculateMeshRendererBounds(GameObject root)
+        {
+            MeshRenderer[] renderers = root.GetComponentsInChildren<MeshRenderer>(true)
+                .Where(renderer => renderer != null)
+                .ToArray();
+
+            Assert.That(renderers.Length, Is.GreaterThan(0), root.name);
+
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            return bounds;
         }
     }
 }

@@ -12,6 +12,11 @@ namespace UnityIsekaiGame.Editor
     {
         private const string PrototypeScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
         private const string LayerRoot = "Assets/ThirdParty/Handpainted_Grass_and_Ground_Textures/Demo/terrain_layers";
+        private const string TerrainRoot = "Assets/_Project/Prototype/Environment/Terrain";
+        private const string TerrainLayerFolder = TerrainRoot + "/Layers";
+        private const string TerrainMaterialFolder = "Assets/_Project/Prototype/Environment/Terrain/Materials";
+        private const string TerrainMaterialPath = TerrainMaterialFolder + "/Prototype Terrain URP.mat";
+        private const string UrpTerrainTemplatePath = "Packages/com.unity.render-pipelines.universal/Runtime/Materials/TerrainLit.mat";
 
         [MenuItem("Tools/Prototype Scene/Paint Prototype Terrain Ground")]
         public static void PaintPrototypeTerrainGround()
@@ -40,12 +45,14 @@ namespace UnityIsekaiGame.Editor
             }
 
             var layers = LoadGroundLayers();
+            var terrainMaterial = LoadOrCreateTerrainMaterial();
             var globalHeightRange = FindHeightRange(terrains);
             Debug.Log($"Prototype terrain global height range: {globalHeightRange.x:0.00} to {globalHeightRange.y:0.00}.");
 
             var summaries = new List<string>();
             foreach (var terrain in terrains)
             {
+                UseTerrainMaterial(terrain, terrainMaterial);
                 summaries.Add(PaintTerrain(terrain, layers, globalHeightRange));
                 UnityEditor.EditorUtility.SetDirty(terrain.terrainData);
                 UnityEditor.EditorUtility.SetDirty(terrain);
@@ -73,30 +80,150 @@ namespace UnityIsekaiGame.Editor
         private static TerrainLayer LoadLayer(string fileName, string label)
         {
             var path = $"{LayerRoot}/{fileName}";
-            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
-            if (layer != null)
+            var sourceLayer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
+            if (sourceLayer != null)
             {
-                layer.smoothness = 0f;
-                layer.metallic = 0f;
-                UnityEditor.EditorUtility.SetDirty(layer);
-                return layer;
+                return LoadOrCreateProjectLayer(sourceLayer, label);
             }
 
             var fallbackGuid = AssetDatabase.FindAssets($"{label} t:TerrainLayer", new[] { LayerRoot })
                 .FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(fallbackGuid))
             {
-                layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(AssetDatabase.GUIDToAssetPath(fallbackGuid));
-                if (layer != null)
+                sourceLayer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(AssetDatabase.GUIDToAssetPath(fallbackGuid));
+                if (sourceLayer != null)
                 {
-                    layer.smoothness = 0f;
-                    layer.metallic = 0f;
-                    UnityEditor.EditorUtility.SetDirty(layer);
-                    return layer;
+                    return LoadOrCreateProjectLayer(sourceLayer, label);
                 }
             }
 
             throw new InvalidOperationException($"Could not find a {label} TerrainLayer under {LayerRoot}.");
+        }
+
+        private static TerrainLayer LoadOrCreateProjectLayer(TerrainLayer sourceLayer, string label)
+        {
+            EnsureFolder("Assets/_Project/Prototype");
+            EnsureFolder("Assets/_Project/Prototype/Environment");
+            EnsureFolder(TerrainRoot);
+            EnsureFolder(TerrainLayerFolder);
+
+            var targetPath = $"{TerrainLayerFolder}/Prototype {label}.terrainlayer";
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(targetPath);
+            if (layer == null)
+            {
+                layer = new TerrainLayer();
+                AssetDatabase.CreateAsset(layer, targetPath);
+            }
+
+            EditorUtility.CopySerialized(sourceLayer, layer);
+            layer.name = $"Prototype {label}";
+            PrepareLayer(layer, label);
+            UnityEditor.EditorUtility.SetDirty(layer);
+            return layer;
+        }
+
+        private static void PrepareLayer(TerrainLayer layer, string label)
+        {
+            if (layer.diffuseTexture == null)
+            {
+                throw new InvalidOperationException($"{label} TerrainLayer '{AssetDatabase.GetAssetPath(layer)}' has no diffuse texture.");
+            }
+
+            layer.smoothness = 0f;
+            layer.metallic = 0f;
+        }
+
+        private static Material LoadOrCreateTerrainMaterial()
+        {
+            EnsureFolder("Assets/_Project/Prototype");
+            EnsureFolder("Assets/_Project/Prototype/Environment");
+            EnsureFolder(TerrainRoot);
+            EnsureFolder(TerrainMaterialFolder);
+
+            var material = AssetDatabase.LoadAssetAtPath<Material>(TerrainMaterialPath);
+            if (material == null)
+            {
+                var template = AssetDatabase.LoadAssetAtPath<Material>(UrpTerrainTemplatePath);
+                if (template != null && AssetDatabase.CopyAsset(UrpTerrainTemplatePath, TerrainMaterialPath))
+                {
+                    material = AssetDatabase.LoadAssetAtPath<Material>(TerrainMaterialPath);
+                }
+
+                if (material == null)
+                {
+                    material = new Material(FindTerrainShader());
+                    AssetDatabase.CreateAsset(material, TerrainMaterialPath);
+                }
+            }
+
+            var terrainShader = FindTerrainShader();
+            var sourceTemplate = AssetDatabase.LoadAssetAtPath<Material>(UrpTerrainTemplatePath);
+            if (sourceTemplate != null)
+            {
+                EditorUtility.CopySerialized(sourceTemplate, material);
+            }
+            else if (material.shader == null || !string.Equals(material.shader.name, terrainShader.name, StringComparison.Ordinal))
+            {
+                material.shader = terrainShader;
+            }
+
+            material.name = "Prototype Terrain URP";
+            material.shader = terrainShader;
+            SetFloatIfPresent(material, "_Smoothness", 0f);
+            SetFloatIfPresent(material, "_Metallic", 0f);
+            SetFloatIfPresent(material, "_Smoothness0", 0f);
+            SetFloatIfPresent(material, "_Smoothness1", 0f);
+            SetFloatIfPresent(material, "_Smoothness2", 0f);
+            SetFloatIfPresent(material, "_Smoothness3", 0f);
+            SetFloatIfPresent(material, "_Metallic0", 0f);
+            SetFloatIfPresent(material, "_Metallic1", 0f);
+            SetFloatIfPresent(material, "_Metallic2", 0f);
+            SetFloatIfPresent(material, "_Metallic3", 0f);
+            SetFloatIfPresent(material, "_EnableInstancedPerPixelNormal", 1f);
+            material.EnableKeyword("_TERRAIN_INSTANCED_PERPIXEL_NORMAL");
+
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static void SetFloatIfPresent(Material material, string propertyName, float value)
+        {
+            if (material.HasProperty(propertyName))
+            {
+                material.SetFloat(propertyName, value);
+            }
+        }
+
+        private static Shader FindTerrainShader()
+        {
+            string[] shaderNames =
+            {
+                "Universal Render Pipeline/Terrain/Lit",
+                "Nature/Terrain/Standard",
+                "Hidden/TerrainEngine/Splatmap/Standard-Base"
+            };
+
+            foreach (string shaderName in shaderNames)
+            {
+                Shader shader = Shader.Find(shaderName);
+                if (shader != null)
+                {
+                    return shader;
+                }
+            }
+
+            throw new InvalidOperationException("Could not find a supported terrain shader. Expected Universal Render Pipeline/Terrain/Lit.");
+        }
+
+        private static void UseTerrainMaterial(Terrain terrain, Material terrainMaterial)
+        {
+            terrain.drawInstanced = true;
+            if (terrain.materialTemplate != terrainMaterial)
+            {
+                terrain.materialTemplate = terrainMaterial;
+            }
+
+            EditorUtility.SetDirty(terrain);
         }
 
         private static string PaintTerrain(Terrain terrain, TerrainLayer[] layers, Vector2 globalHeightRange)
@@ -268,6 +395,24 @@ namespace UnityIsekaiGame.Editor
             }
 
             return null;
+        }
+
+        private static void EnsureFolder(string path)
+        {
+            if (AssetDatabase.IsValidFolder(path))
+            {
+                return;
+            }
+
+            var parent = System.IO.Path.GetDirectoryName(path)?.Replace('\\', '/');
+            var folderName = System.IO.Path.GetFileName(path);
+            if (string.IsNullOrWhiteSpace(parent) || string.IsNullOrWhiteSpace(folderName))
+            {
+                throw new InvalidOperationException($"Cannot create invalid asset folder path '{path}'.");
+            }
+
+            EnsureFolder(parent);
+            AssetDatabase.CreateFolder(parent, folderName);
         }
     }
 }

@@ -34,6 +34,27 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void TerrainDataAssetsAreTrackedAsBinary()
+        {
+            Assert.That(File.Exists(".gitattributes"), Is.True, "Missing repository .gitattributes.");
+
+            string[] lines = File.ReadAllLines(".gitattributes");
+            bool hasTerrainDataBinaryRule = false;
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].Trim();
+                if (line.Equals("Assets/_Project/Prototype/Environment/Terrain/Data/*.asset binary", StringComparison.Ordinal))
+                {
+                    hasTerrainDataBinaryRule = true;
+                    break;
+                }
+            }
+
+            Assert.That(hasTerrainDataBinaryRule, Is.True, "Prototype TerrainData assets must be binary so Git does not normalize heightmaps, splatmaps, tree instances, or terrain metadata as YAML text.");
+        }
+
+        [Test]
         public void MovedAssetsPreserveKnownGuids()
         {
             AssertMetaGuid("Assets/_Project/Scenes/Prototype/PrototypeScene.unity.meta", "e05b77e4d2cc25845adb762e95d51873");

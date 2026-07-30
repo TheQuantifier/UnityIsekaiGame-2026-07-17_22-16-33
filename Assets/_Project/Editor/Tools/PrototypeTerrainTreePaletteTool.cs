@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -11,6 +12,7 @@ namespace UnityIsekaiGame.Editor
     public static class PrototypeTerrainTreePaletteTool
     {
         private const string PrototypeScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
+        private const string TerrainDataRoot = "Assets/_Project/Prototype/Environment/Terrain/Data";
         private const string GeneratedVegetationRoot = "Assets/_Project/Prototype/Environment/Vegetation";
         private const string GeneratedMaterialRoot = GeneratedVegetationRoot + "/Materials";
         private const string GeneratedPrefabRoot = GeneratedVegetationRoot + "/Prefabs";
@@ -42,6 +44,7 @@ namespace UnityIsekaiGame.Editor
             EnsurePrototypeTreeAssets();
 
             var scene = OpenPrototypeSceneIfNeeded();
+            EnsurePrototypeTerrainDataAssetsAreProjectOwned();
             var terrains = FindPrototypeTerrains();
 
             var prototypes = LoadTreePrototypes();
@@ -126,6 +129,59 @@ namespace UnityIsekaiGame.Editor
             foreach (var entry in TreePalette)
             {
                 CreateOrUpdateGeneratedPrefab(entry, materials);
+            }
+        }
+
+        private static void EnsurePrototypeTerrainDataAssetsAreProjectOwned()
+        {
+            EnsureFolder("Assets/_Project/Prototype");
+            EnsureFolder("Assets/_Project/Prototype/Environment");
+            EnsureFolder("Assets/_Project/Prototype/Environment/Terrain");
+            EnsureFolder(TerrainDataRoot);
+
+            foreach (var terrain in FindPrototypeTerrains())
+            {
+                var data = terrain == null ? null : terrain.terrainData;
+                if (data == null)
+                {
+                    continue;
+                }
+
+                var currentPath = AssetDatabase.GetAssetPath(data);
+                if (string.IsNullOrWhiteSpace(currentPath))
+                {
+                    continue;
+                }
+
+                currentPath = currentPath.Replace('\\', '/');
+                if (currentPath.StartsWith(TerrainDataRoot + "/", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var targetPath = AssetDatabase.GenerateUniqueAssetPath($"{TerrainDataRoot}/{SanitizeAssetName(terrain.name)}.asset");
+                var moveFailure = AssetDatabase.MoveAsset(currentPath, targetPath);
+                if (!string.IsNullOrWhiteSpace(moveFailure))
+                {
+                    throw new InvalidOperationException($"Failed to move prototype TerrainData '{currentPath}' to '{targetPath}': {moveFailure}");
+                }
+
+                var movedData = AssetDatabase.LoadAssetAtPath<TerrainData>(targetPath);
+                if (movedData == null)
+                {
+                    throw new InvalidOperationException($"Moved prototype TerrainData could not be loaded: {targetPath}");
+                }
+
+                terrain.terrainData = movedData;
+                var collider = terrain.GetComponent<TerrainCollider>();
+                if (collider != null)
+                {
+                    collider.terrainData = movedData;
+                    EditorUtility.SetDirty(collider);
+                }
+
+                EditorUtility.SetDirty(terrain);
+                EditorUtility.SetDirty(movedData);
             }
         }
 
@@ -438,6 +494,23 @@ namespace UnityIsekaiGame.Editor
 
             EnsureFolder(parent);
             AssetDatabase.CreateFolder(parent, folderName);
+        }
+
+        private static string SanitizeAssetName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "PrototypeTerrainData";
+            }
+
+            var builder = new StringBuilder(value.Length);
+            foreach (var character in value)
+            {
+                builder.Append(char.IsLetterOrDigit(character) || character == '-' || character == '_' ? character : '_');
+            }
+
+            var sanitized = builder.ToString().Trim('_');
+            return string.IsNullOrWhiteSpace(sanitized) ? "PrototypeTerrainData" : sanitized;
         }
 
         private static GameObject FindScenePath(string path)

@@ -9,6 +9,7 @@ using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Loot;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.StatusEffects;
 
@@ -54,6 +55,11 @@ namespace UnityIsekaiGame.Gameplay
             CaptureSceneResetState();
         }
 
+        private void Start()
+        {
+            GroundPlayerAtSceneEntry();
+        }
+
         private void Update()
         {
             if (input != null && input.ConsumePrototypeReset())
@@ -76,6 +82,17 @@ namespace UnityIsekaiGame.Gameplay
             ResetEnemy();
             Debug.Log("Prototype reset complete.");
             PrototypeHudMessageBus.Show("Prototype reset complete");
+        }
+
+        private void GroundPlayerAtSceneEntry()
+        {
+            if (LocationRestoreGuard.IsRestoringLocation)
+            {
+                return;
+            }
+
+            ResolveRuntimeReferences();
+            MovePlayerToSpawnTarget();
         }
 
         private void ResolveRuntimeReferences()
@@ -229,6 +246,11 @@ namespace UnityIsekaiGame.Gameplay
 
         private void ResetPlayerPosition()
         {
+            MovePlayerToSpawnTarget();
+        }
+
+        private void MovePlayerToSpawnTarget()
+        {
             if (player == null)
             {
                 return;
@@ -241,8 +263,14 @@ namespace UnityIsekaiGame.Gameplay
             }
 
             Transform spawn = playerSpawnPoint;
+            Vector3 targetPosition = spawn == null ? fallbackPlayerSpawnPosition : spawn.position;
+            if (!SpawnGroundingUtility.TryGroundWhenUnsupported(targetPosition, player, out targetPosition, out _))
+            {
+                targetPosition = spawn == null ? fallbackPlayerSpawnPosition : spawn.position;
+            }
+
             player.SetPositionAndRotation(
-                spawn == null ? fallbackPlayerSpawnPosition : spawn.position,
+                targetPosition,
                 spawn == null ? fallbackPlayerSpawnRotation : spawn.rotation);
 
             if (characterController != null)

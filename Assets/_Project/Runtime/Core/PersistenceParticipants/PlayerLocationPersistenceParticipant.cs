@@ -18,9 +18,6 @@ namespace UnityIsekaiGame.Persistence
         public const string SameSceneOnlyMode = "same-scene-v1";
 
         private const float MaximumCoordinateMagnitude = 10000f;
-        private const float GroundProbeHeight = 2f;
-        private const float GroundProbeDistance = 8f;
-
         private readonly Func<DefinitionRegistry> registryProvider;
         private readonly string ownerId;
         private readonly string sceneKey;
@@ -193,15 +190,35 @@ namespace UnityIsekaiGame.Persistence
                 place = resolvedPlace;
             }
 
-            PlayerSpawnPoint spawn = ResolveSpawn(saveData.spawnPointId, place) ?? ResolveSpawn(defaultSpawnPointId, place) ?? ResolveAnySpawn(place);
+            PlayerSpawnPoint spawn = null;
             bool useFallback = !IsPositionSafe(savedPosition, out string fallbackReason);
-            if (useFallback && spawn == null)
+            Vector3 targetPosition = savedPosition;
+            Quaternion targetRotation = Normalize(savedRotation);
+            if (useFallback && string.Equals(fallbackReason, "NoGroundBelowSavedPosition", StringComparison.Ordinal)
+                && SpawnGroundingUtility.TryGroundWhenUnsupported(savedPosition, playerRoot, out Vector3 groundedSavedPosition, out string groundingReason))
             {
-                return PersistenceParticipantPrepareResult.Failure("Saved player position is unsafe and no fallback spawn point is available.");
+                targetPosition = groundedSavedPosition;
+                targetRotation = Normalize(savedRotation);
+                fallbackReason = groundingReason;
+            }
+            else if (useFallback)
+            {
+                spawn = ResolveSpawn(saveData.spawnPointId, place) ?? ResolveSpawn(defaultSpawnPointId, place) ?? ResolveAnySpawn(place);
+                if (spawn == null)
+                {
+                    return PersistenceParticipantPrepareResult.Failure("Saved player position is unsafe and no fallback spawn point is available.");
+                }
+
+                targetPosition = ResolveSpawnTargetPosition(spawn.transform.position, out string spawnGroundingReason);
+                targetRotation = Normalize(spawn.transform.rotation);
+                if (!string.IsNullOrWhiteSpace(spawnGroundingReason))
+                {
+                    fallbackReason = string.IsNullOrWhiteSpace(fallbackReason)
+                        ? spawnGroundingReason
+                        : $"{fallbackReason};{spawnGroundingReason}";
+                }
             }
 
-            Vector3 targetPosition = useFallback ? spawn.transform.position : savedPosition;
-            Quaternion targetRotation = useFallback ? Normalize(spawn.transform.rotation) : Normalize(savedRotation);
             if (!IsFinite(targetPosition) || !IsValidRotation(targetRotation))
             {
                 return PersistenceParticipantPrepareResult.Failure("Resolved player location target is invalid.");
@@ -287,7 +304,7 @@ namespace UnityIsekaiGame.Persistence
 
                     LocationRestoreCompleted?.Invoke(new LocationRestoreEventArgs(prepared.SaveData.sceneKey, prepared.Place, prepared.TargetPosition, prepared.TargetRotation, prepared.FallbackUsed));
                     return PersistenceParticipantCommitResult.Success(prepared.FallbackUsed
-                        ? "Player location restored using a safe fallback spawn."
+                        ? "Player location restored using a safe grounded fallback."
                         : "Player location restored.");
                 }
                 catch (Exception exception)
@@ -393,19 +410,22 @@ namespace UnityIsekaiGame.Persistence
             return true;
         }
 
-        private bool HasGroundBelow(Vector3 position)
+        private Vector3 ResolveSpawnTargetPosition(Vector3 spawnPosition, out string groundingReason)
         {
-            RaycastHit[] hits = Physics.RaycastAll(position + Vector3.up * GroundProbeHeight, Vector3.down, GroundProbeHeight + GroundProbeDistance, ~0, QueryTriggerInteraction.Ignore);
-            for (int i = 0; i < hits.Length; i++)
+            groundingReason = string.Empty;
+            if (SpawnGroundingUtility.TryGroundWhenUnsupported(spawnPosition, playerRoot, out Vector3 groundedPosition, out string reason))
             {
-                Collider hitCollider = hits[i].collider;
-                if (hitCollider != null && !IsPlayerOwnedCollider(hitCollider))
-                {
-                    return true;
-                }
+                groundingReason = reason;
+                return groundedPosition;
             }
 
-            return false;
+            groundingReason = reason;
+            return spawnPosition;
+        }
+
+        private bool HasGroundBelow(Vector3 position)
+        {
+            return SpawnGroundingUtility.HasSolidColliderBelow(position, playerRoot);
         }
 
         private bool IsPlayerOwnedCollider(Collider candidate)

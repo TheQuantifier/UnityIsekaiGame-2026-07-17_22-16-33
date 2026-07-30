@@ -126,6 +126,82 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void SavedPositionBelowTerrainGroundsAtSameHorizontalLocation()
+        {
+            GameObject player = CreateGameObject("Player");
+            CharacterController controller = player.AddComponent<CharacterController>();
+            controller.center = Vector3.up;
+            CreateGround("Raised Ground", new Vector3(2f, 3.9f, 3f), new Vector3(8f, 0.2f, 8f));
+            object participant = CreateParticipant(player.transform);
+
+            object data = ValidSaveData();
+            SetField(data, "positionX", 2f);
+            SetField(data, "positionY", 1.1f);
+            SetField(data, "positionZ", 3f);
+            object prepare = Invoke(participant, "PreparePayload", JsonUtility.ToJson(data), Get<int>(participant, "ParticipantSchemaVersion"));
+            Assert.That(Get<bool>(prepare, "Succeeded"), Is.True, Get<string>(prepare, "Message"));
+
+            object commit = Invoke(participant, "CommitPreparedPayload", Get<object>(prepare, "PreparedPayload"));
+
+            Assert.That(Get<bool>(commit, "Succeeded"), Is.True, Get<string>(commit, "Message"));
+            Assert.That(player.transform.position.x, Is.EqualTo(2f).Within(0.001f));
+            Assert.That(player.transform.position.y, Is.EqualTo(4f + controller.skinWidth).Within(0.001f));
+            Assert.That(player.transform.position.z, Is.EqualTo(3f).Within(0.001f));
+        }
+
+        [Test]
+        public void FallbackSpawnPointBelowTerrainGroundsBeforeRestore()
+        {
+            GameObject player = CreateGameObject("Player");
+            CharacterController controller = player.AddComponent<CharacterController>();
+            controller.center = Vector3.up;
+            CreateGround("Spawn Raised Ground", new Vector3(8f, 5.9f, 9f), new Vector3(8f, 0.2f, 8f));
+            GameObject spawn = CreateGameObject("Spawn");
+            spawn.transform.SetPositionAndRotation(new Vector3(8f, 1.1f, 9f), Quaternion.Euler(0f, 180f, 0f));
+            Component spawnPoint = spawn.AddComponent(RequiredType("UnityIsekaiGame.Persistence.PlayerSpawnPoint"));
+            Invoke(spawnPoint, "DevelopmentConfigure", "spawn.prototype.default", null, 100);
+            object participant = CreateParticipant(player.transform);
+
+            object data = ValidSaveData();
+            SetField(data, "positionX", 100f);
+            SetField(data, "positionY", 1.1f);
+            SetField(data, "positionZ", 100f);
+            object prepare = Invoke(participant, "PreparePayload", JsonUtility.ToJson(data), Get<int>(participant, "ParticipantSchemaVersion"));
+            Assert.That(Get<bool>(prepare, "Succeeded"), Is.True, Get<string>(prepare, "Message"));
+
+            object commit = Invoke(participant, "CommitPreparedPayload", Get<object>(prepare, "PreparedPayload"));
+
+            Assert.That(Get<bool>(commit, "Succeeded"), Is.True, Get<string>(commit, "Message"));
+            Assert.That(player.transform.position.x, Is.EqualTo(8f).Within(0.001f));
+            Assert.That(player.transform.position.y, Is.EqualTo(6f + controller.skinWidth).Within(0.001f));
+            Assert.That(player.transform.position.z, Is.EqualTo(9f).Within(0.001f));
+        }
+
+        [Test]
+        public void PrototypeSceneEntryGroundsSpawnPointBelowTerrain()
+        {
+            GameObject player = CreateGameObject("Player");
+            CharacterController controller = player.AddComponent<CharacterController>();
+            controller.center = Vector3.up;
+            CreateGround("Lower Safety Ground", new Vector3(-3f, -0.1f, 6f), new Vector3(8f, 0.2f, 8f));
+            CreateGround("Scene Entry Raised Ground", new Vector3(-3f, 4.9f, 6f), new Vector3(8f, 0.2f, 8f));
+            GameObject spawn = CreateGameObject("Spawn");
+            spawn.transform.SetPositionAndRotation(new Vector3(-3f, 1.1f, 6f), Quaternion.Euler(0f, 45f, 0f));
+            GameObject controllerObject = CreateGameObject("Prototype Test Controller");
+            PrototypeTestController testController = controllerObject.AddComponent<PrototypeTestController>();
+            SetField(testController, "player", player.transform);
+            SetField(testController, "playerSpawnPoint", spawn.transform);
+
+            Invoke(testController, "Awake");
+            Invoke(testController, "Start");
+
+            Assert.That(player.transform.position.x, Is.EqualTo(-3f).Within(0.001f));
+            Assert.That(player.transform.position.y, Is.EqualTo(5f + controller.skinWidth).Within(0.001f));
+            Assert.That(player.transform.position.z, Is.EqualTo(6f).Within(0.001f));
+            Assert.That(Quaternion.Angle(player.transform.rotation, spawn.transform.rotation), Is.LessThan(0.01f));
+        }
+
+        [Test]
         public void CurrentPlaceTrackerChoosesDeepestPlaceAndReturnsToParent()
         {
             ScriptableObject parent = CreatePlace("place.region.prototype", "Region", "scene.prototype");
@@ -225,10 +301,15 @@ namespace UnityIsekaiGame.Tests
 
         private GameObject CreateGround()
         {
-            GameObject ground = CreateGameObject("Ground");
+            return CreateGround("Ground", new Vector3(0f, -0.1f, 0f), new Vector3(40f, 0.2f, 40f));
+        }
+
+        private GameObject CreateGround(string name, Vector3 center, Vector3 size)
+        {
+            GameObject ground = CreateGameObject(name);
             BoxCollider collider = ground.AddComponent<BoxCollider>();
-            collider.size = new Vector3(40f, 0.2f, 40f);
-            collider.center = new Vector3(0f, -0.1f, 0f);
+            collider.size = size;
+            collider.center = center;
             return ground;
         }
 

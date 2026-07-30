@@ -169,3 +169,7 @@ Packages/packages-lock.json linguist-generated
 
 # Exceptions for .asset files such as lightning pre-baking
 LightingData.asset     binary
+
+# Unity TerrainData assets are binary even when the project uses force text
+# serialization. Do not normalize these as YAML text.
+Assets/_Project/Prototype/Environment/Terrain/Data/*.asset binary
