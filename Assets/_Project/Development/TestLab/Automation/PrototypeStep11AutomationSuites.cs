@@ -7,6 +7,7 @@ using System.Text;
 using UnityEngine;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Markets;
+using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
@@ -83,6 +84,33 @@ namespace UnityIsekaiGame.Development.Automation
                     "Transaction observations, persistence, and projections are explicit",
                     40,
                     Step("step11-markets-persistence", "Persist and project markets", MarketPersistenceAndProjection))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.3.trade-negotiation",
+                "Trade and Negotiation",
+                "11.3",
+                11030,
+                new[] { "TradeRuntime", "EconomyRuntime", "MarketRuntime", "ItemInstanceIdentityRuntime", "InformationAccessRuntime" },
+                Scenario(
+                    "offers-and-counteroffers",
+                    "Trade sessions support offers, counteroffers, rejection, withdrawal, and expiry",
+                    10,
+                    Step("step11-trade-offers", "Negotiate offers", TradeOffersAndCounteroffers)),
+                Scenario(
+                    "fixed-price-purchase",
+                    "Fixed-price purchases execute money and item ownership atomically",
+                    20,
+                    Step("step11-trade-purchase", "Execute purchase", TradeFixedPricePurchase)),
+                Scenario(
+                    "barter-reservation-rollback",
+                    "Barter reservations and rollback preserve money and item state",
+                    30,
+                    Step("step11-trade-barter", "Reserve barter and rollback", TradeBarterReservationRollback)),
+                Scenario(
+                    "valuation-persistence-projections",
+                    "Valuation, receipts, persistence, and projections remain explicit",
+                    40,
+                    Step("step11-trade-persistence", "Persist and project trades", TradeValuationPersistenceProjection))), out _);
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -440,6 +468,392 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step11-markets-persistence", "Transaction observations, persistence, and projections are explicit", valid, $"Price={price.Code} Transfer={transfer.Code} Observation={observation.Code} Redacted={projection.Redacted} Save={validSave}:{validFailure} Restore={restore.Code} Rejected={rejected}:{corruptFailure}");
         }
 
+        private static TestLabAutomationStepResult TradeOffersAndCounteroffers(TestLabAutomationContext context)
+        {
+            if (!TryGetTradeFixture(context, out TradeFixture fixture, out string failure))
+            {
+                return Fail("step11-trade-offers", failure);
+            }
+
+            TradeOperationResult open = fixture.OpenSession("offers", out string sessionId);
+            TradeOperationResult offer = fixture.Trades.SubmitOffer(sessionId, fixture.BuildMoneyForItemOffer(sessionId, "offer.initial", 30L), Tx(context, "trade-offer"));
+            TradeOperationResult counter = fixture.Trades.SubmitCounteroffer(sessionId, offer.Offer.offerId, fixture.BuildMoneyForItemOffer(sessionId, "offer.counter", 25L, proposer: "participant.seller", responder: "participant.buyer"), Tx(context, "trade-counter"));
+            TradeOperationResult reject = fixture.Trades.RejectOffer(sessionId, counter.Offer.offerId, "participant.buyer", 3d, Tx(context, "trade-reject"));
+            TradeOperationResult secondOpen = fixture.OpenSession("withdraw", out string withdrawSession);
+            TradeOperationResult withdrawOffer = fixture.Trades.SubmitOffer(withdrawSession, fixture.BuildMoneyForItemOffer(withdrawSession, "offer.withdraw", 20L), Tx(context, "trade-withdraw-offer"));
+            TradeOperationResult withdraw = fixture.Trades.WithdrawOffer(withdrawSession, withdrawOffer.Offer.offerId, withdrawOffer.Offer.proposingParticipantId, 4d, Tx(context, "trade-withdraw"));
+            TradeOperationResult thirdOpen = fixture.OpenSession("expire", out string expireSession);
+            TradeOperationResult expiringOffer = fixture.Trades.SubmitOffer(expireSession, fixture.BuildMoneyForItemOffer(expireSession, "offer.expire", 20L), Tx(context, "trade-expire-offer"));
+            TradeOperationResult expire = fixture.Trades.ExpireOffer(expireSession, expiringOffer.Offer.offerId, 200d, Tx(context, "trade-expire"));
+
+            fixture.Trades.TryGetOffer(offer.Offer.offerId, out TradeOfferData original);
+            bool valid = open.Succeeded
+                && offer.Succeeded
+                && counter.Succeeded
+                && original.state == TradeOfferState.Superseded
+                && reject.Succeeded
+                && reject.Session.state == TradeSessionState.Rejected
+                && secondOpen.Succeeded
+                && withdraw.Succeeded
+                && withdraw.Session.state == TradeSessionState.Withdrawn
+                && thirdOpen.Succeeded
+                && expire.Succeeded
+                && expire.Session.state == TradeSessionState.Expired;
+            return TestLabAssertions.True("step11-trade-offers", "Trade sessions support offers, counteroffers, rejection, withdrawal, and expiry", valid, $"Open={open.Code} Offer={offer.Code} Counter={counter.Code} Original={original?.state} Reject={reject.Code} Withdraw={withdraw.Code} WithdrawProposer={withdrawOffer.Offer?.proposingParticipantId} Expire={expire.Code}");
+        }
+
+        private static TestLabAutomationStepResult TradeFixedPricePurchase(TestLabAutomationContext context)
+        {
+            if (!TryGetTradeFixture(context, out TradeFixture fixture, out string failure))
+            {
+                return Fail("step11-trade-purchase", failure);
+            }
+
+            TradeOperationResult open = fixture.OpenSession("purchase", out string sessionId);
+            TradeOfferData offerData = fixture.BuildMoneyForItemOffer(sessionId, "offer.purchase", 40L, quoteId: fixture.CreateQuote("quote.purchase", 40L));
+            TradeOperationResult offer = fixture.Trades.SubmitOffer(sessionId, offerData, Tx(context, "trade-purchase-offer"));
+            TradeOperationResult reserve = fixture.Trades.ReserveOfferAssets(offer.Offer.offerId, fixture.Economy, fixture.Items, 2d, Tx(context, "trade-purchase-reserve"));
+            TradeOperationResult accept = fixture.Trades.AcceptOffer(sessionId, offer.Offer.offerId, "participant.seller", 3d, Tx(context, "trade-purchase-accept"));
+            TradeOperationResult execute = fixture.Trades.ExecuteAcceptedDeal(sessionId, fixture.Economy, fixture.Items, fixture.Markets, fixture.Registry, 4d, Tx(context, "trade-purchase-execute"));
+            TradeOperationResult duplicate = fixture.Trades.ExecuteAcceptedDeal(sessionId, fixture.Economy, fixture.Items, fixture.Markets, fixture.Registry, 4d, Tx(context, "trade-purchase-execute"));
+
+            fixture.Economy.TryGetAccount(fixture.BuyerAccount, out EconomyAccountSnapshot buyer);
+            fixture.Economy.TryGetAccount(fixture.SellerAccount, out EconomyAccountSnapshot seller);
+            fixture.Items.TryGetSnapshot(fixture.SwordInstanceId, out ItemInstanceSnapshot sword);
+            bool valid = open.Succeeded
+                && offer.Succeeded
+                && reserve.Succeeded
+                && accept.Succeeded
+                && execute.Succeeded
+                && duplicate.Succeeded
+                && duplicate.Duplicate
+                && buyer.BalanceUnits == 60L
+                && seller.BalanceUnits == 40L
+                && sword.OwnerPersonId == fixture.BuyerPersonId
+                && execute.TradeRecord != null
+                && execute.Receipt != null
+                && fixture.Trades.TradeRecordCount == 1
+                && fixture.Trades.ReceiptCount == 1;
+            return TestLabAssertions.True("step11-trade-purchase", "Fixed-price purchases execute money and item ownership atomically", valid, $"Offer={offer.Code} Reserve={reserve.Code} Accept={accept.Code} Execute={execute.Code} Duplicate={duplicate.Code} Buyer={buyer?.BalanceUnits} Seller={seller?.BalanceUnits} Owner={sword?.OwnerPersonId}");
+        }
+
+        private static TestLabAutomationStepResult TradeBarterReservationRollback(TestLabAutomationContext context)
+        {
+            if (!TryGetTradeFixture(context, out TradeFixture fixture, out string failure))
+            {
+                return Fail("step11-trade-barter", failure);
+            }
+
+            TradeOperationResult open = fixture.OpenSession("barter", out string sessionId);
+            TradeOperationResult offer = fixture.Trades.SubmitOffer(sessionId, fixture.BuildBarterOffer(sessionId, "offer.barter"), Tx(context, "trade-barter-offer"));
+            TradeOperationResult reserve = fixture.Trades.ReserveOfferAssets(offer.Offer.offerId, fixture.Economy, fixture.Items, 2d, Tx(context, "trade-barter-reserve"));
+            TradeOperationResult accept = fixture.Trades.AcceptOffer(sessionId, offer.Offer.offerId, "participant.seller", 3d, Tx(context, "trade-barter-accept"));
+            ItemInstanceRuntimeSaveData beforeItems = fixture.Items.CreateSaveData();
+            EconomyRuntimeSaveData beforeEconomy = fixture.Economy.CreateSaveData();
+            TradeOperationResult failed = fixture.Trades.ExecuteAcceptedDeal(sessionId, fixture.Economy, fixture.Items, fixture.Markets, fixture.Registry, 4d, Tx(context, "trade-barter-fail"), injectFailureStage: "after-money");
+            bool rolledBack = JsonUtility.ToJson(beforeItems) == JsonUtility.ToJson(fixture.Items.CreateSaveData())
+                && JsonUtility.ToJson(beforeEconomy) == JsonUtility.ToJson(fixture.Economy.CreateSaveData());
+            TradeOperationResult execute = fixture.Trades.ExecuteAcceptedDeal(sessionId, fixture.Economy, fixture.Items, fixture.Markets, fixture.Registry, 5d, Tx(context, "trade-barter-execute"));
+
+            fixture.Items.TryGetSnapshot(fixture.SwordInstanceId, out ItemInstanceSnapshot sword);
+            fixture.Items.TryGetSnapshot(fixture.HerbStackId, out ItemInstanceSnapshot herbs);
+            bool valid = open.Succeeded
+                && offer.Succeeded
+                && reserve.Succeeded
+                && accept.Succeeded
+                && !failed.Succeeded
+                && rolledBack
+                && execute.Succeeded
+                && sword.OwnerPersonId == fixture.BuyerPersonId
+                && herbs.StackQuantity == 3
+                && fixture.Items.QueryByDefinition(fixture.Herb.Id).Any(item => item.OwnerPersonId == fixture.SellerPersonId && item.StackQuantity == 2);
+            return TestLabAssertions.True("step11-trade-barter", "Barter reservations and rollback preserve money and item state", valid, $"Offer={offer.Code} Reserve={reserve.Code} Failed={failed.Code} RolledBack={rolledBack} Execute={execute.Code} SwordOwner={sword?.OwnerPersonId} Herbs={herbs?.StackQuantity}");
+        }
+
+        private static TestLabAutomationStepResult TradeValuationPersistenceProjection(TestLabAutomationContext context)
+        {
+            if (!TryGetTradeFixture(context, out TradeFixture fixture, out string failure))
+            {
+                return Fail("step11-trade-persistence", failure);
+            }
+
+            TradeOperationResult open = fixture.OpenSession("project", out string sessionId);
+            TradeOfferData offerData = fixture.BuildMoneyForItemOffer(sessionId, "offer.project", 45L);
+            TradeOperationResult offer = fixture.Trades.SubmitOffer(sessionId, offerData, Tx(context, "trade-project-offer"));
+            TradeOperationResult valuation = fixture.Trades.ValueAsset(Scoped(context, "trade-valuation", "sword"), sessionId, offer.Offer.offerId, "participant.buyer", offer.Offer.AllAssets.First(asset => asset.IsItemAsset), fixture.Economy, fixture.Markets, fixture.Items, privilegedHiddenFactors: false, worldTime: 2d);
+
+            InformationAccessRuntime access = context.ScenarioContext.Runtimes.Access;
+            string policyId = Scoped(context, "information-access-policy", "trade-offer");
+            access.RegisterPolicy(new InformationAccessPolicyData
+            {
+                policyId = policyId,
+                subject = offer.Offer.CreateInformationSubject(),
+                classification = InformationVisibilityClassification.Secret,
+                detailVisibilityPolicy = InformationDetailVisibilityPolicy.Selected,
+                defaultVisibleDetails = new[] { "detail.participants" },
+                defaultRedactedDetails = new[] { "detail.assets", "detail.valuations", "detail.offer-history" },
+                redactedAccessAcceptable = true
+            }, Tx(context, "trade-policy"));
+            access.GrantAccess(new InformationAccessGrantData
+            {
+                grantId = Scoped(context, "information-access-grant", "trade-offer"),
+                policyId = policyId,
+                subject = offer.Offer.CreateInformationSubject(),
+                granteeKind = InformationGranteeKind.Person,
+                granteeId = "person.viewer",
+                grantorId = fixture.SellerPersonId,
+                accessModes = new[] { InformationAccessMode.Inspect },
+                detailIds = new[] { "detail.participants" }
+            }, Tx(context, "trade-grant"));
+            TradeProjection<TradeOfferData> projection = fixture.Trades.GetOfferProjection(offer.Offer.offerId, access, new InformationAccessContext
+            {
+                RequestingPersonId = "person.viewer",
+                HasDiscoveredSubject = true,
+                RevealDenialReasons = true
+            }, policyId);
+
+            TradeRuntimeSaveData save = fixture.Trades.CreateSaveData();
+            bool validSave = TradeRuntime.ValidateSaveData(save, fixture.Registry, out string validFailure);
+            TradeRuntime restored = new TradeRuntime();
+            TradeOperationResult restore = restored.RestoreFromSaveData(save, fixture.Registry);
+            TradeRuntimeSaveData corrupt = save.Clone();
+            corrupt.offers[0].tradeSessionId = "trade-session.missing";
+            bool rejected = !TradeRuntime.ValidateSaveData(corrupt, fixture.Registry, out string corruptFailure);
+
+            bool valid = open.Succeeded
+                && offer.Succeeded
+                && valuation.Succeeded
+                && projection.Succeeded
+                && projection.Redacted
+                && projection.Record.AllAssets.Count == 0
+                && validSave
+                && restore.Succeeded
+                && rejected
+                && restored.TryGetOffer(offer.Offer.offerId, out _);
+            return TestLabAssertions.True("step11-trade-persistence", "Valuation, receipts, persistence, and projections remain explicit", valid, $"Open={open.Code} Offer={offer.Code} Valuation={valuation.Code} Redacted={projection.Redacted} Save={validSave}:{validFailure} Restore={restore.Code} Rejected={rejected}:{corruptFailure}");
+        }
+
+        private static bool TryGetTradeFixture(TestLabAutomationContext context, out TradeFixture fixture, out string failure)
+        {
+            fixture = null;
+            failure = string.Empty;
+            if (!TryGetMarketFixture(context, out MarketRuntime markets, out DefinitionRegistry registry, out MarketDefinition market, out MarketSubjectDefinition subject, out CurrencyDefinition gold, out failure))
+            {
+                return false;
+            }
+
+            TradeRuntime trades = context?.ScenarioContext?.Runtimes?.Trades;
+            EconomyRuntime economy = context?.ScenarioContext?.Runtimes?.Economy;
+            ItemInstanceIdentityRuntime items = context?.ScenarioContext?.Runtimes?.ItemInstances;
+            if (trades == null || economy == null || items == null)
+            {
+                failure = trades == null ? "Trade runtime is missing." : economy == null ? "Economy runtime is missing." : "Item identity runtime is missing.";
+                return false;
+            }
+
+            TradePolicyDefinition policy = ScriptableObject.CreateInstance<TradePolicyDefinition>();
+            policy.Initialize(Scoped(context, "trade-policy", "direct"), "Prototype Direct Trade", TradePolicyCategory.DirectPersonToPerson);
+            DefinitionRegistry extended = new DefinitionRegistry(registry.DefinitionsById.Values.Concat(new IGameDefinition[] { policy }));
+            trades.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+            economy.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+            markets.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+
+            ItemDefinition sword = extended.TryGet(PrototypeSwordItemId, out ItemDefinition foundSword) ? foundSword : CreateItemDefinition(PrototypeSwordItemId, "Prototype Sword");
+            ItemDefinition herb = CreateStackDefinition(Scoped(context, "item", "barter-herb"), "Prototype Barter Herb");
+            if (!extended.Contains(herb.Id) || !extended.Contains(sword.Id))
+            {
+                extended = new DefinitionRegistry(extended.DefinitionsById.Values.Concat(new IGameDefinition[] { sword, herb }).Distinct());
+                trades.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+                economy.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+                markets.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+            }
+
+            string buyerAccount = Account(context, "trade-buyer");
+            string sellerAccount = Account(context, "trade-seller");
+            economy.CreateAccount(buyerAccount, gold, "person.trade.buyer", EconomyAccountKind.PersonWallet, 100L, Tx(context, "trade-buyer-open"));
+            economy.CreateAccount(sellerAccount, gold, "person.trade.seller", EconomyAccountKind.PersonWallet, 0L, Tx(context, "trade-seller-open"));
+            string swordInstance = RunGuid(context, "trade-sword");
+            string herbStack = RunGuid(context, "trade-herbs");
+            if (!items.TryGetSnapshot(swordInstance, out _))
+            {
+                items.CreateItem(sword, ItemInstanceClassification.IndividuallyTracked, swordInstance, ownerPersonId: "person.trade.seller", custodianPersonId: "person.trade.seller");
+            }
+
+            if (!items.TryGetSnapshot(herbStack, out _))
+            {
+                items.CreateItem(herb, ItemInstanceClassification.Fungible, herbStack, ownerPersonId: "person.trade.buyer", custodianPersonId: "person.trade.buyer");
+                ItemInstanceRuntimeSaveData itemSave = items.CreateSaveData();
+                ItemInstanceRecordData herbRecord = itemSave.records.FirstOrDefault(record => record.itemInstanceId == herbStack);
+                if (herbRecord != null)
+                {
+                    herbRecord.stackQuantity = 5;
+                    items.RestoreFromSaveData(itemSave, extended);
+                }
+            }
+
+            markets.CreateMarketInstance(market, MarketId(context, "trade-market"), "region.prototype");
+            markets.RecordSupply(Supply(context, MarketId(context, "trade-market"), subject.Id, "trade-stock", 10L, 0L, 10L, 1d));
+            markets.RecordDemand(Demand(context, MarketId(context, "trade-market"), subject.Id, "trade-demand", 10L, 10L, 1d));
+            markets.UpdateMarketSubject(MarketId(context, "trade-market"), subject.Id, 2d);
+
+            fixture = new TradeFixture(context, trades, economy, markets, items, extended, policy, subject, gold, sword, herb, buyerAccount, sellerAccount, swordInstance, herbStack);
+            return true;
+        }
+
+        private sealed class TradeFixture
+        {
+            private readonly TestLabAutomationContext context;
+
+            public TradeFixture(TestLabAutomationContext context, TradeRuntime trades, EconomyRuntime economy, MarketRuntime markets, ItemInstanceIdentityRuntime items, DefinitionRegistry registry, TradePolicyDefinition policy, MarketSubjectDefinition subject, CurrencyDefinition gold, ItemDefinition sword, ItemDefinition herb, string buyerAccount, string sellerAccount, string swordInstanceId, string herbStackId)
+            {
+                this.context = context;
+                Trades = trades;
+                Economy = economy;
+                Markets = markets;
+                Items = items;
+                Registry = registry;
+                Policy = policy;
+                Subject = subject;
+                Gold = gold;
+                Sword = sword;
+                Herb = herb;
+                BuyerAccount = buyerAccount;
+                SellerAccount = sellerAccount;
+                SwordInstanceId = swordInstanceId;
+                HerbStackId = herbStackId;
+            }
+
+            public TradeRuntime Trades { get; }
+            public EconomyRuntime Economy { get; }
+            public MarketRuntime Markets { get; }
+            public ItemInstanceIdentityRuntime Items { get; }
+            public DefinitionRegistry Registry { get; }
+            public TradePolicyDefinition Policy { get; }
+            public MarketSubjectDefinition Subject { get; }
+            public CurrencyDefinition Gold { get; }
+            public ItemDefinition Sword { get; }
+            public ItemDefinition Herb { get; }
+            public string BuyerAccount { get; }
+            public string SellerAccount { get; }
+            public string SwordInstanceId { get; }
+            public string HerbStackId { get; }
+            public string BuyerPersonId => "person.trade.buyer";
+            public string SellerPersonId => "person.trade.seller";
+
+            public TradeOperationResult OpenSession(string slug, out string sessionId)
+            {
+                sessionId = Scoped(context, "trade-session", slug);
+                return Trades.OpenSession(Policy, new TradeSessionData
+                {
+                    tradeSessionId = sessionId,
+                    participants = new List<TradeParticipantData>
+                    {
+                        Participant("participant.buyer", BuyerPersonId, TradeParticipantRole.Buyer),
+                        Participant("participant.seller", SellerPersonId, TradeParticipantRole.Seller)
+                    },
+                    initiatorParticipantId = "participant.buyer",
+                    marketInstanceId = MarketId(context, "trade-market"),
+                    createdWorldTime = 1d,
+                    lastActivityWorldTime = 1d
+                }, Tx(context, $"trade-session-{slug}"));
+            }
+
+            public TradeOfferData BuildMoneyForItemOffer(string sessionId, string slug, long units, string proposer = "participant.buyer", string responder = "participant.seller", string quoteId = "")
+            {
+                return new TradeOfferData
+                {
+                    offerId = Scoped(context, "trade-offer", slug),
+                    tradeSessionId = sessionId,
+                    proposingParticipantId = proposer,
+                    respondingParticipantIds = new[] { responder },
+                    createdWorldTime = 2d,
+                    expiresWorldTime = 120d,
+                    merchantQuoteIds = string.IsNullOrWhiteSpace(quoteId) ? Array.Empty<string>() : new[] { quoteId },
+                    bundles = new List<TradeBundleData>
+                    {
+                        new TradeBundleData
+                        {
+                            bundleId = Scoped(context, "trade-bundle", $"{slug}.money"),
+                            contributingParticipantId = "participant.buyer",
+                            receivingParticipantId = "participant.seller",
+                            assets = new List<TradeAssetEntryData>
+                            {
+                                Money(Scoped(context, "trade-asset", $"{slug}.gold"), "participant.buyer", "participant.seller", BuyerAccount, SellerAccount, Gold.Id, units, quoteId)
+                            }
+                        },
+                        new TradeBundleData
+                        {
+                            bundleId = Scoped(context, "trade-bundle", $"{slug}.item"),
+                            contributingParticipantId = "participant.seller",
+                            receivingParticipantId = "participant.buyer",
+                            assets = new List<TradeAssetEntryData>
+                            {
+                                Item(Scoped(context, "trade-asset", $"{slug}.sword"), "participant.seller", "participant.buyer", SwordInstanceId, 1)
+                            }
+                        }
+                    }
+                };
+            }
+
+            public TradeOfferData BuildBarterOffer(string sessionId, string slug)
+            {
+                TradeOfferData offer = BuildMoneyForItemOffer(sessionId, slug, 15L);
+                offer.bundles[0].assets.Add(Item(Scoped(context, "trade-asset", $"{slug}.herbs"), "participant.buyer", "participant.seller", HerbStackId, 2, TradeAssetKind.StackQuantity));
+                return offer;
+            }
+
+            public string CreateQuote(string slug, long units)
+            {
+                string marketId = MarketId(context, "trade-market");
+                string quoteId = Scoped(context, "merchant-quote", slug);
+                Markets.CreateMerchantQuote(quoteId, "merchant.prototype", marketId, Subject.Id, MerchantQuoteDirection.MerchantSells, 1L, 3d, 120d);
+                return quoteId;
+            }
+
+            private static TradeParticipantData Participant(string participantId, string personId, TradeParticipantRole role)
+            {
+                return new TradeParticipantData
+                {
+                    participantId = participantId,
+                    kind = TradeParticipantKind.Person,
+                    role = role,
+                    subjectId = personId,
+                    sourceInventoryId = personId,
+                    receivingInventoryId = personId
+                };
+            }
+
+            private static TradeAssetEntryData Money(string assetId, string sourceParticipant, string destinationParticipant, string sourceAccount, string destinationAccount, string currencyId, long units, string quoteId)
+            {
+                return new TradeAssetEntryData
+                {
+                    assetEntryId = assetId,
+                    assetKind = TradeAssetKind.Money,
+                    sourceParticipantId = sourceParticipant,
+                    destinationParticipantId = destinationParticipant,
+                    sourceAccountId = sourceAccount,
+                    destinationAccountId = destinationAccount,
+                    currencyId = currencyId,
+                    units = units,
+                    quantity = 1,
+                    quoteId = quoteId
+                };
+            }
+
+            private static TradeAssetEntryData Item(string assetId, string sourceParticipant, string destinationParticipant, string itemInstanceId, int quantity, TradeAssetKind kind = TradeAssetKind.ItemInstance)
+            {
+                return new TradeAssetEntryData
+                {
+                    assetEntryId = assetId,
+                    assetKind = kind,
+                    sourceParticipantId = sourceParticipant,
+                    destinationParticipantId = destinationParticipant,
+                    itemInstanceId = itemInstanceId,
+                    quantity = Math.Max(1, quantity)
+                };
+            }
+        }
+
         private static bool TryGetMarketFixture(
             TestLabAutomationContext context,
             out MarketRuntime markets,
@@ -556,6 +970,17 @@ namespace UnityIsekaiGame.Development.Automation
             SetPrivate(item, "displayName", display);
             SetPrivate(item, "stackable", false);
             SetPrivate(item, "maximumStackSize", 1);
+            SetPrivate(item, "instanceMode", ItemInstanceMode.AlwaysInstanced);
+            return item;
+        }
+
+        private static ItemDefinition CreateStackDefinition(string id, string display)
+        {
+            ItemDefinition item = ScriptableObject.CreateInstance<ItemDefinition>();
+            SetPrivate(item, "itemId", id);
+            SetPrivate(item, "displayName", display);
+            SetPrivate(item, "stackable", true);
+            SetPrivate(item, "maximumStackSize", 99);
             SetPrivate(item, "instanceMode", ItemInstanceMode.AlwaysInstanced);
             return item;
         }

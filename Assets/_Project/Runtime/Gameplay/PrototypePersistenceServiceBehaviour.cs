@@ -38,6 +38,7 @@ using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Traits;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.WorldEntities;
 
 namespace UnityIsekaiGame.Gameplay
@@ -78,6 +79,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerItemIdentities = true;
         [SerializeField] private bool registerWorldEconomy = true;
         [SerializeField] private bool registerWorldMarkets = true;
+        [SerializeField] private bool registerWorldTrades = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -146,6 +148,7 @@ namespace UnityIsekaiGame.Gameplay
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private EconomyPersistenceParticipant economyParticipant;
         private MarketPersistenceParticipant marketParticipant;
+        private TradePersistenceParticipant tradeParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -179,6 +182,7 @@ namespace UnityIsekaiGame.Gameplay
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private EconomyRuntime worldEconomy;
         private MarketRuntime worldMarkets;
+        private TradeRuntime worldTrades;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -355,6 +359,19 @@ namespace UnityIsekaiGame.Gameplay
                 return worldMarkets;
             }
         }
+        public TradeRuntime Trades
+        {
+            get
+            {
+                if (worldTrades == null)
+                {
+                    worldTrades = new TradeRuntime();
+                }
+
+                worldTrades.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
+                return worldTrades;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -395,6 +412,18 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(economyParticipant);
                 economyParticipant = null;
+            }
+
+            if (service != null && marketParticipant != null)
+            {
+                service.UnregisterParticipant(marketParticipant);
+                marketParticipant = null;
+            }
+
+            if (service != null && tradeParticipant != null)
+            {
+                service.UnregisterParticipant(tradeParticipant);
+                tradeParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -666,6 +695,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerItemIdentityParticipant();
             EnsureWorldEconomyParticipant();
             EnsureWorldMarketParticipant();
+            EnsureWorldTradeParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1056,6 +1086,33 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 marketParticipant = null;
+            }
+        }
+
+        private void EnsureWorldTradeParticipant()
+        {
+            if (!registerWorldTrades || tradeParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World trade persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            tradeParticipant = new TradePersistenceParticipant(
+                Trades,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(tradeParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                tradeParticipant = null;
             }
         }
 

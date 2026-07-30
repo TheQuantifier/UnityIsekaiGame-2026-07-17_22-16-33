@@ -211,6 +211,92 @@ namespace UnityIsekaiGame.Inventory.Identity
             }, "Item custody updated.");
         }
 
+        public ItemInstanceOperationResult TransferStackQuantity(
+            string sourceItemInstanceId,
+            int quantity,
+            string destinationOwnerPersonId,
+            string destinationCustodianPersonId,
+            string destinationInventoryOwnerId,
+            string createdItemInstanceId = "",
+            bool preview = false)
+        {
+            if (string.IsNullOrWhiteSpace(sourceItemInstanceId) || !recordsById.TryGetValue(sourceItemInstanceId, out ItemInstanceRecordData source))
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.MissingItem, $"Item instance '{sourceItemInstanceId}' was not found.");
+            }
+
+            if (quantity <= 0)
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.InvalidRequest, "Stack transfer quantity must be positive.");
+            }
+
+            if (source.lifecycleState == ItemLifecycleState.Destroyed || source.lifecycleState == ItemLifecycleState.Consumed)
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.InvalidState, $"Item instance '{sourceItemInstanceId}' is {source.lifecycleState}.");
+            }
+
+            if (quantity > source.stackQuantity)
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.InvalidRequest, $"Stack transfer requested {quantity}, but only {source.stackQuantity} is available.");
+            }
+
+            if (string.IsNullOrWhiteSpace(destinationOwnerPersonId) || string.IsNullOrWhiteSpace(destinationCustodianPersonId) || string.IsNullOrWhiteSpace(destinationInventoryOwnerId))
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.InvalidRequest, "Stack transfer requires destination owner, custodian, and inventory owner IDs.");
+            }
+
+            if (quantity == source.stackQuantity)
+            {
+                if (preview)
+                {
+                    ItemInstanceRecordData previewRecord = source.Clone();
+                    ApplyStackDestination(previewRecord, destinationOwnerPersonId, destinationCustodianPersonId, destinationInventoryOwnerId);
+                    previewRecord.revision = Math.Max(1L, source.revision + 1L);
+                    return ItemInstanceOperationResult.Success(new ItemInstanceSnapshot(previewRecord), "Full stack transfer preview succeeded.", preview: true);
+                }
+
+                return Mutate(sourceItemInstanceId, record => ApplyStackDestination(record, destinationOwnerPersonId, destinationCustodianPersonId, destinationInventoryOwnerId), "Full item stack transferred.");
+            }
+
+            string newItemInstanceId = string.IsNullOrWhiteSpace(createdItemInstanceId) ? ItemInstanceId.Generate() : createdItemInstanceId;
+            if (!ItemInstanceId.IsValid(newItemInstanceId) || recordsById.ContainsKey(newItemInstanceId))
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.InvalidRequest, $"Split stack destination item instance ID '{newItemInstanceId}' is invalid or already exists.");
+            }
+
+            ItemInstanceRecordData remaining = source.Clone();
+            ItemInstanceRecordData split = source.Clone();
+            remaining.stackQuantity -= quantity;
+            remaining.revision = Math.Max(1L, source.revision + 1L);
+            split.itemInstanceId = newItemInstanceId;
+            split.stackQuantity = quantity;
+            split.provenance ??= new ItemProvenanceData();
+            split.provenance.parentItemInstanceIds = AddDistinct(split.provenance.parentItemInstanceIds, sourceItemInstanceId);
+            split.provenance.sourceItemInstanceIds = AddDistinct(split.provenance.sourceItemInstanceIds, sourceItemInstanceId);
+            ApplyStackDestination(split, destinationOwnerPersonId, destinationCustodianPersonId, destinationInventoryOwnerId);
+            split.revision = 1L;
+
+            if (!ValidateRecord(remaining, out string remainingFailure))
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.ValidationFailed, remainingFailure);
+            }
+
+            if (!ValidateRecord(split, out string splitFailure))
+            {
+                return ItemInstanceOperationResult.Failure(ItemInstanceOperationStatus.ValidationFailed, splitFailure);
+            }
+
+            if (preview)
+            {
+                return ItemInstanceOperationResult.Success(new ItemInstanceSnapshot(split), "Partial stack transfer preview succeeded.", preview: true);
+            }
+
+            recordsById[sourceItemInstanceId] = remaining;
+            recordsById.Add(newItemInstanceId, split);
+            revision++;
+            return ItemInstanceOperationResult.Success(new ItemInstanceSnapshot(split), "Partial stack quantity transferred.");
+        }
+
         public ItemInstanceOperationResult SetContainerLocation(string itemInstanceId, string containerId)
         {
             if (string.IsNullOrWhiteSpace(containerId))
@@ -569,6 +655,21 @@ namespace UnityIsekaiGame.Inventory.Identity
             }
 
             return true;
+        }
+
+        private static void ApplyStackDestination(ItemInstanceRecordData record, string ownerPersonId, string custodianPersonId, string inventoryOwnerId)
+        {
+            record.ownership ??= new ItemOwnershipStateData();
+            record.ownership.kind = ItemOwnershipKind.PersonOwned;
+            record.ownership.ownerPersonId = ownerPersonId ?? string.Empty;
+            record.ownership.ownerOrganizationId = string.Empty;
+            record.ownership.disputeId = string.Empty;
+            record.ownership.legalOwnerId = ownerPersonId ?? string.Empty;
+            record.ownership.custodianPersonId = custodianPersonId ?? string.Empty;
+            record.ownership.custodianActorId = string.Empty;
+            record.ownership.custodianContainerId = string.Empty;
+            record.location = new ItemLocationStateData { kind = ItemLocationKind.Inventory, inventoryOwnerId = inventoryOwnerId ?? string.Empty };
+            record.lifecycleState = ItemLifecycleState.InInventory;
         }
 
         private static bool ValidateRecordGraph(IReadOnlyList<ItemInstanceRecordData> records, HashSet<string> ids, out string failureReason)
