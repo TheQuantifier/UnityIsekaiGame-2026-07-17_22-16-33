@@ -277,7 +277,11 @@ namespace UnityIsekaiGame.Knowledge.Access
             Dictionary<string, InformationRedactionState> details = new Dictionary<string, InformationRedactionState>(StringComparer.Ordinal);
             foreach (string detailId in (allDetailIds ?? Array.Empty<string>()).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal))
             {
-                if (decision.AllowedDetails.Contains(detailId, StringComparer.Ordinal))
+                if (decision.FullAccess)
+                {
+                    details[detailId] = InformationRedactionState.Visible;
+                }
+                else if (decision.AllowedDetails.Contains(detailId, StringComparer.Ordinal))
                 {
                     details[detailId] = InformationRedactionState.Visible;
                 }
@@ -291,7 +295,7 @@ namespace UnityIsekaiGame.Knowledge.Access
                 }
                 else
                 {
-                    details[detailId] = decision.FullAccess ? InformationRedactionState.Visible : InformationRedactionState.Inaccessible;
+                    details[detailId] = InformationRedactionState.Inaccessible;
                 }
             }
 

@@ -12,6 +12,7 @@ using UnityIsekaiGame.Economy.InstitutionalRevenue;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Economy.Properties;
+using UnityIsekaiGame.Economy.RegionalFlow;
 using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -409,6 +410,7 @@ namespace UnityIsekaiGame.Development.Automation
             PropertyRuntime properties,
             ContractEconomyRuntime contracts,
             InstitutionalRevenueRuntime institutionalRevenue,
+            RegionalFlowRuntime regionalFlow,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -449,6 +451,7 @@ namespace UnityIsekaiGame.Development.Automation
             Properties = properties;
             Contracts = contracts;
             InstitutionalRevenue = institutionalRevenue;
+            RegionalFlow = regionalFlow;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -491,6 +494,7 @@ namespace UnityIsekaiGame.Development.Automation
         public PropertyRuntime Properties { get; }
         public ContractEconomyRuntime Contracts { get; }
         public InstitutionalRevenueRuntime InstitutionalRevenue { get; }
+        public RegionalFlowRuntime RegionalFlow { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -531,7 +535,8 @@ namespace UnityIsekaiGame.Development.Automation
             BusinessRuntime businesses = null,
             PropertyRuntime properties = null,
             ContractEconomyRuntime contracts = null,
-            InstitutionalRevenueRuntime institutionalRevenue = null)
+            InstitutionalRevenueRuntime institutionalRevenue = null,
+            RegionalFlowRuntime regionalFlow = null)
         {
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
             professionRuntime.Configure(definitionRegistry, knownPersonIds);
@@ -567,7 +572,9 @@ namespace UnityIsekaiGame.Development.Automation
             contractRuntime.Configure(definitionRegistry, worldId);
             InstitutionalRevenueRuntime institutionalRevenueRuntime = institutionalRevenue ?? new InstitutionalRevenueRuntime();
             institutionalRevenueRuntime.Configure(definitionRegistry, worldId);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, null);
+            RegionalFlowRuntime regionalFlowRuntime = regionalFlow ?? new RegionalFlowRuntime();
+            regionalFlowRuntime.Configure(definitionRegistry, worldId);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -613,6 +620,7 @@ namespace UnityIsekaiGame.Development.Automation
             PropertyRuntime properties = new PropertyRuntime();
             ContractEconomyRuntime contracts = new ContractEconomyRuntime();
             InstitutionalRevenueRuntime institutionalRevenue = new InstitutionalRevenueRuntime();
+            RegionalFlowRuntime regionalFlow = new RegionalFlowRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -640,8 +648,9 @@ namespace UnityIsekaiGame.Development.Automation
             properties.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             contracts.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             institutionalRevenue.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
+            regionalFlow.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -698,7 +707,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Businesses?.CreateSaveData(),
                 Properties?.CreateSaveData(),
                 Contracts?.CreateSaveData(),
-                InstitutionalRevenue?.CreateSaveData());
+                InstitutionalRevenue?.CreateSaveData(),
+                RegionalFlow?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -737,7 +747,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Businesses", Businesses?.Revision ?? 0L, Businesses?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Properties", Properties?.Revision ?? 0L, Properties?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Contracts", Contracts?.Revision ?? 0L, Contracts?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("InstitutionalRevenue", InstitutionalRevenue?.Revision ?? 0L, InstitutionalRevenue?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("InstitutionalRevenue", InstitutionalRevenue?.Revision ?? 0L, InstitutionalRevenue?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("RegionalFlow", RegionalFlow?.Revision ?? 0L, RegionalFlow?.CreateSaveData())
             });
         }
 
@@ -1078,6 +1089,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (RegionalFlow != null && snapshot.RegionalFlow != null)
+            {
+                RegionalFlowOperationResult result = RegionalFlow.RestoreFromSaveData(snapshot.RegionalFlow, DefinitionRegistry);
+                if (!result.Succeeded)
+                {
+                    failure = $"Regional flow restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1166,7 +1187,8 @@ namespace UnityIsekaiGame.Development.Automation
             BusinessRuntimeSaveData businesses,
             PropertyRuntimeSaveData properties,
             ContractRuntimeSaveData contracts,
-            InstitutionalRevenueRuntimeSaveData institutionalRevenue)
+            InstitutionalRevenueRuntimeSaveData institutionalRevenue,
+            RegionalFlowRuntimeSaveData regionalFlow)
         {
             Knowledge = knowledge;
             History = history;
@@ -1201,6 +1223,7 @@ namespace UnityIsekaiGame.Development.Automation
             Properties = properties;
             Contracts = contracts;
             InstitutionalRevenue = institutionalRevenue;
+            RegionalFlow = regionalFlow;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1236,6 +1259,7 @@ namespace UnityIsekaiGame.Development.Automation
         public PropertyRuntimeSaveData Properties { get; }
         public ContractRuntimeSaveData Contracts { get; }
         public InstitutionalRevenueRuntimeSaveData InstitutionalRevenue { get; }
+        public RegionalFlowRuntimeSaveData RegionalFlow { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
