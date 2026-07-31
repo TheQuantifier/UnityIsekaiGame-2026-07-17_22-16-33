@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
+using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.Markets;
@@ -203,6 +204,33 @@ namespace UnityIsekaiGame.Development.Automation
                     "Condition, inspection, maintenance, and persistence remain explicit",
                     50,
                     Step("step11-property-maintenance", "Maintain and persist property", PropertyConditionMaintenancePersistence))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.7.contracts-loans-obligations",
+                "Contracts, Loans, and Obligations",
+                "11.7",
+                11070,
+                new[] { "ContractEconomyRuntime", "EconomyRuntime", "CurrencyDefinition", "InformationAccessRuntime" },
+                ContractScenario(
+                    "proposal-activation",
+                    "Proposals activate into versioned contracts and obligations without moving money",
+                    10,
+                    Step("step11-contract-proposal", "Activate proposal", ContractProposalActivation)),
+                ContractScenario(
+                    "obligation-payment-rollback",
+                    "Obligation payments use EconomyRuntime and roll back injected failures",
+                    20,
+                    Step("step11-contract-obligation", "Pay obligation atomically", ContractObligationPaymentRollback)),
+                ContractScenario(
+                    "loan-interest-collateral",
+                    "Loans disburse, accrue exact interest, schedule repayment, and track collateral",
+                    30,
+                    Step("step11-contract-loan", "Run loan lifecycle", ContractLoanInterestCollateral)),
+                ContractScenario(
+                    "persistence-graph-validation",
+                    "Contract persistence rejects broken graphs before commit",
+                    40,
+                    Step("step11-contract-persistence", "Validate persistence graph", ContractPersistenceGraphValidation))), out _);
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -2208,6 +2236,143 @@ namespace UnityIsekaiGame.Development.Automation
             return item;
         }
 
+        private static TestLabAutomationStepResult ContractProposalActivation(TestLabAutomationContext context)
+        {
+            if (!TryGetContractRuntime(context, out ContractEconomyRuntime contracts, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure))
+            {
+                return Fail("step11-contract-proposal", failure);
+            }
+
+            CreateContractAccounts(context, economy, gold, customerUnits: 100L, workerUnits: 0L, lenderUnits: 0L, borrowerUnits: 0L);
+            ContractProposalData proposal = ContractProposal(context, "service", gold.Id, 25L);
+            ContractEconomyOperationResult create = contracts.CreateProposal(proposal, Tx(context, "contract-proposal"));
+            ContractEconomyOperationResult acceptCustomer = contracts.AcceptProposal(proposal.proposalId, "party.customer", 1d, Tx(context, "contract-accept-customer"));
+            ContractEconomyOperationResult acceptWorker = contracts.AcceptProposal(proposal.proposalId, "party.worker", 1d, Tx(context, "contract-accept-worker"));
+            ContractEconomyOperationResult activate = contracts.ActivateProposal(proposal.proposalId, Scoped(context, "contract", "service"), 2d, Tx(context, "contract-activate"));
+            bool valid = create.Succeeded
+                && acceptCustomer.Succeeded
+                && acceptWorker.Succeeded
+                && activate.Succeeded
+                && contracts.Obligations.Count == 1
+                && contracts.Obligations[0].amountDueUnits == 25L
+                && economy.TryGetAccount(Account(context, "customer"), out EconomyAccountSnapshot customer)
+                && customer.BalanceUnits == 100L;
+            return TestLabAssertions.True("step11-contract-proposal", "Proposals activate into versioned contracts and obligations without moving money", valid, $"Create={create.Code} Activate={activate.Code} Obligations={contracts.Obligations.Count}");
+        }
+
+        private static TestLabAutomationStepResult ContractObligationPaymentRollback(TestLabAutomationContext context)
+        {
+            if (!TryGetContractRuntime(context, out ContractEconomyRuntime contracts, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure))
+            {
+                return Fail("step11-contract-obligation", failure);
+            }
+
+            CreateContractAccounts(context, economy, gold, customerUnits: 100L, workerUnits: 0L, lenderUnits: 0L, borrowerUnits: 0L);
+            string contractId = ActivateAutomationContract(context, contracts, gold.Id, "service", 40L);
+            string obligationId = $"obligation.{contractId}.term.payment";
+            ContractEconomyOperationResult failed = contracts.AllocatePaymentToObligation(obligationId, economy, Tx(context, "contract-pay-failed"), 10L, 3d, injectFailureStage: "after-economy-transfer");
+            economy.TryGetAccount(Account(context, "customer"), out EconomyAccountSnapshot customerAfterFailure);
+            ContractEconomyOperationResult paid = contracts.AllocatePaymentToObligation(obligationId, economy, Tx(context, "contract-pay"), 30L, 4d);
+            ContractEconomyOperationResult duplicate = contracts.AllocatePaymentToObligation(obligationId, economy, Tx(context, "contract-pay"), 30L, 4d);
+            contracts.TryGetObligation(obligationId, out ContractObligationData obligation);
+            economy.TryGetAccount(Account(context, "worker"), out EconomyAccountSnapshot worker);
+            bool valid = !failed.Succeeded
+                && failed.Code == ContractOperationCode.RolledBack
+                && customerAfterFailure != null
+                && customerAfterFailure.BalanceUnits == 100L
+                && paid.Succeeded
+                && duplicate.Succeeded
+                && duplicate.Duplicate
+                && obligation != null
+                && obligation.amountSatisfiedUnits == 30L
+                && obligation.OutstandingUnits == 10L
+                && worker != null
+                && worker.BalanceUnits == 30L;
+            return TestLabAssertions.True("step11-contract-obligation", "Obligation payments use EconomyRuntime and roll back injected failures", valid, $"Failed={failed.Code} Paid={paid.Code} Duplicate={duplicate.Code} Satisfied={obligation?.amountSatisfiedUnits}");
+        }
+
+        private static TestLabAutomationStepResult ContractLoanInterestCollateral(TestLabAutomationContext context)
+        {
+            if (!TryGetContractRuntime(context, out ContractEconomyRuntime contracts, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure))
+            {
+                return Fail("step11-contract-loan", failure);
+            }
+
+            CreateContractAccounts(context, economy, gold, customerUnits: 0L, workerUnits: 0L, lenderUnits: 1000L, borrowerUnits: 100L);
+            string contractId = ActivateAutomationContract(context, contracts, gold.Id, "loan", 0L);
+            LoanData loan = new LoanData
+            {
+                loanId = Scoped(context, "loan", "prototype"),
+                contractId = contractId,
+                lenderPartyId = "party.lender",
+                borrowerPartyId = "party.borrower",
+                lenderAccountId = Account(context, "lender"),
+                borrowerAccountId = Account(context, "borrower"),
+                currencyId = gold.Id,
+                principalUnits = 500L,
+                interestRatePerPeriod = new ContractRationalData { numerator = 1L, denominator = 10L, rounding = ContractRoundingMode.Floor },
+                state = LoanState.Approved
+            };
+            ContractEconomyOperationResult create = contracts.CreateLoan(loan, Tx(context, "loan-create"));
+            ContractEconomyOperationResult disburse = contracts.DisburseLoan(loan.loanId, economy, Tx(context, "loan-disburse"), 5d);
+            ContractEconomyOperationResult schedule = contracts.GenerateRepaymentSchedule(loan.loanId, 5, 10d, 10d, Tx(context, "loan-schedule"));
+            ContractEconomyOperationResult accrue = contracts.AccrueLoanInterest(loan.loanId, "period.001", Tx(context, "loan-interest"));
+            ContractEconomyOperationResult collateral = contracts.AddCollateral(new CollateralDesignationData
+            {
+                collateralId = Scoped(context, "collateral", "sword"),
+                contractId = contractId,
+                loanId = loan.loanId,
+                assetKind = CollateralAssetKind.ItemInstance,
+                assetId = Scoped(context, "item-instance", "sword"),
+                providerPartyId = "party.borrower",
+                currencyId = gold.Id,
+                estimatedValueUnits = 80L
+            }, Tx(context, "loan-collateral"));
+            ContractEconomyOperationResult repay = contracts.RepayLoan(loan.loanId, economy, Tx(context, "loan-repay"), 75L, 20d);
+            contracts.TryGetLoan(loan.loanId, out LoanData liveLoan);
+            economy.TryGetAccount(Account(context, "lender"), out EconomyAccountSnapshot lender);
+            economy.TryGetAccount(Account(context, "borrower"), out EconomyAccountSnapshot borrower);
+            bool valid = create.Succeeded
+                && disburse.Succeeded
+                && schedule.Succeeded
+                && accrue.Succeeded
+                && collateral.Succeeded
+                && repay.Succeeded
+                && liveLoan != null
+                && liveLoan.outstandingPrincipalUnits == 475L
+                && liveLoan.accruedInterestOutstandingUnits == 0L
+                && liveLoan.collateralIds.Contains(Scoped(context, "collateral", "sword"))
+                && contracts.Installments.Count == 5
+                && lender != null
+                && borrower != null
+                && lender.BalanceUnits == 575L
+                && borrower.BalanceUnits == 525L;
+            return TestLabAssertions.True("step11-contract-loan", "Loans disburse, accrue exact interest, schedule repayment, and track collateral", valid, $"Create={create.Code} Disburse={disburse.Code} Accrue={accrue.Code} Repay={repay.Code} Principal={liveLoan?.outstandingPrincipalUnits}");
+        }
+
+        private static TestLabAutomationStepResult ContractPersistenceGraphValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetContractRuntime(context, out ContractEconomyRuntime contracts, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure))
+            {
+                return Fail("step11-contract-persistence", failure);
+            }
+
+            CreateContractAccounts(context, economy, gold, customerUnits: 100L, workerUnits: 0L, lenderUnits: 0L, borrowerUnits: 0L);
+            string contractId = ActivateAutomationContract(context, contracts, gold.Id, "persist", 20L);
+            ContractRuntimeSaveData save = contracts.CreateSaveData();
+            ContractEconomyRuntime restored = new ContractEconomyRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.WorldId);
+            ContractEconomyOperationResult restore = restored.RestoreFromSaveData(save, context.ScenarioContext.Runtimes.DefinitionRegistry);
+            ContractRuntimeSaveData corrupt = save.Clone();
+            corrupt.contracts[0].obligationIds = new[] { "obligation.missing" };
+            bool rejected = !ContractEconomyRuntime.ValidateSaveData(corrupt, context.ScenarioContext.Runtimes.DefinitionRegistry, out string validationFailure);
+            bool valid = restore.Succeeded
+                && restored.TryGetContract(contractId, out _)
+                && rejected
+                && validationFailure.Contains("missing obligation");
+            return TestLabAssertions.True("step11-contract-persistence", "Contract persistence rejects broken graphs before commit", valid, $"Restore={restore.Code} Rejected={rejected} Failure={validationFailure}");
+        }
+
         private static bool TryGetRuntime(TestLabAutomationContext context, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure)
         {
             economy = context?.ScenarioContext?.Runtimes?.Economy;
@@ -2234,6 +2399,80 @@ namespace UnityIsekaiGame.Development.Automation
 
             economy.Configure(registry, context.ScenarioContext.Runtimes.WorldId);
             return true;
+        }
+
+        private static bool TryGetContractRuntime(TestLabAutomationContext context, out ContractEconomyRuntime contracts, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure)
+        {
+            contracts = context?.ScenarioContext?.Runtimes?.Contracts;
+            if (!TryGetRuntime(context, out economy, out gold, out failure))
+            {
+                return false;
+            }
+
+            if (contracts == null)
+            {
+                failure = "Contract economy runtime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            contracts.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.WorldId);
+            return true;
+        }
+
+        private static void CreateContractAccounts(TestLabAutomationContext context, EconomyRuntime economy, CurrencyDefinition gold, long customerUnits, long workerUnits, long lenderUnits, long borrowerUnits)
+        {
+            economy.CreateAccount(Account(context, "customer"), gold, "person.customer", EconomyAccountKind.PersonWallet, customerUnits, Tx(context, "open-customer"));
+            economy.CreateAccount(Account(context, "worker"), gold, "person.worker", EconomyAccountKind.PersonWallet, workerUnits, Tx(context, "open-worker"));
+            economy.CreateAccount(Account(context, "lender"), gold, "person.lender", EconomyAccountKind.PersonWallet, lenderUnits, Tx(context, "open-lender"));
+            economy.CreateAccount(Account(context, "borrower"), gold, "person.borrower", EconomyAccountKind.PersonWallet, borrowerUnits, Tx(context, "open-borrower"));
+        }
+
+        private static ContractProposalData ContractProposal(TestLabAutomationContext context, string slug, string currencyId, long amountUnits)
+        {
+            return new ContractProposalData
+            {
+                proposalId = Scoped(context, "contract-proposal", slug),
+                category = amountUnits <= 0L ? EconomicContractCategory.Loan : EconomicContractCategory.Service,
+                state = ContractProposalState.Offered,
+                createdByPartyId = amountUnits <= 0L ? "party.lender" : "party.customer",
+                parties = amountUnits <= 0L
+                    ? new[]
+                    {
+                        new ContractPartyData { partyId = "party.lender", role = ContractPartyRole.Lender, reference = ContractPartyReferenceData.Person("person.lender"), accountId = Account(context, "lender") },
+                        new ContractPartyData { partyId = "party.borrower", role = ContractPartyRole.Borrower, reference = ContractPartyReferenceData.Person("person.borrower"), accountId = Account(context, "borrower") }
+                    }
+                    : new[]
+                    {
+                        new ContractPartyData { partyId = "party.customer", role = ContractPartyRole.Debtor, reference = ContractPartyReferenceData.Person("person.customer"), accountId = Account(context, "customer") },
+                        new ContractPartyData { partyId = "party.worker", role = ContractPartyRole.Creditor, reference = ContractPartyReferenceData.Person("person.worker"), accountId = Account(context, "worker") }
+                    },
+                terms = new[]
+                {
+                    new ContractTermData
+                    {
+                        termId = "term.payment",
+                        category = amountUnits <= 0L ? ContractTermCategory.General : ContractTermCategory.Payment,
+                        responsiblePartyId = amountUnits <= 0L ? "party.borrower" : "party.customer",
+                        beneficiaryPartyId = amountUnits <= 0L ? "party.lender" : "party.worker",
+                        currencyId = currencyId,
+                        amountUnits = amountUnits,
+                        dueWorldTime = 10d
+                    }
+                }
+            };
+        }
+
+        private static string ActivateAutomationContract(TestLabAutomationContext context, ContractEconomyRuntime contracts, string currencyId, string slug, long amountUnits)
+        {
+            ContractProposalData proposal = ContractProposal(context, slug, currencyId, amountUnits);
+            string firstParty = amountUnits <= 0L ? "party.lender" : "party.customer";
+            string secondParty = amountUnits <= 0L ? "party.borrower" : "party.worker";
+            string contractId = Scoped(context, "contract", slug);
+            contracts.CreateProposal(proposal, Tx(context, slug + "-proposal"));
+            contracts.AcceptProposal(proposal.proposalId, firstParty, 1d, Tx(context, slug + "-accept-a"));
+            contracts.AcceptProposal(proposal.proposalId, secondParty, 1d, Tx(context, slug + "-accept-b"));
+            contracts.ActivateProposal(proposal.proposalId, contractId, 2d, Tx(context, slug + "-activate"));
+            return contractId;
         }
 
         private static bool TryGetPhysicalRuntime(TestLabAutomationContext context, out EconomyRuntime economy, out CurrencyDefinition currency, out ItemDefinition coin, out string failure)
@@ -2314,6 +2553,21 @@ namespace UnityIsekaiGame.Development.Automation
         }
 
         private static ITestLabAutomationScenario PropertyScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[] { GoldCurrencyId });
+        }
+
+        private static ITestLabAutomationScenario ContractScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
         {
             return new TestLabAutomationScenario(
                 scenarioId,
