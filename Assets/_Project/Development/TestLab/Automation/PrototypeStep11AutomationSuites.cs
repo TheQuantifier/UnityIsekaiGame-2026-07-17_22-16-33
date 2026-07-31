@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
+using UnityIsekaiGame.Economy.InstitutionalRevenue;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Economy.Properties;
@@ -231,6 +232,38 @@ namespace UnityIsekaiGame.Development.Automation
                     "Contract persistence rejects broken graphs before commit",
                     40,
                     Step("step11-contract-persistence", "Validate persistence graph", ContractPersistenceGraphValidation))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.8.taxes-fees-institutional-revenue",
+                "Taxes, Fees, and Institutional Revenue",
+                "11.8",
+                11080,
+                new[] { "InstitutionalRevenueRuntime", "EconomyRuntime", "CurrencyDefinition", "InformationAccessRuntime" },
+                TaxScenario(
+                    "exact-rates-and-assessments",
+                    "Exact revenue rates generate immutable assessments without moving money",
+                    10,
+                    Step("step11-revenue-assessment", "Calculate rates and assess events", TaxExactRatesAndAssessments)),
+                TaxScenario(
+                    "charges-and-fees",
+                    "Tariffs, tolls, license fees, and fines require explicit source events",
+                    20,
+                    Step("step11-revenue-charges", "Assess representative charges", TaxRepresentativeCharges)),
+                TaxScenario(
+                    "collection-allocation-refund",
+                    "Collection, allocation, waiver, penalty, and refund use EconomyRuntime atomically",
+                    30,
+                    Step("step11-revenue-collection", "Collect and allocate revenue", TaxCollectionAllocationRefund)),
+                TaxScenario(
+                    "withholding-remittance",
+                    "Withholding and remittance remain separate from direct tax payment",
+                    40,
+                    Step("step11-revenue-withholding", "Withhold and remit revenue", TaxWithholdingRemittance)),
+                TaxScenario(
+                    "filings-audits-projections-persistence",
+                    "Filings, audits, projections, and persistence preserve institutional revenue state",
+                    50,
+                    Step("step11-revenue-persistence", "Persist and project revenue", TaxFilingsAuditsProjectionPersistence))), out _);
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -2373,6 +2406,205 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step11-contract-persistence", "Contract persistence rejects broken graphs before commit", valid, $"Restore={restore.Code} Rejected={rejected} Failure={validationFailure}");
         }
 
+        private static TestLabAutomationStepResult TaxExactRatesAndAssessments(TestLabAutomationContext context)
+        {
+            if (!TryGetRevenueFixture(context, out TaxAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-revenue-assessment", failure);
+            }
+
+            fixture.CreateAccounts(100L, 0L, 0L);
+            fixture.RegisterAuthorityAndAccounts();
+            long fixedCharge = InstitutionalRevenueRuntime.CalculateCharge(TaxFixed(25L), 999L);
+            long proportional = InstitutionalRevenueRuntime.CalculateCharge(TaxPercent(1L, 10L), 255L);
+            long perUnit = InstitutionalRevenueRuntime.CalculateCharge(TaxPerUnit(3L), 7L);
+            long progressive = InstitutionalRevenueRuntime.CalculateCharge(TaxProgressive(), 250L);
+            long threshold = InstitutionalRevenueRuntime.CalculateCharge(TaxThreshold(100L, 12L), 100L);
+            string eventId = Scoped(context, "revenue-event", "sale");
+            fixture.RegisterEvent(eventId, fixture.SalesTax, 200L, 200L, RevenueSubjectRole.AssessedParty);
+            TaxBaseCalculationData basePreview = fixture.Revenue.CalculateBasePreview(fixture.SalesTax.Id, eventId, 5d, out string baseFailure);
+            InstitutionalRevenueOperationResult preview = fixture.Revenue.GenerateAssessment(Scoped(context, "revenue-assessment", "sale-preview"), fixture.SalesTax.Id, new[] { eventId }, fixture.AuthorityId, Scoped(context, "revenue-period", "sale-preview"), 6d, approve: true, preview: true);
+            InstitutionalRevenueOperationResult assessment = fixture.Revenue.GenerateAssessment(Scoped(context, "revenue-assessment", "sale"), fixture.SalesTax.Id, new[] { eventId }, fixture.AuthorityId, Scoped(context, "revenue-period", "sale"), 6d, approve: true, transactionId: Tx(context, "revenue-assess-sale"));
+            InstitutionalRevenueOperationResult duplicate = fixture.Revenue.GenerateAssessment(Scoped(context, "revenue-assessment", "sale-duplicate"), fixture.SalesTax.Id, new[] { eventId }, fixture.AuthorityId, Scoped(context, "revenue-period", "sale"), 7d, approve: true, transactionId: Tx(context, "revenue-assess-duplicate"));
+
+            bool valid = fixedCharge == 25L
+                && proportional == 25L
+                && perUnit == 21L
+                && progressive == 25L
+                && threshold == 12L
+                && basePreview != null
+                && string.IsNullOrWhiteSpace(baseFailure)
+                && basePreview.finalTaxableBaseUnits == 200L
+                && preview.Succeeded
+                && preview.Preview
+                && assessment.Succeeded
+                && fixture.Revenue.AssessmentCount == 1
+                && assessment.Assessment.finalAssessedUnits == 20L
+                && duplicate.Code == RevenueOperationCode.AlreadyAssessed;
+            return TestLabAssertions.True("step11-revenue-assessment", "Exact revenue rates generate immutable assessments without moving money", valid, $"Fixed={fixedCharge} Proportional={proportional} PerUnit={perUnit} Progressive={progressive} Threshold={threshold} Base={basePreview?.finalTaxableBaseUnits} Preview={preview.Code} Assessment={assessment.Code} Duplicate={duplicate.Code}");
+        }
+
+        private static TestLabAutomationStepResult TaxRepresentativeCharges(TestLabAutomationContext context)
+        {
+            if (!TryGetRevenueFixture(context, out TaxAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-revenue-charges", failure);
+            }
+
+            fixture.CreateAccounts(500L, 0L, 0L);
+            fixture.RegisterAuthorityAndAccounts();
+            InstitutionalRevenueOperationResult tariff = fixture.AssessSingleEvent(context, fixture.ImportTariff, "import", 4L, 4L, RevenueSubjectRole.AssessedParty);
+            InstitutionalRevenueOperationResult toll = fixture.AssessSingleEvent(context, fixture.Toll, "route-use", 1L, 1L, RevenueSubjectRole.AssessedParty);
+            InstitutionalRevenueOperationResult license = fixture.AssessSingleEvent(context, fixture.LicenseFee, "license", 1L, 1L, RevenueSubjectRole.AssessedParty);
+            InstitutionalRevenueOperationResult fine = fixture.AssessSingleEvent(context, fixture.Fine, "fine", 50L, 50L, RevenueSubjectRole.AssessedParty);
+
+            bool valid = tariff.Succeeded
+                && tariff.Assessment.finalAssessedUnits == 12L
+                && toll.Succeeded
+                && toll.Assessment.finalAssessedUnits == 5L
+                && license.Succeeded
+                && license.Assessment.finalAssessedUnits == 15L
+                && fine.Succeeded
+                && fine.Assessment.finalAssessedUnits == 50L;
+            return TestLabAssertions.True("step11-revenue-charges", "Tariffs, tolls, license fees, and fines require explicit source events", valid, $"Tariff={tariff.Code}:{tariff.Assessment?.finalAssessedUnits} Toll={toll.Code}:{toll.Assessment?.finalAssessedUnits} License={license.Code}:{license.Assessment?.finalAssessedUnits} Fine={fine.Code}:{fine.Assessment?.finalAssessedUnits}");
+        }
+
+        private static TestLabAutomationStepResult TaxCollectionAllocationRefund(TestLabAutomationContext context)
+        {
+            if (!TryGetRevenueFixture(context, out TaxAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-revenue-collection", failure);
+            }
+
+            fixture.CreateAccounts(100L, 100L, 0L);
+            fixture.RegisterAuthorityAndAccounts();
+            string eventId = Scoped(context, "revenue-event", "adjusted");
+            fixture.RegisterEvent(eventId, fixture.SalesTax, 200L, 200L, RevenueSubjectRole.AssessedParty);
+            fixture.Revenue.RegisterExemption(fixture.Adjustment(context, "exemption", fixture.SalesTax.Id, 20L), fixture.AuthorityId, Tx(context, "revenue-exemption"));
+            fixture.Revenue.RegisterDeduction(fixture.Adjustment(context, "deduction", fixture.SalesTax.Id, 30L), fixture.AuthorityId, Tx(context, "revenue-deduction"));
+            fixture.Revenue.RegisterCredit(fixture.Adjustment(context, "credit", fixture.SalesTax.Id, 4L), fixture.AuthorityId, Tx(context, "revenue-credit"));
+            InstitutionalRevenueOperationResult assessment = fixture.Revenue.GenerateAssessment(Scoped(context, "revenue-assessment", "adjusted"), fixture.SalesTax.Id, new[] { eventId }, fixture.AuthorityId, Scoped(context, "revenue-period", "adjusted"), 10d, approve: true, transactionId: Tx(context, "revenue-assess-adjusted"));
+            InstitutionalRevenueOperationResult failed = fixture.Revenue.PayObligation(assessment.Obligation.obligationId, fixture.Economy, Tx(context, "revenue-pay-failed"), 5L, 11d, injectFailureStage: "after-economy-transfer");
+            InstitutionalRevenueOperationResult payment = fixture.Revenue.PayObligation(assessment.Obligation.obligationId, fixture.Economy, Tx(context, "revenue-pay-adjusted"), assessment.Obligation.amountDueUnits, 12d);
+            InstitutionalRevenueOperationResult revenue = fixture.Revenue.RecognizeRevenue(payment.Payment.paymentId, Scoped(context, "institutional-revenue", "adjusted"), "tax.sales", Tx(context, "revenue-recognize"));
+            InstitutionalRevenueOperationResult allocation = fixture.Revenue.AllocateRevenue(revenue.RevenueRecord.revenueRecordId, fixture.Economy, fixture.AuthorityId, fixture.AllocationAccountId, Tx(context, "revenue-allocate"), 5L, 13d);
+            InstitutionalRevenueOperationResult penalty = fixture.Revenue.ApplyPenalty(Scoped(context, "revenue-penalty", "late"), assessment.Obligation.obligationId, fixture.AuthorityId, TaxFixed(3L), 14d, "late", Tx(context, "revenue-penalty"));
+            InstitutionalRevenueOperationResult waiver = fixture.Revenue.WaiveObligation(Scoped(context, "revenue-waiver", "hardship"), assessment.Obligation.obligationId, fixture.AuthorityId, 2L, 15d, Tx(context, "revenue-waiver"));
+            InstitutionalRevenueOperationResult refund = fixture.Revenue.RefundPayment(Scoped(context, "revenue-refund", "adjusted"), payment.Payment.paymentId, fixture.Economy, fixture.AuthorityId, 5L, 16d, "overpayment", Tx(context, "revenue-refund"));
+
+            fixture.Economy.TryGetAccount(fixture.PayerAccountId, out EconomyAccountSnapshot payer);
+            fixture.Economy.TryGetAccount(fixture.TreasuryAccountId, out EconomyAccountSnapshot treasury);
+            fixture.Economy.TryGetAccount(fixture.AllocationAccountId, out EconomyAccountSnapshot allocationAccount);
+            bool valid = assessment.Succeeded
+                && assessment.Assessment.finalAssessedUnits == 11L
+                && failed.Code == RevenueOperationCode.RolledBack
+                && payment.Succeeded
+                && revenue.Succeeded
+                && allocation.Succeeded
+                && penalty.Succeeded
+                && waiver.Succeeded
+                && refund.Succeeded
+                && payer != null
+                && treasury != null
+                && allocationAccount != null
+                && payer.BalanceUnits == 94L
+                && treasury.BalanceUnits == 101L
+                && allocationAccount.BalanceUnits == 5L;
+            return TestLabAssertions.True("step11-revenue-collection", "Collection, allocation, waiver, penalty, and refund use EconomyRuntime atomically", valid, $"Assessment={assessment.Code}:{assessment.Assessment?.finalAssessedUnits} Failed={failed.Code} Payment={payment.Code} Revenue={revenue.Code} Allocation={allocation.Code} Penalty={penalty.Code} Waiver={waiver.Code} Refund={refund.Code} Payer={payer?.BalanceUnits} Treasury={treasury?.BalanceUnits} Allocation={allocationAccount?.BalanceUnits}");
+        }
+
+        private static TestLabAutomationStepResult TaxWithholdingRemittance(TestLabAutomationContext context)
+        {
+            if (!TryGetRevenueFixture(context, out TaxAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-revenue-withholding", failure);
+            }
+
+            fixture.CreateAccounts(100L, 0L, 0L, 0L);
+            fixture.RegisterAuthorityAndAccounts();
+            string eventId = Scoped(context, "revenue-event", "payroll");
+            fixture.RegisterEvent(eventId, fixture.PayrollWithholding, 100L, 100L, RevenueSubjectRole.AssessedParty, "person.employer");
+            InstitutionalRevenueOperationResult assessment = fixture.Revenue.GenerateAssessment(Scoped(context, "revenue-assessment", "payroll"), fixture.PayrollWithholding.Id, new[] { eventId }, fixture.AuthorityId, Scoped(context, "revenue-period", "payroll"), 10d, approve: true, transactionId: Tx(context, "revenue-assess-payroll"));
+            InstitutionalRevenueOperationResult withholding = fixture.Revenue.WithholdFromPayment(new WithholdingRecordData
+            {
+                withholdingId = Scoped(context, "revenue-withholding", "payroll"),
+                assessmentId = assessment.Assessment.assessmentId,
+                revenueDefinitionId = fixture.PayrollWithholding.Id,
+                withholdingAgentSubjectId = "person.employer",
+                remittingPartySubjectId = "person.employer",
+                withheldFromAccountId = fixture.PayerAccountId,
+                holdingAccountId = fixture.HoldingAccountId,
+                institutionAccountId = fixture.TreasuryAccountId,
+                currencyId = fixture.Gold.Id,
+                withheldUnits = assessment.Assessment.finalAssessedUnits
+            }, fixture.Economy, Tx(context, "revenue-withhold"));
+            InstitutionalRevenueOperationResult remit = fixture.Revenue.RemitWithholding(withholding.Withholding.withholdingId, fixture.Economy, Tx(context, "revenue-remit"), withholding.Withholding.withheldUnits, 11d);
+
+            fixture.Economy.TryGetAccount(fixture.PayerAccountId, out EconomyAccountSnapshot payer);
+            fixture.Economy.TryGetAccount(fixture.HoldingAccountId, out EconomyAccountSnapshot holding);
+            fixture.Economy.TryGetAccount(fixture.TreasuryAccountId, out EconomyAccountSnapshot treasury);
+            bool valid = assessment.Succeeded
+                && assessment.Assessment.finalAssessedUnits == 10L
+                && withholding.Succeeded
+                && remit.Succeeded
+                && fixture.Revenue.WithholdingCount == 1
+                && payer != null
+                && holding != null
+                && treasury != null
+                && payer.BalanceUnits == 90L
+                && holding.BalanceUnits == 0L
+                && treasury.BalanceUnits == 10L;
+            return TestLabAssertions.True("step11-revenue-withholding", "Withholding and remittance remain separate from direct tax payment", valid, $"Assessment={assessment.Code} Withhold={withholding.Code} Remit={remit.Code} Payer={payer?.BalanceUnits} Holding={holding?.BalanceUnits} Treasury={treasury?.BalanceUnits}");
+        }
+
+        private static TestLabAutomationStepResult TaxFilingsAuditsProjectionPersistence(TestLabAutomationContext context)
+        {
+            if (!TryGetRevenueFixture(context, out TaxAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-revenue-persistence", failure);
+            }
+
+            fixture.CreateAccounts(100L, 0L, 0L);
+            fixture.RegisterAuthorityAndAccounts();
+            string eventId = Scoped(context, "revenue-event", "filing");
+            fixture.RegisterEvent(eventId, fixture.SalesTax, 100L, 100L, RevenueSubjectRole.AssessedParty);
+            string assessmentId = Scoped(context, "revenue-assessment", "filing");
+            InstitutionalRevenueOperationResult assessment = fixture.Revenue.GenerateAssessment(assessmentId, fixture.SalesTax.Id, new[] { eventId }, fixture.AuthorityId, Scoped(context, "revenue-period", "filing"), 10d, approve: true, transactionId: Tx(context, "revenue-assess-filing"));
+            string filingId = Scoped(context, "revenue-filing", "sales");
+            InstitutionalRevenueOperationResult filing = fixture.Revenue.SubmitFiling(new RevenueFilingData
+            {
+                filingId = filingId,
+                periodId = Scoped(context, "revenue-period", "filing"),
+                revenueDefinitionId = fixture.SalesTax.Id,
+                reportingSubjectId = "person.taxpayer",
+                declaredTaxableEventIds = new[] { eventId }
+            }, Tx(context, "revenue-filing"));
+            InstitutionalRevenueOperationResult audit = fixture.Revenue.AuditFiling(Scoped(context, "revenue-audit", "filing"), filingId, fixture.AuditAuthorityId, RevenueAuditFindingKind.Match, assessment.Assessment.assessmentId, "Filing matches the assessed event.", 15d, Tx(context, "revenue-audit"));
+            InstitutionalRevenueOperationResult statement = fixture.Revenue.GenerateStatement(Scoped(context, "revenue-statement", "taxpayer"), "person.taxpayer", fixture.Gold.Id, 16d);
+            InformationAccessProjection<InstitutionalAssessmentData> projection = fixture.Revenue.GetAssessmentProjection(assessmentId, fixture.Access, new InformationAccessContext { RequestingPersonId = "person.public" });
+            InstitutionalRevenueRuntimeSaveData save = fixture.Revenue.CreateSaveData();
+            InstitutionalRevenueRuntime restored = new InstitutionalRevenueRuntime();
+            restored.Configure(fixture.Registry, context.ScenarioContext.Runtimes.WorldId);
+            InstitutionalRevenueOperationResult restore = restored.RestoreFromSaveData(save, fixture.Registry);
+            InstitutionalRevenueRuntimeSaveData corrupt = save.Clone();
+            corrupt.obligations[0].assessmentId = Scoped(context, "revenue-assessment", "missing");
+            bool rejected = !InstitutionalRevenueRuntime.ValidateSaveData(corrupt, fixture.Registry, out string validationFailure);
+
+            bool valid = assessment.Succeeded
+                && filing.Succeeded
+                && audit.Succeeded
+                && statement.Succeeded
+                && statement.Statement.totalDueUnits == 10L
+                && projection.Record != null
+                && (projection.Redacted || projection.Denied)
+                && restore.Succeeded
+                && restored.TryGetAssessment(assessmentId, out InstitutionalAssessmentData restoredAssessment)
+                && restoredAssessment.finalAssessedUnits == 10L
+                && rejected
+                && validationFailure.Contains("missing Assessment", StringComparison.OrdinalIgnoreCase);
+            return TestLabAssertions.True("step11-revenue-persistence", "Filings, audits, projections, and persistence preserve institutional revenue state", valid, $"Assessment={assessment.Code} Filing={filing.Code} Audit={audit.Code} Statement={statement.Code} Projection={projection.Message} Restore={restore.Code} Rejected={rejected} Failure={validationFailure}");
+        }
+
         private static bool TryGetRuntime(TestLabAutomationContext context, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure)
         {
             economy = context?.ScenarioContext?.Runtimes?.Economy;
@@ -2582,6 +2814,21 @@ namespace UnityIsekaiGame.Development.Automation
                 requiredDefinitionIds: new[] { GoldCurrencyId });
         }
 
+        private static ITestLabAutomationScenario TaxScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[] { GoldCurrencyId });
+        }
+
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
         {
             return new TestLabScenarioStep(stepId, displayName, action);
@@ -2615,6 +2862,261 @@ namespace UnityIsekaiGame.Development.Automation
         private static string Scoped(TestLabAutomationContext context, string prefix, string slug)
         {
             return context.ScenarioContext.ScopedId(prefix, slug);
+        }
+
+        private static bool TryGetRevenueFixture(TestLabAutomationContext context, out TaxAutomationFixture fixture, out string failure)
+        {
+            fixture = null;
+            failure = string.Empty;
+            EconomyRuntime economy = context?.ScenarioContext?.Runtimes?.Economy;
+            InstitutionalRevenueRuntime revenue = context?.ScenarioContext?.Runtimes?.InstitutionalRevenue;
+            InformationAccessRuntime access = context?.ScenarioContext?.Runtimes?.Access;
+            DefinitionRegistry registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (economy == null || revenue == null || registry == null)
+            {
+                failure = economy == null ? "Economy runtime is missing." : revenue == null ? "Institutional revenue runtime is missing." : "Definition registry is missing.";
+                return false;
+            }
+
+            if (!registry.TryGet(GoldCurrencyId, out CurrencyDefinition gold))
+            {
+                failure = $"Currency definition '{GoldCurrencyId}' is missing.";
+                return false;
+            }
+
+            fixture = TaxAutomationFixture.Create(context, registry, economy, revenue, access ?? new InformationAccessRuntime(), gold);
+            return true;
+        }
+
+        private static RevenueRatePolicyData TaxFixed(long units)
+        {
+            return new RevenueRatePolicyData { ratePolicyId = "rate.revenue.fixed." + units, rateKind = RevenueRateKind.FixedAmount, fixedUnits = units, smallestChargeableUnit = 1L };
+        }
+
+        private static RevenueRatePolicyData TaxPercent(long numerator, long denominator)
+        {
+            return new RevenueRatePolicyData { ratePolicyId = $"rate.revenue.percent.{numerator}.{denominator}", rateKind = RevenueRateKind.FlatProportional, rate = new RevenueRationalData { numerator = numerator, denominator = denominator }, smallestChargeableUnit = 1L };
+        }
+
+        private static RevenueRatePolicyData TaxPerUnit(long units)
+        {
+            return new RevenueRatePolicyData { ratePolicyId = "rate.revenue.per-unit." + units, rateKind = RevenueRateKind.PerUnit, perUnitUnits = units, smallestChargeableUnit = 1L };
+        }
+
+        private static RevenueRatePolicyData TaxThreshold(long threshold, long fixedUnits)
+        {
+            return new RevenueRatePolicyData
+            {
+                ratePolicyId = "rate.revenue.threshold",
+                rateKind = RevenueRateKind.ThresholdCharge,
+                thresholdUnits = threshold,
+                smallestChargeableUnit = 1L,
+                brackets = new[]
+                {
+                    new RevenueBracketData { bracketId = "threshold", lowerInclusive = 0L, upperExclusive = -1L, fixedUnits = fixedUnits, rate = new RevenueRationalData { numerator = 0L, denominator = 1L } }
+                }
+            };
+        }
+
+        private static RevenueRatePolicyData TaxProgressive()
+        {
+            return new RevenueRatePolicyData
+            {
+                ratePolicyId = "rate.revenue.progressive",
+                rateKind = RevenueRateKind.ProgressiveBracket,
+                progressiveCalculation = ProgressiveCalculationKind.Marginal,
+                smallestChargeableUnit = 1L,
+                brackets = new[]
+                {
+                    new RevenueBracketData { bracketId = "first", lowerInclusive = 0L, upperExclusive = 100L, rate = new RevenueRationalData { numerator = 1L, denominator = 10L } },
+                    new RevenueBracketData { bracketId = "second", lowerInclusive = 100L, upperExclusive = -1L, rate = new RevenueRationalData { numerator = 1L, denominator = 10L } }
+                }
+            };
+        }
+
+        private sealed class TaxAutomationFixture
+        {
+            private TaxAutomationFixture(TestLabAutomationContext context, DefinitionRegistry registry, EconomyRuntime economy, InstitutionalRevenueRuntime revenue, InformationAccessRuntime access, CurrencyDefinition gold)
+            {
+                Context = context;
+                Gold = gold;
+                SalesTax = Definition(Scoped(context, "revenue-definition", "sales-tax"), "Automation Sales Tax", gold, InstitutionalRevenueCategory.SalesTaxFoundation, TaxableEventCategory.CompletedTrade, TaxBaseKind.TransactionGrossAmount, TaxPercent(1L, 10L), RevenueAccountPurpose.TaxCollection, false);
+                PayrollWithholding = Definition(Scoped(context, "revenue-definition", "payroll-withholding"), "Automation Payroll Withholding", gold, InstitutionalRevenueCategory.PayrollTax, TaxableEventCategory.PayrollPayment, TaxBaseKind.PayrollGrossPay, TaxPercent(1L, 10L), RevenueAccountPurpose.PayrollContributionCollection, true);
+                ImportTariff = Definition(Scoped(context, "revenue-definition", "import-tariff"), "Automation Import Tariff", gold, InstitutionalRevenueCategory.ImportTariff, TaxableEventCategory.ItemImportFoundation, TaxBaseKind.ItemQuantity, TaxPerUnit(3L), RevenueAccountPurpose.CustomsCollection, false);
+                Toll = Definition(Scoped(context, "revenue-definition", "toll"), "Automation Toll", gold, InstitutionalRevenueCategory.Toll, TaxableEventCategory.RouteUseFoundation, TaxBaseKind.RouteUsageCount, TaxFixed(5L), RevenueAccountPurpose.TollCollection, false);
+                LicenseFee = Definition(Scoped(context, "revenue-definition", "license-fee"), "Automation License Fee", gold, InstitutionalRevenueCategory.LicenseFee, TaxableEventCategory.LicenseApplication, TaxBaseKind.AdministrativeServiceOccurrence, TaxFixed(15L), RevenueAccountPurpose.LicenseRevenue, false);
+                Fine = Definition(Scoped(context, "revenue-definition", "fine"), "Automation Fine", gold, InstitutionalRevenueCategory.Fine, TaxableEventCategory.ExternalFineDecision, TaxBaseKind.ExternalFineAmount, TaxFixed(50L), RevenueAccountPurpose.FineCollection, false);
+                Registry = new DefinitionRegistry(registry.DefinitionsById.Values.Concat(new IGameDefinition[] { SalesTax, PayrollWithholding, ImportTariff, Toll, LicenseFee, Fine }));
+                Economy = economy;
+                Revenue = revenue;
+                Access = access;
+                AuthorityId = Scoped(context, "revenue-authority", "tax-office");
+                AuditAuthorityId = Scoped(context, "revenue-authority", "audit-office");
+                InstitutionId = Scoped(context, "institution", "city");
+                PayerAccountId = Account(context, "revenue-taxpayer");
+                TreasuryAccountId = Account(context, "revenue-treasury");
+                AllocationAccountId = Account(context, "revenue-roads");
+                HoldingAccountId = Account(context, "revenue-withholding");
+                Economy.Configure(Registry, context.ScenarioContext.Runtimes.WorldId);
+                Revenue.Configure(Registry, context.ScenarioContext.Runtimes.WorldId);
+                Access.Configure(Registry, context.ScenarioContext.Runtimes.PersonId);
+            }
+
+            public TestLabAutomationContext Context { get; }
+            public DefinitionRegistry Registry { get; }
+            public EconomyRuntime Economy { get; }
+            public InstitutionalRevenueRuntime Revenue { get; }
+            public InformationAccessRuntime Access { get; }
+            public CurrencyDefinition Gold { get; }
+            public InstitutionalRevenueDefinition SalesTax { get; }
+            public InstitutionalRevenueDefinition PayrollWithholding { get; }
+            public InstitutionalRevenueDefinition ImportTariff { get; }
+            public InstitutionalRevenueDefinition Toll { get; }
+            public InstitutionalRevenueDefinition LicenseFee { get; }
+            public InstitutionalRevenueDefinition Fine { get; }
+            public string AuthorityId { get; }
+            public string AuditAuthorityId { get; }
+            public string InstitutionId { get; }
+            public string PayerAccountId { get; }
+            public string TreasuryAccountId { get; }
+            public string AllocationAccountId { get; }
+            public string HoldingAccountId { get; }
+
+            public static TaxAutomationFixture Create(TestLabAutomationContext context, DefinitionRegistry registry, EconomyRuntime economy, InstitutionalRevenueRuntime revenue, InformationAccessRuntime access, CurrencyDefinition gold)
+            {
+                return new TaxAutomationFixture(context, registry, economy, revenue, access, gold);
+            }
+
+            public void CreateAccounts(long payerUnits, long treasuryUnits, long allocationUnits, long holdingUnits = 0L)
+            {
+                Economy.CreateAccount(PayerAccountId, Gold, "person.taxpayer", EconomyAccountKind.PersonWallet, payerUnits, Tx(Context, "revenue-account-payer"));
+                Economy.CreateAccount(TreasuryAccountId, Gold, InstitutionId, EconomyAccountKind.OrganizationAccount, treasuryUnits, Tx(Context, "revenue-account-treasury"));
+                Economy.CreateAccount(AllocationAccountId, Gold, InstitutionId, EconomyAccountKind.OrganizationAccount, allocationUnits, Tx(Context, "revenue-account-allocation"));
+                Economy.CreateAccount(HoldingAccountId, Gold, "person.employer", EconomyAccountKind.OrganizationAccount, holdingUnits, Tx(Context, "revenue-account-holding"));
+            }
+
+            public void RegisterAuthorityAndAccounts()
+            {
+                Revenue.RegisterAuthority(Authority(AuthorityId, InstitutionalRevenueAuthorityCategory.Assess, assess: true, collect: true, refund: true, waive: true, allocate: true, audit: true), Tx(Context, "revenue-authority-tax"));
+                Revenue.RegisterAuthority(Authority(AuditAuthorityId, InstitutionalRevenueAuthorityCategory.Audit, assess: false, collect: false, refund: false, waive: false, allocate: false, audit: true), Tx(Context, "revenue-authority-audit"));
+                Assign(RevenueAccountPurpose.TaxCollection, TreasuryAccountId, AuthorityId);
+                Assign(RevenueAccountPurpose.PayrollContributionCollection, TreasuryAccountId, AuthorityId);
+                Assign(RevenueAccountPurpose.CustomsCollection, TreasuryAccountId, AuthorityId);
+                Assign(RevenueAccountPurpose.TollCollection, TreasuryAccountId, AuthorityId);
+                Assign(RevenueAccountPurpose.LicenseRevenue, TreasuryAccountId, AuthorityId);
+                Assign(RevenueAccountPurpose.FineCollection, TreasuryAccountId, AuthorityId);
+                Assign(RevenueAccountPurpose.RevenueDistribution, AllocationAccountId, AuthorityId);
+            }
+
+            public InstitutionalRevenueOperationResult AssessSingleEvent(TestLabAutomationContext context, InstitutionalRevenueDefinition definition, string slug, long monetaryValueUnits, long quantityUnits, RevenueSubjectRole role)
+            {
+                string eventId = Scoped(context, "revenue-event", slug);
+                RegisterEvent(eventId, definition, monetaryValueUnits, quantityUnits, role);
+                return Revenue.GenerateAssessment(Scoped(context, "revenue-assessment", slug), definition.Id, new[] { eventId }, AuthorityId, Scoped(context, "revenue-period", slug), 10d, approve: true, transactionId: Tx(context, "revenue-assess-" + slug));
+            }
+
+            public void RegisterEvent(string eventId, InstitutionalRevenueDefinition definition, long monetaryValueUnits, long quantityUnits, RevenueSubjectRole role, string withholdingAgent = "")
+            {
+                Revenue.RegisterTaxableEvent(new TaxableEventData
+                {
+                    taxableEventId = eventId,
+                    revenueDefinitionId = definition.Id,
+                    eligibleCategory = definition.Category,
+                    eventCategory = definition.TaxableEventCategories.First(),
+                    assessedSubject = Subject("person.taxpayer", PayerAccountId, role),
+                    otherSubjects = string.IsNullOrWhiteSpace(withholdingAgent)
+                        ? Array.Empty<RevenueSubjectReferenceData>()
+                        : new[]
+                        {
+                            Subject(withholdingAgent, HoldingAccountId, RevenueSubjectRole.WithholdingAgent),
+                            Subject(withholdingAgent, HoldingAccountId, RevenueSubjectRole.RemittingParty)
+                        },
+                    institutionId = InstitutionId,
+                    currencyId = Gold.Id,
+                    eventWorldTime = 1d,
+                    monetaryValueUnits = monetaryValueUnits,
+                    quantityUnits = quantityUnits,
+                    sourceRuntime = "test-lab.automation",
+                    sourceRecordId = eventId
+                }, AuthorityId, Tx(Context, "revenue-event-" + eventId));
+            }
+
+            public RevenueAdjustmentData Adjustment(TestLabAutomationContext context, string slug, string definitionId, long amountUnits)
+            {
+                return new RevenueAdjustmentData
+                {
+                    adjustmentId = Scoped(context, "revenue-adjustment", slug),
+                    revenueDefinitionId = definitionId,
+                    subjectId = "person.taxpayer",
+                    amountUnits = amountUnits,
+                    approvalAuthorityId = AuthorityId,
+                    sourceReferenceId = Scoped(context, "revenue-adjustment-source", slug)
+                };
+            }
+
+            private void Assign(RevenueAccountPurpose purpose, string accountId, string authorityId)
+            {
+                Revenue.AssignRevenueAccount(new InstitutionalRevenueAccountAssignmentData
+                {
+                    assignmentId = Scoped(Context, "revenue-account-assignment", purpose.ToString()),
+                    institutionId = InstitutionId,
+                    institutionKind = InstitutionKind.Organization,
+                    accountId = accountId,
+                    purpose = purpose,
+                    currencyId = Gold.Id,
+                    receivingAuthorityId = authorityId
+                }, Tx(Context, "revenue-account-assignment-" + purpose));
+            }
+
+            private InstitutionalRevenueAuthorityData Authority(string authorityId, InstitutionalRevenueAuthorityCategory category, bool assess, bool collect, bool refund, bool waive, bool allocate, bool audit)
+            {
+                return new InstitutionalRevenueAuthorityData
+                {
+                    authorityId = authorityId,
+                    institutionId = InstitutionId,
+                    institutionKind = InstitutionKind.Organization,
+                    authorityCategory = category,
+                    sourceReferenceId = Scoped(Context, "revenue-authority-source", authorityId),
+                    permittedRevenueCategories = new[]
+                    {
+                        InstitutionalRevenueCategory.SalesTaxFoundation,
+                        InstitutionalRevenueCategory.PayrollTax,
+                        InstitutionalRevenueCategory.ImportTariff,
+                        InstitutionalRevenueCategory.Toll,
+                        InstitutionalRevenueCategory.LicenseFee,
+                        InstitutionalRevenueCategory.Fine
+                    },
+                    permittedSubjectKinds = new[] { RevenueSubjectKind.Person, RevenueSubjectKind.Organization },
+                    permittedCurrencyIds = new[] { Gold.Id },
+                    canAssess = assess,
+                    canCollect = collect,
+                    canReceiveRemittance = collect,
+                    canIssueRefund = refund,
+                    canWaive = waive,
+                    canAdjust = true,
+                    canAudit = audit,
+                    canAllocateRevenue = allocate
+                };
+            }
+
+            private static RevenueSubjectReferenceData Subject(string subjectId, string accountId, RevenueSubjectRole role)
+            {
+                return new RevenueSubjectReferenceData
+                {
+                    subjectKind = RevenueSubjectKind.Person,
+                    role = role,
+                    subjectId = subjectId,
+                    accountId = accountId,
+                    personId = subjectId
+                };
+            }
+
+            private static InstitutionalRevenueDefinition Definition(string id, string name, CurrencyDefinition gold, InstitutionalRevenueCategory category, TaxableEventCategory eventCategory, TaxBaseKind baseKind, RevenueRatePolicyData rate, RevenueAccountPurpose purpose, bool withholding)
+            {
+                InstitutionalRevenueDefinition definition = ScriptableObject.CreateInstance<InstitutionalRevenueDefinition>();
+                definition.Initialize(id, name, category, InstitutionKind.Organization, InstitutionalRevenueAuthorityCategory.Assess, gold, baseKind, rate, AssessmentPeriodKind.PerEvent, new[] { RevenueSubjectKind.Person }, new[] { eventCategory }, withholding, purpose, requiresFiling: true);
+                return definition;
+            }
         }
 
         private static void SetPrivate(object target, string fieldName, object value)
