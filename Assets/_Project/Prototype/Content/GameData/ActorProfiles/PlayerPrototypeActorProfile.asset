@@ -29,6 +29,6 @@ MonoBehaviour:
   baseMaximumMana: 100
   baseAttackPower: 5
   baseDefense: 0
-  baseMovementSpeed: 0
+  baseMovementSpeed: 10
   futureSensesPlaceholder: 
   futureMovementProfilePlaceholder: 

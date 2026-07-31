@@ -65,6 +65,11 @@ namespace UnityIsekaiGame.Stats
             return Mathf.Max(0f, value);
         }
 
+        public float GetBaseValue(StatType statType)
+        {
+            return baseValues.TryGetValue(statType, out float baseValue) ? baseValue : 0f;
+        }
+
         public bool AddModifier(RuntimeStatModifier modifier)
         {
             if (!modifier.IsValid || !HasStat(modifier.StatType))

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityIsekaiGame.Configuration;
 using UnityIsekaiGame.Gameplay;
 using UnityIsekaiGame.Input;
+using UnityIsekaiGame.Stats;
 
 namespace UnityIsekaiGame.Player
 {
@@ -11,6 +12,7 @@ namespace UnityIsekaiGame.Player
         [SerializeField] private PlayerInputReader input;
         [SerializeField] private PlayerMovementSettings movementSettings;
         [SerializeField] private PlayerStamina stamina;
+        [SerializeField] private ActorStats stats;
 
         private CharacterController controller;
         private float verticalVelocity;
@@ -18,6 +20,10 @@ namespace UnityIsekaiGame.Player
         private void Awake()
         {
             controller = GetComponent<CharacterController>();
+            if (stats == null)
+            {
+                stats = GetComponent<ActorStats>();
+            }
         }
 
         private void Update()
@@ -33,7 +39,7 @@ namespace UnityIsekaiGame.Player
             bool sprinting = stamina != null
                 ? stamina.EvaluateSprint(input.SprintHeld, isMoving, input.GameplayInputBlocked, Time.deltaTime)
                 : input.SprintHeld && isMoving;
-            float speed = sprinting ? movementSettings.SprintSpeed : movementSettings.WalkSpeed;
+            float speed = ResolveHorizontalSpeed(sprinting);
 
             if (controller.isGrounded && verticalVelocity < 0f)
             {
@@ -50,6 +56,21 @@ namespace UnityIsekaiGame.Player
             Vector3 horizontalVelocity = transform.TransformDirection(localMove) * speed;
             Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity;
             controller.Move(velocity * Time.deltaTime);
+        }
+
+        private float ResolveHorizontalSpeed(bool sprinting)
+        {
+            float walkSpeed = movementSettings.WalkSpeed;
+            if (stats != null && stats.IsInitialized)
+            {
+                float statMovementSpeed = stats.MovementSpeed;
+                if (statMovementSpeed > 0f)
+                {
+                    walkSpeed = statMovementSpeed;
+                }
+            }
+
+            return sprinting ? walkSpeed * movementSettings.SprintSpeedMultiplier : walkSpeed;
         }
 
         public void ResetTransientMotionForPersistenceRestore()

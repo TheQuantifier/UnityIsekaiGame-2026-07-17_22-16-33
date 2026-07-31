@@ -12,6 +12,7 @@ namespace UnityIsekaiGame.Stats
         [SerializeField, TextArea] private string description;
         [SerializeField] private CategoryDefinition primaryCategory;
         [SerializeField] private TagDefinition[] tags;
+        [SerializeField] private float baseValue;
         [SerializeField] private AttributeFormulaTerm[] attributeTerms;
         [SerializeField] private CalculatedStatRoundingPolicy roundingPolicy = CalculatedStatRoundingPolicy.NearestWhole;
         [SerializeField] private bool clampMinimumToZero = true;
@@ -22,9 +23,18 @@ namespace UnityIsekaiGame.Stats
         public CategoryDefinition PrimaryCategory => primaryCategory;
         public CategoryDomain ClassificationDomain => CategoryDomain.CalculatedStat;
         public IReadOnlyList<TagDefinition> Tags => tags ?? System.Array.Empty<TagDefinition>();
+        public float BaseValue => IsFinite(baseValue) ? baseValue : 0f;
         public IReadOnlyList<AttributeFormulaTerm> AttributeTerms => attributeTerms ?? System.Array.Empty<AttributeFormulaTerm>();
         public CalculatedStatRoundingPolicy RoundingPolicy => roundingPolicy;
         public bool ClampMinimumToZero => clampMinimumToZero;
+
+        private void OnValidate()
+        {
+            if (!IsFinite(baseValue))
+            {
+                baseValue = 0f;
+            }
+        }
 
         public void ValidateCatalogDefinition(IReadOnlyDictionary<string, IGameDefinition> definitionsById, DefinitionValidationReport report)
         {
@@ -40,6 +50,11 @@ namespace UnityIsekaiGame.Stats
             else if (!Id.StartsWith("calculated-stat-formula."))
             {
                 report.AddWarning($"Calculated stat formula '{Id}' should use the 'calculated-stat-formula.' namespace prefix.");
+            }
+
+            if (!IsFinite(baseValue))
+            {
+                report.AddError($"Calculated stat formula '{DisplayName}' has an invalid base value.");
             }
 
             HashSet<string> seenAttributeIds = new HashSet<string>();
@@ -62,6 +77,11 @@ namespace UnityIsekaiGame.Stats
                     report.AddError($"Calculated stat formula '{DisplayName}' references attribute '{attributeId}', which is not in the configured catalog.");
                 }
             }
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
     }
 }

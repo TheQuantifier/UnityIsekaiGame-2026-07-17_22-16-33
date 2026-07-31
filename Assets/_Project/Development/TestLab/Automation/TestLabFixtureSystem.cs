@@ -9,6 +9,7 @@ using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
+using UnityIsekaiGame.Economy.Properties;
 using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -403,6 +404,7 @@ namespace UnityIsekaiGame.Development.Automation
             TradeRuntime trades,
             PayrollRuntime payroll,
             BusinessRuntime businesses,
+            PropertyRuntime properties,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -440,6 +442,7 @@ namespace UnityIsekaiGame.Development.Automation
             Trades = trades;
             Payroll = payroll;
             Businesses = businesses;
+            Properties = properties;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -479,6 +482,7 @@ namespace UnityIsekaiGame.Development.Automation
         public TradeRuntime Trades { get; }
         public PayrollRuntime Payroll { get; }
         public BusinessRuntime Businesses { get; }
+        public PropertyRuntime Properties { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -516,7 +520,8 @@ namespace UnityIsekaiGame.Development.Automation
             MarketRuntime markets = null,
             TradeRuntime trades = null,
             PayrollRuntime payroll = null,
-            BusinessRuntime businesses = null)
+            BusinessRuntime businesses = null,
+            PropertyRuntime properties = null)
         {
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
             professionRuntime.Configure(definitionRegistry, knownPersonIds);
@@ -546,7 +551,9 @@ namespace UnityIsekaiGame.Development.Automation
             payrollRuntime.Configure(definitionRegistry, worldId);
             BusinessRuntime businessRuntime = businesses ?? new BusinessRuntime();
             businessRuntime.Configure(definitionRegistry, worldId);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, null);
+            PropertyRuntime propertyRuntime = properties ?? new PropertyRuntime();
+            propertyRuntime.Configure(definitionRegistry, worldId);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -589,6 +596,7 @@ namespace UnityIsekaiGame.Development.Automation
             TradeRuntime trades = new TradeRuntime();
             PayrollRuntime payroll = new PayrollRuntime();
             BusinessRuntime businesses = new BusinessRuntime();
+            PropertyRuntime properties = new PropertyRuntime();
 
             string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -613,8 +621,9 @@ namespace UnityIsekaiGame.Development.Automation
             trades.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             payroll.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             businesses.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
+            properties.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, knowledgeObject);
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -668,7 +677,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Markets?.CreateSaveData(),
                 Trades?.CreateSaveData(),
                 Payroll?.CreateSaveData(),
-                Businesses?.CreateSaveData());
+                Businesses?.CreateSaveData(),
+                Properties?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -704,7 +714,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Markets", Markets?.Revision ?? 0L, Markets?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Trades", Trades?.Revision ?? 0L, Trades?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Payroll", Payroll?.Revision ?? 0L, Payroll?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("Businesses", Businesses?.Revision ?? 0L, Businesses?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("Businesses", Businesses?.Revision ?? 0L, Businesses?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Properties", Properties?.Revision ?? 0L, Properties?.CreateSaveData())
             });
         }
 
@@ -1015,6 +1026,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (Properties != null && snapshot.Properties != null)
+            {
+                PropertyOperationResult result = Properties.RestoreFromSaveData(snapshot.Properties, DefinitionRegistry);
+                if (!result.Succeeded)
+                {
+                    failure = $"Property restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1100,7 +1121,8 @@ namespace UnityIsekaiGame.Development.Automation
             MarketRuntimeSaveData markets,
             TradeRuntimeSaveData trades,
             PayrollRuntimeSaveData payroll,
-            BusinessRuntimeSaveData businesses)
+            BusinessRuntimeSaveData businesses,
+            PropertyRuntimeSaveData properties)
         {
             Knowledge = knowledge;
             History = history;
@@ -1132,6 +1154,7 @@ namespace UnityIsekaiGame.Development.Automation
             Trades = trades;
             Payroll = payroll;
             Businesses = businesses;
+            Properties = properties;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1164,6 +1187,7 @@ namespace UnityIsekaiGame.Development.Automation
         public TradeRuntimeSaveData Trades { get; }
         public PayrollRuntimeSaveData Payroll { get; }
         public BusinessRuntimeSaveData Businesses { get; }
+        public PropertyRuntimeSaveData Properties { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint

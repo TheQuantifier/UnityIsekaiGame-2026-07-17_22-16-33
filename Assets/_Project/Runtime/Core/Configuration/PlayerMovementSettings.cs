@@ -19,6 +19,7 @@ namespace UnityIsekaiGame.Configuration
 
         public float WalkSpeed => walkSpeed;
         public float SprintSpeed => sprintSpeed;
+        public float SprintSpeedMultiplier => walkSpeed > 0f ? sprintSpeed / walkSpeed : 1f;
         public float JumpHeight => jumpHeight;
         public float Gravity => gravity;
         public float GroundedStickForce => groundedStickForce;
