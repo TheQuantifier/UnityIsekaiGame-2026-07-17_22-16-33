@@ -9,6 +9,7 @@ using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.InstitutionalRevenue;
+using UnityIsekaiGame.Economy.Integration;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Economy.Properties;
@@ -299,6 +300,137 @@ namespace UnityIsekaiGame.Development.Automation
                     "Cycles, access projections, rollback, and persistence validation are explicit",
                     50,
                     Step("step11-regional-hardening", "Harden regional runtime", RegionalFlowCycleAccessPersistence))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.10.economy-integration-finalization",
+                "Economy Integration Finalization",
+                "11.10",
+                11100,
+                new[] { "EconomyIntegrationFacade", "EconomyRuntime", "MarketRuntime", "TradeRuntime", "PayrollRuntime", "BusinessRuntime", "PropertyRuntime", "ContractEconomyRuntime", "InstitutionalRevenueRuntime", "RegionalFlowRuntime", "InformationAccessRuntime" },
+                IntegrationScenario(
+                    "readiness-authority-map",
+                    "Integrated Step 11 readiness and authority map validate",
+                    10,
+                    Step("step11-integration-readiness", "Validate readiness", EconomyIntegrationReadiness),
+                    Step("step11-integration-authority", "Validate authority map", EconomyIntegrationAuthorityMap)),
+                IntegrationScenario(
+                    "graph-boundaries-conservation",
+                    "Graph validation, boundary invariants, and conservation audits pass",
+                    20,
+                    Step("step11-integration-graph", "Validate graph", EconomyIntegrationGraph),
+                    Step("step11-integration-boundaries", "Audit boundaries", EconomyIntegrationBoundaries),
+                    Step("step11-integration-conservation", "Audit conservation", EconomyIntegrationConservation)),
+                IntegrationScenario(
+                    "persistence-restore-determinism",
+                    "Persistence dependency, restore replay, and deterministic snapshots are explicit",
+                    30,
+                    Step("step11-integration-persistence", "Validate persistence dependencies", EconomyIntegrationPersistence),
+                    Step("step11-integration-determinism", "Validate deterministic snapshot", EconomyIntegrationDeterminism)),
+                IntegrationScenario(
+                    "access-signals-step12",
+                    "Economic access audit and Step 12 signals are mutation-free",
+                    40,
+                    Step("step11-integration-access", "Audit access", EconomyIntegrationAccess),
+                    Step("step11-integration-signals", "Create Step 12 signal", EconomyIntegrationStep12Signals)),
+                IntegrationScenario(
+                    "complete-economic-scenario",
+                    "Complete Step 11 integration scenario validates without taking ownership",
+                    50,
+                    Step("step11-integration-complete", "Validate complete integration", EconomyIntegrationComplete))), out _);
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationReadiness(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicReadinessSnapshot readiness = facade.EvaluateReadiness();
+            bool valid = readiness.Ready
+                && readiness.RuntimeSummaries.Count == 9
+                && readiness.RuntimeSummaries.All(summary => summary.present);
+            return TestLabAssertions.True("step11-integration-readiness", "Integrated Step 11 readiness validates hostlessly", valid, $"Ready={readiness.Ready} Runtimes={readiness.RuntimeSummaries.Count} Diagnostics={Diagnostics(readiness.Diagnostics)}");
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationAuthorityMap(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicValidationResult result = facade.ValidateAuthorityMap();
+            bool valid = result.Succeeded
+                && EconomyIntegrationFacade.CreateAuthorityMap().Count(entry => entry.featureId.StartsWith("11.", StringComparison.Ordinal)) == 9
+                && EconomyIntegrationFacade.CreateAuthorityMap().Any(entry => entry.domainId == EconomicDomainAuthorityId.RegionalFlow && entry.authoritativeRuntime == nameof(RegionalFlowRuntime));
+            return TestLabAssertions.True("step11-integration-authority", "Step 11 has one explicit economic authority per domain", valid, $"Succeeded={result.Succeeded} Diagnostics={result.Summary}");
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationGraph(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicValidationResult result = facade.ValidateEconomicGraph();
+            return TestLabAssertions.True("step11-integration-graph", "Integrated economic graph validates through authoritative save contracts", result.Succeeded, result.Summary);
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationBoundaries(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            IReadOnlyList<EconomicBoundaryInvariantResult> invariants = facade.AuditBoundaryInvariants();
+            bool valid = invariants.Count >= 11 && invariants.All(item => item.satisfied);
+            return TestLabAssertions.True("step11-integration-boundaries", "Boundary invariants preserve Step 11 ownership", valid, $"Satisfied={invariants.Count(item => item.satisfied)}/{invariants.Count}");
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationConservation(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicConservationAuditResult result = facade.AuditExactArithmeticAndConservation();
+            return TestLabAssertions.True("step11-integration-conservation", "Exact arithmetic and conservation audits pass", result.succeeded, $"LedgerNet={result.monetaryLedgerNet} RegionalUnits={result.regionalKnownPoolUnits} Checked={result.checkedRuntimeCount}. {result.message}");
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationPersistence(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicPersistenceDependencyMapResult result = facade.BuildPersistenceDependencyMap();
+            bool valid = result.Succeeded
+                && result.Participants.Count == 9
+                && result.Participants.Last().participantKey == RegionalFlowPersistenceParticipant.Key;
+            return TestLabAssertions.True("step11-integration-persistence", "Persistence dependency map is explicit and acyclic", valid, $"Succeeded={result.Succeeded} Participants={string.Join(",", result.Participants.Select(item => item.participantKey))} Diagnostics={Diagnostics(result.Diagnostics)}");
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationDeterminism(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicIntegrationSnapshot first = facade.CreateSnapshot();
+            EconomicIntegrationSnapshot second = facade.CreateSnapshot();
+            bool valid = string.Equals(first.Fingerprint, second.Fingerprint, StringComparison.Ordinal)
+                && first.RuntimeSummaries.Select(item => item.runtimeName).SequenceEqual(second.RuntimeSummaries.Select(item => item.runtimeName));
+            return TestLabAssertions.True("step11-integration-determinism", "Integration snapshots are deterministic and registry-order independent", valid, $"First={first.Fingerprint} Second={second.Fingerprint}");
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationAccess(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicValidationResult result = facade.AuditAccessAndRedaction();
+            return TestLabAssertions.True("step11-integration-access", "Economic projections require the Step 8 access runtime", result.Succeeded, result.Summary);
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationStep12Signals(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicSignalContractData signal = facade.CreateStep12SignalContract(context.ScenarioContext.ScopedId("economy-signal", "labor"), EconomicSignalCategory.LaborPressure, context.ScenarioContext.Runtimes.WorldId, 1L, 12d);
+            EconomicIntegrationSnapshot snapshot = facade.CreateSnapshot(signal);
+            signal.exactValue = 99L;
+            bool valid = snapshot.Signals.Count == 1
+                && snapshot.Signals[0].step12Ready
+                && snapshot.Signals[0].mutationFree
+                && snapshot.Signals[0].exactValue == 1L
+                && snapshot.Signals[0].dependencyRevisions.Length == 9;
+            return TestLabAssertions.True("step11-integration-signals", "Step 12 economic signal contract is immutable and mutation-free", valid, $"Signal={snapshot.Signals[0].signalId} Ready={snapshot.Signals[0].step12Ready} Revisions={snapshot.Signals[0].dependencyRevisions.Length}");
+        }
+
+        private static TestLabAutomationStepResult EconomyIntegrationComplete(TestLabAutomationContext context)
+        {
+            EconomyIntegrationFacade facade = CreateIntegrationFacade(context);
+            EconomicValidationResult result = facade.ValidateAll();
+            EconomicIntegrationSnapshot snapshot = facade.CreateSnapshot(facade.CreateStep12SignalContract(context.ScenarioContext.ScopedId("economy-signal", "complete"), EconomicSignalCategory.Step12Contract, context.ScenarioContext.Runtimes.WorldId, 0L));
+            bool valid = result.Succeeded
+                && snapshot.RuntimeSummaries.Count == 9
+                && snapshot.Signals.Single().step12Ready;
+            return TestLabAssertions.True("step11-integration-complete", "Complete Step 11 integration validates without assuming ownership of external systems", valid, $"Succeeded={result.Succeeded} Snapshot={snapshot.Fingerprint} Diagnostics={result.Summary}");
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -3070,6 +3202,44 @@ namespace UnityIsekaiGame.Development.Automation
                 isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
                 requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.KnowledgeHistory,
                 requiredDefinitionIds: new[] { GoldCurrencyId });
+        }
+
+        private static ITestLabAutomationScenario IntegrationScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[] { GoldCurrencyId });
+        }
+
+        private static EconomyIntegrationFacade CreateIntegrationFacade(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            return new EconomyIntegrationFacade(
+                runtimes?.DefinitionRegistry,
+                runtimes?.Economy,
+                runtimes?.Markets,
+                runtimes?.Trades,
+                runtimes?.Payroll,
+                runtimes?.Businesses,
+                runtimes?.Properties,
+                runtimes?.Contracts,
+                runtimes?.InstitutionalRevenue,
+                runtimes?.RegionalFlow,
+                runtimes?.Access,
+                runtimes?.WorldId);
+        }
+
+        private static string Diagnostics(IEnumerable<EconomicIntegrationDiagnosticData> diagnostics)
+        {
+            return diagnostics == null ? "None" : string.Join(" | ", diagnostics.Select(item => $"{item.severity}:{item.code}:{item.message}"));
         }
 
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
