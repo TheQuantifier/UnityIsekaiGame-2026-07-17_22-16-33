@@ -90,6 +90,11 @@ crashlytics-build.properties
 # TestRunner generated files
 InitTestScene*.unity*
 /[Tt]est[Rr]esults/
+/.local-backups/
+
+# Local visual world terrain data can become very large. Keep the lightweight
+# terrain layers/materials tracked, but do not push hand-painted TerrainData.
+/[Aa]ssets/_Project/Prototype/Environment/Terrain/Data/
 
 # Addressables default ignores, before user customizations
 /ServerData
