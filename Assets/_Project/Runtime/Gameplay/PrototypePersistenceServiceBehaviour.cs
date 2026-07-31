@@ -86,6 +86,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldPayroll = true;
         [SerializeField] private bool registerWorldBusinesses = true;
         [SerializeField] private bool registerWorldProperties = true;
+        [SerializeField] private bool registerWorldContracts = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -158,6 +159,7 @@ namespace UnityIsekaiGame.Gameplay
         private PayrollPersistenceParticipant payrollParticipant;
         private BusinessPersistenceParticipant businessParticipant;
         private PropertyPersistenceParticipant propertyParticipant;
+        private ContractEconomyPersistenceParticipant contractEconomyParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -195,6 +197,7 @@ namespace UnityIsekaiGame.Gameplay
         private PayrollRuntime worldPayroll;
         private BusinessRuntime worldBusinesses;
         private PropertyRuntime worldProperties;
+        private ContractEconomyRuntime worldContracts;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -423,6 +426,19 @@ namespace UnityIsekaiGame.Gameplay
                 return worldProperties;
             }
         }
+        public ContractEconomyRuntime ContractEconomy
+        {
+            get
+            {
+                if (worldContracts == null)
+                {
+                    worldContracts = new ContractEconomyRuntime();
+                }
+
+                worldContracts.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
+                return worldContracts;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -493,6 +509,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(propertyParticipant);
                 propertyParticipant = null;
+            }
+
+            if (service != null && contractEconomyParticipant != null)
+            {
+                service.UnregisterParticipant(contractEconomyParticipant);
+                contractEconomyParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -768,6 +790,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldPayrollParticipant();
             EnsureWorldBusinessParticipant();
             EnsureWorldPropertyParticipant();
+            EnsureWorldContractEconomyParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1266,6 +1289,33 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 propertyParticipant = null;
+            }
+        }
+
+        private void EnsureWorldContractEconomyParticipant()
+        {
+            if (!registerWorldContracts || contractEconomyParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World contract economy persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            contractEconomyParticipant = new ContractEconomyPersistenceParticipant(
+                ContractEconomy,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(contractEconomyParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                contractEconomyParticipant = null;
             }
         }
 
