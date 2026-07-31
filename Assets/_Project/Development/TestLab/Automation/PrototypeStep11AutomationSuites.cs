@@ -12,13 +12,16 @@ using UnityIsekaiGame.Economy.InstitutionalRevenue;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Economy.Properties;
+using UnityIsekaiGame.Economy.RegionalFlow;
 using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Inventory.Production;
 using UnityIsekaiGame.Inventory.Recipes;
 using UnityIsekaiGame.Knowledge.Access;
+using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Progression;
 
@@ -264,6 +267,38 @@ namespace UnityIsekaiGame.Development.Automation
                     "Filings, audits, projections, and persistence preserve institutional revenue state",
                     50,
                     Step("step11-revenue-persistence", "Persist and project revenue", TaxFilingsAuditsProjectionPersistence))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.9.economic-simulation-regional-flow",
+                "Economic Simulation and Regional Flow",
+                "11.9",
+                11090,
+                new[] { "RegionalFlowRuntime", "MarketRuntime", "EconomyRuntime", "InformationAccessRuntime" },
+                RegionalFlowScenario(
+                    "pools-and-exact-aggregation",
+                    "Regions, commodity pools, and exact aggregation remain deterministic",
+                    10,
+                    Step("step11-regional-pools", "Create regional pools", RegionalFlowPoolsAndAggregation)),
+                RegionalFlowScenario(
+                    "production-consumption-market",
+                    "Production and consumption mutate pools and publish market observations",
+                    20,
+                    Step("step11-regional-production", "Run aggregate production", RegionalFlowProductionConsumptionMarket)),
+                RegionalFlowScenario(
+                    "labor-wealth-shortage",
+                    "Labor, wealth, shortage, and wage pressure are derived from aggregate state",
+                    30,
+                    Step("step11-regional-derived", "Evaluate derived regional state", RegionalFlowLaborWealthShortage)),
+                RegionalFlowScenario(
+                    "trade-flow-conservation",
+                    "Inter-region flow planning, departure, arrival, and loss conserve quantities",
+                    40,
+                    Step("step11-regional-flow", "Move commodities between regions", RegionalFlowTradeConservation)),
+                RegionalFlowScenario(
+                    "cycle-access-persistence",
+                    "Cycles, access projections, rollback, and persistence validation are explicit",
+                    50,
+                    Step("step11-regional-hardening", "Harden regional runtime", RegionalFlowCycleAccessPersistence))), out _);
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -2605,6 +2640,199 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step11-revenue-persistence", "Filings, audits, projections, and persistence preserve institutional revenue state", valid, $"Assessment={assessment.Code} Filing={filing.Code} Audit={audit.Code} Statement={statement.Code} Projection={projection.Message} Restore={restore.Code} Rejected={rejected} Failure={validationFailure}");
         }
 
+        private static TestLabAutomationStepResult RegionalFlowPoolsAndAggregation(TestLabAutomationContext context)
+        {
+            if (!TryGetRegionalFlowFixture(context, out RegionalFlowAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-regional-pools", failure);
+            }
+
+            RegionalFlowOperationResult region = fixture.CreateRegion(fixture.RegionA);
+            RegionalFlowOperationResult pool = fixture.CreatePool(fixture.FoodPoolA, fixture.RegionA, fixture.Food.Id, 10L);
+            RegionalFlowOperationResult preview = fixture.Flow.ApplyQuantityOperation(RegionalOp("regional.preview", AggregateQuantityOperationKind.Add, fixture.Food.Id, string.Empty, fixture.FoodPoolA, 5L), preview: true);
+            RegionalFlowOperationResult add = fixture.Flow.ApplyQuantityOperation(RegionalOp("regional.add", AggregateQuantityOperationKind.Add, fixture.Food.Id, string.Empty, fixture.FoodPoolA, 5L), Tx(context, "regional-add"));
+            RegionalFlowOperationResult duplicate = fixture.Flow.ApplyQuantityOperation(RegionalOp("regional.add", AggregateQuantityOperationKind.Add, fixture.Food.Id, string.Empty, fixture.FoodPoolA, 5L), Tx(context, "regional-add"));
+            RegionalFlowOperationResult aggregate = fixture.Flow.ApplyQuantityOperation(RegionalOp("regional.aggregate", AggregateQuantityOperationKind.AggregateExactItems, fixture.Food.Id, string.Empty, fixture.FoodPoolA, 3L, "exact.stack.1"), Tx(context, "regional-aggregate"));
+            RegionalFlowOperationResult doubleCount = fixture.Flow.ApplyQuantityOperation(RegionalOp("regional.aggregate.double", AggregateQuantityOperationKind.AggregateExactItems, fixture.Food.Id, string.Empty, fixture.FoodPoolA, 3L, "exact.stack.1"), Tx(context, "regional-aggregate-double"));
+
+            fixture.Flow.TryGetPool(fixture.FoodPoolA, out CommodityPoolData poolSnapshot);
+            bool valid = region.Succeeded && pool.Succeeded && preview.Preview && add.Succeeded && duplicate.Duplicate && aggregate.Succeeded && !doubleCount.Succeeded && poolSnapshot != null && poolSnapshot.totalQuantity == 18L;
+            return TestLabAssertions.True("step11-regional-pools", "Regions, commodity pools, and exact aggregation remain deterministic", valid, $"Region={region.Code} Pool={pool.Code} Preview={preview.Code} Add={add.Code} Duplicate={duplicate.Code} Aggregate={aggregate.Code} Double={doubleCount.Code} Quantity={poolSnapshot?.totalQuantity}");
+        }
+
+        private static TestLabAutomationStepResult RegionalFlowProductionConsumptionMarket(TestLabAutomationContext context)
+        {
+            if (!TryGetRegionalFlowFixture(context, out RegionalFlowAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-regional-production", failure);
+            }
+
+            fixture.CreateRegion(fixture.RegionA);
+            fixture.CreatePool(fixture.OrePoolA, fixture.RegionA, fixture.Ore.Id, 10L);
+            fixture.CreatePool(fixture.MetalPoolA, fixture.RegionA, fixture.Metal.Id, 0L);
+            fixture.CreatePool(fixture.FoodPoolA, fixture.RegionA, fixture.Food.Id, 6L);
+            fixture.CreateLaborCohort(2L, 5L);
+            fixture.CreateMarket();
+
+            ProductionCapacityResultData capacity = fixture.Flow.EvaluateProductionCapacity(Scoped(context, "regional-capacity", "smelting"), fixture.RegionA, fixture.CohortA, fixture.Smelting, 1d, new[] { fixture.OrePoolA });
+            RegionalFlowOperationResult production = fixture.Flow.ExecuteAggregateProduction(Scoped(context, "regional-production", "smelting"), fixture.RegionA, fixture.CohortA, fixture.Smelting, new[] { fixture.OrePoolA }, new[] { fixture.MetalPoolA }, 1L, 1d, fixture.Markets, fixture.MarketId, Tx(context, "regional-production"));
+            RegionalFlowOperationResult consumption = fixture.Flow.ExecuteAggregateConsumption(Scoped(context, "regional-consumption", "food"), fixture.RegionA, fixture.CohortA, fixture.Consumption, new[] { fixture.FoodPoolA }, 1L, 1d, fixture.Markets, fixture.MarketId, Tx(context, "regional-consumption"));
+
+            fixture.Flow.TryGetPool(fixture.OrePoolA, out CommodityPoolData ore);
+            fixture.Flow.TryGetPool(fixture.MetalPoolA, out CommodityPoolData metal);
+            fixture.Flow.TryGetPool(fixture.FoodPoolA, out CommodityPoolData food);
+            bool valid = capacity.effectiveOutputCapacity == 2L && production.Succeeded && consumption.Succeeded && ore.totalQuantity == 8L && metal.totalQuantity == 2L && food.totalQuantity == 4L && fixture.Markets.SupplyCount == 1 && fixture.Markets.DemandCount == 1;
+            return TestLabAssertions.True("step11-regional-production", "Production and consumption mutate pools and publish market observations", valid, $"Capacity={capacity.effectiveOutputCapacity} Production={production.Code} Consumption={consumption.Code} Ore={ore?.totalQuantity} Metal={metal?.totalQuantity} Food={food?.totalQuantity} Supply={fixture.Markets.SupplyCount} Demand={fixture.Markets.DemandCount}");
+        }
+
+        private static TestLabAutomationStepResult RegionalFlowLaborWealthShortage(TestLabAutomationContext context)
+        {
+            if (!TryGetRegionalFlowFixture(context, out RegionalFlowAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-regional-derived", failure);
+            }
+
+            fixture.CreateRegion(fixture.RegionA);
+            fixture.CreatePool(fixture.FoodPoolA, fixture.RegionA, fixture.Food.Id, 5L);
+            RegionalFlowOperationResult cohort = fixture.CreateLaborCohort(8L, 10L);
+            LaborMarketSnapshotData labor = fixture.Flow.EvaluateLaborMarket(Scoped(context, "regional-labor", "general"), fixture.RegionA, LaborCategory.GeneralLabor, 12L, 1d);
+            WealthSummaryData wealth = fixture.Flow.EvaluateWealth(Scoped(context, "regional-wealth", "cohort"), fixture.RegionA, new RegionalSubjectReferenceData { subjectKind = "cohort", subjectId = fixture.CohortA }, fixture.Gold.Id, 50L, 100L, 30L, 1d);
+            ShortageSurplusData shortage = fixture.Flow.EvaluateCommodityShortage(Scoped(context, "regional-shortage", "food"), fixture.RegionA, fixture.Food.Id, 8L, 2L, 1d);
+
+            bool valid = cohort.Succeeded && labor.supplyUnits == 8L && labor.demandUnits == 12L && labor.wagePressure == WagePressureState.Upward && wealth.netEstimatedWealthUnits == 120L && shortage.state == ShortageState.Shortage && shortage.shortageKind == ShortageKind.Commodity;
+            return TestLabAssertions.True("step11-regional-derived", "Labor, wealth, shortage, and wage pressure are derived from aggregate state", valid, $"Cohort={cohort.Code} Labor={labor.supplyUnits}/{labor.demandUnits} Pressure={labor.wagePressure} Wealth={wealth.netEstimatedWealthUnits} Shortage={shortage.state}");
+        }
+
+        private static TestLabAutomationStepResult RegionalFlowTradeConservation(TestLabAutomationContext context)
+        {
+            if (!TryGetRegionalFlowFixture(context, out RegionalFlowAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-regional-flow", failure);
+            }
+
+            fixture.CreateRegion(fixture.RegionA);
+            fixture.CreateRegion(fixture.RegionB);
+            fixture.CreatePool(fixture.FoodPoolA, fixture.RegionA, fixture.Food.Id, 20L);
+            fixture.CreatePool(fixture.FoodPoolB, fixture.RegionB, fixture.Food.Id, 0L);
+            RegionalFlowOperationResult connection = fixture.CreateConnection(10L, 2L);
+            RegionalFlowOperationResult plan = fixture.Flow.PlanFlow(Scoped(context, "regional-flow", "food"), fixture.ConnectionAB, fixture.FoodPoolA, fixture.FoodPoolB, fixture.Food.Id, 6L, 1L);
+            RegionalFlowOperationResult reserve = fixture.Flow.ReserveFlow(plan.FlowOrder, Tx(context, "regional-flow-reserve"));
+            RegionalFlowOperationResult early = fixture.Flow.ArriveFlow(plan.FlowOrder.flowOrderId, 1L, 1d, transactionId: Tx(context, "regional-flow-early"));
+            RegionalFlowOperationResult depart = fixture.Flow.DepartFlow(plan.FlowOrder.flowOrderId, 1L, 1d, Tx(context, "regional-flow-depart"));
+            RegionalFlowOperationResult arrive = fixture.Flow.ArriveFlow(plan.FlowOrder.flowOrderId, 3L, 3d, lossUnits: 1L, transactionId: Tx(context, "regional-flow-arrive"));
+
+            fixture.Flow.TryGetPool(fixture.FoodPoolA, out CommodityPoolData source);
+            fixture.Flow.TryGetPool(fixture.FoodPoolB, out CommodityPoolData destination);
+            bool valid = connection.Succeeded && plan.Preview && reserve.Succeeded && !early.Succeeded && depart.Succeeded && arrive.Succeeded && source.totalQuantity == 14L && destination.totalQuantity == 5L;
+            return TestLabAssertions.True("step11-regional-flow", "Inter-region flow planning, departure, arrival, and loss conserve quantities", valid, $"Connection={connection.Code} Plan={plan.Code} Reserve={reserve.Code} Early={early.Code} Depart={depart.Code} Arrive={arrive.Code} Source={source?.totalQuantity} Destination={destination?.totalQuantity}");
+        }
+
+        private static TestLabAutomationStepResult RegionalFlowCycleAccessPersistence(TestLabAutomationContext context)
+        {
+            if (!TryGetRegionalFlowFixture(context, out RegionalFlowAutomationFixture fixture, out string failure))
+            {
+                return Fail("step11-regional-hardening", failure);
+            }
+
+            fixture.Access.RegisterPolicy(new InformationAccessPolicyData
+            {
+                policyId = fixture.PrivatePoolPolicyId,
+                subject = RegionalFlowInformationSubject.Create("economy.pool", fixture.FoodPoolA, fixture.RegionA, new[] { fixture.Food.Id }),
+                classification = InformationVisibilityClassification.Private,
+                detailVisibilityPolicy = InformationDetailVisibilityPolicy.Redacted,
+                defaultVisibleDetails = new[] { "detail.region" },
+                defaultRedactedDetails = new[] { "detail.quantity", "detail.provenance" },
+                redactedAccessAcceptable = true
+            }, Tx(context, "regional-policy"));
+            fixture.Access.GrantAccess(new InformationAccessGrantData
+            {
+                grantId = Scoped(context, "information-grant", "regional-pool-redacted"),
+                policyId = fixture.PrivatePoolPolicyId,
+                subject = RegionalFlowInformationSubject.Create("economy.pool", fixture.FoodPoolA, fixture.RegionA, new[] { fixture.Food.Id }),
+                granteeKind = InformationGranteeKind.Person,
+                granteeId = "person.public",
+                grantorId = context.ScenarioContext.Runtimes.PersonId,
+                accessModes = new[] { InformationAccessMode.Inspect },
+                detailIds = new[] { "detail.region" }
+            }, Tx(context, "regional-grant"));
+
+            fixture.CreateRegion(fixture.RegionA);
+            fixture.CreatePool(fixture.FoodPoolA, fixture.RegionA, fixture.Food.Id, 12L, fixture.PrivatePoolPolicyId);
+            fixture.CreatePool(fixture.OrePoolA, fixture.RegionA, fixture.Ore.Id, 10L);
+            fixture.CreatePool(fixture.MetalPoolA, fixture.RegionA, fixture.Metal.Id, 0L);
+            fixture.CreateLaborCohort(2L, 5L);
+            RegionalFlowRuntimeSaveData before = fixture.Flow.CreateSaveData();
+            RegionalFlowOperationResult failed = fixture.Flow.RunEconomicCycle(Scoped(context, "regional-cycle", "fail"), fixture.RegionA, 1L, 1d, new[] { fixture.Smelting }, Array.Empty<AggregateConsumptionProfileDefinition>(), injectFailureStage: "after-production");
+            RegionalFlowOperationResult cycle = fixture.Flow.RunEconomicCycle(Scoped(context, "regional-cycle", "ok"), fixture.RegionA, 2L, 2d, new[] { fixture.Smelting }, Array.Empty<AggregateConsumptionProfileDefinition>());
+            RegionalFlowOperationResult duplicate = fixture.Flow.RunEconomicCycle(Scoped(context, "regional-cycle", "ok"), fixture.RegionA, 2L, 2d, new[] { fixture.Smelting }, Array.Empty<AggregateConsumptionProfileDefinition>());
+            InformationAccessProjection<CommodityPoolData> publicProjection = fixture.Flow.GetPoolProjection(fixture.FoodPoolA, fixture.Access, new InformationAccessContext { RequestingPersonId = "person.public", RedactedAccessAcceptable = true });
+            InformationAccessProjection<CommodityPoolData> privilegedProjection = fixture.Flow.GetPoolProjection(fixture.FoodPoolA, fixture.Access, new InformationAccessContext { RequestingPersonId = "person.admin", ContextKind = InformationContextKind.Debug });
+
+            RegionalFlowPersistenceParticipant participant = new RegionalFlowPersistenceParticipant(fixture.Flow, () => fixture.Registry);
+            RegionalFlowRuntimeSaveData corrupt = fixture.Flow.CreateSaveData();
+            corrupt.pools[0].commodityId = "commodity.missing";
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), RegionalFlowPersistenceParticipant.CurrentParticipantSchemaVersion);
+
+            fixture.Flow.TryGetPool(fixture.OrePoolA, out CommodityPoolData ore);
+            bool rollback = failed.Code == RegionalFlowResultCode.RolledBack && before.pools.Single(item => item.poolId == fixture.OrePoolA).totalQuantity == 10L;
+            bool valid = rollback
+                && cycle.Succeeded
+                && cycle.Cycle != null
+                && cycle.Cycle.succeeded
+                && duplicate.Duplicate
+                && publicProjection.Redacted
+                && publicProjection.Record != null
+                && publicProjection.Record.totalQuantity == 0L
+                && privilegedProjection.FullAccess
+                && privilegedProjection.Record != null
+                && privilegedProjection.Record.totalQuantity == 12L
+                && !rejected.Succeeded
+                && ore != null
+                && ore.totalQuantity == 8L;
+            return TestLabAssertions.True("step11-regional-hardening", "Cycles, access projections, rollback, and persistence validation are explicit", valid, $"Failed={failed.Code} Cycle={cycle.Code} Duplicate={duplicate.Code} PublicRedacted={publicProjection.Redacted} PublicRecord={publicProjection.Record != null} Privileged={privilegedProjection.FullAccess} PrivilegedRecord={privilegedProjection.Record != null} Reject={rejected.Message} Ore={ore?.totalQuantity}");
+        }
+
+        private static bool TryGetRegionalFlowFixture(TestLabAutomationContext context, out RegionalFlowAutomationFixture fixture, out string failure)
+        {
+            fixture = null;
+            failure = string.Empty;
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            RegionalFlowRuntime flow = runtimes?.RegionalFlow;
+            MarketRuntime markets = runtimes?.Markets;
+            InformationAccessRuntime access = runtimes?.Access;
+            DefinitionRegistry registry = runtimes?.DefinitionRegistry;
+            if (flow == null || markets == null || access == null || registry == null)
+            {
+                failure = flow == null ? "Regional Flow runtime is missing." : markets == null ? "Market runtime is missing." : access == null ? "Information Access runtime is missing." : "Definition registry is missing.";
+                return false;
+            }
+
+            if (!registry.TryGet(GoldCurrencyId, out CurrencyDefinition gold))
+            {
+                failure = $"Currency definition '{GoldCurrencyId}' is missing.";
+                return false;
+            }
+
+            fixture = RegionalFlowAutomationFixture.Create(context, registry, flow, markets, access, gold);
+            return true;
+        }
+
+        private static AggregateQuantityOperationData RegionalOp(string id, AggregateQuantityOperationKind kind, string commodityId, string sourcePoolId, string destinationPoolId, long quantity, string sourceEventId = "")
+        {
+            return new AggregateQuantityOperationData
+            {
+                operationId = id,
+                operationKind = kind,
+                commodityId = commodityId,
+                sourcePoolId = sourcePoolId,
+                destinationPoolId = destinationPoolId,
+                unit = CommodityUnit.Each,
+                quantity = quantity,
+                sourceEventId = sourceEventId,
+                authorityId = "test-lab.regional-flow"
+            };
+        }
+
         private static bool TryGetRuntime(TestLabAutomationContext context, out EconomyRuntime economy, out CurrencyDefinition gold, out string failure)
         {
             economy = context?.ScenarioContext?.Runtimes?.Economy;
@@ -2829,6 +3057,21 @@ namespace UnityIsekaiGame.Development.Automation
                 requiredDefinitionIds: new[] { GoldCurrencyId });
         }
 
+        private static ITestLabAutomationScenario RegionalFlowScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[] { GoldCurrencyId });
+        }
+
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
         {
             return new TestLabScenarioStep(stepId, displayName, action);
@@ -2932,6 +3175,175 @@ namespace UnityIsekaiGame.Development.Automation
                     new RevenueBracketData { bracketId = "second", lowerInclusive = 100L, upperExclusive = -1L, rate = new RevenueRationalData { numerator = 1L, denominator = 10L } }
                 }
             };
+        }
+
+        private sealed class RegionalFlowAutomationFixture
+        {
+            private RegionalFlowAutomationFixture(TestLabAutomationContext context, DefinitionRegistry baseRegistry, RegionalFlowRuntime flow, MarketRuntime markets, InformationAccessRuntime access, CurrencyDefinition gold)
+            {
+                Context = context;
+                Gold = gold;
+                Food = Commodity(Scoped(context, "commodity", "food"), "Automation Food", CommodityCategory.Food, Scoped(context, "market-subject", "food"));
+                Ore = Commodity(Scoped(context, "commodity", "ore"), "Automation Ore", CommodityCategory.Ore, Scoped(context, "market-subject", "ore"));
+                Metal = Commodity(Scoped(context, "commodity", "metal"), "Automation Metal", CommodityCategory.Metal, Scoped(context, "market-subject", "metal"));
+                RegionDefinition = ScriptableObject.CreateInstance<EconomicRegionDefinition>();
+                RegionDefinition.Initialize(Scoped(context, "economic-region-definition", "settlement"), "Automation Settlement Economy", EconomicRegionCategory.SettlementEconomy, new[] { LaborCategory.GeneralLabor });
+                Smelting = Production(Scoped(context, "production-profile", "smelting"), Ore.Id, Metal.Id);
+                Consumption = ConsumptionProfile(Scoped(context, "consumption-profile", "food"), Food.Id);
+                MarketDefinition = ScriptableObject.CreateInstance<MarketDefinition>();
+                MarketDefinition.Initialize(Scoped(context, "market-definition", "regional"), "Automation Regional Market", gold);
+                FoodSubject = MarketSubject(Food.MarketSubjectId, "Automation Food Subject", Food.Id, gold, 2L);
+                MetalSubject = MarketSubject(Metal.MarketSubjectId, "Automation Metal Subject", Metal.Id, gold, 5L);
+                Registry = new DefinitionRegistry(baseRegistry.DefinitionsById.Values.Concat(new IGameDefinition[] { Food, Ore, Metal, RegionDefinition, Smelting, Consumption, MarketDefinition, FoodSubject, MetalSubject }));
+                Flow = flow;
+                Markets = markets;
+                Access = access;
+                RegionA = Scoped(context, "economic-region", "a");
+                RegionB = Scoped(context, "economic-region", "b");
+                FoodPoolA = Scoped(context, "commodity-pool", "food-a");
+                FoodPoolB = Scoped(context, "commodity-pool", "food-b");
+                OrePoolA = Scoped(context, "commodity-pool", "ore-a");
+                MetalPoolA = Scoped(context, "commodity-pool", "metal-a");
+                CohortA = Scoped(context, "economic-cohort", "laborers");
+                ConnectionAB = Scoped(context, "trade-connection", "a-b");
+                MarketId = Scoped(context, "market-instance", "regional-flow");
+                PrivatePoolPolicyId = Scoped(context, "information-policy", "regional-pool");
+                Flow.Configure(Registry, context.ScenarioContext.Runtimes.WorldId);
+                Markets.Configure(Registry, context.ScenarioContext.Runtimes.WorldId);
+                Access.Configure(Registry, context.ScenarioContext.Runtimes.PersonId);
+            }
+
+            public TestLabAutomationContext Context { get; }
+            public DefinitionRegistry Registry { get; }
+            public RegionalFlowRuntime Flow { get; }
+            public MarketRuntime Markets { get; }
+            public InformationAccessRuntime Access { get; }
+            public CurrencyDefinition Gold { get; }
+            public CommodityDefinition Food { get; }
+            public CommodityDefinition Ore { get; }
+            public CommodityDefinition Metal { get; }
+            public EconomicRegionDefinition RegionDefinition { get; }
+            public AggregateProductionProfileDefinition Smelting { get; }
+            public AggregateConsumptionProfileDefinition Consumption { get; }
+            public MarketDefinition MarketDefinition { get; }
+            public MarketSubjectDefinition FoodSubject { get; }
+            public MarketSubjectDefinition MetalSubject { get; }
+            public string RegionA { get; }
+            public string RegionB { get; }
+            public string FoodPoolA { get; }
+            public string FoodPoolB { get; }
+            public string OrePoolA { get; }
+            public string MetalPoolA { get; }
+            public string CohortA { get; }
+            public string ConnectionAB { get; }
+            public string MarketId { get; }
+            public string PrivatePoolPolicyId { get; }
+
+            public static RegionalFlowAutomationFixture Create(TestLabAutomationContext context, DefinitionRegistry baseRegistry, RegionalFlowRuntime flow, MarketRuntime markets, InformationAccessRuntime access, CurrencyDefinition gold)
+            {
+                return new RegionalFlowAutomationFixture(context, baseRegistry, flow, markets, access, gold);
+            }
+
+            public RegionalFlowOperationResult CreateRegion(string regionId)
+            {
+                return Flow.RegisterRegion(new EconomicRegionData
+                {
+                    regionId = regionId,
+                    regionDefinitionId = RegionDefinition.Id,
+                    displayName = regionId,
+                    state = EconomicRegionState.Active,
+                    simulationFidelity = RegionalSimulationFidelity.AggregatePools
+                }, Tx(Context, "regional-region-" + regionId));
+            }
+
+            public RegionalFlowOperationResult CreatePool(string poolId, string regionId, string commodityId, long quantity, string accessPolicyId = "")
+            {
+                return Flow.RegisterCommodityPool(new CommodityPoolData
+                {
+                    poolId = poolId,
+                    regionId = regionId,
+                    commodityId = commodityId,
+                    unit = CommodityUnit.Each,
+                    totalQuantity = quantity,
+                    purpose = CommodityPoolPurpose.GeneralRegionalSupply,
+                    owner = new RegionalSubjectReferenceData { subjectKind = "cohort", subjectId = CohortA },
+                    accessPolicyId = accessPolicyId
+                }, Tx(Context, "regional-pool-" + poolId));
+            }
+
+            public RegionalFlowOperationResult CreateLaborCohort(long laborUnits, long population)
+            {
+                return Flow.RegisterCohort(new EconomicCohortData
+                {
+                    cohortId = CohortA,
+                    regionId = RegionA,
+                    category = EconomicCohortCategory.Laborers,
+                    populationQuantity = population,
+                    laborDistribution = new[] { new RegionalLaborQuantityData { laborCategory = LaborCategory.GeneralLabor, units = laborUnits } },
+                    accountId = Account(Context, "regional-cohort"),
+                    commodityPoolIds = new[] { FoodPoolA }
+                }, Tx(Context, "regional-cohort"));
+            }
+
+            public RegionalFlowOperationResult CreateConnection(long capacity, long leadTime)
+            {
+                return Flow.RegisterTradeConnection(new TradeConnectionData
+                {
+                    connectionId = ConnectionAB,
+                    sourceRegionId = RegionA,
+                    destinationRegionId = RegionB,
+                    permittedCommodityIds = new[] { Food.Id },
+                    capacityUnits = capacity,
+                    leadTimeUnits = leadTime,
+                    state = TradeConnectionState.Active
+                }, Tx(Context, "regional-connection"));
+            }
+
+            public void CreateMarket()
+            {
+                Markets.CreateMarketInstance(MarketDefinition, MarketId, RegionA);
+            }
+
+            private static CommodityDefinition Commodity(string id, string name, CommodityCategory category, string marketSubjectId)
+            {
+                CommodityDefinition definition = ScriptableObject.CreateInstance<CommodityDefinition>();
+                definition.Initialize(id, name, category, CommodityUnit.Each, marketSubjectId);
+                return definition;
+            }
+
+            private static MarketSubjectDefinition MarketSubject(string id, string name, string commodityId, CurrencyDefinition gold, long priceUnits)
+            {
+                MarketSubjectDefinition subject = ScriptableObject.CreateInstance<MarketSubjectDefinition>();
+                subject.Initialize(id, name, MarketSubjectKind.Custom, commodityId, gold, priceUnits, MarketQuantityUnit.Each, 1L);
+                return subject;
+            }
+
+            private static AggregateProductionProfileDefinition Production(string id, string inputCommodity, string outputCommodity)
+            {
+                RegionalCommodityQuantityDefinitionData input = new RegionalCommodityQuantityDefinitionData();
+                input.Initialize(inputCommodity, CommodityUnit.Each, 2L);
+                RegionalCommodityQuantityDefinitionData output = new RegionalCommodityQuantityDefinitionData();
+                output.Initialize(outputCommodity, CommodityUnit.Each, 2L);
+                AggregateProductionProfileDefinition profile = ScriptableObject.CreateInstance<AggregateProductionProfileDefinition>();
+                profile.Initialize(id, "Automation Smelting", ProductionProfileCategory.Smelting, new[] { output }, new[] { input }, new[] { Labor(LaborCategory.GeneralLabor, 1L) });
+                return profile;
+            }
+
+            private static AggregateConsumptionProfileDefinition ConsumptionProfile(string id, string commodityId)
+            {
+                RegionalCommodityQuantityDefinitionData item = new RegionalCommodityQuantityDefinitionData();
+                item.Initialize(commodityId, CommodityUnit.Each, 2L);
+                AggregateConsumptionProfileDefinition profile = ScriptableObject.CreateInstance<AggregateConsumptionProfileDefinition>();
+                profile.Initialize(id, "Automation Food Consumption", ConsumptionProfileCategory.HouseholdNeed, new[] { item });
+                return profile;
+            }
+
+            private static RegionalLaborQuantityDefinitionData Labor(LaborCategory category, long units)
+            {
+                RegionalLaborQuantityDefinitionData labor = new RegionalLaborQuantityDefinitionData();
+                labor.Initialize(category, units);
+                return labor;
+            }
         }
 
         private sealed class TaxAutomationFixture

@@ -11,6 +11,7 @@ using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Economy.Properties;
+using UnityIsekaiGame.Economy.RegionalFlow;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -89,6 +90,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldProperties = true;
         [SerializeField] private bool registerWorldContracts = true;
         [SerializeField] private bool registerWorldInstitutionalRevenue = true;
+        [SerializeField] private bool registerWorldRegionalFlow = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -163,6 +165,7 @@ namespace UnityIsekaiGame.Gameplay
         private PropertyPersistenceParticipant propertyParticipant;
         private ContractEconomyPersistenceParticipant contractEconomyParticipant;
         private InstitutionalRevenuePersistenceParticipant institutionalRevenueParticipant;
+        private RegionalFlowPersistenceParticipant regionalFlowParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -202,6 +205,7 @@ namespace UnityIsekaiGame.Gameplay
         private PropertyRuntime worldProperties;
         private ContractEconomyRuntime worldContracts;
         private InstitutionalRevenueRuntime worldInstitutionalRevenue;
+        private RegionalFlowRuntime worldRegionalFlow;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -456,6 +460,19 @@ namespace UnityIsekaiGame.Gameplay
                 return worldInstitutionalRevenue;
             }
         }
+        public RegionalFlowRuntime RegionalFlow
+        {
+            get
+            {
+                if (worldRegionalFlow == null)
+                {
+                    worldRegionalFlow = new RegionalFlowRuntime();
+                }
+
+                worldRegionalFlow.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
+                return worldRegionalFlow;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -538,6 +555,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(institutionalRevenueParticipant);
                 institutionalRevenueParticipant = null;
+            }
+
+            if (service != null && regionalFlowParticipant != null)
+            {
+                service.UnregisterParticipant(regionalFlowParticipant);
+                regionalFlowParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -815,6 +838,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldPropertyParticipant();
             EnsureWorldContractEconomyParticipant();
             EnsureWorldInstitutionalRevenueParticipant();
+            EnsureWorldRegionalFlowParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1367,6 +1391,33 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 institutionalRevenueParticipant = null;
+            }
+        }
+
+        private void EnsureWorldRegionalFlowParticipant()
+        {
+            if (!registerWorldRegionalFlow || regionalFlowParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World regional flow persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            regionalFlowParticipant = new RegionalFlowPersistenceParticipant(
+                RegionalFlow,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(regionalFlowParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                regionalFlowParticipant = null;
             }
         }
 
