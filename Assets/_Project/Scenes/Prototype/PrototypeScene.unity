@@ -244,6 +244,7 @@ MonoBehaviour:
   input: {fileID: 100003}
   movementSettings: {fileID: 11400000, guid: 1f044d40739746a58a2f50387891deac, type: 2}
   stamina: {fileID: 100009}
+  stats: {fileID: 343134187}
 --- !u!65 &100005
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -3129,7 +3130,7 @@ MonoBehaviour:
   baseMaximumMana: 100
   baseAttackPower: 5
   baseDefense: 0
-  baseMovementSpeed: 0
+  baseMovementSpeed: 10
   characterAttributes: {fileID: 0}
   calculatedStats: {fileID: 0}
   equipment: {fileID: 343134188}
@@ -5232,6 +5233,12 @@ MonoBehaviour:
   defaultPlayerSpeciesId: species.human
   registerPlayerInventoryEquipment: 1
   registerPlayerItemIdentities: 1
+  registerWorldEconomy: 1
+  registerWorldMarkets: 1
+  registerWorldTrades: 1
+  registerWorldPayroll: 1
+  registerWorldBusinesses: 1
+  registerWorldProperties: 1
   registerPlayerItemCompositions: 1
   registerPlayerItemQualityAffixes: 1
   registerPlayerItemDurability: 1

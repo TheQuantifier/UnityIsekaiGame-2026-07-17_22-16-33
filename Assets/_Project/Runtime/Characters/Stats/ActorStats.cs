@@ -103,15 +103,19 @@ namespace UnityIsekaiGame.Stats
         public float GetStatValue(StatType statType)
         {
             EnsureBaseStatsConfigured();
+            float baseValue = runtimeStats.GetValue(statType);
             if (calculatedStats != null
                 && calculatedStats.IsConfigured
                 && StatTypeCalculatedStatBridge.TryGetCalculatedStatId(statType, out string calculatedStatId)
                 && calculatedStats.HasStat(calculatedStatId))
             {
-                return calculatedStats.GetValue(calculatedStatId);
+                float calculatedValue = calculatedStats.GetValue(calculatedStatId);
+                return statType == StatType.MovementSpeed
+                    ? runtimeStats.GetBaseValue(statType) + calculatedValue
+                    : calculatedValue;
             }
 
-            return runtimeStats.GetValue(statType);
+            return baseValue;
         }
 
         public bool AddModifier(RuntimeStatModifier modifier)

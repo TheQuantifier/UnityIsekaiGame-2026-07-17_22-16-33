@@ -10,6 +10,7 @@ using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
+using UnityIsekaiGame.Economy.Properties;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -84,6 +85,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldTrades = true;
         [SerializeField] private bool registerWorldPayroll = true;
         [SerializeField] private bool registerWorldBusinesses = true;
+        [SerializeField] private bool registerWorldProperties = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -155,6 +157,7 @@ namespace UnityIsekaiGame.Gameplay
         private TradePersistenceParticipant tradeParticipant;
         private PayrollPersistenceParticipant payrollParticipant;
         private BusinessPersistenceParticipant businessParticipant;
+        private PropertyPersistenceParticipant propertyParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -191,6 +194,7 @@ namespace UnityIsekaiGame.Gameplay
         private TradeRuntime worldTrades;
         private PayrollRuntime worldPayroll;
         private BusinessRuntime worldBusinesses;
+        private PropertyRuntime worldProperties;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -406,6 +410,19 @@ namespace UnityIsekaiGame.Gameplay
                 return worldBusinesses;
             }
         }
+        public PropertyRuntime Properties
+        {
+            get
+            {
+                if (worldProperties == null)
+                {
+                    worldProperties = new PropertyRuntime();
+                }
+
+                worldProperties.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
+                return worldProperties;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -470,6 +487,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(businessParticipant);
                 businessParticipant = null;
+            }
+
+            if (service != null && propertyParticipant != null)
+            {
+                service.UnregisterParticipant(propertyParticipant);
+                propertyParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -744,6 +767,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldTradeParticipant();
             EnsureWorldPayrollParticipant();
             EnsureWorldBusinessParticipant();
+            EnsureWorldPropertyParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1215,6 +1239,33 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 businessParticipant = null;
+            }
+        }
+
+        private void EnsureWorldPropertyParticipant()
+        {
+            if (!registerWorldProperties || propertyParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World property persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            propertyParticipant = new PropertyPersistenceParticipant(
+                Properties,
+                GetDefinitionRegistry,
+                service.WorldId);
+
+            service.RegisterParticipant(propertyParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                propertyParticipant = null;
             }
         }
 

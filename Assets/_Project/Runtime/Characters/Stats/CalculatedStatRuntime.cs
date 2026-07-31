@@ -19,6 +19,7 @@ namespace UnityIsekaiGame.Stats
     public sealed class CalculatedStatEvaluationBreakdown
     {
         public string StatId { get; set; }
+        public float BaseValue { get; set; }
         public float AttributeWeightedTotal { get; set; }
         public float PositiveFlatTotal { get; set; }
         public float NegativeFlatTotal { get; set; }

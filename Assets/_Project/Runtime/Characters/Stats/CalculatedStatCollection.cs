@@ -232,7 +232,7 @@ namespace UnityIsekaiGame.Stats
             {
                 CalculatedStatEvaluationBreakdown breakdown = GetBreakdown(definition.Id);
                 string resource = definition.IsResourceMaximum ? $" Resource={definition.LinkedFutureResourceId}" : string.Empty;
-                lines.Add($"{definition.DisplayName}: {GetValue(definition.Id):0.###} ({definition.Id}) Purpose={definition.Purpose}{resource} Attr={breakdown?.AttributeWeightedTotal ?? 0f:0.###} +Flat={breakdown?.PositiveFlatTotal ?? 0f:0.###} -Flat={breakdown?.NegativeFlatTotal ?? 0f:0.###}");
+                lines.Add($"{definition.DisplayName}: {GetValue(definition.Id):0.###} ({definition.Id}) Purpose={definition.Purpose}{resource} Base={breakdown?.BaseValue ?? 0f:0.###} Attr={breakdown?.AttributeWeightedTotal ?? 0f:0.###} +Flat={breakdown?.PositiveFlatTotal ?? 0f:0.###} -Flat={breakdown?.NegativeFlatTotal ?? 0f:0.###}");
             }
 
             lines.Add($"Contribution Sources: {contributionsBySourceKey.Count}");
@@ -344,7 +344,8 @@ namespace UnityIsekaiGame.Stats
                 }
             }
 
-            float baseAfterFlats = attributeTotal + positiveFlat - negativeFlat;
+            float formulaBase = formula == null ? 0f : formula.BaseValue;
+            float baseAfterFlats = formulaBase + attributeTotal + positiveFlat - negativeFlat;
             float percentFactor = Mathf.Max(0f, 1f + positivePercent - negativePercent);
             float raw = baseAfterFlats * percentFactor * positiveMultiplier * reducingMultiplier;
             float clamped = formula == null || formula.ClampMinimumToZero ? Mathf.Max(0f, raw) : raw;
@@ -353,6 +354,7 @@ namespace UnityIsekaiGame.Stats
             return new CalculatedStatEvaluationBreakdown
             {
                 StatId = statId,
+                BaseValue = formulaBase,
                 AttributeWeightedTotal = attributeTotal,
                 PositiveFlatTotal = positiveFlat,
                 NegativeFlatTotal = negativeFlat,

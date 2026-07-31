@@ -17,6 +17,7 @@ MonoBehaviour:
   description: Agility alpha formula for movement speed capability.
   primaryCategory: {fileID: 11400000, guid: 62000000000000000000000000000052, type: 2}
   tags: []
+  baseValue: 4
   attributeTerms:
   - attribute: {fileID: 11400000, guid: a2000000000000000000000000000052, type: 2}
     weight: 1

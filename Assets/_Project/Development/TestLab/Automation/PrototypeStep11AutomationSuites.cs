@@ -9,6 +9,7 @@ using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.Markets;
 using UnityIsekaiGame.Economy.Payroll;
+using UnityIsekaiGame.Economy.Properties;
 using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Inventory;
@@ -170,6 +171,38 @@ namespace UnityIsekaiGame.Development.Automation
                     "Access projections, persistence, and failed operations preserve state",
                     40,
                     Step("step11-business-persist", "Persist and project business", BusinessAccessPersistenceRollback))), out _);
+
+            registry?.TryRegister(Suite(
+                "feature.11.6.property-land-buildings",
+                "Property, Land, and Buildings",
+                "11.6",
+                11060,
+                new[] { "PropertyRuntime", "EconomyRuntime", "BusinessRuntime", "ItemInstanceIdentityRuntime", "InformationAccessRuntime" },
+                PropertyScenario(
+                    "definitions-hierarchy",
+                    "Property definitions, spatial references, and hierarchy validate",
+                    10,
+                    Step("step11-property-hierarchy", "Register property hierarchy", PropertyDefinitionsHierarchy)),
+                PropertyScenario(
+                    "ownership-title-boundaries",
+                    "Ownership interests, title, possession, and occupancy remain distinct",
+                    20,
+                    Step("step11-property-title", "Validate title boundaries", PropertyOwnershipTitleBoundaries)),
+                PropertyScenario(
+                    "tenancy-access-rent",
+                    "Tenancy grants use access and rent without transferring ownership",
+                    30,
+                    Step("step11-property-tenancy", "Activate tenancy and rent", PropertyTenancyAccessRent)),
+                PropertyScenario(
+                    "transfer-rollback-business-boundaries",
+                    "Property transfers stage title changes and preserve external runtime boundaries",
+                    40,
+                    Step("step11-property-transfer", "Transfer property atomically", PropertyTransferRollbackBusinessBoundaries)),
+                PropertyScenario(
+                    "condition-maintenance-persistence",
+                    "Condition, inspection, maintenance, and persistence remain explicit",
+                    50,
+                    Step("step11-property-maintenance", "Maintain and persist property", PropertyConditionMaintenancePersistence))), out _);
         }
 
         private static TestLabAutomationStepResult AmountsAndAccounts(TestLabAutomationContext context)
@@ -1576,6 +1609,335 @@ namespace UnityIsekaiGame.Development.Automation
             }
         }
 
+        private static TestLabAutomationStepResult PropertyDefinitionsHierarchy(TestLabAutomationContext context)
+        {
+            if (!PreparePropertyFixture(context, out PropertyRuntime properties, out _, out _, out _, out PropertyDefinition landDefinition, out _, out _, out string failure))
+            {
+                return Fail("step11-property-hierarchy", failure);
+            }
+
+            PropertyOperationResult land = RegisterPropertyLand(context, properties, landDefinition, "land");
+            PropertyOperationResult building = RegisterPropertyBuilding(context, properties, "building", PropertyId(context, "land"));
+            PropertyOperationResult unit = RegisterPropertyUnit(context, properties, "unit", PropertyId(context, "building"));
+            PropertyOperationResult invalidChild = properties.RegisterProperty(new PropertyInstanceData
+            {
+                propertyId = PropertyId(context, "bad-child"),
+                propertyDefinitionId = "property.prototype.unit",
+                parentPropertyId = PropertyId(context, "unit"),
+                sceneObjectReferenceId = "scene.prototype.bad-child"
+            });
+            PropertyInstanceData snapshot = properties.Properties.FirstOrDefault(item => item.propertyId == PropertyId(context, "land"));
+            if (snapshot != null)
+            {
+                snapshot.childPropertyIds = new[] { "mutation.should-not-stick" };
+            }
+
+            bool immutable = properties.TryGetProperty(PropertyId(context, "land"), out PropertyInstanceData live)
+                && live.childPropertyIds.Contains(PropertyId(context, "building"))
+                && !live.childPropertyIds.Contains("mutation.should-not-stick");
+            bool valid = land.Succeeded && building.Succeeded && unit.Succeeded && !invalidChild.Succeeded && immutable;
+            return TestLabAssertions.True("step11-property-hierarchy", "Property definitions, spatial references, and hierarchy validate", valid, $"Land={land.Code} Building={building.Code} Unit={unit.Code} Invalid={invalidChild.Code} Immutable={immutable}");
+        }
+
+        private static TestLabAutomationStepResult PropertyOwnershipTitleBoundaries(TestLabAutomationContext context)
+        {
+            if (!PreparePropertyFixture(context, out PropertyRuntime properties, out _, out _, out _, out PropertyDefinition landDefinition, out _, out _, out string failure))
+            {
+                return Fail("step11-property-title", failure);
+            }
+
+            PropertyOperationResult prepared = PreparePropertyTitle(context, properties, landDefinition, "title-land");
+            PropertyOperationResult possession = properties.BeginPossession(new PropertyPossessionRecordData
+            {
+                possessionId = Scoped(context, "property-possession", "tenant"),
+                propertyId = PropertyId(context, "title-land"),
+                possessor = PropertySubjectReferenceData.Person("person.prototype.tenant"),
+                category = PossessionCategory.TenantPossession,
+                startWorldTime = 2d,
+                exclusive = true
+            });
+            PropertyOperationResult partner = properties.CreateOwnership(new PropertyOwnershipInterestData
+            {
+                ownershipInterestId = Scoped(context, "property-ownership", "partner"),
+                propertyId = PropertyId(context, "title-land"),
+                owner = PropertySubjectReferenceData.Person("person.prototype.partner"),
+                ownershipModel = PropertyOwnershipModel.SharedFractional,
+                ownershipShare = new PropertyShareData { units = 5000L, totalUnits = 10000L },
+                votingShare = new PropertyShareData { units = 5000L, totalUnits = 10000L },
+                economicBenefitShare = new PropertyShareData { units = 5000L, totalUnits = 10000L },
+                effectiveStartWorldTime = 3d
+            }, 3d);
+            PropertyOperationResult badTitle = properties.CreateTitle(Scoped(context, "property-title", "bad"), PropertyId(context, "title-land"), new[] { partner.Ownership?.ownershipInterestId }, 3d);
+
+            bool noTenantOwnership = properties.OwnershipInterests.All(item => item.owner.subjectId != "person.prototype.tenant");
+            bool valid = prepared.Succeeded && possession.Succeeded && partner.Succeeded && !badTitle.Succeeded && noTenantOwnership;
+            return TestLabAssertions.True("step11-property-title", "Ownership interests, title, possession, and occupancy remain distinct", valid, $"Prepared={prepared.Code} Possession={possession.Code} Partner={partner.Code} BadTitle={badTitle.Code} TenantOwns={!noTenantOwnership}");
+        }
+
+        private static TestLabAutomationStepResult PropertyTenancyAccessRent(TestLabAutomationContext context)
+        {
+            if (!PreparePropertyFixture(context, out PropertyRuntime properties, out EconomyRuntime economy, out CurrencyDefinition gold, out _, out PropertyDefinition landDefinition, out _, out _, out string failure))
+            {
+                return Fail("step11-property-tenancy", failure);
+            }
+
+            PreparePropertyTitle(context, properties, landDefinition, "rental");
+            string landlord = Account(context, "property-landlord");
+            string tenant = Account(context, "property-tenant");
+            economy.CreateAccount(landlord, gold, "person.prototype.owner", EconomyAccountKind.PersonWallet, 0L, Tx(context, "property-landlord-account"));
+            economy.CreateAccount(tenant, gold, "person.prototype.tenant", EconomyAccountKind.PersonWallet, 80L, Tx(context, "property-tenant-account"));
+            PropertyOperationResult tenancy = properties.CreateTenancy(new PropertyTenancyAgreementData
+            {
+                tenancyId = Scoped(context, "property-tenancy", "rental"),
+                propertyId = PropertyId(context, "rental"),
+                landlord = PropertySubjectReferenceData.Person("person.prototype.owner"),
+                tenant = PropertySubjectReferenceData.Person("person.prototype.tenant"),
+                propertyOwnerInterestIds = new[] { Scoped(context, "property-ownership", "rental-owner") },
+                permittedUse = PropertyUseCategory.Residential,
+                startWorldTime = 1d,
+                endWorldTime = 60d,
+                landlordAccountId = landlord,
+                tenantAccountId = tenant,
+                rentTerms = new PropertyRentTermsData { currencyId = gold.Id, rentUnitsPerPeriod = 10L, depositUnits = 3L, periodLengthWorldTime = 30d },
+                grantedAccessCategories = new[] { PropertyAccessCategory.Enter, PropertyAccessCategory.Occupy, PropertyAccessCategory.StoreItems }
+            });
+            PropertyOperationResult active = properties.ActivateTenancy(Scoped(context, "property-tenancy", "rental"), 1d);
+            PropertyOperationResult rent = properties.GenerateRentObligation(Scoped(context, "property-rent", "rental-one"), Scoped(context, "property-tenancy", "rental"), 1d, 31d, 32d);
+            PropertyOperationResult partial = properties.PayRent(Scoped(context, "property-rent", "rental-one"), economy, Tx(context, "property-rent-partial"), 6L, 12d);
+            PropertyOperationResult overdue = properties.MarkOverdueRent(Scoped(context, "property-rent", "rental-one"), 40d);
+            PropertyAccessEvaluationResult access = properties.EvaluateAccess(PropertyId(context, "rental"), PropertySubjectReferenceData.Person("person.prototype.tenant"), PropertyAccessCategory.Enter, 2d);
+
+            bool noOwnershipTransfer = properties.OwnershipInterests.All(item => item.owner.subjectId != "person.prototype.tenant");
+            bool valid = tenancy.Succeeded && active.Succeeded && rent.Succeeded && partial.Succeeded && overdue.Succeeded && access.Allowed && noOwnershipTransfer && properties.RentObligations.Single().OutstandingUnits == 4L;
+            return TestLabAssertions.True("step11-property-tenancy", "Tenancy grants use access and rent without transferring ownership", valid, $"Tenancy={tenancy.Code} Active={active.Code} Rent={rent.Code} Partial={partial.Code} Overdue={overdue.Code} Access={access.Decision} TenantOwns={!noOwnershipTransfer}");
+        }
+
+        private static TestLabAutomationStepResult PropertyTransferRollbackBusinessBoundaries(TestLabAutomationContext context)
+        {
+            if (!PreparePropertyFixture(context, out PropertyRuntime properties, out EconomyRuntime economy, out CurrencyDefinition gold, out BusinessRuntime businesses, out PropertyDefinition landDefinition, out BusinessDefinition businessDefinition, out _, out string failure))
+            {
+                return Fail("step11-property-transfer", failure);
+            }
+
+            PreparePropertyTitle(context, properties, landDefinition, "shop-land");
+            string sellerAccount = Account(context, "property-seller");
+            string buyerAccount = Account(context, "property-buyer");
+            economy.CreateAccount(sellerAccount, gold, "person.prototype.owner", EconomyAccountKind.PersonWallet, 0L, Tx(context, "property-seller-account"));
+            economy.CreateAccount(buyerAccount, gold, "person.prototype.buyer", EconomyAccountKind.PersonWallet, 100L, Tx(context, "property-buyer-account"));
+            BusinessOperationResult business = businesses.CreateBusiness(new BusinessInstanceData
+            {
+                businessId = BusinessId(context, "property-shop"),
+                businessDefinitionId = businessDefinition.Id,
+                displayName = "Prototype Property Shop",
+                founderSubjectIds = new[] { "person.prototype.owner" },
+                operatingCurrencyIds = new[] { gold.Id },
+                state = BusinessState.Active
+            });
+            BusinessOperationResult establishment = businesses.AddEstablishment(new BusinessEstablishmentData
+            {
+                establishmentId = Scoped(context, "business-establishment", "property-shop"),
+                businessId = BusinessId(context, "property-shop"),
+                type = BusinessEstablishmentType.Shop,
+                state = BusinessEstablishmentState.Open
+            });
+            PropertyOperationResult link = properties.LinkBusinessEstablishment(PropertyId(context, "shop-land"), Scoped(context, "business-establishment", "property-shop"), businesses);
+            PropertyOperationResult injected = PropertyTransfer(context, properties, economy, "shop-land", "injected", PropertyTransferCategory.Sale, "person.prototype.owner", "person.prototype.buyer", 4000L, sellerAccount, buyerAccount, gold.Id, "title-creation");
+            economy.TryGetAccount(buyerAccount, out EconomyAccountSnapshot buyerAfterInjected);
+            economy.TryGetAccount(sellerAccount, out EconomyAccountSnapshot sellerAfterInjected);
+            PropertyOperationResult sale = PropertyTransfer(context, properties, economy, "shop-land", "sale", PropertyTransferCategory.Sale, "person.prototype.owner", "person.prototype.buyer", 4000L, sellerAccount, buyerAccount, gold.Id);
+
+            bool balancesSafe = buyerAfterInjected.BalanceUnits == 100L && sellerAfterInjected.BalanceUnits == 0L;
+            bool valid = business.Succeeded && establishment.Succeeded && link.Succeeded && !injected.Succeeded && balancesSafe && sale.Succeeded && properties.OwnershipInterests.Any(item => item.owner.subjectId == "person.prototype.buyer" && item.IsActiveAt(6d));
+            return TestLabAssertions.True("step11-property-transfer", "Property transfers stage title changes and preserve external runtime boundaries", valid, $"Business={business.Code} Establishment={establishment.Code} Link={link.Code} Injected={injected.Code} BalancesSafe={balancesSafe} Sale={sale.Code}");
+        }
+
+        private static TestLabAutomationStepResult PropertyConditionMaintenancePersistence(TestLabAutomationContext context)
+        {
+            if (!PreparePropertyFixture(context, out PropertyRuntime properties, out _, out _, out _, out PropertyDefinition landDefinition, out _, out ItemDefinition toolDefinition, out string failure))
+            {
+                return Fail("step11-property-maintenance", failure);
+            }
+
+            ItemInstanceIdentityRuntime items = context.ScenarioContext.Runtimes.ItemInstances;
+            PreparePropertyTitle(context, properties, landDefinition, "maintenance-land");
+            string hammer = RunGuid(context, "property-hammer");
+            ItemInstanceOperationResult createTool = items.CreateItem(toolDefinition, itemInstanceId: hammer, ownerPersonId: "person.prototype.worker", custodianPersonId: "person.prototype.worker");
+            PropertyOperationResult condition = properties.RecordCondition(new PropertyConditionRecordData { conditionRecordId = Scoped(context, "property-condition", "damaged"), propertyId = PropertyId(context, "maintenance-land"), condition = PropertyConditionState.Damaged, severity = 5, recordedWorldTime = 5d });
+            PropertyOperationResult inspection = properties.PerformInspection(new PropertyInspectionRecordData
+            {
+                inspectionId = Scoped(context, "property-inspection", "damaged"),
+                propertyId = PropertyId(context, "maintenance-land"),
+                inspector = PropertySubjectReferenceData.Person("person.prototype.inspector"),
+                inspectedWorldTime = 6d
+            });
+            PropertyOperationResult obligation = properties.CreateMaintenanceObligation(new PropertyMaintenanceObligationData
+            {
+                maintenanceObligationId = Scoped(context, "property-maintenance", "repair"),
+                propertyId = PropertyId(context, "maintenance-land"),
+                responsibleSubject = PropertySubjectReferenceData.Person("person.prototype.owner"),
+                authorizedWorker = PropertySubjectReferenceData.Person("person.prototype.worker"),
+                requiredToolItemInstanceIds = new[] { hammer },
+                dueWorldTime = 10d
+            });
+            PropertyOperationResult injected = properties.ExecuteMaintenance(Scoped(context, "property-maintenance", "repair"), PropertySubjectReferenceData.Person("person.prototype.worker"), items, new[] { hammer }, Array.Empty<string>(), string.Empty, string.Empty, 7d, injectFailureStage: "repair");
+            PropertyOperationResult repair = properties.ExecuteMaintenance(Scoped(context, "property-maintenance", "repair"), PropertySubjectReferenceData.Person("person.prototype.worker"), items, new[] { hammer }, Array.Empty<string>(), string.Empty, string.Empty, 8d);
+            PropertyRuntimeSaveData save = properties.CreateSaveData();
+            bool saveValid = PropertyRuntime.ValidateSaveData(save, null, out string saveFailure);
+            PropertyRuntime restored = new PropertyRuntime();
+            PropertyOperationResult restore = restored.RestoreFromSaveData(save, null);
+
+            bool valid = createTool.Succeeded && condition.Succeeded && inspection.Succeeded && obligation.Succeeded && !injected.Succeeded && repair.Succeeded && saveValid && restore.Succeeded && restored.MaintenanceObligations.Single().state == MaintenanceObligationState.Completed;
+            return TestLabAssertions.True("step11-property-maintenance", "Condition, inspection, maintenance, and persistence remain explicit", valid, $"Tool={createTool.Status} Condition={condition.Code} Inspection={inspection.Code} Obligation={obligation.Code} Injected={injected.Code} Repair={repair.Code} Save={saveValid}:{saveFailure} Restore={restore.Code}");
+        }
+
+        private static bool PreparePropertyFixture(
+            TestLabAutomationContext context,
+            out PropertyRuntime properties,
+            out EconomyRuntime economy,
+            out CurrencyDefinition gold,
+            out BusinessRuntime businesses,
+            out PropertyDefinition landDefinition,
+            out BusinessDefinition businessDefinition,
+            out ItemDefinition toolDefinition,
+            out string failure)
+        {
+            properties = context?.ScenarioContext?.Runtimes?.Properties;
+            economy = context?.ScenarioContext?.Runtimes?.Economy;
+            businesses = context?.ScenarioContext?.Runtimes?.Businesses;
+            gold = null;
+            landDefinition = null;
+            businessDefinition = null;
+            toolDefinition = null;
+            failure = string.Empty;
+            DefinitionRegistry registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (properties == null || economy == null || businesses == null || registry == null)
+            {
+                failure = $"Property fixture missing runtime. Properties={properties != null} Economy={economy != null} Business={businesses != null} Registry={registry != null}";
+                return false;
+            }
+
+            if (!registry.TryGet(GoldCurrencyId, out gold))
+            {
+                failure = $"Currency definition '{GoldCurrencyId}' is missing.";
+                return false;
+            }
+
+            landDefinition = CreatePrototypePropertyDefinition("property.prototype.land", "Prototype Land Parcel", PropertyCategory.LandParcel, new[] { PropertyCategory.ResidentialBuilding }, new[] { PropertyUseCategory.Residential, PropertyUseCategory.Commercial, PropertyUseCategory.Agricultural }, gold.Id);
+            PropertyDefinition buildingDefinition = CreatePrototypePropertyDefinition("property.prototype.building", "Prototype Building", PropertyCategory.ResidentialBuilding, new[] { PropertyCategory.ApartmentUnit }, new[] { PropertyUseCategory.Residential, PropertyUseCategory.Commercial, PropertyUseCategory.Storage }, gold.Id);
+            PropertyDefinition unitDefinition = CreatePrototypePropertyDefinition("property.prototype.unit", "Prototype Building Unit", PropertyCategory.ApartmentUnit, Array.Empty<PropertyCategory>(), new[] { PropertyUseCategory.Residential, PropertyUseCategory.Commercial, PropertyUseCategory.Storage }, gold.Id);
+            businessDefinition = PrototypeBusinessDefinition();
+            toolDefinition = CreateItemDefinition("item.prototype-property-repair-tool", "Prototype Property Repair Tool");
+            DefinitionRegistry extended = registry;
+            foreach (IGameDefinition definition in new IGameDefinition[] { landDefinition, buildingDefinition, unitDefinition, businessDefinition, toolDefinition })
+            {
+                extended = ExtendRegistry(extended, definition);
+            }
+
+            properties.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+            economy.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+            businesses.Configure(extended, context.ScenarioContext.Runtimes.WorldId);
+            return true;
+        }
+
+        private static PropertyOperationResult PreparePropertyTitle(TestLabAutomationContext context, PropertyRuntime properties, PropertyDefinition landDefinition, string slug)
+        {
+            PropertyOperationResult land = RegisterPropertyLand(context, properties, landDefinition, slug);
+            if (!land.Succeeded)
+            {
+                return land;
+            }
+
+            PropertyOperationResult owner = properties.CreateOwnership(new PropertyOwnershipInterestData
+            {
+                ownershipInterestId = Scoped(context, "property-ownership", $"{slug}-owner"),
+                propertyId = PropertyId(context, slug),
+                owner = PropertySubjectReferenceData.Person("person.prototype.owner"),
+                ownershipModel = PropertyOwnershipModel.Sole,
+                ownershipShare = PropertyShareData.Full(),
+                votingShare = PropertyShareData.Full(),
+                economicBenefitShare = PropertyShareData.Full(),
+                effectiveStartWorldTime = 1d,
+                rights = new[] { PropertyAccessCategory.Manage, PropertyAccessCategory.TransferProperty }
+            }, 1d);
+            if (!owner.Succeeded)
+            {
+                return owner;
+            }
+
+            return properties.CreateTitle(Scoped(context, "property-title", $"{slug}-initial"), PropertyId(context, slug), new[] { Scoped(context, "property-ownership", $"{slug}-owner") }, 1d);
+        }
+
+        private static PropertyOperationResult RegisterPropertyLand(TestLabAutomationContext context, PropertyRuntime properties, PropertyDefinition landDefinition, string slug)
+        {
+            return properties.RegisterProperty(new PropertyInstanceData
+            {
+                propertyId = PropertyId(context, slug),
+                propertyDefinitionId = landDefinition.Id,
+                displayName = $"Prototype {slug}",
+                spatialReferenceId = Scoped(context, "place-reference", slug),
+                sceneObjectReferenceId = Scoped(context, "scene-reference", slug),
+                currentUses = new[] { PropertyUseCategory.Residential },
+                creationWorldTime = 1d
+            });
+        }
+
+        private static PropertyOperationResult RegisterPropertyBuilding(TestLabAutomationContext context, PropertyRuntime properties, string slug, string parent)
+        {
+            return properties.RegisterProperty(new PropertyInstanceData
+            {
+                propertyId = PropertyId(context, slug),
+                propertyDefinitionId = "property.prototype.building",
+                parentPropertyId = parent,
+                sceneObjectReferenceId = Scoped(context, "scene-building", slug),
+                currentUses = new[] { PropertyUseCategory.Residential }
+            });
+        }
+
+        private static PropertyOperationResult RegisterPropertyUnit(TestLabAutomationContext context, PropertyRuntime properties, string slug, string parent)
+        {
+            return properties.RegisterProperty(new PropertyInstanceData
+            {
+                propertyId = PropertyId(context, slug),
+                propertyDefinitionId = "property.prototype.unit",
+                parentPropertyId = parent,
+                sceneObjectReferenceId = Scoped(context, "scene-unit", slug),
+                currentUses = new[] { PropertyUseCategory.Residential }
+            });
+        }
+
+        private static PropertyOperationResult PropertyTransfer(TestLabAutomationContext context, PropertyRuntime properties, EconomyRuntime economy, string propertySlug, string transferSlug, PropertyTransferCategory category, string from, string to, long shareUnits, string sellerAccount, string buyerAccount, string currencyId, string inject = "")
+        {
+            return properties.TransferProperty(new PropertyTransferRequestData
+            {
+                transferId = Scoped(context, "property-transfer", transferSlug),
+                propertyId = PropertyId(context, propertySlug),
+                transferCategory = category,
+                fromOwner = PropertySubjectReferenceData.Person(from),
+                toOwner = PropertySubjectReferenceData.Person(to),
+                share = new PropertyShareData { units = shareUnits, totalUnits = 10000L },
+                sellerAccountId = sellerAccount,
+                buyerAccountId = buyerAccount,
+                currencyId = currencyId,
+                considerationUnits = category == PropertyTransferCategory.Sale ? 40L : 0L,
+                effectiveWorldTime = 5d + properties.Transfers.Count,
+                approvalAuthorityId = "authority.prototype.registry",
+                injectFailureStage = inject
+            }, economy);
+        }
+
+        private static PropertyDefinition CreatePrototypePropertyDefinition(string id, string display, PropertyCategory category, PropertyCategory[] children, PropertyUseCategory[] uses, string currencyId)
+        {
+            PropertyDefinition definition = ScriptableObject.CreateInstance<PropertyDefinition>();
+            definition.Initialize(id, display, category);
+            definition.SetPolicies(children, new[] { PropertyOwnershipModel.Sole, PropertyOwnershipModel.SharedFractional, PropertyOwnershipModel.Business }, uses, currencyId);
+            return definition;
+        }
+
+        private static string PropertyId(TestLabAutomationContext context, string slug)
+        {
+            return Scoped(context, "property", slug);
+        }
+
         private static bool TryGetBusinessRuntime(
             TestLabAutomationContext context,
             out BusinessRuntime businesses,
@@ -1937,6 +2299,21 @@ namespace UnityIsekaiGame.Development.Automation
         }
 
         private static ITestLabAutomationScenario BusinessScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[] { GoldCurrencyId });
+        }
+
+        private static ITestLabAutomationScenario PropertyScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
         {
             return new TestLabAutomationScenario(
                 scenarioId,

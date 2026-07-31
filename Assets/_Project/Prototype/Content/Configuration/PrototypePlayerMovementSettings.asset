@@ -17,6 +17,6 @@ MonoBehaviour:
   jumpHeight: 1.25
   gravity: 24
   groundedStickForce: 2
-  mouseSensitivity: 0.08
-  gamepadSensitivity: 140
+  mouseSensitivity: 0.3
+  gamepadSensitivity: 320
   pitchLimits: {x: -85, y: 85}

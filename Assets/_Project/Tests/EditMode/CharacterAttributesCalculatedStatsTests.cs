@@ -67,6 +67,10 @@ namespace UnityIsekaiGame.Tests
                 Assert.That(stat.GetType().FullName, Is.EqualTo("UnityIsekaiGame.Stats.CalculatedStatDefinition"));
                 Assert.That(GetProperty<object>(stat, "Formula"), Is.Not.Null, statId);
             }
+
+            Assert.That(registry.TryGet("calculated-stat.movement-speed", out IGameDefinition movementSpeed), Is.True);
+            object movementFormula = GetProperty<object>(movementSpeed, "Formula");
+            Assert.That(GetProperty<float>(movementFormula, "BaseValue"), Is.EqualTo(4f));
         }
 
         [Test]
@@ -181,6 +185,50 @@ namespace UnityIsekaiGame.Tests
                 Assert.That(Invoke<bool>(calculatedStats, "AddContribution", args), Is.True, args[1] as string);
                 Assert.That(Invoke<float>(attributes, "GetValue", "attribute.strength"), Is.EqualTo(initialStrength));
                 Assert.That(Invoke<float>(calculatedStats, "GetValue", "calculated-stat.physical-power"), Is.EqualTo(initialPower + 5f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
+        public void MovementSpeedFormula_UsesBasePlusAgility()
+        {
+            DefinitionRegistry registry = LoadRegistry();
+            GameObject owner = new GameObject("Movement Speed Formula Fixture");
+            try
+            {
+                Component attributes = owner.AddComponent(RequiredType("UnityIsekaiGame.Stats.CharacterAttributes"));
+                Component calculatedStats = owner.AddComponent(RequiredType("UnityIsekaiGame.Stats.CalculatedStatCollection"));
+                Invoke(attributes, "Configure", registry);
+                Invoke(calculatedStats, "Configure", registry, attributes);
+
+                float agility = Invoke<float>(attributes, "GetValue", "attribute.agility");
+                Assert.That(Invoke<float>(calculatedStats, "GetValue", "calculated-stat.movement-speed"), Is.EqualTo(4f + agility));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
+        public void ActorMovementSpeed_ComposesAuthoredBaseAndCalculatedMovement()
+        {
+            DefinitionRegistry registry = LoadRegistry();
+            GameObject owner = new GameObject("Actor Movement Speed Composition Fixture");
+            try
+            {
+                owner.SetActive(false);
+                Component actorStats = owner.AddComponent(RequiredType("UnityIsekaiGame.Stats.ActorStats"));
+                SetField(actorStats, "baseMovementSpeed", 10f);
+                owner.SetActive(true);
+
+                Invoke(actorStats, "ConfigureDerivedStats", registry);
+
+                float expectedCalculatedMovement = 4f + 1f;
+                Assert.That(GetProperty<float>(actorStats, "MovementSpeed"), Is.EqualTo(10f + expectedCalculatedMovement));
             }
             finally
             {
