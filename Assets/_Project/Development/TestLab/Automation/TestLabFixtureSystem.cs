@@ -32,6 +32,7 @@ using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Professions;
+using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Relationships;
 
 namespace UnityIsekaiGame.Development.Automation
@@ -423,6 +424,7 @@ namespace UnityIsekaiGame.Development.Automation
             InstitutionalRevenueRuntime institutionalRevenue,
             RegionalFlowRuntime regionalFlow,
             RelationshipRuntime relationships,
+            InterpersonalAttitudeRuntime attitudes,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -465,6 +467,7 @@ namespace UnityIsekaiGame.Development.Automation
             InstitutionalRevenue = institutionalRevenue;
             RegionalFlow = regionalFlow;
             Relationships = relationships;
+            Attitudes = attitudes;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -509,6 +512,7 @@ namespace UnityIsekaiGame.Development.Automation
         public InstitutionalRevenueRuntime InstitutionalRevenue { get; }
         public RegionalFlowRuntime RegionalFlow { get; }
         public RelationshipRuntime Relationships { get; }
+        public InterpersonalAttitudeRuntime Attitudes { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -551,7 +555,8 @@ namespace UnityIsekaiGame.Development.Automation
             ContractEconomyRuntime contracts = null,
             InstitutionalRevenueRuntime institutionalRevenue = null,
             RegionalFlowRuntime regionalFlow = null,
-            RelationshipRuntime relationships = null)
+            RelationshipRuntime relationships = null,
+            InterpersonalAttitudeRuntime attitudes = null)
         {
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
@@ -592,7 +597,9 @@ namespace UnityIsekaiGame.Development.Automation
             regionalFlowRuntime.Configure(definitionRegistry, worldId);
             RelationshipRuntime relationshipRuntime = relationships ?? new RelationshipRuntime();
             relationshipRuntime.Configure(definitionRegistry, persons);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, null);
+            InterpersonalAttitudeRuntime attitudeRuntime = attitudes ?? new InterpersonalAttitudeRuntime();
+            attitudeRuntime.Configure(definitionRegistry, persons);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -640,6 +647,7 @@ namespace UnityIsekaiGame.Development.Automation
             InstitutionalRevenueRuntime institutionalRevenue = new InstitutionalRevenueRuntime();
             RegionalFlowRuntime regionalFlow = new RegionalFlowRuntime();
             RelationshipRuntime relationships = new RelationshipRuntime();
+            InterpersonalAttitudeRuntime attitudes = new InterpersonalAttitudeRuntime();
 
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -669,8 +677,9 @@ namespace UnityIsekaiGame.Development.Automation
             institutionalRevenue.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             regionalFlow.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             relationships.Configure(definitionRegistry, persons);
+            attitudes.Configure(definitionRegistry, persons);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, knowledgeObject);
         }
 
         private static string[] ExpandKnownPersons(IReadOnlyList<string> knownPersonIds, string ownerPersonId)
@@ -739,7 +748,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Contracts?.CreateSaveData(),
                 InstitutionalRevenue?.CreateSaveData(),
                 RegionalFlow?.CreateSaveData(),
-                Relationships?.CreateSaveData());
+                Relationships?.CreateSaveData(),
+                Attitudes?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -780,7 +790,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Contracts", Contracts?.Revision ?? 0L, Contracts?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("InstitutionalRevenue", InstitutionalRevenue?.Revision ?? 0L, InstitutionalRevenue?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("RegionalFlow", RegionalFlow?.Revision ?? 0L, RegionalFlow?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("Relationships", Relationships?.Revision ?? 0L, Relationships?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("Relationships", Relationships?.Revision ?? 0L, Relationships?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Attitudes", Attitudes?.Revision ?? 0L, Attitudes?.CreateSaveData())
             });
         }
 
@@ -1141,6 +1152,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (Attitudes != null && snapshot.Attitudes != null)
+            {
+                AttitudeMutationResult result = Attitudes.RestoreFromSaveData(snapshot.Attitudes, DefinitionRegistry, KnownPersonIds, restoringState: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Interpersonal attitude restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1231,7 +1252,8 @@ namespace UnityIsekaiGame.Development.Automation
             ContractRuntimeSaveData contracts,
             InstitutionalRevenueRuntimeSaveData institutionalRevenue,
             RegionalFlowRuntimeSaveData regionalFlow,
-            RelationshipRuntimeSaveData relationships)
+            RelationshipRuntimeSaveData relationships,
+            InterpersonalAttitudeRuntimeSaveData attitudes)
         {
             Knowledge = knowledge;
             History = history;
@@ -1268,6 +1290,7 @@ namespace UnityIsekaiGame.Development.Automation
             InstitutionalRevenue = institutionalRevenue;
             RegionalFlow = regionalFlow;
             Relationships = relationships;
+            Attitudes = attitudes;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1305,6 +1328,7 @@ namespace UnityIsekaiGame.Development.Automation
         public InstitutionalRevenueRuntimeSaveData InstitutionalRevenue { get; }
         public RegionalFlowRuntimeSaveData RegionalFlow { get; }
         public RelationshipRuntimeSaveData Relationships { get; }
+        public InterpersonalAttitudeRuntimeSaveData Attitudes { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint

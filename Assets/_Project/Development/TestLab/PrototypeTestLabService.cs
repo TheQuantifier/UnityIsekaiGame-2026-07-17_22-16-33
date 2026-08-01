@@ -52,6 +52,7 @@ using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.Skills;
+using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Relationships;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
@@ -139,6 +140,7 @@ namespace UnityIsekaiGame.Development
         private InformationAccessRuntime informationAccess = new InformationAccessRuntime();
         private KnowledgeRecordRuntime knowledgeRecords = new KnowledgeRecordRuntime();
         private RelationshipRuntime relationships = new RelationshipRuntime();
+        private InterpersonalAttitudeRuntime interpersonalAttitudes = new InterpersonalAttitudeRuntime();
         private AuthoritativeHistorySaveData lastHistorySaveData;
         private PersonMemorySaveData lastMemorySaveData;
 
@@ -182,6 +184,8 @@ namespace UnityIsekaiGame.Development
             knowledgeRecords.Configure(registry, GetPrototypePersonId());
             relationships = context?.Persistence?.Relationships ?? relationships ?? new RelationshipRuntime();
             relationships.Configure(registry, GetKnownPrototypePersons());
+            interpersonalAttitudes = context?.Persistence?.InterpersonalAttitudes ?? interpersonalAttitudes ?? new InterpersonalAttitudeRuntime();
+            interpersonalAttitudes.Configure(registry, GetKnownPrototypePersons());
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -477,7 +481,9 @@ namespace UnityIsekaiGame.Development
                 informationSources,
                 informationTransfers,
                 informationAccess,
-                knowledgeRecords));
+                knowledgeRecords,
+                relationships,
+                interpersonalAttitudes));
             currentAutomationScenarioContext = scenarioContext;
             ApplyAutomationRuntimeBindings(scenarioContext);
         }
@@ -502,6 +508,8 @@ namespace UnityIsekaiGame.Development
                 informationTransfers = frame.PreviousTransfers;
                 informationAccess = frame.PreviousAccess;
                 knowledgeRecords = frame.PreviousRecords;
+                relationships = frame.PreviousRelationships;
+                interpersonalAttitudes = frame.PreviousAttitudes;
                 ApplyAutomationRuntimeBindings(currentAutomationScenarioContext);
                 return;
             }
@@ -511,6 +519,8 @@ namespace UnityIsekaiGame.Development
             informationTransfers = frame.PreviousTransfers;
             informationAccess = frame.PreviousAccess;
             knowledgeRecords = frame.PreviousRecords;
+            relationships = frame.PreviousRelationships;
+            interpersonalAttitudes = frame.PreviousAttitudes;
             ApplyAutomationRuntimeBindings(currentAutomationScenarioContext);
         }
 
@@ -603,6 +613,8 @@ namespace UnityIsekaiGame.Development
             knowledgeRecords = EnsureKnowledgeRecordRuntime();
             relationships = context?.Persistence?.Relationships ?? relationships ?? new RelationshipRuntime();
             relationships.Configure(registry, GetKnownPrototypePersons());
+            interpersonalAttitudes = context?.Persistence?.InterpersonalAttitudes ?? interpersonalAttitudes ?? new InterpersonalAttitudeRuntime();
+            interpersonalAttitudes.Configure(registry, GetKnownPrototypePersons());
             return TestLabRuntimeBundle.FromExisting(
                 registry,
                 GetPrototypePersonId(),
@@ -616,7 +628,8 @@ namespace UnityIsekaiGame.Development
                 informationTransfers,
                 informationAccess,
                 knowledgeRecords,
-                relationships: relationships);
+                relationships: relationships,
+                attitudes: interpersonalAttitudes);
         }
 
         private TestLabRuntimeBundle GetOrCreateScopedAutomationBundle(Dictionary<string, TestLabRuntimeBundle> bundles, string key, string objectName)
@@ -666,6 +679,7 @@ namespace UnityIsekaiGame.Development
             informationAccess = bundle.Access ?? informationAccess;
             knowledgeRecords = bundle.Records ?? knowledgeRecords;
             relationships = bundle.Relationships ?? relationships;
+            interpersonalAttitudes = bundle.Attitudes ?? interpersonalAttitudes;
         }
 
         public IEnumerable<TestLabRuntimeFingerprintSection> CaptureAutomationSceneFingerprint(TestLabRuntimeArea requiredAreas)
@@ -730,8 +744,9 @@ namespace UnityIsekaiGame.Development
             {
                 sections.Add(CreateSceneFingerprintSection(
                     "Scene.Social",
-                    relationships == null ? 0L : relationships.Revision,
-                    relationships == null ? null : relationships.CreateSaveData()));
+                    (relationships == null ? 0L : relationships.Revision) + (interpersonalAttitudes == null ? 0L : interpersonalAttitudes.Revision),
+                    relationships == null ? null : relationships.CreateSaveData(),
+                    interpersonalAttitudes == null ? null : interpersonalAttitudes.CreateSaveData()));
             }
 
             return sections;
@@ -14368,8 +14383,9 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)));
+            return PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
+                PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                    PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()
@@ -14585,13 +14601,17 @@ namespace UnityIsekaiGame.Development
                 InformationSourceRuntime previousSources,
                 InformationTransferRuntime previousTransfers,
                 InformationAccessRuntime previousAccess,
-                KnowledgeRecordRuntime previousRecords)
+                KnowledgeRecordRuntime previousRecords,
+                RelationshipRuntime previousRelationships,
+                InterpersonalAttitudeRuntime previousAttitudes)
             {
                 PreviousContext = previousContext;
                 PreviousSources = previousSources;
                 PreviousTransfers = previousTransfers;
                 PreviousAccess = previousAccess;
                 PreviousRecords = previousRecords;
+                PreviousRelationships = previousRelationships;
+                PreviousAttitudes = previousAttitudes;
             }
 
             public TestLabScenarioContext PreviousContext { get; }
@@ -14599,6 +14619,8 @@ namespace UnityIsekaiGame.Development
             public InformationTransferRuntime PreviousTransfers { get; }
             public InformationAccessRuntime PreviousAccess { get; }
             public KnowledgeRecordRuntime PreviousRecords { get; }
+            public RelationshipRuntime PreviousRelationships { get; }
+            public InterpersonalAttitudeRuntime PreviousAttitudes { get; }
         }
     }
 }
