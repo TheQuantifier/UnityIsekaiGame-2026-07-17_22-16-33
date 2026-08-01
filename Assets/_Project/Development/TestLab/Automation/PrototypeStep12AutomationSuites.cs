@@ -10,6 +10,7 @@ using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Interactions;
+using UnityIsekaiGame.Social.Networks;
 using UnityIsekaiGame.Social.Norms;
 using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
@@ -160,6 +161,29 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step12-norm-conflict-promise", "Assess conflict and promise breach", NormConflictAndPromise)),
                     NormScenario("persistence-idempotence", "Norm assessments persist and duplicate transactions are idempotent", 50,
                         Step("step12-norm-persistence", "Save, restore, duplicate, and reject invalid norm payloads", NormPersistenceIdempotence))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.7.social-networks-cliques-group-dynamics",
+                "Social Networks, Cliques, and Group Dynamics",
+                "12.7",
+                "Derived social graph projections and persistent informal social groups without owning relationship, attitude, reputation, rumor, interaction, or norm records.",
+                12070,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "SocialNetworkRuntime", "SocialGraphProjectionDefinition", "InformalSocialGroupDefinition", "SocialNetworkPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    NetworkScenario("readiness-preview", "Network definitions resolve and previews do not mutate", 10,
+                        Step("step12-network-readiness", "Resolve graph and group definitions", NetworkReadinessAndPreview)),
+                    NetworkScenario("projection-semantics", "Projected edges preserve source semantics and direction", 20,
+                        Step("step12-network-projection", "Build graph from source runtimes", NetworkProjectionSemantics)),
+                    NetworkScenario("queries-and-analysis", "Neighbors, paths, metrics, cliques, and communities are deterministic", 30,
+                        Step("step12-network-analysis", "Run bounded graph analysis", NetworkQueriesAndAnalysis)),
+                    NetworkScenario("group-lifecycle", "Informal group lifecycle and idempotence are explicit", 40,
+                        Step("step12-network-group", "Create memberships, roles, and group metrics", NetworkGroupLifecycle)),
+                    NetworkScenario("persistence-validation", "Network persistence preserves groups and rejects corrupt restores", 50,
+                        Step("step12-network-persistence", "Save, restore, and reject invalid network payloads", NetworkPersistenceValidation))
                 }), out _);
         }
 
@@ -1562,6 +1586,390 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeAttitudeDefinitionFactory.RespectId,
                     PrototypeReputationDefinitionFactory.EsteemId
                 });
+        }
+
+        private static TestLabAutomationStepResult NetworkReadinessAndPreview(TestLabAutomationContext context)
+        {
+            if (!TryGetNetworkRuntime(context, out SocialNetworkRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-network-readiness", "Resolve graph and group definitions", "SocialNetworkRuntime", "MissingRuntime", failure);
+            }
+
+            long before = runtime.Revision;
+            SocialNetworkMutationResult preview = runtime.Mutate(NetworkGroupRequest(context, "readiness-preview", NetworkGroupId(context, "preview"), preview: true));
+            bool definitions = registry.TryGet(PrototypeSocialNetworkDefinitionFactory.CompositeProjectionId, out SocialGraphProjectionDefinition projection)
+                && registry.TryGet(PrototypeSocialNetworkDefinitionFactory.AdventuringPartyGroupId, out InformalSocialGroupDefinition group)
+                && projection.IncludedEdgeKinds.Contains(SocialGraphEdgeKind.SharedGroupMembership)
+                && group.RequiresLeader;
+            bool valid = definitions
+                && preview.Status == SocialNetworkOperationStatus.Preview
+                && runtime.Revision == before
+                && runtime.GroupCount == 0;
+            return TestLabAssertions.True("step12-network-readiness", "Network definitions resolve and previews do not mutate", valid, $"Definitions={definitions} Preview={preview.Status} Revision={before}->{runtime.Revision} Groups={runtime.GroupCount}");
+        }
+
+        private static TestLabAutomationStepResult NetworkProjectionSemantics(TestLabAutomationContext context)
+        {
+            if (!TryGetNetworkRuntime(context, out SocialNetworkRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-network-projection", "Build graph from source runtimes", "SocialNetworkRuntime", "MissingRuntime", failure);
+            }
+
+            string seedFailure = SeedNetworkFixture(context, "projection");
+            if (!string.IsNullOrEmpty(seedFailure))
+            {
+                return TestLabAssertions.Fail("step12-network-projection", "Build graph from source runtimes", "SeedNetworkFixture", "Succeeded", "Failed", seedFailure);
+            }
+
+            SocialGraphSnapshot graph = runtime.BuildGraph(NetworkQuery(PrototypeSocialNetworkDefinitionFactory.CompositeProjectionId, 100d));
+            bool hasRelationship = graph.Edges.Any(edge => edge.EdgeKind == SocialGraphEdgeKind.ObjectiveRelationship);
+            bool hasDirectedAttitude = graph.Edges.Any(edge => edge.EdgeKind == SocialGraphEdgeKind.DirectedAttitude && edge.SourcePersonId == context.ScenarioContext.Runtimes.PersonId);
+            bool hasInteraction = graph.Edges.Any(edge => edge.EdgeKind == SocialGraphEdgeKind.RecentInteraction);
+            bool hasRumor = graph.Edges.Any(edge => edge.EdgeKind == SocialGraphEdgeKind.RumorTransmission);
+            bool hasGroup = graph.Edges.Any(edge => edge.EdgeKind == SocialGraphEdgeKind.SharedGroupMembership);
+            bool requestFilter = runtime.BuildGraph(new SocialGraphQueryRequest
+            {
+                ProjectionDefinitionId = PrototypeSocialNetworkDefinitionFactory.CompositeProjectionId,
+                WorldTime = 100d,
+                EdgeKinds = new[] { SocialGraphEdgeKind.SharedGroupMembership },
+                MinimumWeight = 1
+            }).Edges.All(edge => edge.EdgeKind == SocialGraphEdgeKind.SharedGroupMembership);
+            bool valid = hasRelationship && hasDirectedAttitude && hasInteraction && hasRumor && hasGroup && requestFilter;
+            return TestLabAssertions.True("step12-network-projection", "Projected edges preserve source semantics and direction", valid, $"Edges={graph.Edges.Count} Relationship={hasRelationship} Attitude={hasDirectedAttitude} Interaction={hasInteraction} Rumor={hasRumor} Group={hasGroup} Filter={requestFilter}");
+        }
+
+        private static TestLabAutomationStepResult NetworkQueriesAndAnalysis(TestLabAutomationContext context)
+        {
+            if (!TryGetNetworkRuntime(context, out SocialNetworkRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-network-analysis", "Run bounded graph analysis", "SocialNetworkRuntime", "MissingRuntime", failure);
+            }
+
+            string seedFailure = SeedNetworkFixture(context, "analysis");
+            if (!string.IsNullOrEmpty(seedFailure))
+            {
+                return TestLabAssertions.Fail("step12-network-analysis", "Run bounded graph analysis", "SeedNetworkFixture", "Succeeded", "Failed", seedFailure);
+            }
+
+            long before = runtime.Revision;
+            SocialGraphQueryRequest composite = NetworkQuery(PrototypeSocialNetworkDefinitionFactory.CompositeProjectionId, 100d);
+            var neighbors = runtime.QueryNeighbors(context.ScenarioContext.Runtimes.PersonId, composite);
+            var mutual = runtime.QueryMutualConnections(context.ScenarioContext.Runtimes.PersonId, "person.prototype.student", composite);
+            SocialGraphPathResult path = runtime.FindShortestPath(context.ScenarioContext.Runtimes.PersonId, "person.prototype.student", composite);
+            SocialGraphMetricsResult metrics = runtime.CalculatePersonMetrics(context.ScenarioContext.Runtimes.PersonId, composite);
+            var components = runtime.FindConnectedComponents(composite);
+            var cliques = runtime.FindCliqueCandidates(NetworkQuery(PrototypeSocialNetworkDefinitionFactory.MutualTrustProjectionId, 100d));
+            var communities = runtime.FindCommunityCandidates(composite);
+            bool valid = neighbors.Count > 0
+                && mutual.Any(item => item.MutualPersonId == "person.prototype.friend")
+                && path.Connected
+                && path.PersonPath.Length <= composite.MaxDepth + 1
+                && metrics.Degree > 0
+                && components.Count > 0
+                && cliques.Count > 0
+                && communities.Count > 0
+                && runtime.Revision == before;
+            return TestLabAssertions.True("step12-network-analysis", "Neighbors, paths, metrics, cliques, and communities are deterministic", valid, $"Neighbors={neighbors.Count} Mutual={mutual.Count} Path={path.Connected}/{path.Distance} Metrics={metrics.Degree} Components={components.Count} Cliques={cliques.Count} Communities={communities.Count} Revision={before}->{runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult NetworkGroupLifecycle(TestLabAutomationContext context)
+        {
+            if (!TryGetNetworkRuntime(context, out SocialNetworkRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-network-group", "Create memberships, roles, and group metrics", "SocialNetworkRuntime", "MissingRuntime", failure);
+            }
+
+            string groupId = NetworkGroupId(context, "lifecycle");
+            SocialNetworkMutationResult create = runtime.Mutate(NetworkGroupRequest(context, "group-create", groupId));
+            SocialNetworkMutationResult duplicate = runtime.Mutate(NetworkGroupRequest(context, "group-create", groupId));
+            SocialNetworkMutationResult leader = runtime.Mutate(NetworkMembershipRequest(context, "group-leader", groupId, context.ScenarioContext.Runtimes.PersonId, PrototypeSocialNetworkDefinitionFactory.LeaderRoleId));
+            SocialNetworkMutationResult companion = runtime.Mutate(NetworkMembershipRequest(context, "group-companion", groupId, "person.prototype.friend", PrototypeSocialNetworkDefinitionFactory.CompanionRoleId));
+            SocialNetworkMutationResult invalidLeader = runtime.Mutate(NetworkMembershipRequest(context, "group-second-leader", groupId, "person.prototype.student", PrototypeSocialNetworkDefinitionFactory.LeaderRoleId));
+            SocialNetworkMutationResult ended = runtime.Mutate(new SocialGroupMutationRequest
+            {
+                TransactionId = Tx(context, "group-companion-end"),
+                MutationKind = SocialGroupMutationKind.EndMembership,
+                MembershipId = NetworkMembershipId(groupId, "person.prototype.friend"),
+                WorldTime = 7d
+            });
+            SocialGroupMetricsResult metrics = runtime.CalculateGroupMetrics(groupId, NetworkQuery(PrototypeSocialNetworkDefinitionFactory.CompositeProjectionId, 100d));
+            bool valid = create.Succeeded
+                && duplicate.Duplicate
+                && leader.Succeeded
+                && companion.Succeeded
+                && !invalidLeader.Succeeded
+                && invalidLeader.Status == SocialNetworkOperationStatus.InvalidRole
+                && ended.Succeeded
+                && metrics.ActiveMemberCount == 1
+                && metrics.HistoricalMemberCount == 2
+                && !metrics.MutatedGroup;
+            return TestLabAssertions.True("step12-network-group", "Informal group lifecycle and idempotence are explicit", valid, $"Create={create.Status} Duplicate={duplicate.Status}/{duplicate.Duplicate} Leader={leader.Status} Companion={companion.Status} InvalidLeader={invalidLeader.Status} End={ended.Status} Active={metrics.ActiveMemberCount} Historical={metrics.HistoricalMemberCount}");
+        }
+
+        private static TestLabAutomationStepResult NetworkPersistenceValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetNetworkRuntime(context, out SocialNetworkRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-network-persistence", "Save, restore, and reject invalid network payloads", "SocialNetworkRuntime", "MissingRuntime", failure);
+            }
+
+            string seedFailure = SeedNetworkFixture(context, "persistence");
+            if (!string.IsNullOrEmpty(seedFailure))
+            {
+                return TestLabAssertions.Fail("step12-network-persistence", "Save, restore, and reject invalid network payloads", "SeedNetworkFixture", "Succeeded", "Failed", seedFailure);
+            }
+
+            SocialNetworkPersistenceParticipant participant = new SocialNetworkPersistenceParticipant(runtime, () => registry, () => context.ScenarioContext.Runtimes.KnownPersonIds.ToArray());
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            SocialNetworkRuntimeSaveData saveData = JsonUtility.FromJson<SocialNetworkRuntimeSaveData>(save.PayloadJson);
+            SocialNetworkRuntime restored = new SocialNetworkRuntime();
+            restored.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds, context.ScenarioContext.Runtimes.Relationships, context.ScenarioContext.Runtimes.Attitudes, context.ScenarioContext.Runtimes.Reputation, context.ScenarioContext.Runtimes.Rumors, context.ScenarioContext.Runtimes.SocialInteractions, context.ScenarioContext.Runtimes.SocialNorms);
+            SocialNetworkMutationResult restore = restored.RestoreFromSaveData(saveData, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            SocialNetworkRuntimeSaveData corrupt = saveData.Clone();
+            if (corrupt.memberships.Count > 0)
+            {
+                corrupt.memberships[0].personId = "person.prototype.missing";
+            }
+            int beforeGroups = runtime.GroupCount;
+            int beforeMemberships = runtime.MembershipCount;
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), SocialNetworkPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = save.Succeeded
+                && restore.Succeeded
+                && restored.GroupCount == runtime.GroupCount
+                && restored.MembershipCount == runtime.MembershipCount
+                && rejected != null
+                && !rejected.Succeeded
+                && runtime.GroupCount == beforeGroups
+                && runtime.MembershipCount == beforeMemberships;
+            return TestLabAssertions.True("step12-network-persistence", "Network persistence preserves groups and rejects corrupt restores", valid, $"Save={save.Succeeded} Restore={restore.Status} Reject={rejected?.Succeeded} Groups={beforeGroups}->{runtime.GroupCount} Memberships={beforeMemberships}->{runtime.MembershipCount}");
+        }
+
+        private static ITestLabAutomationScenario NetworkScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeSocialNetworkDefinitionFactory.CompositeProjectionId,
+                    PrototypeSocialNetworkDefinitionFactory.MutualTrustProjectionId,
+                    PrototypeSocialNetworkDefinitionFactory.RelationshipProjectionId,
+                    PrototypeSocialNetworkDefinitionFactory.AdventuringPartyGroupId,
+                    PrototypeRelationshipDefinitionFactory.FriendRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.MentorStudentRelationshipId,
+                    PrototypeAttitudeDefinitionFactory.TrustId,
+                    PrototypeAttitudeDefinitionFactory.HostilityId,
+                    PrototypeSocialInteractionDefinitionFactory.GreetId,
+                    PrototypeRumorDefinitionFactory.PublicNewsRumorId,
+                    PrototypeRumorDefinitionFactory.ConversationChannelId
+                });
+        }
+
+        private static bool TryGetNetworkRuntime(TestLabAutomationContext context, out SocialNetworkRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.SocialNetworks;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Social Network runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static string SeedNetworkFixture(TestLabAutomationContext context, string suffix)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            if (runtimes == null)
+            {
+                return "Runtime bundle is missing.";
+            }
+
+            string owner = runtimes.PersonId;
+            RelationshipOperationResult friend = runtimes.Relationships.CreateRelationship(new RelationshipCreateRequest
+            {
+                recordId = NetworkRecordId(context, suffix, "relationship-player-friend"),
+                relationshipDefinitionId = PrototypeRelationshipDefinitionFactory.FriendRelationshipId,
+                firstPersonId = owner,
+                firstRoleId = "friend",
+                secondPersonId = "person.prototype.friend",
+                secondRoleId = "friend",
+                transactionId = Tx(context, $"{suffix}-relationship-player-friend"),
+                startWorldTime = 1d
+            });
+            if (!friend.Succeeded && !friend.Duplicate) return friend.Message;
+
+            RelationshipOperationResult student = runtimes.Relationships.CreateRelationship(new RelationshipCreateRequest
+            {
+                recordId = NetworkRecordId(context, suffix, "relationship-friend-student"),
+                relationshipDefinitionId = PrototypeRelationshipDefinitionFactory.MentorStudentRelationshipId,
+                firstPersonId = "person.prototype.friend",
+                firstRoleId = "mentor",
+                secondPersonId = "person.prototype.student",
+                secondRoleId = "student",
+                transactionId = Tx(context, $"{suffix}-relationship-friend-student"),
+                startWorldTime = 2d
+            });
+            if (!student.Succeeded && !student.Duplicate) return student.Message;
+
+            string attitudeFailure = MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"{suffix}-attitude-owner-friend"), owner, "person.prototype.friend", PrototypeAttitudeDefinitionFactory.TrustId, 70)
+                ?? MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"{suffix}-attitude-friend-owner"), "person.prototype.friend", owner, PrototypeAttitudeDefinitionFactory.TrustId, 65)
+                ?? MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"{suffix}-attitude-friend-student"), "person.prototype.friend", "person.prototype.student", PrototypeAttitudeDefinitionFactory.TrustId, 62)
+                ?? MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"{suffix}-attitude-student-friend"), "person.prototype.student", "person.prototype.friend", PrototypeAttitudeDefinitionFactory.TrustId, 58)
+                ?? MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"{suffix}-attitude-owner-student"), owner, "person.prototype.student", PrototypeAttitudeDefinitionFactory.TrustId, 55)
+                ?? MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"{suffix}-attitude-student-owner"), "person.prototype.student", owner, PrototypeAttitudeDefinitionFactory.TrustId, 52)
+                ?? MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"{suffix}-attitude-owner-rival"), owner, "person.prototype.rival", PrototypeAttitudeDefinitionFactory.HostilityId, -40);
+            if (!string.IsNullOrEmpty(attitudeFailure)) return attitudeFailure;
+
+            SocialInteractionResult interaction = runtimes.SocialInteractions.Execute(new SocialInteractionRequest
+            {
+                TransactionId = Tx(context, $"{suffix}-interaction"),
+                InteractionRecordId = NetworkRecordId(context, suffix, "interaction"),
+                InteractionDefinitionId = PrototypeSocialInteractionDefinitionFactory.GreetId,
+                InitiatorPersonId = owner,
+                TargetPersonId = "person.prototype.friend",
+                PlaceId = "place.prototype.test-lab",
+                Subject = new SocialInteractionSubjectData { kind = SocialInteractionSubjectKind.Person, subjectId = "person.prototype.friend", ownerPersonId = "person.prototype.friend" },
+                Channel = SocialInteractionCommunicationChannel.Conversation,
+                WorldTime = 30d,
+                DeterministicSeed = context.RunId
+            });
+            if (!interaction.Succeeded && !interaction.Duplicate) return interaction.Message;
+
+            string rumorId = NetworkRecordId(context, suffix, "rumor");
+            RumorOperationResult rumor = runtimes.Rumors.CreateRumor(new RumorCreateRequest
+            {
+                TransactionId = Tx(context, $"{suffix}-rumor"),
+                RumorId = rumorId,
+                DefinitionId = PrototypeRumorDefinitionFactory.PublicNewsRumorId,
+                Claim = new KnowledgePropositionData
+                {
+                    factDefinitionId = BuiltInKnowledgeFacts.EventOccurred,
+                    subjectType = KnowledgeSubjectType.Event,
+                    subjectId = NetworkRecordId(context, suffix, "rumor-event"),
+                    valueType = KnowledgeValueType.Boolean,
+                    booleanValue = true
+                },
+                OriginatorPersonId = owner,
+                OriginCategory = RumorOriginCategory.FirsthandObservation,
+                Confidence = 700,
+                Salience = 600,
+                Memorability = 600,
+                WorldTime = 32d
+            });
+            if (!rumor.Succeeded && !rumor.Duplicate) return rumor.Message;
+
+            RumorOperationResult transmission = runtimes.Rumors.Transmit(new RumorTransmissionRequest
+            {
+                TransactionId = Tx(context, $"{suffix}-rumor-transmission"),
+                TransmissionId = NetworkRecordId(context, suffix, "rumor-transmission"),
+                RumorVersionId = rumorId,
+                SpeakerPersonId = owner,
+                ListenerPersonId = "person.prototype.friend",
+                ChannelId = PrototypeRumorDefinitionFactory.ConversationChannelId,
+                WorldTime = 34d,
+                DeterministicSeed = context.RunId
+            });
+            if (!transmission.Succeeded && !transmission.Duplicate) return transmission.Message;
+
+            string groupId = NetworkGroupId(context, suffix);
+            SocialNetworkMutationResult group = runtimes.SocialNetworks.Mutate(NetworkGroupRequest(context, $"{suffix}-group", groupId));
+            if (!group.Succeeded && !group.Duplicate) return group.Message;
+            foreach ((string person, string role) in new[]
+            {
+                (owner, PrototypeSocialNetworkDefinitionFactory.LeaderRoleId),
+                ("person.prototype.friend", PrototypeSocialNetworkDefinitionFactory.CompanionRoleId),
+                ("person.prototype.student", PrototypeSocialNetworkDefinitionFactory.CompanionRoleId)
+            })
+            {
+                SocialNetworkMutationResult membership = runtimes.SocialNetworks.Mutate(NetworkMembershipRequest(context, $"{suffix}-member-{person}", groupId, person, role));
+                if (!membership.Succeeded && !membership.Duplicate) return membership.Message;
+            }
+
+            return string.Empty;
+        }
+
+        private static string MutateNetworkAttitude(InterpersonalAttitudeRuntime runtime, string transactionId, string observer, string subject, string dimension, int value)
+        {
+            AttitudeMutationResult result = runtime.Mutate(new AttitudeMutationRequest
+            {
+                transactionId = transactionId,
+                observerPersonId = observer,
+                subjectPersonId = subject,
+                dimensionId = dimension,
+                mutationKind = AttitudeMutationKind.SetBaseline,
+                value = value,
+                worldTime = 4d
+            });
+            return result.Succeeded || result.Duplicate ? null : result.Message;
+        }
+
+        private static SocialGroupMutationRequest NetworkGroupRequest(TestLabAutomationContext context, string suffix, string groupId, bool preview = false)
+        {
+            return new SocialGroupMutationRequest
+            {
+                TransactionId = Tx(context, suffix),
+                MutationKind = SocialGroupMutationKind.CreateGroup,
+                GroupId = groupId,
+                GroupDefinitionId = PrototypeSocialNetworkDefinitionFactory.AdventuringPartyGroupId,
+                DisplayName = "Test Lab Adventuring Party",
+                SourceProjectionDefinitionId = PrototypeSocialNetworkDefinitionFactory.CompositeProjectionId,
+                WorldTime = 1d,
+                Preview = preview,
+                Tags = new[] { "test-lab", "social-network" }
+            };
+        }
+
+        private static SocialGroupMutationRequest NetworkMembershipRequest(TestLabAutomationContext context, string suffix, string groupId, string personId, string roleId)
+        {
+            return new SocialGroupMutationRequest
+            {
+                TransactionId = Tx(context, suffix),
+                MutationKind = SocialGroupMutationKind.AddMembership,
+                GroupId = groupId,
+                MembershipId = NetworkMembershipId(groupId, personId),
+                PersonId = personId,
+                RoleId = roleId,
+                WorldTime = 2d,
+                Tags = new[] { "test-lab" }
+            };
+        }
+
+        private static SocialGraphQueryRequest NetworkQuery(string projectionId, double worldTime)
+        {
+            return new SocialGraphQueryRequest
+            {
+                ProjectionDefinitionId = projectionId,
+                WorldTime = worldTime,
+                MaxDepth = 4,
+                MaxVisitedNodes = 16,
+                MinimumWeight = 1,
+                Visibility = SocialGraphVisibility.Authoritative
+            };
+        }
+
+        private static string NetworkGroupId(TestLabAutomationContext context, string suffix)
+        {
+            return $"social-group.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
+        }
+
+        private static string NetworkMembershipId(string groupId, string personId)
+        {
+            return $"membership.{groupId}.{personId}";
+        }
+
+        private static string NetworkRecordId(TestLabAutomationContext context, string suffix, string kind)
+        {
+            return $"social-network.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}.{kind}";
         }
 
         private static bool TryGetNormRuntime(TestLabAutomationContext context, out SocialNormRuntime runtime, out DefinitionRegistry registry, out string failure)
