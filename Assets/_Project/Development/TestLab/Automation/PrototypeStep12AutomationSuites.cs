@@ -9,6 +9,7 @@ using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Social.Influence;
+using UnityIsekaiGame.Social.Integration;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Decisions;
 using UnityIsekaiGame.Social.Emotions;
@@ -279,6 +280,170 @@ namespace UnityIsekaiGame.Development.Automation
                     FamilyScenario("households-and-persistence", "Households own membership lifecycle and persist independently", 40,
                         Step("step12-family-household-persistence", "Create, transfer, save, restore, and reject corrupt household state", FamilyHouseholdsAndPersistence))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.12.social-simulation-integration-finalization",
+                "Social Simulation Integration and Step 12 Finalization",
+                "12.12",
+                "Final Step 12 integration readiness, ownership, persistence graph, bounded social context snapshots, transaction boundaries, and Step 13 handoff contracts.",
+                12120,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "Step12SocialSimulationFacade", "Step12SocialSimulationValidator", "Step12SocialSimulationTransactionCoordinator" },
+                scenarios: new[]
+                {
+                    IntegrationScenario("readiness-authority-persistence", "Step 12 authority and persistence graph validate cleanly", 10,
+                        Step("step12-integration-readiness", "Validate authority, runtime readiness, and save graph", Step12IntegrationReadiness)),
+                    IntegrationScenario("bounded-context-projections", "Bounded social context projections are deterministic and immutable", 20,
+                        Step("step12-integration-context", "Create bounded social context snapshot", Step12IntegrationContext)),
+                    IntegrationScenario("transaction-recursion-scheduler", "Cross-runtime transaction and scheduler guardrails are explicit", 30,
+                        Step("step12-integration-transaction", "Preview, rollback, duplicate, and reject unsafe scheduling", Step12IntegrationTransactionScheduler)),
+                    IntegrationScenario("health-and-step13-handoff", "Health snapshot and Step 13 handoff remain immutable references", 40,
+                        Step("step12-integration-health", "Create health snapshot and consequence reference", Step12IntegrationHealthHandoff))
+                }), out _);
+        }
+
+        private static TestLabAutomationStepResult Step12IntegrationReadiness(TestLabAutomationContext context)
+        {
+            if (!TryCreateStep12Facade(context, out Step12SocialSimulationFacade facade, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-integration-readiness", "Validate authority, runtime readiness, and save graph", "FacadeReady", "Succeeded", "MissingRuntime", failure);
+            }
+
+            Step12IntegrationValidationReport report = facade.ValidateComplete();
+            Step12HealthSnapshot health = facade.CreateHealthSnapshot();
+            bool valid = report.Succeeded
+                && health.Status == Step12HealthStatus.Ready
+                && facade.AuthorityMap.Select(item => item.DomainId).Distinct(StringComparer.Ordinal).Count() == facade.AuthorityMap.Count
+                && facade.AuthorityMap.Any(item => item.DomainId == "relationships" && item.AuthoritativeRuntime == nameof(RelationshipRuntime))
+                && facade.AuthorityMap.Any(item => item.DomainId == "social-graph" && item.Derived)
+                && facade.PersistenceDependencies.Any(item => item.ParticipantKey == SocialInteractionPersistenceParticipant.Key && item.DependsOn.Contains(RumorPersistenceParticipant.Key));
+
+            return TestLabAssertions.True("step12-integration-readiness", "Step 12 authority and persistence graph validate cleanly", valid, $"{report.ToSummary()} Health={health.Status} Runtimes={health.Runtimes.Count} Authorities={facade.AuthorityMap.Count} Dependencies={facade.PersistenceDependencies.Count} Fingerprint={health.Fingerprint}");
+        }
+
+        private static TestLabAutomationStepResult Step12IntegrationContext(TestLabAutomationContext context)
+        {
+            if (!TryCreateStep12Facade(context, out Step12SocialSimulationFacade facade, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-integration-context", "Create bounded social context snapshot", "FacadeReady", "Succeeded", "MissingRuntime", failure);
+            }
+
+            TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
+            string seedFailure = SeedStep12IntegrationContext(context, "context");
+            Step12SocialContextOptions options = new Step12SocialContextOptions
+            {
+                MaxRelationships = 1,
+                MaxAttitudes = 4,
+                MaxInteractions = 4,
+                MaxHouseholds = 4
+            };
+
+            Step12SocialContextSnapshot first = facade.CreateContextSnapshot(runtimes.PersonId, runtimes.PersonId, "person.prototype.friend", 75d, options);
+            Step12SocialContextSnapshot second = facade.CreateContextSnapshot(runtimes.PersonId, runtimes.PersonId, "person.prototype.friend", 75d, options);
+            Step12ContextRecordReference[] returnedRecords = first.Records as Step12ContextRecordReference[];
+            if (returnedRecords != null && returnedRecords.Length > 0)
+            {
+                returnedRecords[0] = new Step12ContextRecordReference("mutated", "mutated", Step12SocialProjectionState.HiddenState);
+            }
+
+            bool valid = string.IsNullOrWhiteSpace(seedFailure)
+                && first.Fingerprint == second.Fingerprint
+                && first.Truncated
+                && first.SourceRuntimes.Count == 11
+                && first.Records.Any(item => item.RuntimeName == nameof(RelationshipRuntime))
+                && first.Records.Any(item => item.RuntimeName == nameof(SocialInteractionRuntime))
+                && first.Records.Any(item => item.RuntimeName == nameof(FamilyRelationshipRuntime))
+                && !first.Records.Any(item => item.RuntimeName == "mutated")
+                && first.Records.Select(item => $"{item.RuntimeName}:{item.RecordId}").SequenceEqual(first.Records.Select(item => $"{item.RuntimeName}:{item.RecordId}").OrderBy(item => item, StringComparer.Ordinal));
+
+            return TestLabAssertions.True("step12-integration-context", "Bounded social context projections are deterministic and immutable", valid, $"Seed='{seedFailure}' Records={first.Records.Count} Runtimes={first.SourceRuntimes.Count} Truncated={first.Truncated} Diagnostics=[{string.Join(";", first.Diagnostics)}] Fingerprint={first.Fingerprint}");
+        }
+
+        private static TestLabAutomationStepResult Step12IntegrationTransactionScheduler(TestLabAutomationContext context)
+        {
+            Step12SocialSimulationTransactionCoordinator coordinator = new Step12SocialSimulationTransactionCoordinator();
+            bool previewed = false;
+            bool committed = false;
+            bool rolledBack = false;
+
+            Step12TransactionParticipantPlan[] failingPlans =
+            {
+                new Step12TransactionParticipantPlan(nameof(RelationshipRuntime), Step12TransactionFailurePolicy.Required, () => previewed = true, () => true, () => committed = true, () => rolledBack = true),
+                new Step12TransactionParticipantPlan(nameof(ReputationRuntime), Step12TransactionFailurePolicy.Required, () => true, () => true, () => false, () => rolledBack = true)
+            };
+            Step12TransactionResult preview = coordinator.Execute(Tx(context, "step12-integration-tx"), failingPlans, preview: true);
+            Step12TransactionResult failed = coordinator.Execute(Tx(context, "step12-integration-tx"), failingPlans);
+            Step12TransactionResult success = coordinator.Execute(Tx(context, "step12-integration-success"), new[]
+            {
+                new Step12TransactionParticipantPlan(nameof(RelationshipRuntime), Step12TransactionFailurePolicy.Required, () => true, () => true, () => true, () => true)
+            });
+            Step12TransactionResult duplicate = coordinator.Execute(Tx(context, "step12-integration-success"), failingPlans);
+
+            Step12IntegrationValidationReport validation = new Step12IntegrationValidationReport();
+            Step12SocialSimulationValidator.ValidateSchedulerBudget(new Step12SchedulerBudget
+            {
+                MaximumEvaluationsPerTick = 0,
+                MaximumQueuedConsequences = 8,
+                MaximumRecursionDepth = 99,
+                UseSystemTime = true,
+                AllowImmediateRecursiveDispatch = true
+            }, validation);
+            Step12SocialSimulationValidator.ValidatePersistenceDependencies(new[]
+            {
+                new Step12PersistenceDependencyEntry("a", "b"),
+                new Step12PersistenceDependencyEntry("b", "a")
+            }, validation);
+
+            bool valid = preview.Succeeded
+                && preview.Preview
+                && previewed
+                && !failed.Succeeded
+                && committed
+                && rolledBack
+                && success.Succeeded
+                && duplicate.Succeeded
+                && duplicate.Duplicate
+                && !validation.Succeeded
+                && validation.Diagnostics.Any(item => item.Code == "system-time")
+                && validation.Diagnostics.Any(item => item.Code == "immediate-recursion")
+                && validation.Diagnostics.Any(item => item.Code == "dependency-cycle");
+
+            return TestLabAssertions.True("step12-integration-transaction", "Cross-runtime transaction and scheduler guardrails are explicit", valid, $"Preview={preview.Succeeded}/{preview.Preview} Failed={failed.Succeeded} Success={success.Succeeded} Duplicate={duplicate.Duplicate} Validation={validation.ToSummary()}");
+        }
+
+        private static TestLabAutomationStepResult Step12IntegrationHealthHandoff(TestLabAutomationContext context)
+        {
+            if (!TryCreateStep12Facade(context, out Step12SocialSimulationFacade facade, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-integration-health", "Create health snapshot and consequence reference", "FacadeReady", "Succeeded", "MissingRuntime", failure);
+            }
+
+            string seedFailure = SeedStep12IntegrationContext(context, "handoff");
+            Step12HealthSnapshot first = facade.CreateHealthSnapshot();
+            Step12HealthSnapshot second = facade.CreateHealthSnapshot();
+            Step12ConsequenceReference handoff = facade.CreateConsequenceReference(
+                "12.12",
+                "social-context.prototype.step13",
+                Tx(context, "step13-handoff"),
+                "Step13SocialConsumer",
+                "step13.signal.prototype.social-context",
+                "ExposeImmutableSocialSignals",
+                100d,
+                first.Runtimes.Sum(item => item.Revision),
+                Step12SocialVisibility.Diagnostic);
+
+            bool valid = string.IsNullOrWhiteSpace(seedFailure)
+                && first.Status == Step12HealthStatus.Ready
+                && second.Status == Step12HealthStatus.Ready
+                && first.Fingerprint == second.Fingerprint
+                && handoff.Active
+                && handoff.SourceFeature == "12.12"
+                && handoff.DestinationRuntime == "Step13SocialConsumer"
+                && handoff.Visibility == Step12SocialVisibility.Diagnostic
+                && first.Runtimes.Count == 11;
+
+            return TestLabAssertions.True("step12-integration-health", "Health snapshot and Step 13 handoff remain immutable references", valid, $"Seed='{seedFailure}' Health={first.Status}/{second.Status} Runtimes={first.Runtimes.Count} Handoff={handoff.SourceFeature}->{handoff.DestinationRuntime} Fingerprint={first.Fingerprint}");
         }
 
         private static TestLabAutomationStepResult FamilyDefinitionsAndParentage(TestLabAutomationContext context)
@@ -3085,6 +3250,171 @@ namespace UnityIsekaiGame.Development.Automation
                 WorldTime = worldTime,
                 DeterministicSeed = context.RunId
             };
+        }
+
+        private static ITestLabAutomationScenario IntegrationScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeRelationshipDefinitionFactory.FriendRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.RivalRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.BiologicalParentChildRelationshipId,
+                    PrototypeAttitudeDefinitionFactory.TrustId,
+                    PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                    PrototypeRumorDefinitionFactory.PersonalConductRumorId,
+                    PrototypeSocialInteractionDefinitionFactory.GreetId,
+                    PrototypeSocialNormDefinitionFactory.HostGreetingNormId,
+                    PrototypeSocialNetworkDefinitionFactory.FriendCircleGroupId,
+                    PrototypeSocialDecisionDefinitionFactory.SociableProfileId,
+                    PrototypeSocialInfluenceDefinitionFactory.PersuadeRequestId,
+                    PrototypeSocialEmotionDefinitionFactory.GratitudeId,
+                    PrototypeFamilyRelationshipDefinitionFactory.FamilyHouseholdDefinitionId
+                });
+        }
+
+        private static bool TryCreateStep12Facade(TestLabAutomationContext context, out Step12SocialSimulationFacade facade, out string failure)
+        {
+            facade = null;
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            if (runtimes == null)
+            {
+                failure = "Test Lab runtime bundle is missing.";
+                return false;
+            }
+
+            if (runtimes.DefinitionRegistry == null
+                || runtimes.Relationships == null
+                || runtimes.Attitudes == null
+                || runtimes.Reputation == null
+                || runtimes.Rumors == null
+                || runtimes.SocialInteractions == null
+                || runtimes.SocialNorms == null
+                || runtimes.SocialNetworks == null
+                || runtimes.SocialDecisions == null
+                || runtimes.SocialInfluence == null
+                || runtimes.SocialEmotions == null
+                || runtimes.FamilyRelationships == null)
+            {
+                failure = "One or more Step 12 social runtimes are missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            facade = new Step12SocialSimulationFacade(
+                runtimes.DefinitionRegistry,
+                runtimes.KnownPersonIds,
+                runtimes.WorldId,
+                runtimes.Relationships,
+                runtimes.Attitudes,
+                runtimes.Reputation,
+                runtimes.Rumors,
+                runtimes.SocialInteractions,
+                runtimes.SocialNorms,
+                runtimes.SocialNetworks,
+                runtimes.SocialDecisions,
+                runtimes.SocialInfluence,
+                runtimes.SocialEmotions,
+                runtimes.FamilyRelationships);
+            failure = string.Empty;
+            return true;
+        }
+
+        private static string SeedStep12IntegrationContext(TestLabAutomationContext context, string suffix)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            if (runtimes == null)
+            {
+                return "Runtime bundle is missing.";
+            }
+
+            RelationshipOperationResult friend = runtimes.Relationships.CreateRelationship(new RelationshipCreateRequest
+            {
+                transactionId = Tx(context, $"integration-friend-{suffix}"),
+                recordId = Scoped(context, $"integration-friend-{suffix}"),
+                relationshipDefinitionId = PrototypeRelationshipDefinitionFactory.FriendRelationshipId,
+                firstPersonId = runtimes.PersonId,
+                firstRoleId = "friend",
+                secondPersonId = "person.prototype.friend",
+                secondRoleId = "friend",
+                startWorldTime = 1d
+            });
+            if (!friend.Succeeded && !friend.Duplicate)
+            {
+                return friend.Message;
+            }
+
+            RelationshipOperationResult rival = runtimes.Relationships.CreateRelationship(new RelationshipCreateRequest
+            {
+                transactionId = Tx(context, $"integration-rival-{suffix}"),
+                recordId = Scoped(context, $"integration-rival-{suffix}"),
+                relationshipDefinitionId = PrototypeRelationshipDefinitionFactory.RivalRelationshipId,
+                firstPersonId = runtimes.PersonId,
+                firstRoleId = "rival",
+                secondPersonId = "person.prototype.rival",
+                secondRoleId = "rival",
+                startWorldTime = 2d
+            });
+            if (!rival.Succeeded && !rival.Duplicate)
+            {
+                return rival.Message;
+            }
+
+            AttitudeMutationResult attitude = runtimes.Attitudes.Mutate(new AttitudeMutationRequest
+            {
+                transactionId = Tx(context, $"integration-trust-{suffix}"),
+                recordId = $"attitude.integration.{context.RunId}.{context.CurrentScenarioId}.{suffix}",
+                observerPersonId = runtimes.PersonId,
+                subjectPersonId = "person.prototype.friend",
+                dimensionId = PrototypeAttitudeDefinitionFactory.TrustId,
+                mutationKind = AttitudeMutationKind.SetBaseline,
+                value = 65,
+                sourceCategory = AttitudeContributionSourceCategory.TestLab,
+                worldTime = 3d
+            });
+            if (!attitude.Succeeded && !attitude.Duplicate)
+            {
+                return attitude.Message;
+            }
+
+            SocialInteractionResult interaction = runtimes.SocialInteractions.Execute(new SocialInteractionRequest
+            {
+                TransactionId = Tx(context, $"integration-greet-{suffix}"),
+                InteractionRecordId = InteractionScoped(context, $"integration-greet-{suffix}"),
+                InteractionDefinitionId = PrototypeSocialInteractionDefinitionFactory.GreetId,
+                InitiatorPersonId = runtimes.PersonId,
+                TargetPersonId = "person.prototype.friend",
+                WorldTime = 4d,
+                DeterministicSeed = context.RunId
+            });
+            if (!interaction.Succeeded && !interaction.Duplicate)
+            {
+                return interaction.Message;
+            }
+
+            HouseholdMutationResult household = runtimes.FamilyRelationships.CreateHousehold(new HouseholdMutationRequest
+            {
+                transactionId = Tx(context, $"integration-household-{suffix}"),
+                householdId = $"household.integration.{context.RunId}.{context.CurrentScenarioId}.{suffix}",
+                householdDefinitionId = PrototypeFamilyRelationshipDefinitionFactory.FamilyHouseholdDefinitionId,
+                personId = runtimes.PersonId,
+                role = HouseholdRole.Head,
+                worldTime = 5d
+            });
+            if (!household.Succeeded && !household.Duplicate)
+            {
+                return household.Message;
+            }
+
+            return string.Empty;
         }
 
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> run)
