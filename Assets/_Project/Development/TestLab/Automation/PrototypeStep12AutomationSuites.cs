@@ -2,11 +2,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.History;
+using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Interactions;
+using UnityIsekaiGame.Social.Norms;
 using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
 using UnityIsekaiGame.Social.Rumors;
@@ -133,6 +137,29 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step12-interaction-rumor", "Share existing rumor through interaction", InteractionRumorDelegation)),
                     InteractionScenario("persistence-validation", "Interactions persist and reject corrupt restores", 60,
                         Step("step12-interaction-persistence", "Save, restore, duplicate, and reject invalid payloads", InteractionPersistenceValidation))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.6.social-norms-etiquette-contextual-expectations",
+                "Social Norms, Etiquette, and Contextual Expectations",
+                "12.6",
+                "Definition-backed social norm assessment with contextual applicability, actor knowledge, observer interpretation, conflict resolution, consequences, idempotence, and persistence.",
+                12060,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "SocialNormRuntime", "SocialNormDefinition", "SocialNormPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    NormScenario("readiness-preview", "Norm definitions resolve and previews do not mutate", 10,
+                        Step("step12-norm-preview", "Preview host greeting norm", NormReadinessAndPreview)),
+                    NormScenario("visibility-consequences", "Public and private etiquette produce deterministic consequence plans", 20,
+                        Step("step12-norm-visibility", "Assess private and public insult norms", NormVisibilityConsequences)),
+                    NormScenario("knowledge-exception-observers", "Actor knowledge, exceptions, and observer interpretation remain explicit", 30,
+                        Step("step12-norm-knowledge-exception", "Evaluate ignorance and witness context", NormKnowledgeExceptionObservers)),
+                    NormScenario("conflict-and-promise", "Norm conflicts and promise expectations resolve deterministically", 40,
+                        Step("step12-norm-conflict-promise", "Assess conflict and promise breach", NormConflictAndPromise)),
+                    NormScenario("persistence-idempotence", "Norm assessments persist and duplicate transactions are idempotent", 50,
+                        Step("step12-norm-persistence", "Save, restore, duplicate, and reject invalid norm payloads", NormPersistenceIdempotence))
                 }), out _);
         }
 
@@ -1336,6 +1363,270 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static TestLabAutomationStepResult NormReadinessAndPreview(TestLabAutomationContext context)
+        {
+            if (!TryGetNormRuntime(context, out SocialNormRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-norm-preview", "Preview host greeting norm", "SocialNormRuntime", "MissingRuntime", failure);
+            }
+
+            long before = runtime.Revision;
+            SocialNormEvaluationResult preview = runtime.Preview(NormRequest(
+                context,
+                "host-greeting-preview",
+                PrototypeSocialInteractionDefinitionFactory.GreetId,
+                requestedNormIds: new[] { PrototypeSocialNormDefinitionFactory.HostGreetingNormId },
+                tags: new[] { "host-context" },
+                placeId: "place.prototype.court"));
+            bool definitions = registry.TryGet(PrototypeSocialNormDefinitionFactory.HostGreetingNormId, out SocialNormDefinition _)
+                && registry.TryGet(PrototypeSocialNormDefinitionFactory.PublicInsultNormId, out SocialNormDefinition _)
+                && registry.TryGet(PrototypeSocialNormDefinitionFactory.PromiseKeepingNormId, out SocialNormDefinition _);
+            bool valid = definitions
+                && preview.Succeeded
+                && preview.Preview
+                && preview.Assessments.Count > 0
+                && preview.Assessments.Any(item => item.Classification == SocialNormAssessmentClassification.Satisfied)
+                && runtime.Revision == before
+                && runtime.Count == 0;
+            return TestLabAssertions.True("step12-norm-preview", "Norm definitions resolve and previews do not mutate", valid, $"Definitions={definitions} Preview={preview.Status} Revision={before}->{runtime.Revision} Count={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult NormVisibilityConsequences(TestLabAutomationContext context)
+        {
+            if (!TryGetNormRuntime(context, out SocialNormRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-norm-visibility", "Assess private and public insult norms", "SocialNormRuntime", "MissingRuntime", failure);
+            }
+
+            SocialNormEvaluationResult privateInsult = runtime.Execute(NormRequest(
+                context,
+                "private-insult",
+                PrototypeSocialInteractionDefinitionFactory.InsultId,
+                requestedNormIds: new[] { PrototypeSocialNormDefinitionFactory.PrivateInsultNormId },
+                visibility: SocialInteractionVisibility.Private));
+            SocialNormEvaluationResult publicInsult = runtime.Execute(NormRequest(
+                context,
+                "public-insult",
+                PrototypeSocialInteractionDefinitionFactory.InsultId,
+                requestedNormIds: new[] { PrototypeSocialNormDefinitionFactory.PublicInsultNormId },
+                witnesses: new[] { "person.prototype.rival" },
+                visibility: SocialInteractionVisibility.Public,
+                classification: SocialNormAssessmentClassification.Violation));
+            SocialNormAssessmentSnapshot privateSnapshot = privateInsult.Assessments.FirstOrDefault();
+            SocialNormAssessmentSnapshot publicSnapshot = publicInsult.Assessments.FirstOrDefault();
+            bool publicHasRequiredConsequence = publicSnapshot != null && publicSnapshot.Consequences.Any(item => item.policy == SocialNormConsequencePolicy.Required && item.committed);
+            bool valid = privateInsult.Succeeded
+                && publicInsult.Succeeded
+                && privateSnapshot != null
+                && publicSnapshot != null
+                && privateSnapshot.Severity < publicSnapshot.Severity
+                && publicHasRequiredConsequence
+                && runtime.QueryByObserver("person.prototype.rival").Count > 0;
+            return TestLabAssertions.True("step12-norm-visibility", "Public and private etiquette produce deterministic consequence plans", valid, $"Private={privateInsult.Status}/{privateSnapshot?.Severity} Public={publicInsult.Status}/{publicSnapshot?.Severity} PublicRequired={publicHasRequiredConsequence}");
+        }
+
+        private static TestLabAutomationStepResult NormKnowledgeExceptionObservers(TestLabAutomationContext context)
+        {
+            if (!TryGetNormRuntime(context, out SocialNormRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-norm-knowledge-exception", "Evaluate ignorance and witness context", "SocialNormRuntime", "MissingRuntime", failure);
+            }
+
+            SocialNormEvaluationResult ignorance = runtime.Execute(NormRequest(
+                context,
+                "ignorance",
+                PrototypeSocialInteractionDefinitionFactory.CustomActionId,
+                requestedNormIds: new[] { PrototypeSocialNormDefinitionFactory.IgnoranceMitigatedEtiquetteNormId },
+                witnesses: new[] { "person.prototype.friend" },
+                tags: new[] { "culture.prototype.formal", "actor-unaware" },
+                actorKnowledge: SocialNormActorKnowledgeState.Unknown,
+                classification: SocialNormAssessmentClassification.Violation));
+            SocialNormEvaluationResult emergency = runtime.Execute(NormRequest(
+                context,
+                "emergency",
+                PrototypeSocialInteractionDefinitionFactory.ShareInformationId,
+                requestedNormIds: new[] { PrototypeSocialNormDefinitionFactory.EmergencyDisclosureNormId },
+                witnesses: new[] { "person.prototype.friend" },
+                tags: new[] { "secret-subject", "emergency" },
+                visibility: SocialInteractionVisibility.Public,
+                classification: SocialNormAssessmentClassification.SeriousViolation));
+            SocialNormAssessmentSnapshot ignoranceSnapshot = ignorance.Assessments.FirstOrDefault();
+            SocialNormAssessmentSnapshot emergencySnapshot = emergency.Assessments.FirstOrDefault();
+            bool exceptionApplied = ignoranceSnapshot != null && ignoranceSnapshot.Data.exceptions.Any(item => item.applied && item.effect == SocialNormExceptionEffect.ReduceSeverity);
+            bool observerRecorded = ignoranceSnapshot != null && ignoranceSnapshot.Observers.Any(item => string.Equals(item.observerPersonId, "person.prototype.friend", StringComparison.Ordinal));
+            bool emergencyExcused = emergencySnapshot != null
+                && emergencySnapshot.Classification == SocialNormAssessmentClassification.Excused
+                && emergencySnapshot.Data.exceptions.Any(item => item.applied && item.effect == SocialNormExceptionEffect.ExcuseViolation);
+            bool valid = ignorance.Succeeded
+                && emergency.Succeeded
+                && exceptionApplied
+                && observerRecorded
+                && emergencyExcused;
+            return TestLabAssertions.True("step12-norm-knowledge-exception", "Actor knowledge, exceptions, and observer interpretation remain explicit", valid, $"Ignorance={ignoranceSnapshot?.Classification} Exception={exceptionApplied} Observer={observerRecorded} Emergency={emergencySnapshot?.Classification}");
+        }
+
+        private static TestLabAutomationStepResult NormConflictAndPromise(TestLabAutomationContext context)
+        {
+            if (!TryGetNormRuntime(context, out SocialNormRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-norm-conflict-promise", "Assess conflict and promise breach", "SocialNormRuntime", "MissingRuntime", failure);
+            }
+
+            SocialNormEvaluationResult conflict = runtime.Execute(NormRequest(
+                context,
+                "conflict",
+                PrototypeSocialInteractionDefinitionFactory.PublicPraiseId,
+                requestedNormIds: new[] { PrototypeSocialNormDefinitionFactory.PraiseEnemyConflictNormId, PrototypeSocialNormDefinitionFactory.HospitalityOverrideNormId },
+                witnesses: new[] { "person.prototype.friend" },
+                tags: new[] { "audience.enemy-of-target", "hospitality-duty", "actor-role.host", "target-role.rival" },
+                visibility: SocialInteractionVisibility.Public,
+                classification: SocialNormAssessmentClassification.Satisfied));
+            SocialNormEvaluationResult promise = runtime.Execute(NormRequest(
+                context,
+                "promise-breach",
+                PrototypeSocialInteractionDefinitionFactory.PromiseId,
+                requestedNormIds: new[] { PrototypeSocialNormDefinitionFactory.PromiseKeepingNormId },
+                tags: new[] { "promise-context" },
+                promiseId: NormScoped(context, "promise"),
+                promiseState: SocialPromiseStatus.Breached.ToString(),
+                classification: SocialNormAssessmentClassification.Violation));
+            bool conflictSuppressed = conflict.Assessments.Any(item => item.Applicability == SocialNormApplicabilityStatus.SuppressedByConflict)
+                && conflict.Assessments.Any(item => item.Conflicts.Count > 0);
+            SocialNormAssessmentSnapshot promiseSnapshot = promise.Assessments.FirstOrDefault();
+            bool promiseValid = promiseSnapshot != null
+                && promiseSnapshot.PromiseId.Length > 0
+                && promiseSnapshot.Classification == SocialNormAssessmentClassification.Violation
+                && promiseSnapshot.Consequences.Any(item => item.targetRuntime == SocialNormConsequenceTargetRuntime.InterpersonalAttitude);
+            bool valid = conflict.Succeeded && promise.Succeeded && conflictSuppressed && promiseValid;
+            return TestLabAssertions.True("step12-norm-conflict-promise", "Norm conflicts and promise expectations resolve deterministically", valid, $"Conflict={conflict.Status} Suppressed={conflictSuppressed} Promise={promise.Status}/{promiseSnapshot?.Classification}");
+        }
+
+        private static TestLabAutomationStepResult NormPersistenceIdempotence(TestLabAutomationContext context)
+        {
+            if (!TryGetNormRuntime(context, out SocialNormRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-norm-persistence", "Save, restore, duplicate, and reject invalid norm payloads", "SocialNormRuntime", "MissingRuntime", failure);
+            }
+
+            SocialNormEvaluationRequest request = NormRequest(
+                context,
+                "persist",
+                PrototypeSocialInteractionDefinitionFactory.ThankId,
+                requestedNormIds: new[] { PrototypeSocialNormDefinitionFactory.HostGreetingNormId },
+                classification: SocialNormAssessmentClassification.Satisfied);
+            SocialNormEvaluationResult execute = runtime.Execute(request);
+            SocialNormEvaluationResult duplicate = runtime.Execute(request);
+            SocialNormRuntimeSaveData save = runtime.CreateSaveData();
+            SocialNormRuntime restored = new SocialNormRuntime();
+            restored.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds, context.ScenarioContext.Runtimes.Relationships, context.ScenarioContext.Runtimes.Attitudes, context.ScenarioContext.Runtimes.Reputation, context.ScenarioContext.Runtimes.Rumors, context.ScenarioContext.Runtimes.SocialInteractions);
+            SocialNormEvaluationResult restore = restored.RestoreFromSaveData(save, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            SocialNormRuntimeSaveData corrupt = save.Clone();
+            corrupt.assessments[0].normDefinitionId = "social-norm.prototype.missing";
+            SocialNormPersistenceParticipant participant = new SocialNormPersistenceParticipant(runtime, () => registry, () => context.ScenarioContext.Runtimes.KnownPersonIds.ToArray());
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), SocialNormPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = execute.Succeeded
+                && duplicate.Duplicate
+                && restore.Succeeded
+                && restored.Count == runtime.Count
+                && rejected != null
+                && !rejected.Succeeded;
+            return TestLabAssertions.True("step12-norm-persistence", "Norm assessments persist and duplicate transactions are idempotent", valid, $"Execute={execute.Status} Duplicate={duplicate.Status}/{duplicate.Duplicate} Restore={restore.Status} Reject={rejected?.Succeeded}");
+        }
+
+        private static ITestLabAutomationScenario NormScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeSocialNormDefinitionFactory.HostGreetingNormId,
+                    PrototypeSocialNormDefinitionFactory.PublicInsultNormId,
+                    PrototypeSocialNormDefinitionFactory.PrivateInsultNormId,
+                    PrototypeSocialNormDefinitionFactory.IgnoranceMitigatedEtiquetteNormId,
+                    PrototypeSocialNormDefinitionFactory.WitnessRespectNormId,
+                    PrototypeSocialNormDefinitionFactory.EmergencyDisclosureNormId,
+                    PrototypeSocialNormDefinitionFactory.PromiseKeepingNormId,
+                    PrototypeSocialNormDefinitionFactory.PraiseEnemyConflictNormId,
+                    PrototypeSocialNormDefinitionFactory.HospitalityOverrideNormId,
+                    PrototypeSocialInteractionDefinitionFactory.GreetId,
+                    PrototypeSocialInteractionDefinitionFactory.InsultId,
+                    PrototypeSocialInteractionDefinitionFactory.PromiseId,
+                    PrototypeAttitudeDefinitionFactory.RespectId,
+                    PrototypeReputationDefinitionFactory.EsteemId
+                });
+        }
+
+        private static bool TryGetNormRuntime(TestLabAutomationContext context, out SocialNormRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.SocialNorms;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Social Norm runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static SocialNormEvaluationRequest NormRequest(
+            TestLabAutomationContext context,
+            string suffix,
+            string interactionDefinitionId,
+            IReadOnlyList<string> requestedNormIds = null,
+            string target = "person.prototype.friend",
+            IReadOnlyList<string> witnesses = null,
+            IReadOnlyList<string> tags = null,
+            SocialInteractionVisibility visibility = SocialInteractionVisibility.Private,
+            SocialNormAssessmentClassification classification = SocialNormAssessmentClassification.Unknown,
+            SocialNormActorKnowledgeState actorKnowledge = SocialNormActorKnowledgeState.Knew,
+            string promiseId = "",
+            string promiseState = "",
+            string placeId = "place.prototype.test-lab")
+        {
+            string[] contextTags = (tags ?? Array.Empty<string>())
+                .Concat(string.IsNullOrWhiteSpace(promiseState) ? Array.Empty<string>() : new[] { $"promise-state.{promiseState}" })
+                .ToArray();
+            return new SocialNormEvaluationRequest
+            {
+                TransactionId = Tx(context, suffix),
+                AssessmentRecordId = NormScoped(context, suffix),
+                ActorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                TargetPersonId = target,
+                InteractionRecordId = InteractionScoped(context, $"norm-{suffix}"),
+                InteractionDefinitionId = interactionDefinitionId,
+                PromiseId = promiseId,
+                Subject = new SocialInteractionSubjectData
+                {
+                    kind = SocialInteractionSubjectKind.Person,
+                    subjectId = target,
+                    ownerPersonId = target,
+                    tags = new[] { "test-lab", "social-norm" }
+                },
+                PlaceId = placeId,
+                AudienceId = PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                WitnessPersonIds = (witnesses ?? Array.Empty<string>()).ToArray(),
+                ContextTags = contextTags,
+                RequestedNormIds = (requestedNormIds ?? Array.Empty<string>()).ToArray(),
+                Visibility = visibility,
+                Channel = SocialInteractionCommunicationChannel.Conversation,
+                ConductClassification = classification,
+                ActorKnowledge = actorKnowledge,
+                OccurrenceWorldTime = context.CurrentStepIndex + 1d,
+                EvaluationWorldTime = context.CurrentStepIndex + 1d,
+                DeterministicSeed = context.RunId
+            };
+        }
+
         private static bool TryGetInteractionRuntime(TestLabAutomationContext context, out SocialInteractionRuntime runtime, out DefinitionRegistry registry, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.SocialInteractions;
@@ -1399,6 +1690,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static string InteractionScoped(TestLabAutomationContext context, string suffix)
         {
             return $"social-interaction.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
+        }
+
+        private static string NormScoped(TestLabAutomationContext context, string suffix)
+        {
+            return $"social-norm.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
         }
 
         private static string Tx(TestLabAutomationContext context, string suffix)
