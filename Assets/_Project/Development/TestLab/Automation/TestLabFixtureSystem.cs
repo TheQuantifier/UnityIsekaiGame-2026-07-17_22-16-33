@@ -31,6 +31,7 @@ using UnityIsekaiGame.Knowledge.Integration;
 using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
+using UnityIsekaiGame.Organizations;
 using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Decisions;
@@ -448,6 +449,7 @@ namespace UnityIsekaiGame.Development.Automation
             SocialInfluenceRuntime socialInfluence,
             SocialEmotionRuntime socialEmotions,
             FamilyRelationshipRuntime familyRelationships,
+            OrganizationRuntime organizations,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -500,6 +502,7 @@ namespace UnityIsekaiGame.Development.Automation
             SocialInfluence = socialInfluence;
             SocialEmotions = socialEmotions;
             FamilyRelationships = familyRelationships;
+            Organizations = organizations;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -554,6 +557,7 @@ namespace UnityIsekaiGame.Development.Automation
         public SocialInfluenceRuntime SocialInfluence { get; }
         public SocialEmotionRuntime SocialEmotions { get; }
         public FamilyRelationshipRuntime FamilyRelationships { get; }
+        public OrganizationRuntime Organizations { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -606,7 +610,8 @@ namespace UnityIsekaiGame.Development.Automation
             SocialDecisionRuntime socialDecisions = null,
             SocialInfluenceRuntime socialInfluence = null,
             SocialEmotionRuntime socialEmotions = null,
-            FamilyRelationshipRuntime familyRelationships = null)
+            FamilyRelationshipRuntime familyRelationships = null,
+            OrganizationRuntime organizations = null)
         {
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
@@ -671,7 +676,14 @@ namespace UnityIsekaiGame.Development.Automation
             decisionRuntime.Configure(definitionRegistry, persons, interactionRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, normRuntime, networkRuntime, SocialDecisionModifierSourceCollection.Compose(influenceRuntime, emotionRuntime));
             FamilyRelationshipRuntime familyRuntime = familyRelationships ?? new FamilyRelationshipRuntime();
             familyRuntime.Configure(definitionRegistry, persons, relationshipRuntime, attitudeRuntime, interactionRuntime, worldId, AdultPersons(persons));
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, null);
+            OrganizationRuntime organizationRuntime = organizations ?? new OrganizationRuntime();
+            if (organizations == null)
+            {
+                PrototypeOrganizationDefinitionFactory.SeedPrototypeOrganizations(organizationRuntime, definitionRegistry, worldId);
+            }
+
+            organizationRuntime.Configure(definitionRegistry, worldId, persons, Array.Empty<string>());
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -729,6 +741,7 @@ namespace UnityIsekaiGame.Development.Automation
             SocialInfluenceRuntime socialInfluence = new SocialInfluenceRuntime();
             SocialEmotionRuntime socialEmotions = new SocialEmotionRuntime();
             FamilyRelationshipRuntime familyRelationships = new FamilyRelationshipRuntime();
+            OrganizationRuntime organizations = new OrganizationRuntime();
 
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -772,8 +785,10 @@ namespace UnityIsekaiGame.Development.Automation
             socialEmotions.Configure(definitionRegistry, persons, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialInfluence);
             socialDecisions.Configure(definitionRegistry, persons, socialInteractions, relationships, attitudes, reputation, rumors, socialNorms, socialNetworks, SocialDecisionModifierSourceCollection.Compose(socialInfluence, socialEmotions));
             familyRelationships.Configure(definitionRegistry, persons, relationships, attitudes, socialInteractions, worldId, AdultPersons(persons));
+            PrototypeOrganizationDefinitionFactory.SeedPrototypeOrganizations(organizations, definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
+            organizations.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, knowledgeObject);
         }
 
         private static string[] ExpandKnownPersons(IReadOnlyList<string> knownPersonIds, string ownerPersonId)
@@ -861,7 +876,8 @@ namespace UnityIsekaiGame.Development.Automation
                 SocialDecisions?.CreateSaveData(),
                 SocialInfluence?.CreateSaveData(),
                 SocialEmotions?.CreateSaveData(),
-                FamilyRelationships?.CreateSaveData());
+                FamilyRelationships?.CreateSaveData(),
+                Organizations?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -912,7 +928,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("SocialDecisions", SocialDecisions?.Revision ?? 0L, SocialDecisions?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("SocialInfluence", SocialInfluence?.Revision ?? 0L, SocialInfluence?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("SocialEmotions", SocialEmotions?.Revision ?? 0L, SocialEmotions?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("FamilyRelationships", FamilyRelationships?.Revision ?? 0L, FamilyRelationships?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("FamilyRelationships", FamilyRelationships?.Revision ?? 0L, FamilyRelationships?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Organizations", Organizations?.Revision ?? 0L, Organizations?.CreateSaveData())
             });
         }
 
@@ -1373,6 +1390,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (Organizations != null && snapshot.Organizations != null)
+            {
+                OrganizationOperationResult result = Organizations.RestoreFromSaveData(snapshot.Organizations, DefinitionRegistry, WorldId, KnownPersonIds, Array.Empty<string>(), restoring: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Organization restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1398,15 +1425,7 @@ namespace UnityIsekaiGame.Development.Automation
         };
 
         private static readonly string[] DefaultOrganizationIds =
-        {
-            "organization.prototype.guild",
-            "organization.prototype.royal-forge",
-            "organization.prototype.temple",
-            "organization.prototype.university",
-            "organization.prototype.government",
-            "organization.prototype.independent",
-            PersistenceService.LocalPlayerId
-        };
+            PrototypeOrganizationDefinitionFactory.PrototypeOrganizationIds.Concat(new[] { PersistenceService.LocalPlayerId }).ToArray();
 
         public void Dispose()
         {
@@ -1473,7 +1492,8 @@ namespace UnityIsekaiGame.Development.Automation
             SocialDecisionRuntimeSaveData socialDecisions,
             SocialInfluenceRuntimeSaveData socialInfluence,
             SocialEmotionRuntimeSaveData socialEmotions,
-            FamilyRelationshipRuntimeSaveData familyRelationships)
+            FamilyRelationshipRuntimeSaveData familyRelationships,
+            OrganizationRuntimeSaveData organizations)
         {
             Knowledge = knowledge;
             History = history;
@@ -1520,6 +1540,7 @@ namespace UnityIsekaiGame.Development.Automation
             SocialInfluence = socialInfluence;
             SocialEmotions = socialEmotions;
             FamilyRelationships = familyRelationships;
+            Organizations = organizations;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1567,6 +1588,7 @@ namespace UnityIsekaiGame.Development.Automation
         public SocialInfluenceRuntimeSaveData SocialInfluence { get; }
         public SocialEmotionRuntimeSaveData SocialEmotions { get; }
         public FamilyRelationshipRuntimeSaveData FamilyRelationships { get; }
+        public OrganizationRuntimeSaveData Organizations { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
@@ -1916,7 +1938,7 @@ namespace UnityIsekaiGame.Development.Automation
             return new string(chars).Trim('.', '-');
         }
 
-        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social;
+        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations;
 
         private static bool CanIsolate(TestLabRuntimeArea supported, TestLabRuntimeArea required)
         {

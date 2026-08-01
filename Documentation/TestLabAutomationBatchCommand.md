@@ -35,4 +35,4 @@ Unity.exe -batchmode -projectPath "C:\Users\jhand\Documents\Github\UnityIsekaiGa
 
 ## Host Boundary
 
-The command registers a scene-independent batch host for fixture-owned Knowledge, History, Item, Profession, and Economy automation. Character, Combat, Biology, Persistence, or UI scenarios that require a live Prototype scene host should still be run through the in-game Test Lab runner unless an explicit editor-capable scene host is added later.
+The command registers a scene-independent batch host for fixture-owned Knowledge, History, Social, Item, Profession, Economy, and Organization automation. Character, Combat, Biology, Persistence, or UI scenarios that require a live Prototype scene host should still be run through the in-game Test Lab runner unless an explicit editor-capable scene host is added later.

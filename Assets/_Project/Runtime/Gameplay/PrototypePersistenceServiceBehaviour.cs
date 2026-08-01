@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Object = UnityEngine.Object;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Beings.Biology;
 using UnityIsekaiGame.CharacterSystem;
@@ -33,6 +35,7 @@ using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Magic;
+using UnityIsekaiGame.Organizations;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Places;
 using UnityIsekaiGame.Professions;
@@ -104,6 +107,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldContracts = true;
         [SerializeField] private bool registerWorldInstitutionalRevenue = true;
         [SerializeField] private bool registerWorldRegionalFlow = true;
+        [SerializeField] private bool registerWorldOrganizations = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -201,6 +205,7 @@ namespace UnityIsekaiGame.Gameplay
         private ContractEconomyPersistenceParticipant contractEconomyParticipant;
         private InstitutionalRevenuePersistenceParticipant institutionalRevenueParticipant;
         private RegionalFlowPersistenceParticipant regionalFlowParticipant;
+        private OrganizationPersistenceParticipant organizationParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -252,6 +257,7 @@ namespace UnityIsekaiGame.Gameplay
         private ContractEconomyRuntime worldContracts;
         private InstitutionalRevenueRuntime worldInstitutionalRevenue;
         private RegionalFlowRuntime worldRegionalFlow;
+        private OrganizationRuntime worldOrganizations;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -676,6 +682,21 @@ namespace UnityIsekaiGame.Gameplay
                 return worldRegionalFlow;
             }
         }
+        public OrganizationRuntime Organizations
+        {
+            get
+            {
+                if (worldOrganizations == null)
+                {
+                    worldOrganizations = new OrganizationRuntime();
+                    PrototypeOrganizationDefinitionFactory.SeedPrototypeOrganizations(worldOrganizations, GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId);
+                }
+
+                string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+                worldOrganizations.Configure(GetDefinitionRegistry(), service == null ? PersistenceService.LocalWorldId : service.WorldId, GetPrototypeSocialPersonIds(personId), Array.Empty<string>());
+                return worldOrganizations;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -764,6 +785,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(regionalFlowParticipant);
                 regionalFlowParticipant = null;
+            }
+
+            if (service != null && organizationParticipant != null)
+            {
+                service.UnregisterParticipant(organizationParticipant);
+                organizationParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -1119,6 +1146,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldContractEconomyParticipant();
             EnsureWorldInstitutionalRevenueParticipant();
             EnsureWorldRegionalFlowParticipant();
+            EnsureWorldOrganizationParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1698,6 +1726,35 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 regionalFlowParticipant = null;
+            }
+        }
+
+        private void EnsureWorldOrganizationParticipant()
+        {
+            if (!registerWorldOrganizations || organizationParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World organization persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            organizationParticipant = new OrganizationPersistenceParticipant(
+                Organizations,
+                GetDefinitionRegistry,
+                service.WorldId,
+                () => GetPrototypeSocialPersonIds(service.PlayerId),
+                () => Array.Empty<string>());
+
+            service.RegisterParticipant(organizationParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                organizationParticipant = null;
             }
         }
 
@@ -4172,7 +4229,8 @@ namespace UnityIsekaiGame.Gameplay
                                             PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
                                                 PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
                                                     PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                                                        PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)))))))))))));
+                                                        PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(
+                                                            PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))));
             return definitionRegistry;
         }
 
@@ -4250,16 +4308,9 @@ namespace UnityIsekaiGame.Gameplay
 
         private static string[] GetPrototypeOrganizations()
         {
-            return new[]
-            {
-                "organization.prototype.guild",
-                "organization.prototype.royal-forge",
-                "organization.prototype.temple",
-                "organization.prototype.university",
-                "organization.prototype.government",
-                "organization.prototype.independent",
-                PersistenceService.LocalPlayerId
-            };
+            return PrototypeOrganizationDefinitionFactory.PrototypeOrganizationIds
+                .Concat(new[] { PersistenceService.LocalPlayerId })
+                .ToArray();
         }
     }
 }
