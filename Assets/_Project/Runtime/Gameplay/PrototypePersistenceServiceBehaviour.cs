@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.ActorLifecycle;
 using UnityIsekaiGame.Beings.Biology;
@@ -38,6 +39,7 @@ using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Skills;
+using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Relationships;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
@@ -116,6 +118,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerCareerHistory = true;
         [SerializeField] private bool registerPlayerLifePaths = true;
         [SerializeField] private bool registerPlayerRelationships = true;
+        [SerializeField] private bool registerPlayerInterpersonalAttitudes = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -158,6 +161,7 @@ namespace UnityIsekaiGame.Gameplay
         private CareerHistoryPersistenceParticipant playerCareerHistoryParticipant;
         private LifePathPersistenceParticipant playerLifePathParticipant;
         private RelationshipPersistenceParticipant playerRelationshipParticipant;
+        private InterpersonalAttitudePersistenceParticipant playerInterpersonalAttitudeParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private EconomyPersistenceParticipant economyParticipant;
@@ -200,6 +204,7 @@ namespace UnityIsekaiGame.Gameplay
         private CareerHistoryRuntime playerCareerHistory;
         private LifePathRuntime playerLifePaths;
         private RelationshipRuntime playerRelationships;
+        private InterpersonalAttitudeRuntime playerInterpersonalAttitudes;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private EconomyRuntime worldEconomy;
         private MarketRuntime worldMarkets;
@@ -247,6 +252,20 @@ namespace UnityIsekaiGame.Gameplay
                 }
 
                 return playerRelationships;
+            }
+        }
+        public InterpersonalAttitudeRuntime InterpersonalAttitudes
+        {
+            get
+            {
+                if (playerInterpersonalAttitudes == null)
+                {
+                    string personId = playerIdentityProgression == null ? PersistenceService.LocalPlayerId : playerIdentityProgression.PersonId;
+                    playerInterpersonalAttitudes = new InterpersonalAttitudeRuntime();
+                    playerInterpersonalAttitudes.Configure(GetDefinitionRegistry(), GetPrototypeSocialPersonIds(personId));
+                }
+
+                return playerInterpersonalAttitudes;
             }
         }
         public PersonProfessionRuntime Professions
@@ -725,6 +744,12 @@ namespace UnityIsekaiGame.Gameplay
                 playerRelationshipParticipant = null;
             }
 
+            if (service != null && playerInterpersonalAttitudeParticipant != null)
+            {
+                service.UnregisterParticipant(playerInterpersonalAttitudeParticipant);
+                playerInterpersonalAttitudeParticipant = null;
+            }
+
             if (service != null && statsVitalsStatusParticipant != null)
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
@@ -852,6 +877,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerCareerHistoryParticipant();
             EnsurePlayerLifePathParticipant();
             EnsurePlayerRelationshipParticipant();
+            EnsurePlayerInterpersonalAttitudeParticipant();
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
@@ -2454,7 +2480,7 @@ namespace UnityIsekaiGame.Gameplay
             string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
                 ? service.PlayerId
                 : playerIdentityProgression.PersonId;
-            string[] knownPersons = new[] { personId, service.PlayerId, "person.prototype.npc", "person.prototype.friend", "person.prototype.rival", "person.prototype.mentor", "person.prototype.student" };
+            string[] knownPersons = GetPrototypeSocialPersonIds(personId);
             Relationships.Configure(GetDefinitionRegistry(), knownPersons);
             playerRelationshipParticipant = new RelationshipPersistenceParticipant(
                 Relationships,
@@ -2467,6 +2493,39 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 playerRelationshipParticipant = null;
+            }
+        }
+
+        private void EnsurePlayerInterpersonalAttitudeParticipant()
+        {
+            if (!registerPlayerInterpersonalAttitudes || playerInterpersonalAttitudeParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Interpersonal attitude persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            string[] knownPersons = GetPrototypeSocialPersonIds(personId);
+            InterpersonalAttitudes.Configure(GetDefinitionRegistry(), knownPersons);
+            playerInterpersonalAttitudeParticipant = new InterpersonalAttitudePersistenceParticipant(
+                InterpersonalAttitudes,
+                GetDefinitionRegistry,
+                () => knownPersons,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerInterpersonalAttitudeParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerInterpersonalAttitudeParticipant = null;
             }
         }
 
@@ -3573,9 +3632,29 @@ namespace UnityIsekaiGame.Gameplay
                 definitions.Add(definition);
             }
 
-            definitionRegistry = PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)));
+            definitionRegistry = PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
+                PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                    PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions))));
             return definitionRegistry;
+        }
+
+        private string[] GetPrototypeSocialPersonIds(string primaryPersonId)
+        {
+            return new[]
+            {
+                primaryPersonId,
+                service == null ? PersistenceService.LocalPlayerId : service.PlayerId,
+                "person.prototype.npc",
+                "person.prototype.friend",
+                "person.prototype.rival",
+                "person.prototype.parent",
+                "person.prototype.child",
+                "person.prototype.mentor",
+                "person.prototype.student"
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(System.StringComparer.Ordinal)
+            .ToArray();
         }
 
         private static string[] GetPrototypeCredentialAuthorities()
