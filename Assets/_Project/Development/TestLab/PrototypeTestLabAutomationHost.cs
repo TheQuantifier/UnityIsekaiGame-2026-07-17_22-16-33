@@ -28,16 +28,22 @@ namespace UnityIsekaiGame.Development
                 | TestLabRuntimeArea.Combat
                 | TestLabRuntimeArea.Biology
                 | TestLabRuntimeArea.Persistence
-                | TestLabRuntimeArea.Social;
+                | TestLabRuntimeArea.Items
+                | TestLabRuntimeArea.Professions
+                | TestLabRuntimeArea.Economy
+                | TestLabRuntimeArea.Social
+                | TestLabRuntimeArea.Organizations
+                | TestLabRuntimeArea.OrganizationMemberships
+                | TestLabRuntimeArea.OrganizationAuthority;
             return new TestLabAutomationHostCapabilities(
                 HostId,
                 "Prototype Test Lab Host",
                 SceneManager.GetActiveScene().name,
                 allAreas,
-                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Social,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority,
                 allAreas,
                 allAreas,
-                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Social,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority,
                 new[]
                 {
                     TestLabScenarioIsolationMode.FreshRuntime,

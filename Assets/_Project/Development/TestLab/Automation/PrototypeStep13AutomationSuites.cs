@@ -61,6 +61,31 @@ namespace UnityIsekaiGame.Development.Automation
                     MembershipScenario("projection-and-persistence-validation", "Membership projections and persistence reject corrupt graphs without mutation", 70,
                         Step("step13-membership-persistence", "Project, save, restore, and reject invalid membership state", MembershipProjectionAndPersistence))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.3.organizational-roles-permissions-authority",
+                "Organizational Roles, Permissions, and Institutional Authority",
+                "13.3",
+                "Definition-backed organization permissions, authority roles, grants, delegations, approvals, projections, and persistence.",
+                13030,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "OrganizationAuthorityRuntime", "OrganizationRuntime", "OrganizationMembershipRuntime", "OrganizationPermissionDefinition", "InstitutionalActionDefinition", "OrganizationAuthorityRoleDefinition", "OrganizationAuthorityBindingDefinition", "OrganizationAuthorityPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    AuthorityScenario("readiness-and-definitions", "Authority permissions, roles, actions, and bindings are available", 10,
+                        Step("step13-authority-readiness", "Resolve organization authority definitions", AuthorityReadiness)),
+                    AuthorityScenario("membership-rank-office-authority", "Membership, rank, and office bindings produce effective authority", 20,
+                        Step("step13-authority-bindings", "Evaluate bound membership authority", AuthorityFromMembershipRankOffice)),
+                    AuthorityScenario("direct-grants-delegation", "Direct grants and delegations are scoped, expiring, and idempotent", 30,
+                        Step("step13-authority-delegation", "Create and delegate scoped authority", AuthorityDirectGrantsDelegation)),
+                    AuthorityScenario("branch-scope-boundaries", "Branch authority requires explicit scoped bindings", 40,
+                        Step("step13-authority-branch", "Evaluate parent and branch authority boundaries", AuthorityBranchScopeBoundaries)),
+                    AuthorityScenario("joint-approval-audits", "Joint approvals are consumed and audited explicitly", 50,
+                        Step("step13-authority-approvals", "Authorize joint institutional action", AuthorityJointApprovalAudits)),
+                    AuthorityScenario("persistence-validation", "Authority persistence validates before restoring", 60,
+                        Step("step13-authority-persistence", "Save, restore, and reject invalid authority state", AuthorityPersistenceValidation))
+                }), out _);
         }
 
         private static TestLabAutomationStepResult ReadinessAndPrototypeDefinitions(TestLabAutomationContext context)
@@ -497,6 +522,270 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step13-membership-persistence", "Project, save, restore, and reject invalid membership state", valid, $"Visible={visible.Status} Hidden={hidden.Status} Projection={publicProjection.Access}/{hiddenProjection.Access}/{privilegedProjection.Access} Restore={restore.Status} Rejected={rejected}:{validationFailure} Live={liveUnchanged}");
         }
 
+        private static TestLabAutomationStepResult AuthorityReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetAuthorityRuntime(context, out OrganizationAuthorityRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-authority-readiness", "Resolve organization authority definitions", "OrganizationAuthorityRuntime", "Present", "Missing", failure);
+            }
+
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool permission = registry.TryGet(PrototypeOrganizationAuthorityDefinitionFactory.AppointOfficeholdersPermissionId, out OrganizationPermissionDefinition appoint)
+                && appoint.Category == OrganizationPermissionCategory.ManageOffices;
+            bool action = registry.TryGet(PrototypeOrganizationAuthorityDefinitionFactory.AppointOfficeholderActionId, out InstitutionalActionDefinition appointAction)
+                && appointAction.RequiredPermissionIds.Contains(PrototypeOrganizationAuthorityDefinitionFactory.AppointOfficeholdersPermissionId);
+            bool role = registry.TryGet(PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterRoleId, out OrganizationAuthorityRoleDefinition guildmaster)
+                && guildmaster.GrantedPermissionIds.Contains(PrototypeOrganizationAuthorityDefinitionFactory.PromoteMembersPermissionId);
+            bool binding = registry.TryGet(PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterOfficeBindingId, out OrganizationAuthorityBindingDefinition bindingDefinition)
+                && bindingDefinition.AuthorityRoleDefinitionId == PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterRoleId;
+            string actorId = PrimaryAuthorityActorId(context);
+            OrganizationEffectiveAuthoritySnapshot first = runtime.QueryEffectiveAuthority(actorId, "organization.prototype.guild", 10d);
+            OrganizationEffectiveAuthoritySnapshot second = runtime.QueryEffectiveAuthority(actorId, "organization.prototype.guild", 10d);
+
+            bool valid = permission
+                && action
+                && role
+                && binding
+                && first.RuntimeRevision == second.RuntimeRevision
+                && first.Sources.Count == second.Sources.Count;
+
+            return TestLabAssertions.True("step13-authority-readiness", "Resolve organization authority definitions", valid, $"Permission={permission} Action={action} Role={role} Binding={binding} Sources={first.Sources.Count}/{second.Sources.Count}");
+        }
+
+        private static TestLabAutomationStepResult AuthorityFromMembershipRankOffice(TestLabAutomationContext context)
+        {
+            bool hasAuthority = TryGetAuthorityRuntime(context, out OrganizationAuthorityRuntime authority, out string authorityFailure);
+            bool hasMemberships = TryGetMembershipRuntime(context, out OrganizationMembershipRuntime memberships, out string membershipFailure);
+            if (!hasAuthority || !hasMemberships)
+            {
+                string details = authorityFailure.Length > 0 ? authorityFailure : membershipFailure;
+                return TestLabAssertions.Fail("step13-authority-bindings", "Evaluate bound membership authority", "OrganizationAuthorityRuntime", "Present", "Missing", details);
+            }
+
+            string actorId = PrimaryAuthorityActorId(context);
+            CreateAuthorityGuildmaster(context, actorId, "master");
+            memberships.ApplyMembership(MembershipRequest($"organization-membership.testlab.authority.general.{context.RunId}", "organization.prototype.guild", "person.prototype.friend", PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.authority.member.general.{context.RunId}", consent: true));
+
+            OrganizationAuthorizationResult guildmaster = authority.EvaluateAuthorization(AuthorityRequest(actorId, "organization.prototype.guild", PrototypeOrganizationAuthorityDefinitionFactory.AppointOfficeholderActionId, $"testlab.authority.auth.guildmaster.{context.RunId}"));
+            OrganizationAuthorizationResult general = authority.EvaluateAuthorization(AuthorityRequest("person.prototype.friend", "organization.prototype.guild", PrototypeOrganizationAuthorityDefinitionFactory.AppointOfficeholderActionId, $"testlab.authority.auth.general.{context.RunId}"));
+            OrganizationEffectiveAuthoritySnapshot effective = authority.QueryEffectiveAuthority(actorId, "organization.prototype.guild", 100d);
+
+            bool valid = guildmaster.Succeeded
+                && general.Status == OrganizationAuthorizationStatus.MissingPermission
+                && effective.Sources.Any(source => source.permissionDefinitionId == PrototypeOrganizationAuthorityDefinitionFactory.PromoteMembersPermissionId)
+                && memberships.MembershipCount >= 2;
+
+            return TestLabAssertions.True("step13-authority-bindings", "Evaluate bound membership authority", valid, $"Guildmaster={guildmaster.Status} General={general.Status} Sources={effective.Sources.Count} Memberships={memberships.MembershipCount}");
+        }
+
+        private static TestLabAutomationStepResult AuthorityDirectGrantsDelegation(TestLabAutomationContext context)
+        {
+            if (!TryGetAuthorityRuntime(context, out OrganizationAuthorityRuntime authority, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-authority-delegation", "Create and delegate scoped authority", "OrganizationAuthorityRuntime", "Present", "Missing", failure);
+            }
+
+            string actorId = PrimaryAuthorityActorId(context);
+            CreateAuthorityGuildmaster(context, actorId, "master");
+            context.ScenarioContext.Runtimes.OrganizationMemberships.ApplyMembership(MembershipRequest($"organization-membership.testlab.authority.direct.friend.{context.RunId}", "organization.prototype.guild", "person.prototype.friend", PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.authority.direct.friend.member.{context.RunId}", consent: true));
+            OrganizationAuthorityOperationResult direct = authority.CreateDirectGrant(new OrganizationAuthorityGrantRequest
+            {
+                grantId = $"organization-authority-grant.testlab.direct.{context.RunId}",
+                organizationId = "organization.prototype.guild",
+                granteePersonId = "person.prototype.friend",
+                grantorPersonId = actorId,
+                permissionDefinitionIds = new[] { PrototypeOrganizationAuthorityDefinitionFactory.IssueOrdersPermissionId },
+                scope = OrganizationAuthorityScopeData.ForOrganization("organization.prototype.guild"),
+                startWorldTime = 20d,
+                expirationWorldTime = 40d,
+                delegationPolicy = OrganizationAuthorityDelegationPolicy.DelegableNoRedelegation,
+                transactionId = $"testlab.authority.direct.{context.RunId}"
+            });
+            OrganizationAuthorityOperationResult duplicate = authority.CreateDirectGrant(new OrganizationAuthorityGrantRequest
+            {
+                grantId = direct.Grant?.GrantId,
+                organizationId = "organization.prototype.guild",
+                granteePersonId = "person.prototype.friend",
+                grantorPersonId = actorId,
+                permissionDefinitionIds = new[] { PrototypeOrganizationAuthorityDefinitionFactory.IssueOrdersPermissionId },
+                scope = OrganizationAuthorityScopeData.ForOrganization("organization.prototype.guild"),
+                startWorldTime = 20d,
+                expirationWorldTime = 40d,
+                transactionId = $"testlab.authority.direct.{context.RunId}"
+            });
+            OrganizationAuthorizationResult authorized = authority.EvaluateAuthorization(AuthorityRequest("person.prototype.friend", "organization.prototype.guild", PrototypeOrganizationAuthorityDefinitionFactory.IssueOrderActionId, $"testlab.authority.friend.orders.{context.RunId}", 30d));
+            OrganizationAuthorizationResult expired = authority.EvaluateAuthorization(AuthorityRequest("person.prototype.friend", "organization.prototype.guild", PrototypeOrganizationAuthorityDefinitionFactory.IssueOrderActionId, $"testlab.authority.friend.orders.expired.{context.RunId}", 50d));
+            OrganizationAuthorityOperationResult delegated = authority.DelegateAuthority(new OrganizationDelegationRequest
+            {
+                delegationGrantId = $"organization-authority-grant.testlab.delegated.{context.RunId}",
+                organizationId = "organization.prototype.guild",
+                delegatorPersonId = "person.prototype.friend",
+                recipientPersonId = "person.prototype.student",
+                sourceAuthorityId = direct.Grant?.GrantId,
+                permissionDefinitionIds = new[] { PrototypeOrganizationAuthorityDefinitionFactory.IssueOrdersPermissionId },
+                scope = OrganizationAuthorityScopeData.ForOrganization("organization.prototype.guild"),
+                startWorldTime = 25d,
+                expirationWorldTime = 35d,
+                transactionId = $"testlab.authority.delegate.{context.RunId}"
+            });
+            OrganizationAuthorityOperationResult redelegated = authority.DelegateAuthority(new OrganizationDelegationRequest
+            {
+                delegationGrantId = $"organization-authority-grant.testlab.redelegated.{context.RunId}",
+                organizationId = "organization.prototype.guild",
+                delegatorPersonId = "person.prototype.student",
+                recipientPersonId = "person.prototype.rival",
+                sourceAuthorityId = delegated.Grant?.GrantId,
+                permissionDefinitionIds = new[] { PrototypeOrganizationAuthorityDefinitionFactory.IssueOrdersPermissionId },
+                scope = OrganizationAuthorityScopeData.ForOrganization("organization.prototype.guild"),
+                startWorldTime = 26d,
+                expirationWorldTime = 30d,
+                transactionId = $"testlab.authority.redelegate.{context.RunId}"
+            });
+
+            bool valid = direct.Succeeded
+                && duplicate.Duplicate
+                && authorized.Succeeded
+                && expired.Status == OrganizationAuthorizationStatus.MissingPermission
+                && delegated.Succeeded
+                && !redelegated.Succeeded
+                && redelegated.Status == OrganizationAuthorizationStatus.InvalidDependency;
+
+            return TestLabAssertions.True("step13-authority-delegation", "Create and delegate scoped authority", valid, $"Direct={direct.Status} Duplicate={duplicate.Status}/{duplicate.Duplicate} Authorized={authorized.Status} Expired={expired.Status} Delegated={delegated.Status} Redelegated={redelegated.Status}");
+        }
+
+        private static TestLabAutomationStepResult AuthorityBranchScopeBoundaries(TestLabAutomationContext context)
+        {
+            bool hasAuthority = TryGetAuthorityRuntime(context, out OrganizationAuthorityRuntime authority, out string authorityFailure);
+            bool hasOrganizations = TryGetRuntime(context, out OrganizationRuntime organizations, out string organizationFailure);
+            bool hasMemberships = TryGetMembershipRuntime(context, out OrganizationMembershipRuntime memberships, out string membershipFailure);
+            if (!hasAuthority || !hasOrganizations || !hasMemberships)
+            {
+                string details = authorityFailure.Length > 0 ? authorityFailure : organizationFailure.Length > 0 ? organizationFailure : membershipFailure;
+                return TestLabAssertions.Fail("step13-authority-branch", "Evaluate parent and branch authority boundaries", "OrganizationAuthorityRuntime", "Present", "Missing", details);
+            }
+
+            string branchId = $"organization.testlab.branch.authority.{context.RunId}";
+            organizations.CreateOrganization(new OrganizationCreateRequest
+            {
+                organizationId = branchId,
+                organizationDefinitionId = PrototypeOrganizationDefinitionFactory.BranchDefinitionId,
+                officialName = "Authority Branch",
+                initialLifecycleState = OrganizationLifecycleState.Active,
+                transactionId = $"testlab.authority.branch.create.{context.RunId}"
+            });
+            organizations.LinkOrganizations(new OrganizationLinkRequest
+            {
+                sourceOrganizationId = branchId,
+                targetOrganizationId = "organization.prototype.guild",
+                kind = OrganizationLinkKind.Parent,
+                transactionId = $"testlab.authority.branch.link.{context.RunId}"
+            });
+            authority.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, organizations, memberships, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, organizations.Snapshots.Select(snapshot => snapshot.OrganizationId));
+            string actorId = PrimaryAuthorityActorId(context);
+            OrganizationMembershipOperationResult parentMembership = memberships.ApplyMembership(MembershipRequest($"organization-membership.testlab.branch.parent.{context.RunId}", "organization.prototype.guild", actorId, PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.authority.branch.parent.member.{context.RunId}", consent: true));
+            AssignGuildMasterRank(memberships, parentMembership.Membership?.MembershipId, context.RunId, "branch-parent");
+            OrganizationMembershipRequest branchRequest = MembershipRequest($"organization-membership.testlab.branch.member.{context.RunId}", branchId, "person.prototype.friend", PrototypeOrganizationMembershipDefinitionFactory.BranchMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.authority.branch.member.{context.RunId}", consent: true);
+            branchRequest.parentMembershipId = parentMembership.Membership?.MembershipId;
+            branchRequest.branchOrganizationId = branchId;
+            OrganizationMembershipOperationResult branchMembership = memberships.ApplyMembership(branchRequest);
+            OrganizationMembershipOperationResult branchOffice = memberships.CreateOffice(OfficeRequest($"organization-office-record.testlab.branch.master.{context.RunId}", branchId, PrototypeOrganizationMembershipDefinitionFactory.BranchChapterMasterOfficeId, $"testlab.authority.branch.office.{context.RunId}"));
+            OrganizationMembershipOperationResult branchAssignment = memberships.AssignOffice(OfficeAssignmentRequest($"organization-office-assignment.testlab.branch.master.{context.RunId}", branchOffice.Office?.OfficeId, branchMembership.Membership?.MembershipId, $"testlab.authority.branch.office.assign.{context.RunId}"));
+
+            OrganizationAuthorizationResult parentOnBranch = authority.EvaluateAuthorization(AuthorityRequest(actorId, branchId, PrototypeOrganizationAuthorityDefinitionFactory.IssueOrderActionId, $"testlab.authority.parent.branch.{context.RunId}"));
+            OrganizationAuthorizationResult branchOnBranch = authority.EvaluateAuthorization(AuthorityRequest("person.prototype.friend", branchId, PrototypeOrganizationAuthorityDefinitionFactory.IssueOrderActionId, $"testlab.authority.branch.branch.{context.RunId}"));
+            OrganizationAuthorizationResult branchOnParent = authority.EvaluateAuthorization(AuthorityRequest("person.prototype.friend", "organization.prototype.guild", PrototypeOrganizationAuthorityDefinitionFactory.IssueOrderActionId, $"testlab.authority.branch.parent.{context.RunId}"));
+
+            bool valid = parentMembership.Succeeded
+                && branchMembership.Succeeded
+                && branchOffice.Succeeded
+                && branchAssignment.Succeeded
+                && parentOnBranch.Status == OrganizationAuthorizationStatus.MissingPermission
+                && branchOnBranch.Succeeded
+                && branchOnParent.Status == OrganizationAuthorizationStatus.MissingPermission;
+
+            return TestLabAssertions.True("step13-authority-branch", "Evaluate parent and branch authority boundaries", valid, $"Parent={parentOnBranch.Status} Branch={branchOnBranch.Status} Reverse={branchOnParent.Status} Memberships={parentMembership.Status}/{branchMembership.Status} Office={branchOffice.Status}/{branchAssignment.Status}");
+        }
+
+        private static TestLabAutomationStepResult AuthorityJointApprovalAudits(TestLabAutomationContext context)
+        {
+            if (!TryGetAuthorityRuntime(context, out OrganizationAuthorityRuntime authority, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-authority-approvals", "Authorize joint institutional action", "OrganizationAuthorityRuntime", "Present", "Missing", failure);
+            }
+
+            string actorId = PrimaryAuthorityActorId(context);
+            CreateAuthorityGuildmaster(context, actorId, "approver-master");
+            context.ScenarioContext.Runtimes.OrganizationMemberships.ApplyMembership(MembershipRequest($"organization-membership.testlab.approver.mentor.{context.RunId}", "organization.prototype.guild", "person.prototype.mentor", PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.authority.approver.mentor.{context.RunId}", consent: true));
+            context.ScenarioContext.Runtimes.OrganizationMemberships.ApplyMembership(MembershipRequest($"organization-membership.testlab.approver.partner.{context.RunId}", "organization.prototype.guild", "person.prototype.partner", PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.authority.approver.partner.{context.RunId}", consent: true));
+            OrganizationAuthorityOperationResult mentorGrant = GrantGuildmasterRole(authority, actorId, "person.prototype.mentor", context.RunId, "mentor");
+            OrganizationAuthorityOperationResult partnerGrant = GrantGuildmasterRole(authority, actorId, "person.prototype.partner", context.RunId, "partner");
+            string operationId = $"testlab.authority.operation.headquarters.{context.RunId}";
+            OrganizationAuthorityOperationResult approvalOne = authority.RecordApproval(ApprovalRequest($"organization-authority-approval.testlab.one.{context.RunId}", operationId, "person.prototype.mentor"));
+            OrganizationAuthorityOperationResult approvalTwo = authority.RecordApproval(ApprovalRequest($"organization-authority-approval.testlab.two.{context.RunId}", operationId, "person.prototype.partner"));
+            OrganizationAuthorizationRequest deniedRequest = AuthorityRequest("person.prototype.friend", "organization.prototype.guild", PrototypeOrganizationAuthorityDefinitionFactory.ChangeHeadquartersActionId, operationId);
+            deniedRequest.consumeApprovals = true;
+            OrganizationAuthorizationRequest authorizedRequest = AuthorityRequest(actorId, "organization.prototype.guild", PrototypeOrganizationAuthorityDefinitionFactory.ChangeHeadquartersActionId, operationId);
+            authorizedRequest.consumeApprovals = true;
+
+            OrganizationAuthorizationResult denied = authority.EvaluateAuthorization(deniedRequest);
+            OrganizationAuthorizationResult authorized = authority.EvaluateAuthorization(authorizedRequest);
+            OrganizationAuthorityOperationResult audit = authority.RecordAuthorizationAudit(authorized, $"organization-authority-audit.testlab.headquarters.{context.RunId}", 120d);
+
+            bool valid = mentorGrant.Succeeded
+                && partnerGrant.Succeeded
+                && approvalOne.Succeeded
+                && approvalTwo.Succeeded
+                && !denied.Succeeded
+                && authorized.Succeeded
+                && authorized.ApprovalIds.Count == 2
+                && authority.Approvals.All(approval => approval.LifecycleState == OrganizationApprovalLifecycleState.Consumed)
+                && audit.Succeeded
+                && authority.Audits.Any(item => item.Status == OrganizationAuthorizationStatus.Authorized);
+
+            return TestLabAssertions.True("step13-authority-approvals", "Authorize joint institutional action", valid, $"Grants={mentorGrant.Status}/{partnerGrant.Status} Approvals={approvalOne.Status}/{approvalTwo.Status} Denied={denied.Status} Authorized={authorized.Status} Audit={audit.Status}");
+        }
+
+        private static TestLabAutomationStepResult AuthorityPersistenceValidation(TestLabAutomationContext context)
+        {
+            bool hasAuthority = TryGetAuthorityRuntime(context, out OrganizationAuthorityRuntime authority, out string authorityFailure);
+            bool hasOrganizations = TryGetRuntime(context, out OrganizationRuntime organizations, out string organizationFailure);
+            bool hasMemberships = TryGetMembershipRuntime(context, out OrganizationMembershipRuntime memberships, out string membershipFailure);
+            if (!hasAuthority || !hasOrganizations || !hasMemberships)
+            {
+                string details = authorityFailure.Length > 0 ? authorityFailure : organizationFailure.Length > 0 ? organizationFailure : membershipFailure;
+                return TestLabAssertions.Fail("step13-authority-persistence", "Save, restore, and reject invalid authority state", "OrganizationAuthorityRuntime", "Present", "Missing", details);
+            }
+
+            OrganizationAuthorityOperationResult grant = authority.CreateDirectGrant(new OrganizationAuthorityGrantRequest
+            {
+                grantId = $"organization-authority-grant.testlab.persist.{context.RunId}",
+                organizationId = "organization.prototype.guild",
+                granteePersonId = "person.prototype.friend",
+                grantorPersonId = PrimaryAuthorityActorId(context),
+                permissionDefinitionIds = new[] { PrototypeOrganizationAuthorityDefinitionFactory.ViewRestrictedInformationPermissionId },
+                scope = OrganizationAuthorityScopeData.ForOrganization("organization.prototype.guild"),
+                startWorldTime = 0d,
+                transactionId = $"testlab.authority.persist.{context.RunId}"
+            });
+            OrganizationAuthorityRuntimeSaveData save = authority.CreateSaveData();
+            OrganizationAuthorityRuntime restored = new OrganizationAuthorityRuntime();
+            OrganizationAuthorityOperationResult restore = restored.RestoreFromSaveData(save, context.ScenarioContext.Runtimes.DefinitionRegistry, organizations, memberships, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, organizations.Snapshots.Select(snapshot => snapshot.OrganizationId));
+            OrganizationAuthorityRuntimeSaveData corrupt = save.Clone();
+            corrupt.grants[0].permissionDefinitionIds = new[] { "organization-permission.missing" };
+            bool rejected = !OrganizationAuthorityRuntime.ValidateSaveData(corrupt, context.ScenarioContext.Runtimes.DefinitionRegistry, organizations, memberships, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, organizations.Snapshots.Select(snapshot => snapshot.OrganizationId), out string validationFailure);
+            bool liveUnchanged = authority.TryGetGrant(grant.Grant?.GrantId, out OrganizationAuthoritySnapshot live)
+                && live.Data.permissionDefinitionIds.Contains(PrototypeOrganizationAuthorityDefinitionFactory.ViewRestrictedInformationPermissionId)
+                && authority.GrantCount == save.grants.Count;
+
+            bool valid = grant.Succeeded
+                && restore.Succeeded
+                && restored.TryGetGrant(grant.Grant?.GrantId, out _)
+                && rejected
+                && liveUnchanged;
+
+            return TestLabAssertions.True("step13-authority-persistence", "Save, restore, and reject invalid authority state", valid, $"Grant={grant.Status} Restore={restore.Status} Rejected={rejected}:{validationFailure} Live={liveUnchanged}");
+        }
+
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
         {
             return new TestLabScenarioStep(stepId, displayName, action);
@@ -548,6 +837,40 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeOrganizationMembershipDefinitionFactory.GuildMasterRankId,
                     PrototypeOrganizationMembershipDefinitionFactory.GuildmasterOfficeId,
                     PrototypeOrganizationMembershipDefinitionFactory.GuildTreasurerOfficeId
+                });
+        }
+
+        private static ITestLabAutomationScenario AuthorityScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeOrganizationDefinitionFactory.GuildDefinitionId,
+                    PrototypeOrganizationDefinitionFactory.BranchDefinitionId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId,
+                    PrototypeOrganizationMembershipDefinitionFactory.BranchMemberId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildCraftTrackId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildMasterRankId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildmasterOfficeId,
+                    PrototypeOrganizationMembershipDefinitionFactory.BranchChapterMasterOfficeId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.AppointOfficeholdersPermissionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.IssueOrdersPermissionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.ViewRestrictedInformationPermissionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterRoleId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.AppointOfficeholderActionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.IssueOrderActionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.ChangeHeadquartersActionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterOfficeBindingId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.BranchChapterMasterOfficeBindingId
                 });
         }
 
@@ -634,6 +957,76 @@ namespace UnityIsekaiGame.Development.Automation
             };
         }
 
+        private static OrganizationAuthorizationRequest AuthorityRequest(string personId, string organizationId, string actionDefinitionId, string operationId, double worldTime = 100d)
+        {
+            return new OrganizationAuthorizationRequest
+            {
+                actorPersonId = personId,
+                organizationId = organizationId,
+                actionDefinitionId = actionDefinitionId,
+                operationId = operationId,
+                scope = OrganizationAuthorityScopeData.ForOrganization(organizationId),
+                worldTime = worldTime
+            };
+        }
+
+        private static OrganizationApprovalRequest ApprovalRequest(string approvalId, string operationId, string approverId)
+        {
+            return new OrganizationApprovalRequest
+            {
+                approvalId = approvalId,
+                operationId = operationId,
+                organizationId = "organization.prototype.guild",
+                actionDefinitionId = PrototypeOrganizationAuthorityDefinitionFactory.ChangeHeadquartersActionId,
+                approverPersonId = approverId,
+                scope = OrganizationAuthorityScopeData.ForOrganization("organization.prototype.guild"),
+                approvedWorldTime = 90d,
+                transactionId = $"tx.{approvalId}"
+            };
+        }
+
+        private static void CreateAuthorityGuildmaster(TestLabAutomationContext context, string personId, string suffix)
+        {
+            OrganizationMembershipRuntime memberships = context.ScenarioContext.Runtimes.OrganizationMemberships;
+            string membershipId = $"organization-membership.testlab.authority.guildmaster.{suffix}.{context.RunId}";
+            OrganizationMembershipOperationResult member = memberships.ApplyMembership(MembershipRequest(membershipId, "organization.prototype.guild", personId, PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.authority.guildmaster.member.{suffix}.{context.RunId}", consent: true));
+            AssignGuildMasterRank(memberships, member.Membership?.MembershipId, context.RunId, suffix);
+            OrganizationMembershipOperationResult office = memberships.CreateOffice(OfficeRequest($"organization-office-record.testlab.guildmaster.{suffix}.{context.RunId}", "organization.prototype.guild", PrototypeOrganizationMembershipDefinitionFactory.GuildmasterOfficeId, $"testlab.authority.guildmaster.office.{suffix}.{context.RunId}"));
+            memberships.AssignOffice(OfficeAssignmentRequest($"organization-office-assignment.testlab.guildmaster.{suffix}.{context.RunId}", office.Office?.OfficeId, member.Membership?.MembershipId, $"testlab.authority.guildmaster.office.assign.{suffix}.{context.RunId}"));
+        }
+
+        private static void AssignGuildMasterRank(OrganizationMembershipRuntime memberships, string membershipId, string runId, string suffix)
+        {
+            if (string.IsNullOrWhiteSpace(membershipId))
+            {
+                return;
+            }
+
+            memberships.AssignRank(RankRequest($"organization-rank-assignment.testlab.novice.{suffix}.{runId}", membershipId, PrototypeOrganizationMembershipDefinitionFactory.GuildNoviceRankId, $"testlab.authority.rank.novice.{suffix}.{runId}"));
+            memberships.AssignRank(RankRequest($"organization-rank-assignment.testlab.journeyman.{suffix}.{runId}", membershipId, PrototypeOrganizationMembershipDefinitionFactory.GuildJourneymanRankId, $"testlab.authority.rank.journeyman.{suffix}.{runId}"));
+            memberships.AssignRank(RankRequest($"organization-rank-assignment.testlab.master.{suffix}.{runId}", membershipId, PrototypeOrganizationMembershipDefinitionFactory.GuildMasterRankId, $"testlab.authority.rank.master.{suffix}.{runId}"));
+        }
+
+        private static OrganizationAuthorityOperationResult GrantGuildmasterRole(OrganizationAuthorityRuntime authority, string grantorPersonId, string granteePersonId, string runId, string suffix)
+        {
+            return authority.CreateDirectGrant(new OrganizationAuthorityGrantRequest
+            {
+                grantId = $"organization-authority-grant.testlab.guildmaster.{suffix}.{runId}",
+                organizationId = "organization.prototype.guild",
+                granteePersonId = granteePersonId,
+                grantorPersonId = grantorPersonId,
+                authorityRoleDefinitionId = PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterRoleId,
+                scope = OrganizationAuthorityScopeData.ForOrganization("organization.prototype.guild"),
+                transactionId = $"testlab.authority.guildmaster.grant.{suffix}.{runId}"
+            });
+        }
+
+        private static string PrimaryAuthorityActorId(TestLabAutomationContext context)
+        {
+            string personId = context?.ScenarioContext?.Runtimes?.PersonId;
+            return string.IsNullOrWhiteSpace(personId) ? PersistenceService.LocalPlayerId : personId;
+        }
+
         private static bool TryGetRuntime(TestLabAutomationContext context, out OrganizationRuntime runtime, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.Organizations;
@@ -653,6 +1046,19 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null)
             {
                 failure = "OrganizationMembershipRuntime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetAuthorityRuntime(TestLabAutomationContext context, out OrganizationAuthorityRuntime runtime, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.OrganizationAuthority;
+            if (runtime == null)
+            {
+                failure = "OrganizationAuthorityRuntime is missing from the Test Lab runtime bundle.";
                 return false;
             }
 
