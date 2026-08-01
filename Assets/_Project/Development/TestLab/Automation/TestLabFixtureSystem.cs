@@ -32,6 +32,7 @@ using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Professions;
+using UnityIsekaiGame.Social.Relationships;
 
 namespace UnityIsekaiGame.Development.Automation
 {
@@ -369,6 +370,16 @@ namespace UnityIsekaiGame.Development.Automation
 
     public sealed class TestLabRuntimeBundle : IDisposable
     {
+        private static readonly string[] DefaultRelationshipPersonIds =
+        {
+            "person.prototype.friend",
+            "person.prototype.rival",
+            "person.prototype.parent",
+            "person.prototype.child",
+            "person.prototype.mentor",
+            "person.prototype.student"
+        };
+
         private readonly GameObject ownedKnowledgeObject;
 
         private TestLabRuntimeBundle(
@@ -411,6 +422,7 @@ namespace UnityIsekaiGame.Development.Automation
             ContractEconomyRuntime contracts,
             InstitutionalRevenueRuntime institutionalRevenue,
             RegionalFlowRuntime regionalFlow,
+            RelationshipRuntime relationships,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -452,6 +464,7 @@ namespace UnityIsekaiGame.Development.Automation
             Contracts = contracts;
             InstitutionalRevenue = institutionalRevenue;
             RegionalFlow = regionalFlow;
+            Relationships = relationships;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -495,6 +508,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ContractEconomyRuntime Contracts { get; }
         public InstitutionalRevenueRuntime InstitutionalRevenue { get; }
         public RegionalFlowRuntime RegionalFlow { get; }
+        public RelationshipRuntime Relationships { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -536,26 +550,28 @@ namespace UnityIsekaiGame.Development.Automation
             PropertyRuntime properties = null,
             ContractEconomyRuntime contracts = null,
             InstitutionalRevenueRuntime institutionalRevenue = null,
-            RegionalFlowRuntime regionalFlow = null)
+            RegionalFlowRuntime regionalFlow = null,
+            RelationshipRuntime relationships = null)
         {
+            string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
-            professionRuntime.Configure(definitionRegistry, knownPersonIds);
+            professionRuntime.Configure(definitionRegistry, persons);
             ProfessionEntryRuntime entryRuntime = professionEntries ?? new ProfessionEntryRuntime();
-            entryRuntime.Configure(definitionRegistry, professionRuntime, knownPersonIds);
+            entryRuntime.Configure(definitionRegistry, professionRuntime, persons);
             TrainingRuntime trainingRuntime = training ?? new TrainingRuntime();
-            trainingRuntime.Configure(definitionRegistry, professionRuntime, transfers, knownPersonIds);
+            trainingRuntime.Configure(definitionRegistry, professionRuntime, transfers, persons);
             ProfessionalActivityRuntime professionalActivityRuntime = professionalActivities ?? new ProfessionalActivityRuntime();
-            professionalActivityRuntime.Configure(definitionRegistry, professionRuntime, knownPersonIds);
+            professionalActivityRuntime.Configure(definitionRegistry, professionRuntime, persons);
             CredentialRuntime credentialRuntime = credentials ?? new CredentialRuntime();
-            credentialRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, knownPersonIds, DefaultCredentialAuthorityIds);
+            credentialRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, persons, DefaultCredentialAuthorityIds);
             ProfessionalRankRuntime rankRuntime = professionalRanks ?? new ProfessionalRankRuntime();
-            rankRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, knownPersonIds, DefaultCredentialAuthorityIds);
+            rankRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, persons, DefaultCredentialAuthorityIds);
             PositionEmploymentRuntime positionRuntime = positionEmployment ?? new PositionEmploymentRuntime();
-            positionRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, knownPersonIds, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
+            positionRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, persons, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
             CareerHistoryRuntime careerRuntime = careerHistory ?? new CareerHistoryRuntime();
-            careerRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, knownPersonIds, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
+            careerRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, persons, DefaultOrganizationIds, DefaultCredentialAuthorityIds);
             LifePathRuntime lifePathRuntime = lifePaths ?? new LifePathRuntime();
-            lifePathRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, knownPersonIds, DefaultOrganizationIds);
+            lifePathRuntime.Configure(definitionRegistry, professionRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, persons, DefaultOrganizationIds);
             EconomyRuntime economyRuntime = economy ?? new EconomyRuntime();
             economyRuntime.Configure(definitionRegistry, worldId);
             MarketRuntime marketRuntime = markets ?? new MarketRuntime();
@@ -574,7 +590,9 @@ namespace UnityIsekaiGame.Development.Automation
             institutionalRevenueRuntime.Configure(definitionRegistry, worldId);
             RegionalFlowRuntime regionalFlowRuntime = regionalFlow ?? new RegionalFlowRuntime();
             regionalFlowRuntime.Configure(definitionRegistry, worldId);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, knownPersonIds, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, null);
+            RelationshipRuntime relationshipRuntime = relationships ?? new RelationshipRuntime();
+            relationshipRuntime.Configure(definitionRegistry, persons);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -621,8 +639,9 @@ namespace UnityIsekaiGame.Development.Automation
             ContractEconomyRuntime contracts = new ContractEconomyRuntime();
             InstitutionalRevenueRuntime institutionalRevenue = new InstitutionalRevenueRuntime();
             RegionalFlowRuntime regionalFlow = new RegionalFlowRuntime();
+            RelationshipRuntime relationships = new RelationshipRuntime();
 
-            string[] persons = (knownPersonIds ?? Array.Empty<string>()).Concat(new[] { personId }).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
+            string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
             history.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, bodies);
             knowledge.Configure(definitionRegistry, personId);
@@ -649,8 +668,19 @@ namespace UnityIsekaiGame.Development.Automation
             contracts.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             institutionalRevenue.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             regionalFlow.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
+            relationships.Configure(definitionRegistry, persons);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, knowledgeObject);
+        }
+
+        private static string[] ExpandKnownPersons(IReadOnlyList<string> knownPersonIds, string ownerPersonId)
+        {
+            return (knownPersonIds ?? Array.Empty<string>())
+                .Concat(new[] { ownerPersonId })
+                .Concat(DefaultRelationshipPersonIds)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
         }
 
         public KnowledgeHistoryRuntimeSet CreateRuntimeSet()
@@ -708,7 +738,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Properties?.CreateSaveData(),
                 Contracts?.CreateSaveData(),
                 InstitutionalRevenue?.CreateSaveData(),
-                RegionalFlow?.CreateSaveData());
+                RegionalFlow?.CreateSaveData(),
+                Relationships?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -748,7 +779,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Properties", Properties?.Revision ?? 0L, Properties?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Contracts", Contracts?.Revision ?? 0L, Contracts?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("InstitutionalRevenue", InstitutionalRevenue?.Revision ?? 0L, InstitutionalRevenue?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("RegionalFlow", RegionalFlow?.Revision ?? 0L, RegionalFlow?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("RegionalFlow", RegionalFlow?.Revision ?? 0L, RegionalFlow?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Relationships", Relationships?.Revision ?? 0L, Relationships?.CreateSaveData())
             });
         }
 
@@ -1099,6 +1131,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (Relationships != null && snapshot.Relationships != null)
+            {
+                RelationshipOperationResult result = Relationships.RestoreFromSaveData(snapshot.Relationships, DefinitionRegistry, KnownPersonIds, restoring: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Relationship restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1188,7 +1230,8 @@ namespace UnityIsekaiGame.Development.Automation
             PropertyRuntimeSaveData properties,
             ContractRuntimeSaveData contracts,
             InstitutionalRevenueRuntimeSaveData institutionalRevenue,
-            RegionalFlowRuntimeSaveData regionalFlow)
+            RegionalFlowRuntimeSaveData regionalFlow,
+            RelationshipRuntimeSaveData relationships)
         {
             Knowledge = knowledge;
             History = history;
@@ -1224,6 +1267,7 @@ namespace UnityIsekaiGame.Development.Automation
             Contracts = contracts;
             InstitutionalRevenue = institutionalRevenue;
             RegionalFlow = regionalFlow;
+            Relationships = relationships;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1260,6 +1304,7 @@ namespace UnityIsekaiGame.Development.Automation
         public ContractRuntimeSaveData Contracts { get; }
         public InstitutionalRevenueRuntimeSaveData InstitutionalRevenue { get; }
         public RegionalFlowRuntimeSaveData RegionalFlow { get; }
+        public RelationshipRuntimeSaveData Relationships { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
@@ -1609,7 +1654,7 @@ namespace UnityIsekaiGame.Development.Automation
             return new string(chars).Trim('.', '-');
         }
 
-        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy;
+        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social;
 
         private static bool CanIsolate(TestLabRuntimeArea supported, TestLabRuntimeArea required)
         {

@@ -52,6 +52,7 @@ using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.Skills;
+using UnityIsekaiGame.Social.Relationships;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.Traits;
@@ -137,6 +138,7 @@ namespace UnityIsekaiGame.Development
         private InformationTransferRuntime informationTransfers = new InformationTransferRuntime();
         private InformationAccessRuntime informationAccess = new InformationAccessRuntime();
         private KnowledgeRecordRuntime knowledgeRecords = new KnowledgeRecordRuntime();
+        private RelationshipRuntime relationships = new RelationshipRuntime();
         private AuthoritativeHistorySaveData lastHistorySaveData;
         private PersonMemorySaveData lastMemorySaveData;
 
@@ -178,6 +180,8 @@ namespace UnityIsekaiGame.Development
             informationAccess.Configure(registry, GetPrototypePersonId());
             knowledgeRecords = context?.KnowledgeRecords ?? context?.Persistence?.KnowledgeRecords ?? knowledgeRecords ?? new KnowledgeRecordRuntime();
             knowledgeRecords.Configure(registry, GetPrototypePersonId());
+            relationships = context?.Persistence?.Relationships ?? relationships ?? new RelationshipRuntime();
+            relationships.Configure(registry, GetKnownPrototypePersons());
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -597,6 +601,8 @@ namespace UnityIsekaiGame.Development
             informationTransfers.Configure(registry, GetPrototypePersonId());
             informationAccess = EnsureInformationAccessRuntime();
             knowledgeRecords = EnsureKnowledgeRecordRuntime();
+            relationships = context?.Persistence?.Relationships ?? relationships ?? new RelationshipRuntime();
+            relationships.Configure(registry, GetKnownPrototypePersons());
             return TestLabRuntimeBundle.FromExisting(
                 registry,
                 GetPrototypePersonId(),
@@ -609,7 +615,8 @@ namespace UnityIsekaiGame.Development
                 informationSources,
                 informationTransfers,
                 informationAccess,
-                knowledgeRecords);
+                knowledgeRecords,
+                relationships: relationships);
         }
 
         private TestLabRuntimeBundle GetOrCreateScopedAutomationBundle(Dictionary<string, TestLabRuntimeBundle> bundles, string key, string objectName)
@@ -658,6 +665,7 @@ namespace UnityIsekaiGame.Development
             informationTransfers = bundle.Transfers ?? informationTransfers;
             informationAccess = bundle.Access ?? informationAccess;
             knowledgeRecords = bundle.Records ?? knowledgeRecords;
+            relationships = bundle.Relationships ?? relationships;
         }
 
         public IEnumerable<TestLabRuntimeFingerprintSection> CaptureAutomationSceneFingerprint(TestLabRuntimeArea requiredAreas)
@@ -716,6 +724,14 @@ namespace UnityIsekaiGame.Development
                     context?.Persistence == null ? null : context.Persistence.DirtyTracker,
                     context?.Persistence == null || context.Persistence.PlayTime == null ? null : context.Persistence.PlayTime.CumulativeSeconds,
                     CurrentSlotId));
+            }
+
+            if ((requiredAreas & TestLabRuntimeArea.Social) != 0)
+            {
+                sections.Add(CreateSceneFingerprintSection(
+                    "Scene.Social",
+                    relationships == null ? 0L : relationships.Revision,
+                    relationships == null ? null : relationships.CreateSaveData()));
             }
 
             return sections;
@@ -8588,7 +8604,13 @@ namespace UnityIsekaiGame.Development
                 GetPrototypePersonId(),
                 "person.prototype.listener",
                 "person.prototype.uninformed",
-                "person.prototype.witness"
+                "person.prototype.witness",
+                "person.prototype.friend",
+                "person.prototype.rival",
+                "person.prototype.parent",
+                "person.prototype.child",
+                "person.prototype.mentor",
+                "person.prototype.student"
             }
                 .Concat(historicalPersons)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -14346,7 +14368,8 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions));
+            return PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()

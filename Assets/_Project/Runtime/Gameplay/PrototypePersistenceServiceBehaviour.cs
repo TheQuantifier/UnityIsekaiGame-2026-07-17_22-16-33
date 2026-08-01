@@ -38,6 +38,7 @@ using UnityIsekaiGame.Progression;
 using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Skills;
+using UnityIsekaiGame.Social.Relationships;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Traits;
@@ -114,6 +115,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerPositionEmployment = true;
         [SerializeField] private bool registerPlayerCareerHistory = true;
         [SerializeField] private bool registerPlayerLifePaths = true;
+        [SerializeField] private bool registerPlayerRelationships = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -155,6 +157,7 @@ namespace UnityIsekaiGame.Gameplay
         private PositionEmploymentPersistenceParticipant playerPositionEmploymentParticipant;
         private CareerHistoryPersistenceParticipant playerCareerHistoryParticipant;
         private LifePathPersistenceParticipant playerLifePathParticipant;
+        private RelationshipPersistenceParticipant playerRelationshipParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private EconomyPersistenceParticipant economyParticipant;
@@ -196,6 +199,7 @@ namespace UnityIsekaiGame.Gameplay
         private PositionEmploymentRuntime playerPositionEmployment;
         private CareerHistoryRuntime playerCareerHistory;
         private LifePathRuntime playerLifePaths;
+        private RelationshipRuntime playerRelationships;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private EconomyRuntime worldEconomy;
         private MarketRuntime worldMarkets;
@@ -231,6 +235,20 @@ namespace UnityIsekaiGame.Gameplay
         public InformationTransferRuntime InformationTransfers => playerInformationTransfers ??= new InformationTransferRuntime();
         public InformationAccessRuntime InformationAccess => playerInformationAccess ??= new InformationAccessRuntime();
         public KnowledgeRecordRuntime KnowledgeRecords => playerKnowledgeRecords ??= new KnowledgeRecordRuntime();
+        public RelationshipRuntime Relationships
+        {
+            get
+            {
+                if (playerRelationships == null)
+                {
+                    string personId = playerIdentityProgression == null ? PersistenceService.LocalPlayerId : playerIdentityProgression.PersonId;
+                    playerRelationships = new RelationshipRuntime();
+                    playerRelationships.Configure(GetDefinitionRegistry(), new[] { personId, service == null ? PersistenceService.LocalPlayerId : service.PlayerId });
+                }
+
+                return playerRelationships;
+            }
+        }
         public PersonProfessionRuntime Professions
         {
             get
@@ -701,6 +719,12 @@ namespace UnityIsekaiGame.Gameplay
                 playerLifePathParticipant = null;
             }
 
+            if (service != null && playerRelationshipParticipant != null)
+            {
+                service.UnregisterParticipant(playerRelationshipParticipant);
+                playerRelationshipParticipant = null;
+            }
+
             if (service != null && statsVitalsStatusParticipant != null)
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
@@ -827,6 +851,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerPositionEmploymentParticipant();
             EnsurePlayerCareerHistoryParticipant();
             EnsurePlayerLifePathParticipant();
+            EnsurePlayerRelationshipParticipant();
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
@@ -2412,6 +2437,39 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsurePlayerRelationshipParticipant()
+        {
+            if (!registerPlayerRelationships || playerRelationshipParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Relationship persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            string[] knownPersons = new[] { personId, service.PlayerId, "person.prototype.npc", "person.prototype.friend", "person.prototype.rival", "person.prototype.mentor", "person.prototype.student" };
+            Relationships.Configure(GetDefinitionRegistry(), knownPersons);
+            playerRelationshipParticipant = new RelationshipPersistenceParticipant(
+                Relationships,
+                GetDefinitionRegistry,
+                () => knownPersons,
+                service.PlayerId);
+
+            service.RegisterParticipant(playerRelationshipParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                playerRelationshipParticipant = null;
+            }
+        }
+
         private void EnsurePlayerInformationAccessParticipant()
         {
             if (!registerPlayerInformationAccess || playerInformationAccessParticipant != null)
@@ -3515,7 +3573,8 @@ namespace UnityIsekaiGame.Gameplay
                 definitions.Add(definition);
             }
 
-            definitionRegistry = PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions));
+            definitionRegistry = PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)));
             return definitionRegistry;
         }
 
