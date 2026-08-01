@@ -2,9 +2,12 @@
 using System;
 using System.Linq;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Knowledge;
+using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
+using UnityIsekaiGame.Social.Rumors;
 
 namespace UnityIsekaiGame.Development.Automation
 {
@@ -78,6 +81,31 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step12-reputation-requirements", "Evaluate thresholds and verify feature separation", ReputationRequirementsAndSeparation)),
                     ReputationScenario("persistence-validation", "Reputation persists and rejects corrupt restores", 60,
                         Step("step12-reputation-persistence", "Save, restore, and reject invalid reputation payloads", ReputationPersistenceValidation))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.4.rumors-gossip-social-knowledge-propagation",
+                "Rumors, Gossip, and Social Knowledge Propagation",
+                "12.4",
+                "Definition-backed rumor records, transmission lineage, bounded propagation, listener knowledge and memory effects, and persistence.",
+                12040,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "RumorRuntime", "RumorDefinition", "RumorCommunicationChannelDefinition", "PersonKnowledgeRuntime", "PersonMemoryRuntime" },
+                scenarios: new[]
+                {
+                    RumorScenario("readiness-and-root-identity", "Rumor definitions resolve and root records are stable", 10,
+                        Step("step12-rumor-root", "Create root rumor and query identity", RumorReadinessAndRootIdentity)),
+                    RumorScenario("transmission-creates-knowledge-memory", "Transmission records listener evidence and memory", 20,
+                        Step("step12-rumor-transmission", "Transmit rumor into listener knowledge and memory", RumorTransmissionCreatesKnowledgeAndMemory)),
+                    RumorScenario("distortion-lineage", "Distortion creates a derived version with root lineage", 30,
+                        Step("step12-rumor-distortion", "Transmit with deterministic distortion", RumorDistortionLineage)),
+                    RumorScenario("bounded-propagation", "Propagation is bounded and deterministic", 40,
+                        Step("step12-rumor-propagation", "Propagate rumor to ordered listeners", RumorBoundedPropagation)),
+                    RumorScenario("social-boundary", "Rumors do not mutate relationships, attitudes, or reputation directly", 50,
+                        Step("step12-rumor-social-boundary", "Verify rumor separation from other social runtimes", RumorSocialBoundary)),
+                    RumorScenario("persistence-validation", "Rumors persist and reject corrupt restores", 60,
+                        Step("step12-rumor-persistence", "Save, restore, and reject invalid rumor payloads", RumorPersistenceValidation))
                 }), out _);
         }
 
@@ -783,6 +811,242 @@ namespace UnityIsekaiGame.Development.Automation
             return true;
         }
 
+        private static TestLabAutomationStepResult RumorReadinessAndRootIdentity(TestLabAutomationContext context)
+        {
+            if (!TryGetRumorRuntime(context, out RumorRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-rumor-root", "Create root rumor and query identity", "RumorRuntime", "MissingRuntime", failure);
+            }
+
+            RumorOperationResult created = CreateRootRumor(context, runtime, "root", PrototypeRumorDefinitionFactory.PublicNewsRumorId, context.ScenarioContext.Runtimes.PersonId, RumorAuthenticity.Verified);
+            bool valid = created.Succeeded
+                && registry.TryGet(PrototypeRumorDefinitionFactory.PublicNewsRumorId, out RumorDefinition _)
+                && registry.TryGet(PrototypeRumorDefinitionFactory.ConversationChannelId, out RumorCommunicationChannelDefinition _)
+                && created.Rumor != null
+                && created.Rumor.RumorId == created.Rumor.RootRumorId
+                && runtime.QueryByRoot(created.Rumor.RootRumorId).Count == 1
+                && runtime.QueryByClaim(created.Rumor.ClaimIdentity).Count == 1
+                && runtime.IsAware(context.ScenarioContext.Runtimes.PersonId, created.Rumor.RumorId);
+            return TestLabAssertions.True("step12-rumor-root", "Rumor definitions resolve and root records are stable", valid, $"Create={created.Status} Count={runtime.RumorCount} Root={created.Rumor?.RootRumorId}");
+        }
+
+        private static TestLabAutomationStepResult RumorTransmissionCreatesKnowledgeAndMemory(TestLabAutomationContext context)
+        {
+            if (!TryGetRumorRuntime(context, out RumorRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-rumor-transmission", "Transmit rumor into listener knowledge and memory", "RumorRuntime", "MissingRuntime", failure);
+            }
+
+            string listener = context.ScenarioContext.Runtimes.PersonId;
+            RumorOperationResult created = CreateRootRumor(context, runtime, "testimony-root", PrototypeRumorDefinitionFactory.PersonalConductRumorId, "person.prototype.friend", RumorAuthenticity.Unverified);
+            RumorOperationResult transmitted = runtime.Transmit(new RumorTransmissionRequest
+            {
+                TransactionId = Tx(context, "transmit-to-player"),
+                TransmissionId = RumorScoped(context, "transmission-player"),
+                RumorVersionId = created.Rumor?.RumorId,
+                SpeakerPersonId = "person.prototype.friend",
+                ListenerPersonId = listener,
+                ChannelId = PrototypeRumorDefinitionFactory.ConversationChannelId,
+                RequestedOutcome = RumorTransmissionOutcome.Believed,
+                SpeakerConfidence = 760,
+                WorldTime = 22d
+            });
+
+            KnowledgeSnapshot knowledge = context.ScenarioContext.Runtimes.Knowledge.CreateSnapshot();
+            PersonMemorySnapshot memory = context.ScenarioContext.Runtimes.Memory.CreateSnapshot();
+            bool valid = created.Succeeded
+                && transmitted.Succeeded
+                && transmitted.KnowledgeResult?.Succeeded == true
+                && transmitted.MemoryResult?.Succeeded == true
+                && !string.IsNullOrWhiteSpace(transmitted.Transmission?.EvidenceId)
+                && !string.IsNullOrWhiteSpace(transmitted.Transmission?.MemoryId)
+                && knowledge.Evidence.Count == 1
+                && memory.Memories.Count == 1
+                && runtime.IsAware(listener, transmitted.Rumor.RumorId);
+            return TestLabAssertions.True("step12-rumor-transmission", "Transmission records listener evidence and memory", valid, $"Create={created.Status} Transmit={transmitted.Status} Evidence={knowledge.Evidence.Count} Memories={memory.Memories.Count} Outcome={transmitted.Transmission?.Outcome}");
+        }
+
+        private static TestLabAutomationStepResult RumorDistortionLineage(TestLabAutomationContext context)
+        {
+            if (!TryGetRumorRuntime(context, out RumorRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-rumor-distortion", "Transmit with deterministic distortion", "RumorRuntime", "MissingRuntime", failure);
+            }
+
+            RumorOperationResult created = CreateRootRumor(context, runtime, "distortion-root", PrototypeRumorDefinitionFactory.SecretLeakRumorId, "person.prototype.friend", RumorAuthenticity.PartiallyAccurate, RumorDisclosure.Shareable);
+            RumorOperationResult transmitted = runtime.Transmit(new RumorTransmissionRequest
+            {
+                TransactionId = Tx(context, "distort"),
+                TransmissionId = RumorScoped(context, "transmission-distorted"),
+                RumorVersionId = created.Rumor?.RumorId,
+                SpeakerPersonId = "person.prototype.friend",
+                ListenerPersonId = context.ScenarioContext.Runtimes.PersonId,
+                ChannelId = PrototypeRumorDefinitionFactory.TavernGossipChannelId,
+                RequestedOutcome = RumorTransmissionOutcome.PartiallyBelieved,
+                RequestedDistortionPolicy = RumorDistortionPolicy.ForcedConfidenceDecrease,
+                DerivedRumorId = RumorScoped(context, "derived-distorted"),
+                DeterministicSeed = "seed.12.4.distortion",
+                SpeakerConfidence = 720,
+                WorldTime = 30d
+            });
+
+            bool valid = created.Succeeded
+                && transmitted.Succeeded
+                && transmitted.Rumor != null
+                && transmitted.Rumor.RumorId != created.Rumor.RumorId
+                && transmitted.Rumor.RootRumorId == created.Rumor.RootRumorId
+                && transmitted.Rumor.ParentRumorId == created.Rumor.RumorId
+                && transmitted.Rumor.Confidence == created.Rumor.Confidence - 100
+                && transmitted.Rumor.DistortionOperations.Contains(RumorDistortionOperation.ConfidenceDecreased)
+                && runtime.QueryByRoot(created.Rumor.RootRumorId).Count == 2;
+            return TestLabAssertions.True("step12-rumor-distortion", "Distortion creates a derived version with root lineage", valid, $"Create={created.Status} Transmit={transmitted.Status} Versions={runtime.QueryByRoot(created.Rumor?.RootRumorId).Count} Confidence={created.Rumor?.Confidence}->{transmitted.Rumor?.Confidence}");
+        }
+
+        private static TestLabAutomationStepResult RumorBoundedPropagation(TestLabAutomationContext context)
+        {
+            if (!TryGetRumorRuntime(context, out RumorRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-rumor-propagation", "Propagate rumor to ordered listeners", "RumorRuntime", "MissingRuntime", failure);
+            }
+
+            RumorOperationResult created = CreateRootRumor(context, runtime, "propagation-root", PrototypeRumorDefinitionFactory.PublicNewsRumorId, "person.prototype.friend", RumorAuthenticity.Verified);
+            string[] listeners = { "person.prototype.rival", context.ScenarioContext.Runtimes.PersonId, "person.prototype.mentor" };
+            RumorPropagationResult propagated = runtime.Propagate(new RumorPropagationRequest
+            {
+                TransactionId = Tx(context, "propagate"),
+                RumorVersionId = created.Rumor?.RumorId,
+                SpeakerPersonId = "person.prototype.friend",
+                ListenerPersonIds = listeners,
+                ChannelId = PrototypeRumorDefinitionFactory.PublicSpeechChannelId,
+                MaximumTransmissions = 3,
+                DeterministicSeed = "seed.12.4.propagation",
+                WorldTime = 40d
+            });
+            RumorPropagationMetrics metrics = runtime.GetMetrics(created.Rumor?.RootRumorId);
+            string[] expectedListeners = listeners
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .Take(3)
+                .ToArray();
+
+            bool valid = created.Succeeded
+                && propagated.Succeeded
+                && propagated.Transmissions.Count == 3
+                && propagated.Transmissions.All(result => result.Succeeded)
+                && metrics.Transmissions == 3
+                && metrics.AwarePeople == 4
+                && runtime.QueryTransmissionsByRoot(created.Rumor.RootRumorId).Select(item => item.ListenerPersonId).SequenceEqual(expectedListeners);
+            return TestLabAssertions.True("step12-rumor-propagation", "Propagation is bounded and deterministic", valid, $"Create={created.Status} Propagate={propagated.Succeeded} Transmissions={metrics.Transmissions} Aware={metrics.AwarePeople}");
+        }
+
+        private static TestLabAutomationStepResult RumorSocialBoundary(TestLabAutomationContext context)
+        {
+            if (!TryGetRumorRuntime(context, out RumorRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-rumor-social-boundary", "Verify rumor separation from other social runtimes", "RumorRuntime", "MissingRuntime", failure);
+            }
+
+            int relationshipsBefore = context.ScenarioContext.Runtimes.Relationships.Count;
+            int attitudesBefore = context.ScenarioContext.Runtimes.Attitudes.Count;
+            int reputationBefore = context.ScenarioContext.Runtimes.Reputation.Count;
+            RumorOperationResult created = CreateRootRumor(context, runtime, "boundary-root", PrototypeRumorDefinitionFactory.ReputationRumorId, "person.prototype.friend", RumorAuthenticity.Disputed);
+            RumorOperationResult transmitted = runtime.Transmit(new RumorTransmissionRequest
+            {
+                TransactionId = Tx(context, "boundary-transmit"),
+                TransmissionId = RumorScoped(context, "transmission-boundary"),
+                RumorVersionId = created.Rumor?.RumorId,
+                SpeakerPersonId = "person.prototype.friend",
+                ListenerPersonId = context.ScenarioContext.Runtimes.PersonId,
+                ChannelId = PrototypeRumorDefinitionFactory.ConversationChannelId,
+                RequestedOutcome = RumorTransmissionOutcome.Uncertain,
+                WorldTime = 50d
+            });
+
+            bool valid = created.Succeeded
+                && transmitted.Succeeded
+                && context.ScenarioContext.Runtimes.Relationships.Count == relationshipsBefore
+                && context.ScenarioContext.Runtimes.Attitudes.Count == attitudesBefore
+                && context.ScenarioContext.Runtimes.Reputation.Count == reputationBefore;
+            return TestLabAssertions.True("step12-rumor-social-boundary", "Rumors do not mutate relationships, attitudes, or reputation directly", valid, $"Rumors={runtime.RumorCount}/{runtime.TransmissionCount} Relationships={relationshipsBefore}->{context.ScenarioContext.Runtimes.Relationships.Count} Attitudes={attitudesBefore}->{context.ScenarioContext.Runtimes.Attitudes.Count} Reputation={reputationBefore}->{context.ScenarioContext.Runtimes.Reputation.Count}");
+        }
+
+        private static TestLabAutomationStepResult RumorPersistenceValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetRumorRuntime(context, out RumorRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-rumor-persistence", "Save, restore, and reject invalid rumor payloads", "RumorRuntime", "MissingRuntime", failure);
+            }
+
+            RumorOperationResult created = CreateRootRumor(context, runtime, "persist-root", PrototypeRumorDefinitionFactory.FabricatedAccusationRumorId, "person.prototype.friend", RumorAuthenticity.Fabricated);
+            RumorRuntimeSaveData save = runtime.CreateSaveData();
+            RumorRuntime restored = new RumorRuntime();
+            restored.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds);
+            RumorOperationResult restore = restored.RestoreFromSaveData(save, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            RumorRuntimeSaveData corrupt = save.Clone();
+            corrupt.rumors[0].definitionId = "rumor.missing";
+            bool rejected = !RumorRuntime.ValidateSaveData(corrupt, registry, context.ScenarioContext.Runtimes.KnownPersonIds, out string validationFailure);
+
+            bool valid = created.Succeeded
+                && restore.Succeeded
+                && restored.RumorCount == runtime.RumorCount
+                && restored.TryGetRumor(created.Rumor.RumorId, out RumorSnapshot restoredRumor)
+                && restoredRumor.Authenticity == RumorAuthenticity.Fabricated
+                && rejected
+                && runtime.RumorCount == 1;
+            return TestLabAssertions.True("step12-rumor-persistence", "Rumors persist and reject corrupt restores", valid, $"Create={created.Status} Restore={restore.Status} Rejected={rejected} Failure='{validationFailure}' Counts={runtime.RumorCount}/{restored.RumorCount}");
+        }
+
+        private static bool TryGetRumorRuntime(TestLabAutomationContext context, out RumorRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.Rumors;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Rumor runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            runtime.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds, requestedPersonId => string.Equals(requestedPersonId, context.ScenarioContext.Runtimes.PersonId, StringComparison.Ordinal) ? context.ScenarioContext.Runtimes.Knowledge : null, requestedPersonId => string.Equals(requestedPersonId, context.ScenarioContext.Runtimes.PersonId, StringComparison.Ordinal) ? context.ScenarioContext.Runtimes.Memory : null);
+            failure = string.Empty;
+            return true;
+        }
+
+        private static RumorOperationResult CreateRootRumor(TestLabAutomationContext context, RumorRuntime runtime, string suffix, string definitionId, string originatorPersonId, RumorAuthenticity authenticity, RumorDisclosure? disclosure = null)
+        {
+            return runtime.CreateRumor(new RumorCreateRequest
+            {
+                TransactionId = Tx(context, suffix),
+                RumorId = RumorScoped(context, suffix),
+                DefinitionId = definitionId,
+                Claim = BuildRumorClaim(context, suffix),
+                OriginatorPersonId = originatorPersonId,
+                OriginCategory = RumorOriginCategory.FirsthandObservation,
+                OriginatingEventId = RumorScoped(context, $"source-{suffix}"),
+                SourceAttributionPersonId = originatorPersonId,
+                SourceNamed = true,
+                Confidence = authenticity == RumorAuthenticity.Fabricated ? 380 : 720,
+                Salience = 620,
+                Memorability = 610,
+                DisclosureOverride = disclosure,
+                Authenticity = authenticity,
+                WorldTime = 10d,
+                Tags = new[] { "feature.12.4", suffix }
+            });
+        }
+
+        private static KnowledgePropositionData BuildRumorClaim(TestLabAutomationContext context, string suffix)
+        {
+            return new KnowledgePropositionData
+            {
+                factDefinitionId = BuiltInKnowledgeFacts.EventOccurred,
+                subjectType = KnowledgeSubjectType.Event,
+                subjectId = RumorScoped(context, $"claim-{suffix}"),
+                valueType = KnowledgeValueType.Boolean,
+                booleanValue = true,
+                sourceContextId = RumorScoped(context, $"source-context-{suffix}")
+            };
+        }
+
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
         {
             return new TestLabAutomationScenario(
@@ -857,6 +1121,31 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario RumorScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeRumorDefinitionFactory.PersonalConductRumorId,
+                    PrototypeRumorDefinitionFactory.PublicNewsRumorId,
+                    PrototypeRumorDefinitionFactory.FabricatedAccusationRumorId,
+                    PrototypeRumorDefinitionFactory.SecretLeakRumorId,
+                    PrototypeRumorDefinitionFactory.ReputationRumorId,
+                    PrototypeRumorDefinitionFactory.ConversationChannelId,
+                    PrototypeRumorDefinitionFactory.TavernGossipChannelId,
+                    PrototypeRumorDefinitionFactory.PublicSpeechChannelId
+                });
+        }
+
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> run)
         {
             return new TestLabScenarioStep(stepId, displayName, run);
@@ -870,6 +1159,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static string RepScoped(TestLabAutomationContext context, string suffix)
         {
             return $"reputation.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
+        }
+
+        private static string RumorScoped(TestLabAutomationContext context, string suffix)
+        {
+            return $"rumor.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
         }
 
         private static string Tx(TestLabAutomationContext context, string suffix)

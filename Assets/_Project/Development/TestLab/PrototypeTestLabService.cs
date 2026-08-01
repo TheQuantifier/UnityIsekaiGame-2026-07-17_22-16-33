@@ -55,6 +55,7 @@ using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
+using UnityIsekaiGame.Social.Rumors;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.Traits;
@@ -143,6 +144,7 @@ namespace UnityIsekaiGame.Development
         private RelationshipRuntime relationships = new RelationshipRuntime();
         private InterpersonalAttitudeRuntime interpersonalAttitudes = new InterpersonalAttitudeRuntime();
         private ReputationRuntime reputation = new ReputationRuntime();
+        private RumorRuntime rumors = new RumorRuntime();
         private AuthoritativeHistorySaveData lastHistorySaveData;
         private PersonMemorySaveData lastMemorySaveData;
 
@@ -190,6 +192,8 @@ namespace UnityIsekaiGame.Development
             interpersonalAttitudes.Configure(registry, GetKnownPrototypePersons());
             reputation = context?.Persistence?.Reputation ?? reputation ?? new ReputationRuntime();
             reputation.Configure(registry, GetKnownPrototypePersons());
+            rumors = context?.Persistence?.Rumors ?? rumors ?? new RumorRuntime();
+            rumors.Configure(registry, GetKnownPrototypePersons(), ResolveKnowledgeRuntimeForRumorPerson, ResolveMemoryRuntimeForRumorPerson);
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -488,7 +492,8 @@ namespace UnityIsekaiGame.Development
                 knowledgeRecords,
                 relationships,
                 interpersonalAttitudes,
-                reputation));
+                reputation,
+                rumors));
             currentAutomationScenarioContext = scenarioContext;
             ApplyAutomationRuntimeBindings(scenarioContext);
         }
@@ -516,6 +521,7 @@ namespace UnityIsekaiGame.Development
                 relationships = frame.PreviousRelationships;
                 interpersonalAttitudes = frame.PreviousAttitudes;
                 reputation = frame.PreviousReputation;
+                rumors = frame.PreviousRumors;
                 ApplyAutomationRuntimeBindings(currentAutomationScenarioContext);
                 return;
             }
@@ -528,6 +534,7 @@ namespace UnityIsekaiGame.Development
             relationships = frame.PreviousRelationships;
             interpersonalAttitudes = frame.PreviousAttitudes;
             reputation = frame.PreviousReputation;
+            rumors = frame.PreviousRumors;
             ApplyAutomationRuntimeBindings(currentAutomationScenarioContext);
         }
 
@@ -624,6 +631,8 @@ namespace UnityIsekaiGame.Development
             interpersonalAttitudes.Configure(registry, GetKnownPrototypePersons());
             reputation = context?.Persistence?.Reputation ?? reputation ?? new ReputationRuntime();
             reputation.Configure(registry, GetKnownPrototypePersons());
+            rumors = context?.Persistence?.Rumors ?? rumors ?? new RumorRuntime();
+            rumors.Configure(registry, GetKnownPrototypePersons(), ResolveKnowledgeRuntimeForRumorPerson, ResolveMemoryRuntimeForRumorPerson);
             return TestLabRuntimeBundle.FromExisting(
                 registry,
                 GetPrototypePersonId(),
@@ -639,7 +648,8 @@ namespace UnityIsekaiGame.Development
                 knowledgeRecords,
                 relationships: relationships,
                 attitudes: interpersonalAttitudes,
-                reputation: reputation);
+                reputation: reputation,
+                rumors: rumors);
         }
 
         private TestLabRuntimeBundle GetOrCreateScopedAutomationBundle(Dictionary<string, TestLabRuntimeBundle> bundles, string key, string objectName)
@@ -691,6 +701,7 @@ namespace UnityIsekaiGame.Development
             relationships = bundle.Relationships ?? relationships;
             interpersonalAttitudes = bundle.Attitudes ?? interpersonalAttitudes;
             reputation = bundle.Reputation ?? reputation;
+            rumors = bundle.Rumors ?? rumors;
         }
 
         public IEnumerable<TestLabRuntimeFingerprintSection> CaptureAutomationSceneFingerprint(TestLabRuntimeArea requiredAreas)
@@ -755,10 +766,11 @@ namespace UnityIsekaiGame.Development
             {
                 sections.Add(CreateSceneFingerprintSection(
                     "Scene.Social",
-                    (relationships == null ? 0L : relationships.Revision) + (interpersonalAttitudes == null ? 0L : interpersonalAttitudes.Revision) + (reputation == null ? 0L : reputation.Revision),
+                    (relationships == null ? 0L : relationships.Revision) + (interpersonalAttitudes == null ? 0L : interpersonalAttitudes.Revision) + (reputation == null ? 0L : reputation.Revision) + (rumors == null ? 0L : rumors.Revision),
                     relationships == null ? null : relationships.CreateSaveData(),
                     interpersonalAttitudes == null ? null : interpersonalAttitudes.CreateSaveData(),
-                    reputation == null ? null : reputation.CreateSaveData()));
+                    reputation == null ? null : reputation.CreateSaveData(),
+                    rumors == null ? null : rumors.CreateSaveData()));
             }
 
             return sections;
@@ -8056,6 +8068,26 @@ namespace UnityIsekaiGame.Development
             return EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime) ? memoryRuntime : playerMemory;
         }
 
+        private PersonKnowledgeRuntime ResolveKnowledgeRuntimeForRumorPerson(string personId)
+        {
+            if (!EnsureKnowledgeRuntime(out PersonKnowledgeRuntime knowledge))
+            {
+                return null;
+            }
+
+            return string.Equals(knowledge.PersonId, personId, StringComparison.Ordinal) ? knowledge : null;
+        }
+
+        private PersonMemoryRuntime ResolveMemoryRuntimeForRumorPerson(string personId)
+        {
+            if (!EnsureHistoryRuntime(out _, out PersonMemoryRuntime memoryRuntime))
+            {
+                return null;
+            }
+
+            return string.Equals(memoryRuntime.PersonId, personId, StringComparison.Ordinal) ? memoryRuntime : null;
+        }
+
         private RecordHistoricalEventRequest BuildHistoryEventRequest(string transactionId, string eventId, string definitionId, string personId, KnowledgeVisibility visibility, string note)
         {
             double now = GetGameTimeSeconds();
@@ -14395,10 +14427,11 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
-                PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
-                    PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                        PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)))));
+            return PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
+                PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
+                    PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
+                        PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                            PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()
@@ -14617,7 +14650,8 @@ namespace UnityIsekaiGame.Development
                 KnowledgeRecordRuntime previousRecords,
                 RelationshipRuntime previousRelationships,
                 InterpersonalAttitudeRuntime previousAttitudes,
-                ReputationRuntime previousReputation)
+                ReputationRuntime previousReputation,
+                RumorRuntime previousRumors)
             {
                 PreviousContext = previousContext;
                 PreviousSources = previousSources;
@@ -14627,6 +14661,7 @@ namespace UnityIsekaiGame.Development
                 PreviousRelationships = previousRelationships;
                 PreviousAttitudes = previousAttitudes;
                 PreviousReputation = previousReputation;
+                PreviousRumors = previousRumors;
             }
 
             public TestLabScenarioContext PreviousContext { get; }
@@ -14637,6 +14672,7 @@ namespace UnityIsekaiGame.Development
             public RelationshipRuntime PreviousRelationships { get; }
             public InterpersonalAttitudeRuntime PreviousAttitudes { get; }
             public ReputationRuntime PreviousReputation { get; }
+            public RumorRuntime PreviousRumors { get; }
         }
     }
 }
