@@ -27,16 +27,17 @@ namespace UnityIsekaiGame.Development
                 | TestLabRuntimeArea.Character
                 | TestLabRuntimeArea.Combat
                 | TestLabRuntimeArea.Biology
-                | TestLabRuntimeArea.Persistence;
+                | TestLabRuntimeArea.Persistence
+                | TestLabRuntimeArea.Social;
             return new TestLabAutomationHostCapabilities(
                 HostId,
                 "Prototype Test Lab Host",
                 SceneManager.GetActiveScene().name,
                 allAreas,
-                TestLabRuntimeArea.KnowledgeHistory,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Social,
                 allAreas,
                 allAreas,
-                TestLabRuntimeArea.KnowledgeHistory,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Social,
                 new[]
                 {
                     TestLabScenarioIsolationMode.FreshRuntime,

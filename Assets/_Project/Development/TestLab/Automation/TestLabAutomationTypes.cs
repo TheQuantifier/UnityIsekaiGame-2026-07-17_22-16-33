@@ -63,7 +63,8 @@ namespace UnityIsekaiGame.Development.Automation
         Persistence = 1 << 4,
         Items = 1 << 5,
         Professions = 1 << 6,
-        Economy = 1 << 7
+        Economy = 1 << 7,
+        Social = 1 << 8
     }
 
     [Flags]

@@ -1358,7 +1358,7 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
-        public void DefaultPrototypeSuites_RegisterStep3ThroughStep11()
+        public void DefaultPrototypeSuites_RegisterStep3ThroughStep12()
         {
             TestLabAutomationRegistry registry = PrototypeTestLabAutomationCatalog.CreateDefaultRegistry();
 
@@ -1371,12 +1371,12 @@ namespace UnityIsekaiGame.Tests
             string[] actualSuiteIds = registry.Suites.Select(suite => suite.SuiteId).ToArray();
             Assert.That(actualSuiteIds, Is.EqualTo(PrototypeTestLabAutomationCatalog.SuiteIds()));
             Assert.That(actualSuiteIds.First(), Is.EqualTo("feature.3.runtime-taxonomy"));
-            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.11.10.economy-integration-finalization"));
+            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.12.1.relationship-identity-records"));
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).Where(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime || scenario.IsolationMode == TestLabScenarioIsolationMode.SnapshotRestore)
-                .All(scenario => (scenario.RequiredRuntimeAreas & ~(TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy)) == TestLabRuntimeArea.None), Is.True);
+                .All(scenario => (scenario.RequiredRuntimeAreas & ~(TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social)) == TestLabRuntimeArea.None), Is.True);
         }
 
         [Test]
@@ -1384,8 +1384,8 @@ namespace UnityIsekaiGame.Tests
         {
             PrototypeTestLabAutomationProviderDescriptor[] providers = PrototypeTestLabAutomationCatalog.Providers.ToArray();
 
-            Assert.That(providers.Select(provider => provider.Step), Is.EqualTo(new[] { 3, 4, 5, 6, 7, 8, 9, 10, 11 }));
-            Assert.That(providers.Select(provider => provider.Label), Is.EqualTo(new[] { "Runtime Taxonomy", "World Data", "Character", "Combat", "Body", "Knowledge", "Items", "Professions", "Economy" }));
+            Assert.That(providers.Select(provider => provider.Step), Is.EqualTo(new[] { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }));
+            Assert.That(providers.Select(provider => provider.Label), Is.EqualTo(new[] { "Runtime Taxonomy", "World Data", "Character", "Combat", "Body", "Knowledge", "Items", "Professions", "Economy", "Social" }));
             Assert.That(providers.Select(provider => provider.Name), Is.EqualTo(new[]
             {
                 nameof(PrototypeStep3AutomationSuites),
@@ -1396,7 +1396,8 @@ namespace UnityIsekaiGame.Tests
                 nameof(PrototypeStep8AutomationSuites),
                 nameof(PrototypeStep9AutomationSuites),
                 nameof(PrototypeStep10AutomationSuites),
-                nameof(PrototypeStep11AutomationSuites)
+                nameof(PrototypeStep11AutomationSuites),
+                nameof(PrototypeStep12AutomationSuites)
             }));
         }
 
