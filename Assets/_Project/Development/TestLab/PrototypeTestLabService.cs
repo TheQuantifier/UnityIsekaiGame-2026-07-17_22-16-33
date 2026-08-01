@@ -42,6 +42,7 @@ using UnityIsekaiGame.Knowledge.Observation;
 using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
+using UnityIsekaiGame.Organizations;
 using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Magic;
 using UnityIsekaiGame.People;
@@ -14511,7 +14512,8 @@ namespace UnityIsekaiGame.Development
                                             PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
                                                 PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
                                                     PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                                                        PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)))))))))))));
+                                                        PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(
+                                                            PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()

@@ -26,6 +26,7 @@ namespace UnityIsekaiGame.GameData
         Resource,
         Trait,
         Capability,
-        Requirement
+        Requirement,
+        Organization
     }
 }

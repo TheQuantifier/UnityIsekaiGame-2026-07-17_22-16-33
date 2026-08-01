@@ -64,7 +64,8 @@ namespace UnityIsekaiGame.Development.Automation
         Items = 1 << 5,
         Professions = 1 << 6,
         Economy = 1 << 7,
-        Social = 1 << 8
+        Social = 1 << 8,
+        Organizations = 1 << 9
     }
 
     [Flags]

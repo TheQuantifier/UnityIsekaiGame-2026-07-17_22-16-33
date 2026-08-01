@@ -57,7 +57,8 @@ namespace UnityIsekaiGame.Knowledge
         Place,
         Faction,
         Event,
-        Interaction
+        Interaction,
+        Organization
     }
 
     public enum KnowledgeValueType
