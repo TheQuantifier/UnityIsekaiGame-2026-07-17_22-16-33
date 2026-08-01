@@ -1371,12 +1371,12 @@ namespace UnityIsekaiGame.Tests
             string[] actualSuiteIds = registry.Suites.Select(suite => suite.SuiteId).ToArray();
             Assert.That(actualSuiteIds, Is.EqualTo(PrototypeTestLabAutomationCatalog.SuiteIds()));
             Assert.That(actualSuiteIds.First(), Is.EqualTo("feature.3.runtime-taxonomy"));
-            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.13.1.organization-identity-records"));
+            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.13.2.organization-memberships-ranks-offices"));
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).Where(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime || scenario.IsolationMode == TestLabScenarioIsolationMode.SnapshotRestore)
-                .All(scenario => (scenario.RequiredRuntimeAreas & ~(TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations)) == TestLabRuntimeArea.None), Is.True);
+                .All(scenario => (scenario.RequiredRuntimeAreas & ~(TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships)) == TestLabRuntimeArea.None), Is.True);
         }
 
         [Test]
