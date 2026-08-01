@@ -108,6 +108,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldInstitutionalRevenue = true;
         [SerializeField] private bool registerWorldRegionalFlow = true;
         [SerializeField] private bool registerWorldOrganizations = true;
+        [SerializeField] private bool registerWorldOrganizationMemberships = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -206,6 +207,7 @@ namespace UnityIsekaiGame.Gameplay
         private InstitutionalRevenuePersistenceParticipant institutionalRevenueParticipant;
         private RegionalFlowPersistenceParticipant regionalFlowParticipant;
         private OrganizationPersistenceParticipant organizationParticipant;
+        private OrganizationMembershipPersistenceParticipant organizationMembershipParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -258,6 +260,7 @@ namespace UnityIsekaiGame.Gameplay
         private InstitutionalRevenueRuntime worldInstitutionalRevenue;
         private RegionalFlowRuntime worldRegionalFlow;
         private OrganizationRuntime worldOrganizations;
+        private OrganizationMembershipRuntime worldOrganizationMemberships;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -697,6 +700,20 @@ namespace UnityIsekaiGame.Gameplay
                 return worldOrganizations;
             }
         }
+        public OrganizationMembershipRuntime OrganizationMemberships
+        {
+            get
+            {
+                if (worldOrganizationMemberships == null)
+                {
+                    worldOrganizationMemberships = new OrganizationMembershipRuntime();
+                }
+
+                string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+                worldOrganizationMemberships.Configure(GetDefinitionRegistry(), Organizations, service == null ? PersistenceService.LocalWorldId : service.WorldId, GetPrototypeSocialPersonIds(personId), GetPrototypeOrganizations());
+                return worldOrganizationMemberships;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -791,6 +808,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(organizationParticipant);
                 organizationParticipant = null;
+            }
+
+            if (service != null && organizationMembershipParticipant != null)
+            {
+                service.UnregisterParticipant(organizationMembershipParticipant);
+                organizationMembershipParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -1147,6 +1170,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldInstitutionalRevenueParticipant();
             EnsureWorldRegionalFlowParticipant();
             EnsureWorldOrganizationParticipant();
+            EnsureWorldOrganizationMembershipParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1755,6 +1779,36 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 organizationParticipant = null;
+            }
+        }
+
+        private void EnsureWorldOrganizationMembershipParticipant()
+        {
+            if (!registerWorldOrganizationMemberships || organizationMembershipParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World organization membership persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            organizationMembershipParticipant = new OrganizationMembershipPersistenceParticipant(
+                OrganizationMemberships,
+                GetDefinitionRegistry,
+                () => Organizations,
+                service.WorldId,
+                () => GetPrototypeSocialPersonIds(service.PlayerId),
+                GetPrototypeOrganizations);
+
+            service.RegisterParticipant(organizationMembershipParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                organizationMembershipParticipant = null;
             }
         }
 
@@ -4230,7 +4284,8 @@ namespace UnityIsekaiGame.Gameplay
                                                 PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
                                                     PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
                                                         PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(
-                                                            PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))));
+                                                            PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
+                                                                PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions)))))))))))))));
             return definitionRegistry;
         }
 

@@ -65,7 +65,8 @@ namespace UnityIsekaiGame.Development.Automation
         Professions = 1 << 6,
         Economy = 1 << 7,
         Social = 1 << 8,
-        Organizations = 1 << 9
+        Organizations = 1 << 9,
+        OrganizationMemberships = 1 << 10
     }
 
     [Flags]
