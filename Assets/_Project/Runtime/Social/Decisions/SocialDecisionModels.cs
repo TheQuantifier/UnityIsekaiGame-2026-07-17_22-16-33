@@ -5,6 +5,11 @@ using UnityIsekaiGame.Social.Interactions;
 
 namespace UnityIsekaiGame.Social.Decisions
 {
+    public interface ISocialDecisionModifierSource
+    {
+        int ResolveSocialDecisionScoreModifier(string actorPersonId, string targetPersonId, string intentionDefinitionId, string interactionDefinitionId, double worldTime, out string sourceModifierId);
+    }
+
     [Serializable]
     public sealed class SocialDecisionCooldownData
     {
@@ -174,6 +179,7 @@ namespace UnityIsekaiGame.Social.Decisions
         public int considerationScore;
         public int cooldownPenalty;
         public int repetitionPenalty;
+        public int externalModifier;
         public int finalScore;
         public bool hardRequirementsPassed;
         public bool selected;
@@ -195,6 +201,7 @@ namespace UnityIsekaiGame.Social.Decisions
             considerationScore = considerationScore,
             cooldownPenalty = cooldownPenalty,
             repetitionPenalty = repetitionPenalty,
+            externalModifier = externalModifier,
             finalScore = finalScore,
             hardRequirementsPassed = hardRequirementsPassed,
             selected = selected,

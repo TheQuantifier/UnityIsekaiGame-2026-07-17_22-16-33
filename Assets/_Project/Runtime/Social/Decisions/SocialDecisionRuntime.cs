@@ -27,6 +27,7 @@ namespace UnityIsekaiGame.Social.Decisions
         private SocialInteractionRuntime interactions;
         private SocialNormRuntime norms;
         private SocialNetworkRuntime networks;
+        private ISocialDecisionModifierSource modifierSource;
         private bool disposed;
         private bool restoring;
         private long sequence;
@@ -45,7 +46,8 @@ namespace UnityIsekaiGame.Social.Decisions
             ReputationRuntime reputationRuntime = null,
             RumorRuntime rumorRuntime = null,
             SocialNormRuntime normRuntime = null,
-            SocialNetworkRuntime networkRuntime = null)
+            SocialNetworkRuntime networkRuntime = null,
+            ISocialDecisionModifierSource socialDecisionModifierSource = null)
         {
             registry = definitionRegistry ?? registry;
             knownPersonIds = new HashSet<string>(Clean(persons), StringComparer.Ordinal);
@@ -56,6 +58,7 @@ namespace UnityIsekaiGame.Social.Decisions
             rumors = rumorRuntime ?? rumors;
             norms = normRuntime ?? norms;
             networks = networkRuntime ?? networks;
+            modifierSource = socialDecisionModifierSource ?? modifierSource;
             disposed = false;
         }
 
@@ -385,7 +388,8 @@ CandidateGenerationFinished:
             candidate.considerationScore = considerations.Sum(item => item.weightedScore);
             candidate.cooldownPenalty = IsOnCooldown(state, CooldownKey(actor, target, intention.Id, interactionId), request.WorldTime, intention.CooldownSeconds) ? 200 : 0;
             candidate.repetitionPenalty = RecentRepetitionPenalty(state, target, intention.Id, interactionId);
-            candidate.finalScore = Math.Max(0, Math.Min(1000, candidate.basePriority + candidate.urgency + candidate.considerationScore - candidate.cooldownPenalty - candidate.repetitionPenalty));
+            candidate.externalModifier = modifierSource?.ResolveSocialDecisionScoreModifier(actor, target, intention.Id, interactionId, request.WorldTime, out string _) ?? 0;
+            candidate.finalScore = Math.Max(0, Math.Min(1000, candidate.basePriority + candidate.urgency + candidate.considerationScore + candidate.externalModifier - candidate.cooldownPenalty - candidate.repetitionPenalty));
             if (candidate.cooldownPenalty > 0)
             {
                 candidate.hardRequirementsPassed = false;

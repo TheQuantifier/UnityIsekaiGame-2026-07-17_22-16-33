@@ -8,6 +8,7 @@ using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Persistence;
+using UnityIsekaiGame.Social.Influence;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Decisions;
 using UnityIsekaiGame.Social.Interactions;
@@ -208,6 +209,29 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step12-decision-submit", "Submit selected action through interaction runtime", DecisionSubmitThroughInteractions)),
                     DecisionScenario("persistence-validation", "Decision state persists and rejects corrupt restores", 50,
                         Step("step12-decision-persistence", "Save, restore, and reject invalid decision payloads", DecisionPersistenceValidation))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.9.social-influence-persuasion-deception",
+                "Social Influence, Persuasion, Deception, and Resistance",
+                "12.9",
+                "Definition-backed social influence attempts with deterministic persuasion, deception detection, compliance boundaries, decision modifiers, and persistence.",
+                12090,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "SocialInfluenceRuntime", "SocialInfluenceMethodDefinition", "SocialInfluencePersistenceParticipant" },
+                scenarios: new[]
+                {
+                    InfluenceScenario("readiness-and-definitions", "Influence definitions resolve and previews are non-mutating", 10,
+                        Step("step12-influence-readiness", "Resolve influence definitions and preview", InfluenceReadinessAndPreview)),
+                    InfluenceScenario("belief-and-compliance-boundaries", "Belief influence and compliance remain separate", 20,
+                        Step("step12-influence-belief-compliance", "Execute belief evidence and accepted promise", InfluenceBeliefAndComplianceBoundaries)),
+                    InfluenceScenario("deception-detection", "Detected deception records trust and hostility consequences", 30,
+                        Step("step12-influence-deception", "Detect a deliberate lie deterministically", InfluenceDeceptionDetection)),
+                    InfluenceScenario("decision-modifiers", "Influence modifiers affect decision scoring without owning decisions", 40,
+                        Step("step12-influence-decision-modifier", "Apply influence modifier to decision candidate", InfluenceDecisionModifiers)),
+                    InfluenceScenario("persistence-validation", "Influence attempts persist and reject corrupt restores", 50,
+                        Step("step12-influence-persistence", "Save, restore, and reject invalid influence payloads", InfluencePersistenceValidation))
                 }), out _);
         }
 
@@ -2122,6 +2146,301 @@ namespace UnityIsekaiGame.Development.Automation
                 && !rejected.Succeeded
                 && runtime.Count == saveData.personStates.Count;
             return TestLabAssertions.True("step12-decision-persistence", "Save, restore, and reject invalid decision payloads", valid, $"Selected={selected.Status} Save={save.Succeeded} Restore={restore.Status} Rejected={!rejected.Succeeded} Count={runtime.Count}/{restored.Count}");
+        }
+
+        private static TestLabAutomationStepResult InfluenceReadinessAndPreview(TestLabAutomationContext context)
+        {
+            if (!TryGetInfluenceRuntime(context, out SocialInfluenceRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-influence-readiness", "Resolve influence definitions and preview", "SocialInfluenceRuntime", "MissingRuntime", failure);
+            }
+
+            long beforeRevision = runtime.Revision;
+            int beforeKnowledge = context.ScenarioContext.Runtimes.Knowledge.CreateSaveData().beliefs.Count();
+            SocialInfluenceMethodDefinition evidence = null;
+            SocialInfluenceMethodDefinition lie = null;
+            bool definitions = registry.TryGet(PrototypeSocialInfluenceDefinitionFactory.PresentEvidenceId, out evidence)
+                && registry.TryGet(PrototypeSocialInfluenceDefinitionFactory.TellDirectLieId, out lie)
+                && registry.TryGet(BuiltInKnowledgeFacts.EventOccurred, out KnowledgeFactDefinition _);
+            SocialInfluenceResult preview = runtime.Preview(InfluenceRequest(
+                context,
+                "readiness-preview",
+                PrototypeSocialInfluenceDefinitionFactory.PresentEvidenceId,
+                SocialInfluenceIntent.ChangeBelief,
+                claim: InfluenceClaim(context, "readiness-preview")));
+            bool valid = definitions
+                && evidence.SupportedIntents.Contains(SocialInfluenceIntent.ChangeBelief)
+                && lie.DeceptionAllowed
+                && preview.Succeeded
+                && preview.Preview
+                && runtime.Revision == beforeRevision
+                && runtime.Count == 0
+                && context.ScenarioContext.Runtimes.Knowledge.CreateSaveData().beliefs.Count() == beforeKnowledge;
+            return TestLabAssertions.True("step12-influence-readiness", "Influence definitions resolve and previews are non-mutating", valid, $"Definitions={definitions} Preview={preview.Status} Count={runtime.Count} Rev={beforeRevision}->{runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult InfluenceBeliefAndComplianceBoundaries(TestLabAutomationContext context)
+        {
+            if (!TryGetInfluenceRuntime(context, out SocialInfluenceRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-influence-belief-compliance", "Execute belief evidence and accepted promise", "SocialInfluenceRuntime", "MissingRuntime", failure);
+            }
+
+            KnowledgePropositionData claim = InfluenceClaim(context, "belief");
+            SocialInfluenceResult belief = runtime.Execute(InfluenceRequest(context, "belief", PrototypeSocialInfluenceDefinitionFactory.PresentEvidenceId, SocialInfluenceIntent.ChangeBelief, claim: claim, speaker: "person.prototype.friend", speakerResolve: 900, targetResistance: 80, evidenceStrength: 500));
+            bool knowledgeRecorded = context.ScenarioContext.Runtimes.Knowledge.TryGetBelief(claim, out KnowledgeBeliefRecord recordedBelief);
+            int beforeInteractions = context.ScenarioContext.Runtimes.SocialInteractions.Count;
+            SocialInfluenceResult promise = runtime.Execute(InfluenceRequest(context, "promise", PrototypeSocialInfluenceDefinitionFactory.PersuadeRequestId, SocialInfluenceIntent.GainPromise, claim: null, speaker: "person.prototype.friend", speakerResolve: 920, targetResistance: 60, evidenceStrength: 0, subjectKind: SocialInfluenceSubjectKind.Promise, interactionDefinitionId: PrototypeSocialInteractionDefinitionFactory.PromiseId, worldTime: 30d));
+            bool valid = belief.Succeeded
+                && belief.KnowledgeResult != null
+                && belief.KnowledgeResult.Succeeded
+                && knowledgeRecorded
+                && recordedBelief.Confidence > 0
+                && promise.Succeeded
+                && promise.Attempt.complianceOutcome == SocialInfluenceComplianceOutcome.PromiseAccepted
+                && promise.InteractionResult != null
+                && promise.InteractionResult.Succeeded
+                && context.ScenarioContext.Runtimes.SocialInteractions.Count == beforeInteractions + 1;
+            return TestLabAssertions.True("step12-influence-belief-compliance", "Belief influence and compliance remain separate", valid, $"Belief={belief.Status}/{belief.KnowledgeResult?.Code} Knowledge={knowledgeRecorded} Promise={promise.Attempt?.complianceOutcome} Interactions={beforeInteractions}->{context.ScenarioContext.Runtimes.SocialInteractions.Count}");
+        }
+
+        private static TestLabAutomationStepResult InfluenceDeceptionDetection(TestLabAutomationContext context)
+        {
+            if (!TryGetInfluenceRuntime(context, out SocialInfluenceRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-influence-deception", "Detect a deliberate lie deterministically", "SocialInfluenceRuntime", "MissingRuntime", failure);
+            }
+
+            int trustBefore = context.ScenarioContext.Runtimes.Attitudes.ResolveValue(context.ScenarioContext.Runtimes.PersonId, "person.prototype.rival", PrototypeAttitudeDefinitionFactory.TrustId).EffectiveValue;
+            int hostilityBefore = context.ScenarioContext.Runtimes.Attitudes.ResolveValue(context.ScenarioContext.Runtimes.PersonId, "person.prototype.rival", PrototypeAttitudeDefinitionFactory.HostilityId).EffectiveValue;
+            SocialInfluenceResult lie = runtime.Execute(InfluenceRequest(
+                context,
+                "lie",
+                PrototypeSocialInfluenceDefinitionFactory.TellDirectLieId,
+                SocialInfluenceIntent.ChangeBelief,
+                claim: InfluenceClaim(context, "lie"),
+                speaker: "person.prototype.rival",
+                speakerResolve: 0,
+                targetResistance: 900,
+                difficulty: 300,
+                truthStatus: SocialInfluenceTruthStatus.False,
+                speakerBelief: SocialInfluenceSpeakerBeliefState.BelievesFalse,
+                deception: SocialInfluenceDeceptionMode.DirectFalseAssertion,
+                worldTime: 40d));
+            int trustAfter = context.ScenarioContext.Runtimes.Attitudes.ResolveValue(context.ScenarioContext.Runtimes.PersonId, "person.prototype.rival", PrototypeAttitudeDefinitionFactory.TrustId).EffectiveValue;
+            int hostilityAfter = context.ScenarioContext.Runtimes.Attitudes.ResolveValue(context.ScenarioContext.Runtimes.PersonId, "person.prototype.rival", PrototypeAttitudeDefinitionFactory.HostilityId).EffectiveValue;
+            bool detected = lie.Attempt != null && (lie.Attempt.detectionOutcome == SocialInfluenceDetectionOutcome.Detected || lie.Attempt.detectionOutcome == SocialInfluenceDetectionOutcome.Proven);
+            bool valid = lie.Succeeded
+                && lie.Attempt.honesty == SocialInfluenceHonestyClassification.DirectLie
+                && detected
+                && trustAfter < trustBefore
+                && hostilityAfter > hostilityBefore;
+            return TestLabAssertions.True("step12-influence-deception", "Detected deception records trust and hostility consequences", valid, $"Lie={lie.Status} Detection={lie.Attempt?.detectionOutcome} Trust={trustBefore}->{trustAfter} Hostility={hostilityBefore}->{hostilityAfter}");
+        }
+
+        private static TestLabAutomationStepResult InfluenceDecisionModifiers(TestLabAutomationContext context)
+        {
+            if (!TryGetInfluenceRuntime(context, out SocialInfluenceRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-influence-decision-modifier", "Apply influence modifier to decision candidate", "SocialInfluenceRuntime", "MissingRuntime", failure);
+            }
+
+            SocialDecisionRequest beforeRequest = DecisionRequest(context, PrototypeSocialDecisionDefinitionFactory.ScriptControlledProfileId, explicitIntentionId: PrototypeSocialDecisionDefinitionFactory.GreetKnownPersonId, target: "person.prototype.friend", commit: false);
+            SocialDecisionResult before = context.ScenarioContext.Runtimes.SocialDecisions.Evaluate(beforeRequest);
+            SocialInfluenceResult influence = runtime.Execute(InfluenceRequest(
+                context,
+                "modifier",
+                PrototypeSocialInfluenceDefinitionFactory.InspireId,
+                SocialInfluenceIntent.EncourageAction,
+                claim: null,
+                speaker: "person.prototype.friend",
+                speakerResolve: 900,
+                targetResistance: 50,
+                subjectKind: SocialInfluenceSubjectKind.Decision,
+                ownerPersonId: "person.prototype.friend",
+                intentionDefinitionId: PrototypeSocialDecisionDefinitionFactory.GreetKnownPersonId,
+                interactionDefinitionId: PrototypeSocialInteractionDefinitionFactory.GreetId,
+                worldTime: 80d));
+            SocialDecisionRequest afterRequest = DecisionRequest(context, PrototypeSocialDecisionDefinitionFactory.ScriptControlledProfileId, explicitIntentionId: PrototypeSocialDecisionDefinitionFactory.GreetKnownPersonId, target: "person.prototype.friend", commit: false);
+            afterRequest.WorldTime = 80d;
+            SocialDecisionResult after = context.ScenarioContext.Runtimes.SocialDecisions.Evaluate(afterRequest);
+            int beforeModifier = before.SelectedCandidate?.externalModifier ?? 0;
+            int afterModifier = after.SelectedCandidate?.externalModifier ?? 0;
+            bool valid = before.Succeeded
+                && before.SelectedCandidate != null
+                && influence.Succeeded
+                && influence.DecisionModifier != null
+                && after.Succeeded
+                && after.SelectedCandidate != null
+                && beforeModifier == 0
+                && afterModifier > 0
+                && after.SelectedCandidate.finalScore > before.SelectedCandidate.finalScore;
+            return TestLabAssertions.True("step12-influence-decision-modifier", "Influence modifiers affect decision scoring without owning decisions", valid, $"Before={before.Status}:{beforeModifier}/{before.SelectedCandidate?.finalScore} Influence={influence.Status}:{influence.DecisionModifier?.scoreDelta} After={after.Status}:{afterModifier}/{after.SelectedCandidate?.finalScore}");
+        }
+
+        private static TestLabAutomationStepResult InfluencePersistenceValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetInfluenceRuntime(context, out SocialInfluenceRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-influence-persistence", "Save, restore, and reject invalid influence payloads", "SocialInfluenceRuntime", "MissingRuntime", failure);
+            }
+
+            SocialInfluenceResult execute = runtime.Execute(InfluenceRequest(context, "persist", PrototypeSocialInfluenceDefinitionFactory.ReassureId, SocialInfluenceIntent.Reassure, claim: null, speaker: "person.prototype.friend", speakerResolve: 800, targetResistance: 120, subjectKind: SocialInfluenceSubjectKind.Person, worldTime: 90d));
+            SocialInfluencePersistenceParticipant participant = new SocialInfluencePersistenceParticipant(runtime, () => registry, () => context.ScenarioContext.Runtimes.KnownPersonIds.ToArray());
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            SocialInfluenceRuntimeSaveData saveData = JsonUtility.FromJson<SocialInfluenceRuntimeSaveData>(save.PayloadJson);
+            SocialInfluenceRuntime restored = new SocialInfluenceRuntime();
+            restored.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds, context.ScenarioContext.Runtimes.Attitudes, context.ScenarioContext.Runtimes.Reputation, context.ScenarioContext.Runtimes.SocialInteractions, new[] { context.ScenarioContext.Runtimes.Knowledge });
+            SocialInfluenceResult restore = restored.RestoreFromSaveData(saveData, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            SocialInfluenceRuntimeSaveData corrupt = saveData.Clone();
+            corrupt.attempts[0].targetPersonId = "person.prototype.unknown";
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), SocialInfluencePersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = execute.Succeeded
+                && save.Succeeded
+                && restore.Succeeded
+                && restored.Count == runtime.Count
+                && !rejected.Succeeded
+                && runtime.Count == saveData.attempts.Count;
+            return TestLabAssertions.True("step12-influence-persistence", "Influence attempts persist and reject corrupt restores", valid, $"Execute={execute.Status} Save={save.Succeeded} Restore={restore.Status} Rejected={!rejected.Succeeded} Count={runtime.Count}/{restored.Count}");
+        }
+
+        private static ITestLabAutomationScenario InfluenceScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeSocialInfluenceDefinitionFactory.PresentEvidenceId,
+                    PrototypeSocialInfluenceDefinitionFactory.PersuadeRequestId,
+                    PrototypeSocialInfluenceDefinitionFactory.TellDirectLieId,
+                    PrototypeSocialInfluenceDefinitionFactory.InspireId,
+                    PrototypeSocialInfluenceDefinitionFactory.ReassureId,
+                    PrototypeSocialDecisionDefinitionFactory.ScriptControlledProfileId,
+                    PrototypeSocialDecisionDefinitionFactory.GreetKnownPersonId,
+                    PrototypeSocialInteractionDefinitionFactory.GreetId,
+                    PrototypeSocialInteractionDefinitionFactory.PromiseId,
+                    BuiltInKnowledgeFacts.EventOccurred
+                });
+        }
+
+        private static bool TryGetInfluenceRuntime(TestLabAutomationContext context, out SocialInfluenceRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.SocialInfluence;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Social Influence runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static SocialInfluenceRequest InfluenceRequest(
+            TestLabAutomationContext context,
+            string suffix,
+            string methodId,
+            SocialInfluenceIntent intent,
+            KnowledgePropositionData claim = null,
+            string speaker = "person.prototype.friend",
+            int speakerResolve = 750,
+            int targetResistance = 150,
+            int evidenceStrength = 350,
+            int difficulty = 0,
+            SocialInfluenceSubjectKind subjectKind = SocialInfluenceSubjectKind.Claim,
+            string ownerPersonId = "",
+            string intentionDefinitionId = "",
+            string interactionDefinitionId = "",
+            SocialInfluenceTruthStatus truthStatus = SocialInfluenceTruthStatus.True,
+            SocialInfluenceSpeakerBeliefState speakerBelief = SocialInfluenceSpeakerBeliefState.BelievesTrue,
+            SocialInfluenceDeceptionMode deception = SocialInfluenceDeceptionMode.NoDeception,
+            double worldTime = 20d)
+        {
+            string target = context.ScenarioContext.Runtimes.PersonId;
+            return new SocialInfluenceRequest
+            {
+                TransactionId = Tx(context, $"influence-{suffix}"),
+                AttemptId = InfluenceScoped(context, suffix),
+                MethodDefinitionId = methodId,
+                SpeakerPersonId = speaker,
+                TargetPersonId = target,
+                WitnessPersonIds = new[] { "person.prototype.friend" },
+                Intent = intent,
+                Subject = new SocialInfluenceSubjectData
+                {
+                    kind = subjectKind,
+                    subjectId = claim == null ? $"social-influence.subject.{context.RunId}.{context.CurrentScenarioId}.{suffix}" : KnowledgeProposition.BuildIdentity(claim),
+                    ownerPersonId = string.IsNullOrWhiteSpace(ownerPersonId) ? speaker : ownerPersonId,
+                    tags = new[] { "test-lab", "social-influence" }
+                },
+                Claim = claim,
+                EvidencePackage = evidenceStrength <= 0 ? Array.Empty<SocialInfluenceEvidenceReferenceData>() : new[]
+                {
+                    new SocialInfluenceEvidenceReferenceData
+                    {
+                        evidenceId = $"social-influence.evidence.{context.RunId}.{context.CurrentScenarioId}.{suffix}",
+                        sourceId = speaker,
+                        strength = evidenceStrength,
+                        credibility = speakerResolve,
+                        fabricated = deception != SocialInfluenceDeceptionMode.NoDeception
+                    }
+                },
+                Arguments = new[]
+                {
+                    new SocialInfluenceArgumentData
+                    {
+                        argumentId = $"social-influence.argument.{context.RunId}.{context.CurrentScenarioId}.{suffix}",
+                        premise = "test-lab premise",
+                        conclusion = "test-lab conclusion",
+                        clarity = 90,
+                        emotionalIntensity = intent == SocialInfluenceIntent.Intimidate ? 90 : 20,
+                        coercive = intent == SocialInfluenceIntent.Intimidate
+                    }
+                },
+                TruthStatus = truthStatus,
+                SpeakerBeliefState = speakerBelief,
+                DeceptionMode = deception,
+                SpeakerResolve = speakerResolve,
+                TargetResistance = targetResistance,
+                EvidenceStrength = evidenceStrength,
+                RelationshipModifier = 100,
+                ReputationModifier = 100,
+                Difficulty = difficulty,
+                WorldTime = worldTime,
+                DeterministicSeed = context.RunId,
+                IntentionDefinitionId = intentionDefinitionId,
+                InteractionDefinitionId = interactionDefinitionId,
+                Visibility = SocialInfluenceVisibility.Witnessed,
+                CommitBeliefEvidence = true,
+                CommitDecisionModifier = true
+            };
+        }
+
+        private static KnowledgePropositionData InfluenceClaim(TestLabAutomationContext context, string suffix)
+        {
+            return new KnowledgePropositionData
+            {
+                factDefinitionId = BuiltInKnowledgeFacts.EventOccurred,
+                subjectType = KnowledgeSubjectType.Event,
+                subjectId = $"event.social-influence.{context.RunId}.{context.CurrentScenarioId}.{suffix}",
+                valueType = KnowledgeValueType.Boolean,
+                booleanValue = true,
+                sourceContextId = $"source.social-influence.{context.RunId}.{context.CurrentScenarioId}.{suffix}"
+            };
+        }
+
+        private static string InfluenceScoped(TestLabAutomationContext context, string suffix)
+        {
+            return $"social-influence.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
         }
 
         private static ITestLabAutomationScenario DecisionScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
