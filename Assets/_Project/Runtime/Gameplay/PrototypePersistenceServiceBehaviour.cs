@@ -28,6 +28,7 @@ using UnityIsekaiGame.Inventory.Quality;
 using UnityIsekaiGame.Inventory.Recipes;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.Access;
+using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
@@ -42,6 +43,7 @@ using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
+using UnityIsekaiGame.Social.Rumors;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Traits;
@@ -121,6 +123,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerRelationships = true;
         [SerializeField] private bool registerPlayerInterpersonalAttitudes = true;
         [SerializeField] private bool registerWorldReputation = true;
+        [SerializeField] private bool registerWorldRumors = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -165,6 +168,7 @@ namespace UnityIsekaiGame.Gameplay
         private RelationshipPersistenceParticipant playerRelationshipParticipant;
         private InterpersonalAttitudePersistenceParticipant playerInterpersonalAttitudeParticipant;
         private ReputationPersistenceParticipant worldReputationParticipant;
+        private RumorPersistenceParticipant worldRumorParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private EconomyPersistenceParticipant economyParticipant;
@@ -209,6 +213,7 @@ namespace UnityIsekaiGame.Gameplay
         private RelationshipRuntime playerRelationships;
         private InterpersonalAttitudeRuntime playerInterpersonalAttitudes;
         private ReputationRuntime worldReputation;
+        private RumorRuntime worldRumors;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private EconomyRuntime worldEconomy;
         private MarketRuntime worldMarkets;
@@ -284,6 +289,20 @@ namespace UnityIsekaiGame.Gameplay
                 }
 
                 return worldReputation;
+            }
+        }
+        public RumorRuntime Rumors
+        {
+            get
+            {
+                if (worldRumors == null)
+                {
+                    string personId = playerIdentityProgression == null ? PersistenceService.LocalPlayerId : playerIdentityProgression.PersonId;
+                    worldRumors = new RumorRuntime();
+                    worldRumors.Configure(GetDefinitionRegistry(), GetPrototypeSocialPersonIds(personId), ResolveKnowledgeRuntimeForPerson, ResolveMemoryRuntimeForPerson);
+                }
+
+                return worldRumors;
             }
         }
         public PersonProfessionRuntime Professions
@@ -903,6 +922,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerRelationshipParticipant();
             EnsurePlayerInterpersonalAttitudeParticipant();
             EnsureWorldReputationParticipant();
+            EnsureWorldRumorParticipant();
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
@@ -2587,6 +2607,39 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsureWorldRumorParticipant()
+        {
+            if (!registerWorldRumors || worldRumorParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Rumor persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            string[] knownPersons = GetPrototypeSocialPersonIds(personId);
+            Rumors.Configure(GetDefinitionRegistry(), knownPersons, ResolveKnowledgeRuntimeForPerson, ResolveMemoryRuntimeForPerson);
+            worldRumorParticipant = new RumorPersistenceParticipant(
+                Rumors,
+                GetDefinitionRegistry,
+                () => knownPersons,
+                service.WorldId);
+
+            service.RegisterParticipant(worldRumorParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                worldRumorParticipant = null;
+            }
+        }
+
         private void EnsurePlayerInformationAccessParticipant()
         {
             if (!registerPlayerInformationAccess || playerInformationAccessParticipant != null)
@@ -3690,11 +3743,29 @@ namespace UnityIsekaiGame.Gameplay
                 definitions.Add(definition);
             }
 
-            definitionRegistry = PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
-                PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
-                    PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                        PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)))));
+            definitionRegistry = PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
+                PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
+                    PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
+                        PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                            PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions))))));
             return definitionRegistry;
+        }
+
+        private PersonKnowledgeRuntime ResolveKnowledgeRuntimeForPerson(string personId)
+        {
+            if (playerKnowledge == null || playerIdentityProgression == null)
+            {
+                return null;
+            }
+
+            return string.Equals(playerIdentityProgression.PersonId, personId, System.StringComparison.Ordinal)
+                ? playerKnowledge
+                : null;
+        }
+
+        private PersonMemoryRuntime ResolveMemoryRuntimeForPerson(string personId)
+        {
+            return null;
         }
 
         private string[] GetPrototypeSocialPersonIds(string primaryPersonId)
