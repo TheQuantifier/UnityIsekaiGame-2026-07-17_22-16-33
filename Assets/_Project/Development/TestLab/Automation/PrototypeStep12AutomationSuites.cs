@@ -12,6 +12,7 @@ using UnityIsekaiGame.Social.Influence;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Decisions;
 using UnityIsekaiGame.Social.Emotions;
+using UnityIsekaiGame.Social.Family;
 using UnityIsekaiGame.Social.Interactions;
 using UnityIsekaiGame.Social.Networks;
 using UnityIsekaiGame.Social.Norms;
@@ -257,6 +258,178 @@ namespace UnityIsekaiGame.Development.Automation
                     EmotionScenario("persistence-and-projection", "Persistence and projections preserve affective state", 50,
                         Step("step12-emotion-persistence", "Save, restore, and project emotion state", EmotionPersistenceAndProjection))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.11.family-kinship-romance-households",
+                "Family, Kinship, Romance, and Household Relationships",
+                "12.11",
+                "Authoritative household state with derived kinship, explicit parentage records, consent-gated romantic lifecycle, and persistence.",
+                12110,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "FamilyRelationshipRuntime", "RelationshipRuntime", "InterpersonalAttitudeRuntime", "RomanticEligibilityPolicyDefinition", "HouseholdDefinition", "FamilyRelationshipPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    FamilyScenario("definitions-and-parentage", "Parentage definitions resolve and invariants reject unsafe records", 10,
+                        Step("step12-family-parentage", "Create parentage and reject self/cycle parentage", FamilyDefinitionsAndParentage)),
+                    FamilyScenario("kinship-and-visibility", "Kinship queries are deterministic and visibility aware", 20,
+                        Step("step12-family-kinship", "Resolve derived kinship and hidden parentage boundaries", FamilyKinshipAndVisibility)),
+                    FamilyScenario("romance-eligibility-and-lifecycle", "Romance requires adult eligibility and explicit consent", 30,
+                        Step("step12-family-romance", "Evaluate and execute romantic lifecycle transitions", FamilyRomanceEligibilityLifecycle)),
+                    FamilyScenario("households-and-persistence", "Households own membership lifecycle and persist independently", 40,
+                        Step("step12-family-household-persistence", "Create, transfer, save, restore, and reject corrupt household state", FamilyHouseholdsAndPersistence))
+                }), out _);
+        }
+
+        private static TestLabAutomationStepResult FamilyDefinitionsAndParentage(TestLabAutomationContext context)
+        {
+            if (!TryGetFamilyRuntime(context, out FamilyRelationshipRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-family-parentage", "Create parentage and reject self/cycle parentage", "FamilyRelationshipRuntime", "MissingRuntime", failure);
+            }
+
+            bool resolved = registry.TryGet(PrototypeRelationshipDefinitionFactory.BiologicalParentChildRelationshipId, out RelationshipDefinition _)
+                && registry.TryGet(PrototypeRelationshipDefinitionFactory.AdoptiveParentChildRelationshipId, out RelationshipDefinition _)
+                && registry.TryGet(PrototypeRelationshipDefinitionFactory.LegalGuardianDependentRelationshipId, out RelationshipDefinition _)
+                && registry.TryGet(PrototypeFamilyRelationshipDefinitionFactory.StrictAdultRomancePolicyId, out RomanticEligibilityPolicyDefinition _)
+                && registry.TryGet(PrototypeFamilyRelationshipDefinitionFactory.FamilyHouseholdDefinitionId, out HouseholdDefinition _)
+                && registry.TryGet(PrototypeAttitudeDefinitionFactory.RomanticAttractionId, out AttitudeDimensionDefinition _);
+
+            FamilyRelationshipMutationResult biological = runtime.RecordParentage(new FamilyParentageRequest
+            {
+                transactionId = Tx(context, "family-bio-parent"),
+                recordId = Scoped(context, "bio-parent"),
+                parentPersonId = "person.prototype.parent",
+                childPersonId = "person.prototype.child",
+                parentageKind = ParentageKind.Biological,
+                visibility = FamilyVisibility.Public,
+                worldTime = 1d
+            });
+            FamilyRelationshipMutationResult duplicate = runtime.RecordParentage(new FamilyParentageRequest
+            {
+                transactionId = Tx(context, "family-bio-parent"),
+                recordId = Scoped(context, "bio-parent"),
+                parentPersonId = "person.prototype.parent",
+                childPersonId = "person.prototype.child",
+                parentageKind = ParentageKind.Biological,
+                visibility = FamilyVisibility.Public,
+                worldTime = 1d
+            });
+            FamilyRelationshipMutationResult self = runtime.RecordParentage(new FamilyParentageRequest
+            {
+                transactionId = Tx(context, "family-self-parent"),
+                recordId = Scoped(context, "self-parent"),
+                parentPersonId = "person.prototype.parent",
+                childPersonId = "person.prototype.parent",
+                parentageKind = ParentageKind.Biological,
+                worldTime = 2d
+            });
+            FamilyRelationshipMutationResult cycle = runtime.RecordParentage(new FamilyParentageRequest
+            {
+                transactionId = Tx(context, "family-cycle-parent"),
+                recordId = Scoped(context, "cycle-parent"),
+                parentPersonId = "person.prototype.child",
+                childPersonId = "person.prototype.parent",
+                parentageKind = ParentageKind.Biological,
+                worldTime = 3d
+            });
+
+            bool valid = resolved
+                && biological.Succeeded
+                && duplicate.Succeeded
+                && duplicate.Duplicate
+                && !self.Succeeded
+                && self.Status == RomanticEligibilityStatus.InvalidRequest
+                && !cycle.Succeeded
+                && cycle.Status == RomanticEligibilityStatus.ProhibitedKinship
+                && runtime.GetParents("person.prototype.child", ParentageKind.Biological, activeOnly: true, privileged: true).Count == 1;
+            return TestLabAssertions.True("step12-family-parentage", "Parentage definitions resolve and invariants reject unsafe records", valid, $"Resolved={resolved} Bio={biological.Status} Duplicate={duplicate.Status} Self={self.Status} Cycle={cycle.Status}");
+        }
+
+        private static TestLabAutomationStepResult FamilyKinshipAndVisibility(TestLabAutomationContext context)
+        {
+            if (!TryGetFamilyRuntime(context, out FamilyRelationshipRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-family-kinship", "Resolve derived kinship and hidden parentage boundaries", "FamilyRelationshipRuntime", "MissingRuntime", failure);
+            }
+
+            runtime.RecordParentage(new FamilyParentageRequest { transactionId = Tx(context, "family-parent-a"), recordId = Scoped(context, "family-parent-a"), parentPersonId = "person.prototype.parent", childPersonId = "person.prototype.child", parentageKind = ParentageKind.Biological, visibility = FamilyVisibility.Public, worldTime = 1d });
+            runtime.RecordParentage(new FamilyParentageRequest { transactionId = Tx(context, "family-parent-b"), recordId = Scoped(context, "family-parent-b"), parentPersonId = "person.prototype.parent", childPersonId = "person.prototype.student", parentageKind = ParentageKind.Biological, visibility = FamilyVisibility.Public, worldTime = 1d });
+            runtime.RecordParentage(new FamilyParentageRequest { transactionId = Tx(context, "family-hidden"), recordId = Scoped(context, "family-hidden"), parentPersonId = "person.prototype.mentor", childPersonId = "person.prototype.rival", parentageKind = ParentageKind.Biological, visibility = FamilyVisibility.Hidden, worldTime = 1d });
+
+            KinshipPathResult siblingA = runtime.ResolveKinship("person.prototype.child", "person.prototype.student", privileged: false);
+            KinshipPathResult siblingB = runtime.ResolveKinship("person.prototype.child", "person.prototype.student", privileged: false);
+            FamilyTreeSnapshot publicTree = runtime.CreateFamilyTreeSnapshot("person.prototype.rival", privileged: false);
+            FamilyTreeSnapshot privilegedTree = runtime.CreateFamilyTreeSnapshot("person.prototype.rival", privileged: true);
+            FamilyTreeSnapshot truncated = runtime.CreateFamilyTreeSnapshot("person.prototype.child", new KinshipTraversalLimits { maximumVisitedPersons = 1, maximumAncestorDepth = 1, maximumDescendantDepth = 1 }, privileged: true);
+
+            bool valid = siblingA.Classification == KinshipClassification.HalfSibling
+                && siblingB.Classification == siblingA.Classification
+                && publicTree.Relationships.Count == 0
+                && privilegedTree.Relationships.Count == 1
+                && truncated.Truncated;
+            return TestLabAssertions.True("step12-family-kinship", "Kinship queries are deterministic and visibility aware", valid, $"Sibling={siblingA.Classification}/{siblingB.Classification} Public={publicTree.Relationships.Count} Privileged={privilegedTree.Relationships.Count} Truncated={truncated.Truncated}");
+        }
+
+        private static TestLabAutomationStepResult FamilyRomanceEligibilityLifecycle(TestLabAutomationContext context)
+        {
+            if (!TryGetFamilyRuntime(context, out FamilyRelationshipRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-family-romance", "Evaluate and execute romantic lifecycle transitions", "FamilyRelationshipRuntime", "MissingRuntime", failure);
+            }
+
+            string player = context.ScenarioContext.Runtimes.PersonId;
+            context.ScenarioContext.Runtimes.Attitudes.Mutate(new AttitudeMutationRequest { transactionId = Tx(context, "family-romance-player-attraction"), observerPersonId = player, subjectPersonId = "person.prototype.partner", dimensionId = PrototypeAttitudeDefinitionFactory.RomanticAttractionId, mutationKind = AttitudeMutationKind.SetBaseline, value = 70, worldTime = 1d });
+            context.ScenarioContext.Runtimes.Attitudes.Mutate(new AttitudeMutationRequest { transactionId = Tx(context, "family-romance-partner-attraction"), observerPersonId = "person.prototype.partner", subjectPersonId = player, dimensionId = PrototypeAttitudeDefinitionFactory.RomanticAttractionId, mutationKind = AttitudeMutationKind.SetBaseline, value = 72, worldTime = 1d });
+
+            RomanticEligibilityResult eligible = runtime.EvaluateRomanticEligibility(new RomanticEligibilityRequest { actorPersonId = player, targetPersonId = "person.prototype.partner", policyDefinitionId = PrototypeFamilyRelationshipDefinitionFactory.StrictAdultRomancePolicyId, transitionKind = RomanticTransitionKind.EstablishPartnership, consentKind = RomanticConsentKind.PlayerChoice });
+            RomanticEligibilityResult complianceRejected = runtime.EvaluateRomanticEligibility(new RomanticEligibilityRequest { actorPersonId = player, targetPersonId = "person.prototype.partner", policyDefinitionId = PrototypeFamilyRelationshipDefinitionFactory.StrictAdultRomancePolicyId, transitionKind = RomanticTransitionKind.EstablishPartnership, consentKind = RomanticConsentKind.Compliance });
+            RomanticEligibilityResult childRejected = runtime.EvaluateRomanticEligibility(new RomanticEligibilityRequest { actorPersonId = player, targetPersonId = "person.prototype.child", policyDefinitionId = PrototypeFamilyRelationshipDefinitionFactory.StrictAdultRomancePolicyId, transitionKind = RomanticTransitionKind.EstablishPartnership, consentKind = RomanticConsentKind.PlayerChoice });
+            RomanticTransitionResult partnership = runtime.ExecuteRomanticTransition(new RomanticTransitionRequest { transactionId = Tx(context, "family-romance-partnership"), relationshipRecordId = Scoped(context, "family-romance-partnership"), actorPersonId = player, targetPersonId = "person.prototype.partner", policyDefinitionId = PrototypeFamilyRelationshipDefinitionFactory.StrictAdultRomancePolicyId, transitionKind = RomanticTransitionKind.EstablishPartnership, consentKind = RomanticConsentKind.PlayerChoice, worldTime = 5d });
+            RomanticTransitionResult duplicate = runtime.ExecuteRomanticTransition(new RomanticTransitionRequest { transactionId = Tx(context, "family-romance-partnership"), relationshipRecordId = Scoped(context, "family-romance-partnership"), actorPersonId = player, targetPersonId = "person.prototype.partner", policyDefinitionId = PrototypeFamilyRelationshipDefinitionFactory.StrictAdultRomancePolicyId, transitionKind = RomanticTransitionKind.EstablishPartnership, consentKind = RomanticConsentKind.PlayerChoice, worldTime = 5d });
+
+            bool valid = eligible.Eligible
+                && !complianceRejected.Eligible
+                && complianceRejected.Status == RomanticEligibilityStatus.InvalidConsent
+                && !childRejected.Eligible
+                && childRejected.Status == RomanticEligibilityStatus.NonAdult
+                && partnership.Succeeded
+                && duplicate.Duplicate
+                && context.ScenarioContext.Runtimes.Relationships.QueryByDefinition(PrototypeRelationshipDefinitionFactory.DomesticPartnerRelationshipId, activeOnly: true).Count == 1;
+            return TestLabAssertions.True("step12-family-romance", "Romance requires adult eligibility and explicit consent", valid, $"Eligible={eligible.Status} Compliance={complianceRejected.Status} Child={childRejected.Status} Partnership={partnership.Status} Duplicate={duplicate.Status}");
+        }
+
+        private static TestLabAutomationStepResult FamilyHouseholdsAndPersistence(TestLabAutomationContext context)
+        {
+            if (!TryGetFamilyRuntime(context, out FamilyRelationshipRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-family-household-persistence", "Create, transfer, save, restore, and reject corrupt household state", "FamilyRelationshipRuntime", "MissingRuntime", failure);
+            }
+
+            string player = context.ScenarioContext.Runtimes.PersonId;
+            HouseholdMutationResult create = runtime.CreateHousehold(new HouseholdMutationRequest { transactionId = Tx(context, "family-household-create"), householdId = Scoped(context, "household-a"), householdDefinitionId = PrototypeFamilyRelationshipDefinitionFactory.FamilyHouseholdDefinitionId, personId = player, role = HouseholdRole.Head, residencePlaceId = "place.prototype.home", propertyReferenceId = "property.prototype.home", worldTime = 1d });
+            HouseholdMutationResult add = runtime.AddMember(new HouseholdMutationRequest { transactionId = Tx(context, "family-household-add"), householdId = Scoped(context, "household-a"), personId = "person.prototype.partner", role = HouseholdRole.CoHead, worldTime = 2d });
+            HouseholdMutationResult role = runtime.ChangeMemberRole(new HouseholdMutationRequest { transactionId = Tx(context, "family-household-role"), householdId = Scoped(context, "household-a"), personId = "person.prototype.partner", role = HouseholdRole.AdultMember, worldTime = 3d });
+            HouseholdMutationResult shared = runtime.CreateHousehold(new HouseholdMutationRequest { transactionId = Tx(context, "family-household-shared"), householdId = Scoped(context, "household-b"), householdDefinitionId = PrototypeFamilyRelationshipDefinitionFactory.SharedResidenceHouseholdDefinitionId, personId = "person.prototype.friend", role = HouseholdRole.AdultMember, worldTime = 4d });
+            HouseholdMutationResult merge = runtime.MergeHouseholds(new HouseholdTransferRequest { transactionId = Tx(context, "family-household-merge"), sourceHouseholdId = Scoped(context, "household-b"), targetHouseholdId = Scoped(context, "household-a"), worldTime = 5d });
+            FamilyRelationshipRuntimeSaveData save = runtime.CreateSaveData();
+            FamilyRelationshipRuntime restored = new FamilyRelationshipRuntime();
+            restored.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds, context.ScenarioContext.Runtimes.Relationships, context.ScenarioContext.Runtimes.Attitudes, context.ScenarioContext.Runtimes.SocialInteractions, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds.Where(id => !id.Contains(".child", StringComparison.Ordinal) && !id.Contains(".dependent", StringComparison.Ordinal)));
+            RomanticTransitionResult restore = restored.RestoreFromSaveData(save, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            FamilyRelationshipRuntimeSaveData corrupt = save.Clone();
+            corrupt.households[0].worldId = "world.other";
+            bool corruptRejected = !FamilyRelationshipRuntime.ValidateSaveData(corrupt, registry, context.ScenarioContext.Runtimes.KnownPersonIds, context.ScenarioContext.Runtimes.WorldId, out _);
+
+            bool valid = create.Succeeded
+                && add.Succeeded
+                && role.Succeeded
+                && shared.Succeeded
+                && merge.Succeeded
+                && restore.Succeeded
+                && restored.TryGetHousehold(Scoped(context, "household-a"), out HouseholdSnapshot restoredHousehold)
+                && restoredHousehold.ActiveMemberships.Count == 3
+                && corruptRejected;
+            return TestLabAssertions.True("step12-family-household-persistence", "Households own membership lifecycle and persist independently", valid, $"Create={create.Status} Add={add.Status} Role={role.Status} Shared={shared.Status} Merge={merge.Status} Restore={restore.Status} CorruptRejected={corruptRejected}");
         }
 
         private static TestLabAutomationStepResult EmotionReadiness(TestLabAutomationContext context)
@@ -2555,6 +2728,36 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario FamilyScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeRelationshipDefinitionFactory.BiologicalParentChildRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.AdoptiveParentChildRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.LegalGuardianDependentRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.FosterGuardianDependentRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.SpouseRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.DomesticPartnerRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.CourtshipPartnerRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.EngagedPartnerRelationshipId,
+                    PrototypeRelationshipDefinitionFactory.FormerRomanticPartnerRelationshipId,
+                    PrototypeAttitudeDefinitionFactory.RomanticAttractionId,
+                    PrototypeFamilyRelationshipDefinitionFactory.StrictAdultRomancePolicyId,
+                    PrototypeFamilyRelationshipDefinitionFactory.FamilyHouseholdDefinitionId,
+                    PrototypeFamilyRelationshipDefinitionFactory.SharedResidenceHouseholdDefinitionId
+                });
+        }
+
         private static bool TryGetInfluenceRuntime(TestLabAutomationContext context, out SocialInfluenceRuntime runtime, out DefinitionRegistry registry, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.SocialInfluence;
@@ -2576,6 +2779,20 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null || registry == null)
             {
                 failure = runtime == null ? "Social Emotion runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetFamilyRuntime(TestLabAutomationContext context, out FamilyRelationshipRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.FamilyRelationships;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Family Relationship runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
                 return false;
             }
 
