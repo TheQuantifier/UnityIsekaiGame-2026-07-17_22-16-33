@@ -11,6 +11,7 @@ using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Social.Influence;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Decisions;
+using UnityIsekaiGame.Social.Emotions;
 using UnityIsekaiGame.Social.Interactions;
 using UnityIsekaiGame.Social.Networks;
 using UnityIsekaiGame.Social.Norms;
@@ -233,6 +234,192 @@ namespace UnityIsekaiGame.Development.Automation
                     InfluenceScenario("persistence-validation", "Influence attempts persist and reject corrupt restores", 50,
                         Step("step12-influence-persistence", "Save, restore, and reject invalid influence payloads", InfluencePersistenceValidation))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.10.social-emotions-moods-affective-reactions",
+                "Social Emotions, Moods, and Affective Reactions",
+                "12.10",
+                "Definition-backed transient emotions, mood aggregation, affective projections, deterministic decay, decision modifiers, and persistence.",
+                12100,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "SocialEmotionRuntime", "SocialEmotionDefinition", "SocialEmotionPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    EmotionScenario("readiness-and-definitions", "Emotion, mood, and appraisal definitions resolve", 10,
+                        Step("step12-emotion-readiness", "Resolve canonical emotion definitions", EmotionReadiness)),
+                    EmotionScenario("belief-relative-appraisal", "Belief-relative appraisal creates the expected emotion", 20,
+                        Step("step12-emotion-appraisal", "Trigger appraisal from believed social information", EmotionBeliefRelativeAppraisal)),
+                    EmotionScenario("decay-and-stacking", "Emotion decay and reinforcement are deterministic", 30,
+                        Step("step12-emotion-decay", "Apply deterministic decay and stacking", EmotionDecayAndStacking)),
+                    EmotionScenario("decision-modifiers", "Emotion modifiers feed social decisions without owning them", 40,
+                        Step("step12-emotion-decision", "Apply emotion decision modifier", EmotionDecisionModifiers)),
+                    EmotionScenario("persistence-and-projection", "Persistence and projections preserve affective state", 50,
+                        Step("step12-emotion-persistence", "Save, restore, and project emotion state", EmotionPersistenceAndProjection))
+                }), out _);
+        }
+
+        private static TestLabAutomationStepResult EmotionReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetEmotionRuntime(context, out SocialEmotionRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-emotion-readiness", "Resolve canonical emotion definitions", "SocialEmotionRuntime", "MissingRuntime", failure);
+            }
+
+            string[] emotionIds =
+            {
+                PrototypeSocialEmotionDefinitionFactory.JoyId,
+                PrototypeSocialEmotionDefinitionFactory.SadnessId,
+                PrototypeSocialEmotionDefinitionFactory.AngerId,
+                PrototypeSocialEmotionDefinitionFactory.FearId,
+                PrototypeSocialEmotionDefinitionFactory.ReliefId,
+                PrototypeSocialEmotionDefinitionFactory.GratitudeId,
+                PrototypeSocialEmotionDefinitionFactory.GuiltId,
+                PrototypeSocialEmotionDefinitionFactory.ShameId,
+                PrototypeSocialEmotionDefinitionFactory.PrideId,
+                PrototypeSocialEmotionDefinitionFactory.AnxietyId,
+                PrototypeSocialEmotionDefinitionFactory.DisgustId,
+                PrototypeSocialEmotionDefinitionFactory.EnvyId,
+                PrototypeSocialEmotionDefinitionFactory.ResentmentId,
+                PrototypeSocialEmotionDefinitionFactory.HopeId,
+                PrototypeSocialEmotionDefinitionFactory.DisappointmentId
+            };
+            bool resolved = emotionIds.All(id => registry.TryGet(id, out SocialEmotionDefinition _))
+                && registry.TryGet(PrototypeSocialEmotionDefinitionFactory.MoodValenceId, out SocialMoodDimensionDefinition _)
+                && registry.TryGet(PrototypeSocialEmotionDefinitionFactory.DetectedDeceptionRuleId, out SocialEmotionAppraisalRuleDefinition _)
+                && runtime.IsReady;
+            return TestLabAssertions.True("step12-emotion-readiness", "Emotion, mood, and appraisal definitions resolve", resolved, $"Resolved={resolved} Runtime={runtime.IsReady} Count={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult EmotionBeliefRelativeAppraisal(TestLabAutomationContext context)
+        {
+            if (!TryGetEmotionRuntime(context, out SocialEmotionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-emotion-appraisal", "Trigger appraisal from believed social information", "SocialEmotionRuntime", "MissingRuntime", failure);
+            }
+
+            SocialEmotionResult result = runtime.Execute(new SocialEmotionTriggerRequest
+            {
+                TransactionId = Tx(context, "emotion-threat"),
+                PersonId = context.ScenarioContext.Runtimes.PersonId,
+                Cause = new SocialEmotionCauseReferenceData
+                {
+                    category = SocialEmotionCauseCategory.BeliefAccepted,
+                    sourceRuntime = "SocialInfluenceRuntime",
+                    sourceRecordId = Scoped(context, "accepted-threat"),
+                    subjectId = "claim.prototype.threat",
+                    targetPersonId = "person.prototype.rival",
+                    responsibility = SocialEmotionResponsibility.Target,
+                    believedTruthStatus = SocialInfluenceTruthStatus.True,
+                    tags = new[] { "threat" }
+                },
+                WorldTime = 12d
+            });
+
+            bool valid = result.Succeeded
+                && result.Episode != null
+                && result.Episode.EmotionDefinitionId == PrototypeSocialEmotionDefinitionFactory.FearId
+                && result.Episode.CurrentIntensity > 0
+                && result.Mood != null
+                && result.Mood.MoodDimensionId == PrototypeSocialEmotionDefinitionFactory.MoodAnxietyId;
+            return TestLabAssertions.True("step12-emotion-appraisal", "Belief-relative appraisal creates the expected emotion", valid, $"Status={result.Status} Emotion={result.Episode?.EmotionDefinitionId} Mood={result.Mood?.MoodDimensionId} Intensity={result.Episode?.CurrentIntensity}");
+        }
+
+        private static TestLabAutomationStepResult EmotionDecayAndStacking(TestLabAutomationContext context)
+        {
+            if (!TryGetEmotionRuntime(context, out SocialEmotionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-emotion-decay", "Apply deterministic decay and stacking", "SocialEmotionRuntime", "MissingRuntime", failure);
+            }
+
+            SocialEmotionTriggerRequest request = new SocialEmotionTriggerRequest
+            {
+                TransactionId = Tx(context, "emotion-help"),
+                PersonId = context.ScenarioContext.Runtimes.PersonId,
+                EmotionDefinitionId = PrototypeSocialEmotionDefinitionFactory.GratitudeId,
+                TargetPersonId = "person.prototype.friend",
+                SubjectId = Scoped(context, "helpful-act"),
+                IntensityOverride = 60,
+                DurationOverrideSeconds = 100d,
+                Cause = new SocialEmotionCauseReferenceData { category = SocialEmotionCauseCategory.Interaction, targetPersonId = "person.prototype.friend", subjectId = Scoped(context, "helpful-act"), responsibility = SocialEmotionResponsibility.Target, tags = new[] { "help" } },
+                WorldTime = 20d
+            };
+            SocialEmotionResult first = runtime.Execute(request);
+            SocialEmotionResult duplicate = runtime.Execute(request);
+            SocialEmotionResult reinforce = runtime.Execute(new SocialEmotionTriggerRequest
+            {
+                TransactionId = Tx(context, "emotion-help-reinforce"),
+                PersonId = request.PersonId,
+                EmotionDefinitionId = request.EmotionDefinitionId,
+                TargetPersonId = request.TargetPersonId,
+                SubjectId = request.SubjectId,
+                IntensityOverride = 45,
+                DurationOverrideSeconds = 100d,
+                Cause = request.Cause,
+                WorldTime = 25d
+            });
+            int at50a = runtime.QueryActiveEpisodes(request.PersonId, 50d).FirstOrDefault()?.CurrentIntensity ?? 0;
+            int at50b = runtime.QueryActiveEpisodes(request.PersonId, 50d).FirstOrDefault()?.CurrentIntensity ?? 0;
+            bool valid = first.Succeeded
+                && duplicate.Duplicate
+                && reinforce.Succeeded
+                && runtime.QueryActiveEpisodes(request.PersonId, 25d).Count == 1
+                && at50a == at50b
+                && at50a > 0
+                && at50a < (reinforce.Episode?.CurrentIntensity ?? 0);
+            return TestLabAssertions.True("step12-emotion-decay", "Emotion decay and reinforcement are deterministic", valid, $"First={first.Status} Duplicate={duplicate.Status} Reinforce={reinforce.Status} Count={runtime.QueryActiveEpisodes(request.PersonId, 25d).Count} At50={at50a}/{at50b}");
+        }
+
+        private static TestLabAutomationStepResult EmotionDecisionModifiers(TestLabAutomationContext context)
+        {
+            if (!TryGetEmotionRuntime(context, out SocialEmotionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-emotion-decision", "Apply emotion decision modifier", "SocialEmotionRuntime", "MissingRuntime", failure);
+            }
+
+            SocialEmotionResult anger = runtime.Execute(new SocialEmotionTriggerRequest
+            {
+                TransactionId = Tx(context, "emotion-deception"),
+                PersonId = context.ScenarioContext.Runtimes.PersonId,
+                Cause = new SocialEmotionCauseReferenceData { category = SocialEmotionCauseCategory.DeceptionDetected, targetPersonId = "person.prototype.rival", subjectId = "claim.prototype.lie", responsibility = SocialEmotionResponsibility.Target, believedTruthStatus = SocialInfluenceTruthStatus.False, detectionOutcome = SocialInfluenceDetectionOutcome.Detected, tags = new[] { "deception" } },
+                WorldTime = 30d
+            });
+            int modifier = runtime.ResolveSocialDecisionScoreModifier(context.ScenarioContext.Runtimes.PersonId, "person.prototype.rival", string.Empty, string.Empty, 31d, out string modifierId);
+            bool valid = anger.Succeeded && modifier < 0 && !string.IsNullOrWhiteSpace(modifierId) && context.ScenarioContext.Runtimes.SocialDecisions.Count == 0;
+            return TestLabAssertions.True("step12-emotion-decision", "Emotion modifiers feed social decisions without owning them", valid, $"Emotion={anger.Status} Modifier={modifier} Source={modifierId} Decisions={context.ScenarioContext.Runtimes.SocialDecisions.Count}");
+        }
+
+        private static TestLabAutomationStepResult EmotionPersistenceAndProjection(TestLabAutomationContext context)
+        {
+            if (!TryGetEmotionRuntime(context, out SocialEmotionRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-emotion-persistence", "Save, restore, and project emotion state", "SocialEmotionRuntime", "MissingRuntime", failure);
+            }
+
+            SocialEmotionResult result = runtime.Execute(new SocialEmotionTriggerRequest
+            {
+                TransactionId = Tx(context, "emotion-concealed"),
+                PersonId = context.ScenarioContext.Runtimes.PersonId,
+                EmotionDefinitionId = PrototypeSocialEmotionDefinitionFactory.ShameId,
+                SubjectId = Scoped(context, "mistake"),
+                Concealed = true,
+                WorldTime = 40d
+            });
+            SocialEmotionRuntimeSaveData save = runtime.CreateSaveData();
+            SocialEmotionRuntime restored = new SocialEmotionRuntime();
+            restored.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds);
+            SocialEmotionResult restore = restored.RestoreFromSaveData(save, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            SocialEmotionProjection ownerProjection = restored.GetProjection(context.ScenarioContext.Runtimes.PersonId, result.Episode?.EpisodeId, privileged: false, worldTime: 41d);
+            SocialEmotionProjection otherProjection = restored.GetProjection("person.prototype.rival", result.Episode?.EpisodeId, privileged: false, worldTime: 41d);
+            save.episodes[0].personId = "person.prototype.unknown";
+            bool invalidRejected = !SocialEmotionRuntime.ValidateSaveData(save, registry, context.ScenarioContext.Runtimes.KnownPersonIds, out _);
+            bool valid = result.Succeeded
+                && restore.Succeeded
+                && ownerProjection.Access == SocialEmotionProjectionAccess.Full
+                && otherProjection.Access == SocialEmotionProjectionAccess.Concealed
+                && invalidRejected
+                && restored.QueryActiveEpisodes(context.ScenarioContext.Runtimes.PersonId, 41d).Count == 1;
+            return TestLabAssertions.True("step12-emotion-persistence", "Persistence and projections preserve affective state", valid, $"Create={result.Status} Restore={restore.Status} Owner={ownerProjection.Access} Other={otherProjection.Access} InvalidRejected={invalidRejected}");
         }
 
         private static TestLabAutomationStepResult SymmetricAndDirectedRelationships(TestLabAutomationContext context)
@@ -2331,6 +2518,43 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario EmotionScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeSocialEmotionDefinitionFactory.JoyId,
+                    PrototypeSocialEmotionDefinitionFactory.SadnessId,
+                    PrototypeSocialEmotionDefinitionFactory.AngerId,
+                    PrototypeSocialEmotionDefinitionFactory.FearId,
+                    PrototypeSocialEmotionDefinitionFactory.ReliefId,
+                    PrototypeSocialEmotionDefinitionFactory.GratitudeId,
+                    PrototypeSocialEmotionDefinitionFactory.GuiltId,
+                    PrototypeSocialEmotionDefinitionFactory.ShameId,
+                    PrototypeSocialEmotionDefinitionFactory.PrideId,
+                    PrototypeSocialEmotionDefinitionFactory.AnxietyId,
+                    PrototypeSocialEmotionDefinitionFactory.DisgustId,
+                    PrototypeSocialEmotionDefinitionFactory.EnvyId,
+                    PrototypeSocialEmotionDefinitionFactory.ResentmentId,
+                    PrototypeSocialEmotionDefinitionFactory.HopeId,
+                    PrototypeSocialEmotionDefinitionFactory.DisappointmentId,
+                    PrototypeSocialEmotionDefinitionFactory.MoodValenceId,
+                    PrototypeSocialEmotionDefinitionFactory.MoodAnxietyId,
+                    PrototypeSocialEmotionDefinitionFactory.DetectedDeceptionRuleId,
+                    PrototypeSocialInfluenceDefinitionFactory.TellDirectLieId,
+                    PrototypeSocialDecisionDefinitionFactory.ScriptControlledProfileId
+                });
+        }
+
         private static bool TryGetInfluenceRuntime(TestLabAutomationContext context, out SocialInfluenceRuntime runtime, out DefinitionRegistry registry, out string failure)
         {
             runtime = context?.ScenarioContext?.Runtimes?.SocialInfluence;
@@ -2338,6 +2562,20 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null || registry == null)
             {
                 failure = runtime == null ? "Social Influence runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetEmotionRuntime(TestLabAutomationContext context, out SocialEmotionRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.SocialEmotions;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Social Emotion runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
                 return false;
             }
 
