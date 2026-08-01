@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Social.Attitudes;
+using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
 
 namespace UnityIsekaiGame.Development.Automation
@@ -52,6 +53,31 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step12-attitudes-relationship-independent", "End a relationship without deleting attitude values", RelationshipIndependence)),
                     AttitudeScenario("persistence-validation", "Attitudes persist and reject corrupt restores without mutation", 50,
                         Step("step12-attitudes-persistence", "Save, restore, and reject invalid attitude payloads", AttitudePersistenceValidation))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.3.reputation-audiences-social-standing",
+                "Reputation and Social Standing",
+                "12.3",
+                "Audience-scoped person reputation records with canonical dimensions, source-owned contributions, hierarchy-aware reads, requirements, and persistence.",
+                12030,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "ReputationRuntime", "ReputationAudienceDefinition", "ReputationDimensionDefinition", "ReputationPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    ReputationScenario("runtime-readiness", "Reputation definitions and runtime are ready", 10,
+                        Step("step12-reputation-readiness", "Resolve reputation audiences and dimensions", ReputationRuntimeReadiness)),
+                    ReputationScenario("record-identity-dimensions", "Records and dimensions remain stable and independent", 20,
+                        Step("step12-reputation-records", "Create records and mutate independent dimensions", ReputationRecordIdentityAndDimensions)),
+                    ReputationScenario("audience-independence-hierarchy", "Audience independence and hierarchy are deterministic", 30,
+                        Step("step12-reputation-audiences", "Verify direct, inherited, and isolated audience values", ReputationAudienceIndependenceAndHierarchy)),
+                    ReputationScenario("contributions-disputes-idempotence", "Source contributions preserve dispute metadata and idempotence", 40,
+                        Step("step12-reputation-contributions", "Preview, execute, duplicate, replace, remove, and classify sources", ReputationContributionsAndDisputes)),
+                    ReputationScenario("requirements-and-separation", "Requirement checks do not mutate relationships or attitudes", 50,
+                        Step("step12-reputation-requirements", "Evaluate thresholds and verify feature separation", ReputationRequirementsAndSeparation)),
+                    ReputationScenario("persistence-validation", "Reputation persists and rejects corrupt restores", 60,
+                        Step("step12-reputation-persistence", "Save, restore, and reject invalid reputation payloads", ReputationPersistenceValidation))
                 }), out _);
         }
 
@@ -429,6 +455,334 @@ namespace UnityIsekaiGame.Development.Automation
             return true;
         }
 
+        private static TestLabAutomationStepResult ReputationRuntimeReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetReputationRuntime(context, out ReputationRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-reputation-readiness", "Resolve reputation audiences and dimensions", "ReputationRuntime", "MissingRuntime", failure);
+            }
+
+            bool graphValid = ReputationRuntime.ValidateAudienceGraph(registry, out string graphFailure);
+            bool valid = runtime.IsReady
+                && runtime.Count == 0
+                && registry.TryGet(PrototypeReputationDefinitionFactory.GlobalPublicAudienceId, out ReputationAudienceDefinition _)
+                && registry.TryGet(PrototypeReputationDefinitionFactory.PrototypeTownAudienceId, out ReputationAudienceDefinition _)
+                && registry.TryGet(PrototypeReputationDefinitionFactory.RenownId, out ReputationDimensionDefinition _)
+                && registry.TryGet(PrototypeReputationDefinitionFactory.EsteemId, out ReputationDimensionDefinition _)
+                && graphValid;
+            return TestLabAssertions.True("step12-reputation-readiness", "Reputation definitions and runtime are ready", valid, $"Ready={runtime.IsReady} Count={runtime.Count} GraphFailure='{graphFailure}'");
+        }
+
+        private static TestLabAutomationStepResult ReputationRecordIdentityAndDimensions(TestLabAutomationContext context)
+        {
+            if (!TryGetReputationRuntime(context, out ReputationRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-reputation-records", "Create records and mutate independent dimensions", "ReputationRuntime", "MissingRuntime", failure);
+            }
+
+            string subject = context.ScenarioContext.Runtimes.PersonId;
+            ReputationMutationResult renown = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "renown"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.RenownId,
+                mutationKind = ReputationMutationKind.SetBaseline,
+                value = 80,
+                worldTime = 10d
+            });
+            ReputationMutationResult esteem = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "esteem"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.EsteemId,
+                mutationKind = ReputationMutationKind.SetBaseline,
+                value = -35,
+                worldTime = 11d
+            });
+            bool resolvedById = runtime.TryGetSnapshot(renown.RecordId, out ReputationSnapshot byId);
+            bool resolvedByPair = runtime.TryGetSnapshotBySubjectAudience(subject, PrototypeReputationDefinitionFactory.GlobalPublicAudienceId, out ReputationSnapshot byPair);
+            ReputationMutationResult duplicatePair = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "duplicate-pair"),
+                recordId = RepScoped(context, "duplicate"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.HonorId,
+                mutationKind = ReputationMutationKind.SetBaseline,
+                value = 10,
+                worldTime = 12d
+            });
+
+            bool valid = renown.Succeeded
+                && esteem.Succeeded
+                && resolvedById
+                && resolvedByPair
+                && byId.RecordId == byPair.RecordId
+                && duplicatePair.Status == ReputationOperationStatus.DuplicateSubjectAudience
+                && runtime.ResolveValue(subject, PrototypeReputationDefinitionFactory.GlobalPublicAudienceId, PrototypeReputationDefinitionFactory.RenownId).EffectiveValue == 80
+                && runtime.ResolveValue(subject, PrototypeReputationDefinitionFactory.GlobalPublicAudienceId, PrototypeReputationDefinitionFactory.EsteemId).EffectiveValue == -35;
+            return TestLabAssertions.True("step12-reputation-records", "Records and dimensions remain stable and independent", valid, $"Renown={renown.Status} Esteem={esteem.Status} Duplicate={duplicatePair.Status} Records={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult ReputationAudienceIndependenceAndHierarchy(TestLabAutomationContext context)
+        {
+            if (!TryGetReputationRuntime(context, out ReputationRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-reputation-audiences", "Verify direct, inherited, and isolated audience values", "ReputationRuntime", "MissingRuntime", failure);
+            }
+
+            string subject = context.ScenarioContext.Runtimes.PersonId;
+            ReputationMutationResult global = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "global-honor"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.HonorId,
+                mutationKind = ReputationMutationKind.SetBaseline,
+                value = 20,
+                worldTime = 13d
+            });
+            ReputationMutationResult guild = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "guild-honor"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.AdventurersGuildAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.HonorId,
+                mutationKind = ReputationMutationKind.SetBaseline,
+                value = 70,
+                worldTime = 14d
+            });
+            ReputationEffectiveValueSnapshot inherited = runtime.ResolveValue(subject, PrototypeReputationDefinitionFactory.AdventurersGuildVeteransAudienceId, PrototypeReputationDefinitionFactory.HonorId, allowInherited: true);
+            ReputationEffectiveValueSnapshot direct = runtime.ResolveValue(subject, PrototypeReputationDefinitionFactory.AdventurersGuildVeteransAudienceId, PrototypeReputationDefinitionFactory.HonorId, allowInherited: false);
+            ReputationMutationResult town = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "town-honor"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.PrototypeTownAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.HonorId,
+                mutationKind = ReputationMutationKind.SetBaseline,
+                value = -15,
+                worldTime = 15d
+            });
+
+            bool valid = global.Succeeded
+                && guild.Succeeded
+                && town.Succeeded
+                && inherited.EffectiveValue == 70
+                && inherited.Inherited
+                && inherited.SourceAudienceId == PrototypeReputationDefinitionFactory.AdventurersGuildAudienceId
+                && direct.EffectiveValue == 0
+                && runtime.ResolveValue(subject, PrototypeReputationDefinitionFactory.PrototypeTownAudienceId, PrototypeReputationDefinitionFactory.HonorId).EffectiveValue == -15
+                && runtime.ResolveValue(subject, PrototypeReputationDefinitionFactory.GlobalPublicAudienceId, PrototypeReputationDefinitionFactory.HonorId).EffectiveValue == 20;
+            return TestLabAssertions.True("step12-reputation-audiences", "Audience independence and hierarchy are deterministic", valid, $"Inherited={inherited.EffectiveValue}/{inherited.Inherited}/{inherited.SourceAudienceId} Direct={direct.EffectiveValue} Count={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult ReputationContributionsAndDisputes(TestLabAutomationContext context)
+        {
+            if (!TryGetReputationRuntime(context, out ReputationRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-reputation-contributions", "Preview, execute, duplicate, replace, remove, and classify sources", "ReputationRuntime", "MissingRuntime", failure);
+            }
+
+            string subject = context.ScenarioContext.Runtimes.PersonId;
+            string accusationEventId = RepScoped(context, "accusation-event");
+            ReputationMutationRequest disputed = new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "disputed"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.RoyalJurisdictionAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.NotorietyId,
+                mutationKind = ReputationMutationKind.AddOrReplaceContribution,
+                sourceId = RepScoped(context, "accusation"),
+                sourceCategory = ReputationContributionSourceCategory.Accusation,
+                authenticity = ReputationAuthenticity.Disputed,
+                historicalEventId = accusationEventId,
+                value = 90,
+                worldTime = 16d,
+                preview = true
+            };
+            ReputationMutationResult preview = runtime.Mutate(disputed);
+            int afterPreviewCount = runtime.Count;
+            disputed.preview = false;
+            ReputationMutationResult execute = runtime.Mutate(disputed);
+            ReputationMutationResult duplicate = runtime.Mutate(disputed);
+            ReputationMutationResult verified = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "verified"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.RoyalJurisdictionAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.NotorietyId,
+                mutationKind = ReputationMutationKind.AddOrReplaceContribution,
+                sourceId = RepScoped(context, "conviction"),
+                sourceCategory = ReputationContributionSourceCategory.Conviction,
+                authenticity = ReputationAuthenticity.Verified,
+                value = 20,
+                worldTime = 17d
+            });
+            ReputationMutationResult remove = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "remove-disputed"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.RoyalJurisdictionAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.NotorietyId,
+                mutationKind = ReputationMutationKind.RemoveContribution,
+                sourceId = RepScoped(context, "accusation"),
+                worldTime = 18d
+            });
+            ReputationEffectiveValueSnapshot value = runtime.ResolveValue(subject, PrototypeReputationDefinitionFactory.RoyalJurisdictionAudienceId, PrototypeReputationDefinitionFactory.NotorietyId);
+
+            bool valid = preview.Preview
+                && afterPreviewCount == 0
+                && execute.Succeeded
+                && duplicate.Status == ReputationOperationStatus.Duplicate
+                && verified.Succeeded
+                && remove.Succeeded
+                && value.EffectiveValue == 20
+                && value.Contributions.Count == 1
+                && value.Contributions[0].Authenticity == ReputationAuthenticity.Verified
+                && runtime.QueryByHistoricalEvent(accusationEventId).Count == 0;
+            return TestLabAssertions.True("step12-reputation-contributions", "Source contributions preserve dispute metadata and idempotence", valid, $"Preview={preview.Status} Execute={execute.Status} Duplicate={duplicate.Status} Verified={verified.Status} Remove={remove.Status} Value={value.EffectiveValue}");
+        }
+
+        private static TestLabAutomationStepResult ReputationRequirementsAndSeparation(TestLabAutomationContext context)
+        {
+            bool hasReputation = TryGetReputationRuntime(context, out ReputationRuntime reputationRuntime, out _, out string reputationFailure);
+            bool hasRelationships = TryGetRuntime(context, out RelationshipRuntime relationshipRuntime, out _, out string relationshipFailure);
+            bool hasAttitudes = TryGetAttitudeRuntime(context, out InterpersonalAttitudeRuntime attitudeRuntime, out _, out string attitudeFailure);
+            if (!hasReputation || !hasRelationships || !hasAttitudes)
+            {
+                return TestLabAssertions.Fail("step12-reputation-requirements", "Evaluate thresholds and verify feature separation", "SocialRuntimes", "MissingRuntime", $"{reputationFailure} {relationshipFailure} {attitudeFailure}".Trim());
+            }
+
+            string subject = context.ScenarioContext.Runtimes.PersonId;
+            RelationshipOperationResult relationship = relationshipRuntime.CreateRelationship(new RelationshipCreateRequest
+            {
+                recordId = RepScoped(context, "friendship"),
+                relationshipDefinitionId = PrototypeRelationshipDefinitionFactory.FriendRelationshipId,
+                firstPersonId = subject,
+                firstRoleId = "friend",
+                secondPersonId = "person.prototype.friend",
+                secondRoleId = "friend",
+                startWorldTime = 19d,
+                transactionId = Tx(context, "friendship")
+            });
+            AttitudeMutationResult attitude = attitudeRuntime.Mutate(new AttitudeMutationRequest
+            {
+                transactionId = Tx(context, "trust"),
+                observerPersonId = subject,
+                subjectPersonId = "person.prototype.friend",
+                dimensionId = PrototypeAttitudeDefinitionFactory.TrustId,
+                mutationKind = AttitudeMutationKind.SetBaseline,
+                value = 30,
+                worldTime = 20d
+            });
+            ReputationMutationResult reputation = reputationRuntime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "credibility"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.PrototypeTownAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.CredibilityId,
+                mutationKind = ReputationMutationKind.SetBaseline,
+                value = 45,
+                worldTime = 21d
+            });
+            ReputationThresholdResult passing = reputationRuntime.EvaluateThreshold(new ReputationThresholdRequest
+            {
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.PrototypeTownAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.CredibilityId,
+                comparison = ReputationThresholdComparison.GreaterThanOrEqual,
+                value = 40
+            });
+            ReputationThresholdResult missing = reputationRuntime.EvaluateThreshold(new ReputationThresholdRequest
+            {
+                subjectPersonId = "person.prototype.unknown",
+                audienceId = PrototypeReputationDefinitionFactory.PrototypeTownAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.CredibilityId,
+                comparison = ReputationThresholdComparison.GreaterThanOrEqual,
+                value = 40
+            });
+
+            bool valid = relationship.Succeeded
+                && attitude.Succeeded
+                && reputation.Succeeded
+                && passing.Passed
+                && missing.Status == ReputationOperationStatus.UnknownSubject
+                && relationshipRuntime.Count == 1
+                && attitudeRuntime.Count == 1
+                && reputationRuntime.Count == 1;
+            return TestLabAssertions.True("step12-reputation-requirements", "Requirement checks do not mutate relationships or attitudes", valid, $"Relationship={relationship.Status} Attitude={attitude.Status} Reputation={reputation.Status} Passing={passing.Passed} Missing={missing.Status}");
+        }
+
+        private static TestLabAutomationStepResult ReputationPersistenceValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetReputationRuntime(context, out ReputationRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-reputation-persistence", "Save, restore, and reject invalid reputation payloads", "ReputationRuntime", "MissingRuntime", failure);
+            }
+
+            string subject = context.ScenarioContext.Runtimes.PersonId;
+            ReputationMutationResult baseline = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "persist-baseline"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.HiddenInvestigatorsAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.PerceivedDangerId,
+                mutationKind = ReputationMutationKind.SetBaseline,
+                value = 65,
+                worldTime = 22d
+            });
+            ReputationMutationResult source = runtime.Mutate(new ReputationMutationRequest
+            {
+                transactionId = Tx(context, "persist-source"),
+                subjectPersonId = subject,
+                audienceId = PrototypeReputationDefinitionFactory.HiddenInvestigatorsAudienceId,
+                dimensionId = PrototypeReputationDefinitionFactory.PerceivedDangerId,
+                mutationKind = ReputationMutationKind.AddOrReplaceContribution,
+                sourceId = RepScoped(context, "hidden-report"),
+                sourceCategory = ReputationContributionSourceCategory.Propaganda,
+                authenticity = ReputationAuthenticity.Propaganda,
+                value = 10,
+                supportingReferenceId = RepScoped(context, "hidden-supporting-record"),
+                worldTime = 23d
+            });
+            ReputationRuntimeSaveData save = runtime.CreateSaveData();
+            ReputationRuntime restored = new ReputationRuntime();
+            ReputationMutationResult restore = restored.RestoreFromSaveData(save, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            ReputationRuntimeSaveData corrupt = save.Clone();
+            corrupt.records[0].dimensions[0].baselineValue = 999;
+            bool rejected = !ReputationRuntime.ValidateSaveData(corrupt, registry, context.ScenarioContext.Runtimes.KnownPersonIds, out string validationFailure);
+            ReputationEffectiveValueSnapshot live = runtime.ResolveValue(subject, PrototypeReputationDefinitionFactory.HiddenInvestigatorsAudienceId, PrototypeReputationDefinitionFactory.PerceivedDangerId);
+            ReputationEffectiveValueSnapshot restoredValue = restored.ResolveValue(subject, PrototypeReputationDefinitionFactory.HiddenInvestigatorsAudienceId, PrototypeReputationDefinitionFactory.PerceivedDangerId);
+
+            bool valid = baseline.Succeeded
+                && source.Succeeded
+                && restore.Succeeded
+                && rejected
+                && live.EffectiveValue == 75
+                && restoredValue.EffectiveValue == 75
+                && restoredValue.Contributions.Count == 1
+                && restoredValue.Contributions[0].Authenticity == ReputationAuthenticity.Propaganda;
+            return TestLabAssertions.True("step12-reputation-persistence", "Reputation persists and rejects corrupt restores", valid, $"Baseline={baseline.Status} Source={source.Status} Restore={restore.Status} Rejected={rejected} Failure='{validationFailure}' Values={live.EffectiveValue}/{restoredValue.EffectiveValue}");
+        }
+
+        private static bool TryGetReputationRuntime(TestLabAutomationContext context, out ReputationRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.Reputation;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Reputation runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            runtime.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds);
+            failure = string.Empty;
+            return true;
+        }
+
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
         {
             return new TestLabAutomationScenario(
@@ -474,6 +828,35 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario ReputationScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                    PrototypeReputationDefinitionFactory.PrototypeTownAudienceId,
+                    PrototypeReputationDefinitionFactory.AdventurersGuildAudienceId,
+                    PrototypeReputationDefinitionFactory.AdventurersGuildVeteransAudienceId,
+                    PrototypeReputationDefinitionFactory.RoyalJurisdictionAudienceId,
+                    PrototypeReputationDefinitionFactory.HiddenInvestigatorsAudienceId,
+                    PrototypeReputationDefinitionFactory.RenownId,
+                    PrototypeReputationDefinitionFactory.EsteemId,
+                    PrototypeReputationDefinitionFactory.NotorietyId,
+                    PrototypeReputationDefinitionFactory.CredibilityId,
+                    PrototypeReputationDefinitionFactory.PerceivedDangerId,
+                    PrototypeReputationDefinitionFactory.HonorId
+                });
+        }
+
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> run)
         {
             return new TestLabScenarioStep(stepId, displayName, run);
@@ -482,6 +865,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static string Scoped(TestLabAutomationContext context, string suffix)
         {
             return $"relationship.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
+        }
+
+        private static string RepScoped(TestLabAutomationContext context, string suffix)
+        {
+            return $"reputation.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
         }
 
         private static string Tx(TestLabAutomationContext context, string suffix)
