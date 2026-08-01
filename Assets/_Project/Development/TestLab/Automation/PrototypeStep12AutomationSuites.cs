@@ -9,6 +9,7 @@ using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Social.Attitudes;
+using UnityIsekaiGame.Social.Decisions;
 using UnityIsekaiGame.Social.Interactions;
 using UnityIsekaiGame.Social.Networks;
 using UnityIsekaiGame.Social.Norms;
@@ -184,6 +185,29 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step12-network-group", "Create memberships, roles, and group metrics", NetworkGroupLifecycle)),
                     NetworkScenario("persistence-validation", "Network persistence preserves groups and rejects corrupt restores", 50,
                         Step("step12-network-persistence", "Save, restore, and reject invalid network payloads", NetworkPersistenceValidation))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.8.social-decision-making-relationship-driven-npc-behavior",
+                "Social Decision-Making and Relationship-Driven NPC Behavior",
+                "12.8",
+                "Deterministic relationship-driven social action selection that delegates execution to the Social Interaction runtime.",
+                12080,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "SocialDecisionRuntime", "SocialDecisionProfileDefinition", "SocialIntentionDefinition", "SocialDecisionPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    DecisionScenario("readiness-and-definitions", "Decision definitions resolve and preview without mutation", 10,
+                        Step("step12-decision-readiness", "Resolve social decision definitions", DecisionReadiness)),
+                    DecisionScenario("deterministic-selection", "Relationship inputs select stable candidates", 20,
+                        Step("step12-decision-selection", "Evaluate deterministic social decision candidates", DecisionDeterministicSelection)),
+                    DecisionScenario("no-action-boundary", "No targets produces explicit no-action state", 30,
+                        Step("step12-decision-no-action", "Evaluate no-action boundary", DecisionNoActionBoundary)),
+                    DecisionScenario("submit-through-interactions", "Submitted decisions execute through Social Interaction runtime", 40,
+                        Step("step12-decision-submit", "Submit selected action through interaction runtime", DecisionSubmitThroughInteractions)),
+                    DecisionScenario("persistence-validation", "Decision state persists and rejects corrupt restores", 50,
+                        Step("step12-decision-persistence", "Save, restore, and reject invalid decision payloads", DecisionPersistenceValidation))
                 }), out _);
         }
 
@@ -1970,6 +1994,220 @@ namespace UnityIsekaiGame.Development.Automation
         private static string NetworkRecordId(TestLabAutomationContext context, string suffix, string kind)
         {
             return $"social-network.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}.{kind}";
+        }
+
+        private static TestLabAutomationStepResult DecisionReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetDecisionRuntime(context, out SocialDecisionRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-decision-readiness", "Resolve social decision definitions", "SocialDecisionRuntime", "MissingRuntime", failure);
+            }
+
+            long before = runtime.Revision;
+            SocialDecisionProfileDefinition profile = null;
+            SocialIntentionDefinition intention = null;
+            SocialConsiderationDefinition consideration = null;
+            bool definitions = registry.TryGet(PrototypeSocialDecisionDefinitionFactory.SociableProfileId, out profile)
+                && registry.TryGet(PrototypeSocialDecisionDefinitionFactory.GreetKnownPersonId, out intention)
+                && registry.TryGet(PrototypeSocialDecisionDefinitionFactory.ConsiderTrustId, out consideration)
+                && registry.TryGet(PrototypeSocialInteractionDefinitionFactory.GreetId, out SocialInteractionDefinition _);
+            SocialDecisionResult evaluate = runtime.Evaluate(DecisionRequest(context, PrototypeSocialDecisionDefinitionFactory.ScriptControlledProfileId, explicitIntentionId: PrototypeSocialDecisionDefinitionFactory.IntroduceSelfId, target: "person.prototype.friend", commit: false));
+            bool valid = definitions
+                && profile.MaximumCandidates > 0
+                && intention.EligibleInteractionDefinitionIds.Contains(PrototypeSocialInteractionDefinitionFactory.GreetId)
+                && consideration.Input == SocialDecisionConsiderationInput.TrustTowardTarget
+                && evaluate.Succeeded
+                && runtime.Revision == before
+                && runtime.Count == 0;
+            return TestLabAssertions.True("step12-decision-readiness", "Resolve social decision definitions", valid, $"Definitions={definitions} Eval={evaluate.Status} Rev={before}->{runtime.Revision} Count={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult DecisionDeterministicSelection(TestLabAutomationContext context)
+        {
+            if (!TryGetDecisionRuntime(context, out SocialDecisionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-decision-selection", "Evaluate deterministic social decision candidates", "SocialDecisionRuntime", "MissingRuntime", failure);
+            }
+
+            string seedFailure = SeedDecisionInputs(context, "deterministic");
+            if (!string.IsNullOrWhiteSpace(seedFailure))
+            {
+                return TestLabAssertions.Fail("step12-decision-selection", "Evaluate deterministic social decision candidates", "SeededInputs", "FixtureFailed", seedFailure);
+            }
+
+            SocialDecisionRequest request = DecisionRequest(context, PrototypeSocialDecisionDefinitionFactory.SociableProfileId, target: "person.prototype.friend", commit: false);
+            SocialDecisionResult first = runtime.Evaluate(request);
+            SocialDecisionResult second = runtime.Evaluate(request);
+            string firstKey = first.SelectedCandidate?.candidateKey ?? string.Empty;
+            string secondKey = second.SelectedCandidate?.candidateKey ?? string.Empty;
+            bool valid = first.Succeeded
+                && second.Succeeded
+                && string.Equals(firstKey, secondKey, StringComparison.Ordinal)
+                && string.Equals(first.SelectedCandidate?.interactionDefinitionId, second.SelectedCandidate?.interactionDefinitionId, StringComparison.Ordinal)
+                && first.Candidates.Count == second.Candidates.Count
+                && runtime.Count == 0;
+            return TestLabAssertions.True("step12-decision-selection", "Evaluate deterministic social decision candidates", valid, $"First={first.Status}:{firstKey} Second={second.Status}:{secondKey} Candidates={first.Candidates.Count}/{second.Candidates.Count} Count={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult DecisionNoActionBoundary(TestLabAutomationContext context)
+        {
+            if (!TryGetDecisionRuntime(context, out SocialDecisionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-decision-no-action", "Evaluate no-action boundary", "SocialDecisionRuntime", "MissingRuntime", failure);
+            }
+
+            SocialDecisionResult result = runtime.Evaluate(DecisionRequest(context, PrototypeSocialDecisionDefinitionFactory.SociableProfileId, target: string.Empty, commit: false));
+            bool valid = result.Succeeded
+                && result.Status == SocialDecisionStatus.NoAction
+                && result.Targets.Count == 0
+                && result.Candidates.Count == 0
+                && runtime.Count == 0;
+            return TestLabAssertions.True("step12-decision-no-action", "Evaluate no-action boundary", valid, $"Status={result.Status} Targets={result.Targets.Count} Candidates={result.Candidates.Count} Count={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult DecisionSubmitThroughInteractions(TestLabAutomationContext context)
+        {
+            if (!TryGetDecisionRuntime(context, out SocialDecisionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-decision-submit", "Submit selected action through interaction runtime", "SocialDecisionRuntime", "MissingRuntime", failure);
+            }
+
+            string seedFailure = SeedDecisionInputs(context, "submit");
+            if (!string.IsNullOrWhiteSpace(seedFailure))
+            {
+                return TestLabAssertions.Fail("step12-decision-submit", "Submit selected action through interaction runtime", "SeededInputs", "FixtureFailed", seedFailure);
+            }
+
+            int beforeInteractions = context.ScenarioContext.Runtimes.SocialInteractions.Count;
+            SocialDecisionRequest request = DecisionRequest(context, PrototypeSocialDecisionDefinitionFactory.ScriptControlledProfileId, explicitIntentionId: PrototypeSocialDecisionDefinitionFactory.GreetKnownPersonId, target: "person.prototype.friend", commit: true);
+            request.ExecutionMode = SocialDecisionExecutionMode.SubmitForExecution;
+            SocialDecisionResult result = runtime.Evaluate(request);
+            SocialDecisionResult duplicate = runtime.Evaluate(request);
+            bool valid = result.Succeeded
+                && result.Status == SocialDecisionStatus.Submitted
+                && result.ExecutionResult != null
+                && result.ExecutionResult.Succeeded
+                && context.ScenarioContext.Runtimes.SocialInteractions.Count == beforeInteractions + 1
+                && (duplicate.Status == SocialDecisionStatus.EvaluationCooldown || duplicate.Status == SocialDecisionStatus.NoAction);
+            return TestLabAssertions.True("step12-decision-submit", "Submit selected action through interaction runtime", valid, $"Submit={result.Status} Exec={result.ExecutionResult?.Status} Duplicate={duplicate.Status} Interactions={beforeInteractions}->{context.ScenarioContext.Runtimes.SocialInteractions.Count}");
+        }
+
+        private static TestLabAutomationStepResult DecisionPersistenceValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetDecisionRuntime(context, out SocialDecisionRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-decision-persistence", "Save, restore, and reject invalid decision payloads", "SocialDecisionRuntime", "MissingRuntime", failure);
+            }
+
+            string seedFailure = SeedDecisionInputs(context, "persist");
+            if (!string.IsNullOrWhiteSpace(seedFailure))
+            {
+                return TestLabAssertions.Fail("step12-decision-persistence", "Save, restore, and reject invalid decision payloads", "SeededInputs", "FixtureFailed", seedFailure);
+            }
+
+            SocialDecisionResult selected = runtime.Evaluate(DecisionRequest(context, PrototypeSocialDecisionDefinitionFactory.SociableProfileId, target: "person.prototype.friend", commit: true));
+            SocialDecisionPersistenceParticipant participant = new SocialDecisionPersistenceParticipant(runtime, () => registry, () => context.ScenarioContext.Runtimes.KnownPersonIds.ToArray());
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            SocialDecisionRuntimeSaveData saveData = JsonUtility.FromJson<SocialDecisionRuntimeSaveData>(save.PayloadJson);
+            SocialDecisionRuntime restored = new SocialDecisionRuntime();
+            restored.Configure(registry, context.ScenarioContext.Runtimes.KnownPersonIds, context.ScenarioContext.Runtimes.SocialInteractions, context.ScenarioContext.Runtimes.Relationships, context.ScenarioContext.Runtimes.Attitudes, context.ScenarioContext.Runtimes.Reputation, context.ScenarioContext.Runtimes.Rumors, context.ScenarioContext.Runtimes.SocialNorms, context.ScenarioContext.Runtimes.SocialNetworks);
+            SocialDecisionResult restore = restored.RestoreFromSaveData(saveData, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            SocialDecisionRuntimeSaveData corrupt = saveData.Clone();
+            corrupt.personStates[0].activeTargetPersonId = "person.prototype.unknown";
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), SocialDecisionPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = selected.Succeeded
+                && save.Succeeded
+                && restore.Succeeded
+                && restored.Count == runtime.Count
+                && !rejected.Succeeded
+                && runtime.Count == saveData.personStates.Count;
+            return TestLabAssertions.True("step12-decision-persistence", "Save, restore, and reject invalid decision payloads", valid, $"Selected={selected.Status} Save={save.Succeeded} Restore={restore.Status} Rejected={!rejected.Succeeded} Count={runtime.Count}/{restored.Count}");
+        }
+
+        private static ITestLabAutomationScenario DecisionScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeSocialDecisionDefinitionFactory.SociableProfileId,
+                    PrototypeSocialDecisionDefinitionFactory.ScriptControlledProfileId,
+                    PrototypeSocialDecisionDefinitionFactory.GreetKnownPersonId,
+                    PrototypeSocialDecisionDefinitionFactory.IntroduceSelfId,
+                    PrototypeSocialDecisionDefinitionFactory.ConsiderTrustId,
+                    PrototypeSocialInteractionDefinitionFactory.GreetId,
+                    PrototypeSocialInteractionDefinitionFactory.IntroduceId
+                });
+        }
+
+        private static bool TryGetDecisionRuntime(TestLabAutomationContext context, out SocialDecisionRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.SocialDecisions;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Social Decision runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static SocialDecisionRequest DecisionRequest(TestLabAutomationContext context, string profileId, string explicitIntentionId = "", string target = "person.prototype.friend", bool commit = false)
+        {
+            return new SocialDecisionRequest
+            {
+                ActorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                DecisionProfileId = profileId,
+                ExplicitIntentionDefinitionId = explicitIntentionId,
+                ExplicitTargetPersonId = target,
+                AvailableTargetPersonIds = string.IsNullOrWhiteSpace(target) ? Array.Empty<string>() : new[] { target },
+                ActorControlPolicy = SocialDecisionActorControlPolicy.AutonomousNpc,
+                WorldTime = 100d,
+                DeterministicSeed = context.RunId,
+                CommitDecisionState = commit,
+                ForceEvaluate = true,
+                MaximumTargetsOverride = 4,
+                MaximumCandidatesOverride = 12
+            };
+        }
+
+        private static string SeedDecisionInputs(TestLabAutomationContext context, string suffix)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            if (runtimes == null)
+            {
+                return "Runtime bundle is missing.";
+            }
+
+            RelationshipOperationResult relationship = runtimes.Relationships.CreateRelationship(new RelationshipCreateRequest
+            {
+                recordId = $"relationship.decision.{context.RunId}.{context.CurrentScenarioId}.{suffix}",
+                relationshipDefinitionId = PrototypeRelationshipDefinitionFactory.FriendRelationshipId,
+                firstPersonId = runtimes.PersonId,
+                firstRoleId = "friend",
+                secondPersonId = "person.prototype.friend",
+                secondRoleId = "friend",
+                startWorldTime = 1d,
+                transactionId = Tx(context, $"decision-relationship-{suffix}")
+            });
+            if (!relationship.Succeeded && !relationship.Duplicate)
+            {
+                return relationship.Message;
+            }
+
+            string attitudeFailure = MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"decision-trust-{suffix}"), runtimes.PersonId, "person.prototype.friend", PrototypeAttitudeDefinitionFactory.TrustId, 70)
+                ?? MutateNetworkAttitude(runtimes.Attitudes, Tx(context, $"decision-affection-{suffix}"), runtimes.PersonId, "person.prototype.friend", PrototypeAttitudeDefinitionFactory.AffectionId, 45);
+            return attitudeFailure ?? string.Empty;
         }
 
         private static bool TryGetNormRuntime(TestLabAutomationContext context, out SocialNormRuntime runtime, out DefinitionRegistry registry, out string failure)
