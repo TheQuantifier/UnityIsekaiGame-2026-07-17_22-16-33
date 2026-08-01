@@ -53,6 +53,7 @@ using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Requirements;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Social.Attitudes;
+using UnityIsekaiGame.Social.Decisions;
 using UnityIsekaiGame.Social.Interactions;
 using UnityIsekaiGame.Social.Networks;
 using UnityIsekaiGame.Social.Norms;
@@ -151,6 +152,7 @@ namespace UnityIsekaiGame.Development
         private SocialInteractionRuntime socialInteractions = new SocialInteractionRuntime();
         private SocialNormRuntime socialNorms = new SocialNormRuntime();
         private SocialNetworkRuntime socialNetworks = new SocialNetworkRuntime();
+        private SocialDecisionRuntime socialDecisions = new SocialDecisionRuntime();
         private AuthoritativeHistorySaveData lastHistorySaveData;
         private PersonMemorySaveData lastMemorySaveData;
 
@@ -206,6 +208,8 @@ namespace UnityIsekaiGame.Development
             socialNorms.Configure(registry, GetKnownPrototypePersons(), relationships, interpersonalAttitudes, reputation, rumors, socialInteractions);
             socialNetworks = context?.Persistence?.SocialNetworks ?? socialNetworks ?? new SocialNetworkRuntime();
             socialNetworks.Configure(registry, GetKnownPrototypePersons(), relationships, interpersonalAttitudes, reputation, rumors, socialInteractions, socialNorms);
+            socialDecisions = context?.Persistence?.SocialDecisions ?? socialDecisions ?? new SocialDecisionRuntime();
+            socialDecisions.Configure(registry, GetKnownPrototypePersons(), socialInteractions, relationships, interpersonalAttitudes, reputation, rumors, socialNorms, socialNetworks);
 
             EnsureCharacterSystem(out _);
             EnsureLifecycleRuntime(context?.PlayerTransform == null ? null : context.PlayerTransform.gameObject, ref context.PlayerLifecycle, needsResource: true);
@@ -508,7 +512,8 @@ namespace UnityIsekaiGame.Development
                 rumors,
                 socialInteractions,
                 socialNorms,
-                socialNetworks));
+                socialNetworks,
+                socialDecisions));
             currentAutomationScenarioContext = scenarioContext;
             ApplyAutomationRuntimeBindings(scenarioContext);
         }
@@ -540,6 +545,7 @@ namespace UnityIsekaiGame.Development
                 socialInteractions = frame.PreviousSocialInteractions;
                 socialNorms = frame.PreviousSocialNorms;
                 socialNetworks = frame.PreviousSocialNetworks;
+                socialDecisions = frame.PreviousSocialDecisions;
                 ApplyAutomationRuntimeBindings(currentAutomationScenarioContext);
                 return;
             }
@@ -556,6 +562,7 @@ namespace UnityIsekaiGame.Development
             socialInteractions = frame.PreviousSocialInteractions;
             socialNorms = frame.PreviousSocialNorms;
             socialNetworks = frame.PreviousSocialNetworks;
+            socialDecisions = frame.PreviousSocialDecisions;
             ApplyAutomationRuntimeBindings(currentAutomationScenarioContext);
         }
 
@@ -660,6 +667,8 @@ namespace UnityIsekaiGame.Development
             socialNorms.Configure(registry, GetKnownPrototypePersons(), relationships, interpersonalAttitudes, reputation, rumors, socialInteractions);
             socialNetworks = context?.Persistence?.SocialNetworks ?? socialNetworks ?? new SocialNetworkRuntime();
             socialNetworks.Configure(registry, GetKnownPrototypePersons(), relationships, interpersonalAttitudes, reputation, rumors, socialInteractions, socialNorms);
+            socialDecisions = context?.Persistence?.SocialDecisions ?? socialDecisions ?? new SocialDecisionRuntime();
+            socialDecisions.Configure(registry, GetKnownPrototypePersons(), socialInteractions, relationships, interpersonalAttitudes, reputation, rumors, socialNorms, socialNetworks);
             return TestLabRuntimeBundle.FromExisting(
                 registry,
                 GetPrototypePersonId(),
@@ -679,7 +688,8 @@ namespace UnityIsekaiGame.Development
                 rumors: rumors,
                 socialInteractions: socialInteractions,
                 socialNorms: socialNorms,
-                socialNetworks: socialNetworks);
+                socialNetworks: socialNetworks,
+                socialDecisions: socialDecisions);
         }
 
         private TestLabRuntimeBundle GetOrCreateScopedAutomationBundle(Dictionary<string, TestLabRuntimeBundle> bundles, string key, string objectName)
@@ -735,6 +745,7 @@ namespace UnityIsekaiGame.Development
             socialInteractions = bundle.SocialInteractions ?? socialInteractions;
             socialNorms = bundle.SocialNorms ?? socialNorms;
             socialNetworks = bundle.SocialNetworks ?? socialNetworks;
+            socialDecisions = bundle.SocialDecisions ?? socialDecisions;
         }
 
         public IEnumerable<TestLabRuntimeFingerprintSection> CaptureAutomationSceneFingerprint(TestLabRuntimeArea requiredAreas)
@@ -799,14 +810,15 @@ namespace UnityIsekaiGame.Development
             {
                 sections.Add(CreateSceneFingerprintSection(
                     "Scene.Social",
-                    (relationships == null ? 0L : relationships.Revision) + (interpersonalAttitudes == null ? 0L : interpersonalAttitudes.Revision) + (reputation == null ? 0L : reputation.Revision) + (rumors == null ? 0L : rumors.Revision) + (socialInteractions == null ? 0L : socialInteractions.Revision) + (socialNorms == null ? 0L : socialNorms.Revision) + (socialNetworks == null ? 0L : socialNetworks.Revision),
+                    (relationships == null ? 0L : relationships.Revision) + (interpersonalAttitudes == null ? 0L : interpersonalAttitudes.Revision) + (reputation == null ? 0L : reputation.Revision) + (rumors == null ? 0L : rumors.Revision) + (socialInteractions == null ? 0L : socialInteractions.Revision) + (socialNorms == null ? 0L : socialNorms.Revision) + (socialNetworks == null ? 0L : socialNetworks.Revision) + (socialDecisions == null ? 0L : socialDecisions.Revision),
                     relationships == null ? null : relationships.CreateSaveData(),
                     interpersonalAttitudes == null ? null : interpersonalAttitudes.CreateSaveData(),
                     reputation == null ? null : reputation.CreateSaveData(),
                     rumors == null ? null : rumors.CreateSaveData(),
                     socialInteractions == null ? null : socialInteractions.CreateSaveData(),
                     socialNorms == null ? null : socialNorms.CreateSaveData(),
-                    socialNetworks == null ? null : socialNetworks.CreateSaveData()));
+                    socialNetworks == null ? null : socialNetworks.CreateSaveData(),
+                    socialDecisions == null ? null : socialDecisions.CreateSaveData()));
             }
 
             return sections;
@@ -14463,14 +14475,15 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeSocialNetworkDefinitionFactory.AddMissingPrototypeSocialNetworkDefinitions(
-                PrototypeSocialNormDefinitionFactory.AddMissingPrototypeSocialNormDefinitions(
-                    PrototypeSocialInteractionDefinitionFactory.AddMissingPrototypeSocialInteractionDefinitions(
-                        PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
-                            PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
-                                PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
-                                    PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                                        PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)))))))));
+            return PrototypeSocialDecisionDefinitionFactory.AddMissingPrototypeSocialDecisionDefinitions(
+                PrototypeSocialNetworkDefinitionFactory.AddMissingPrototypeSocialNetworkDefinitions(
+                    PrototypeSocialNormDefinitionFactory.AddMissingPrototypeSocialNormDefinitions(
+                        PrototypeSocialInteractionDefinitionFactory.AddMissingPrototypeSocialInteractionDefinitions(
+                            PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
+                                PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
+                                    PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
+                                        PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                                            PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions))))))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()
@@ -14693,7 +14706,8 @@ namespace UnityIsekaiGame.Development
                 RumorRuntime previousRumors,
                 SocialInteractionRuntime previousSocialInteractions,
                 SocialNormRuntime previousSocialNorms,
-                SocialNetworkRuntime previousSocialNetworks)
+                SocialNetworkRuntime previousSocialNetworks,
+                SocialDecisionRuntime previousSocialDecisions)
             {
                 PreviousContext = previousContext;
                 PreviousSources = previousSources;
@@ -14707,6 +14721,7 @@ namespace UnityIsekaiGame.Development
                 PreviousSocialInteractions = previousSocialInteractions;
                 PreviousSocialNorms = previousSocialNorms;
                 PreviousSocialNetworks = previousSocialNetworks;
+                PreviousSocialDecisions = previousSocialDecisions;
             }
 
             public TestLabScenarioContext PreviousContext { get; }
@@ -14721,6 +14736,7 @@ namespace UnityIsekaiGame.Development
             public SocialInteractionRuntime PreviousSocialInteractions { get; }
             public SocialNormRuntime PreviousSocialNorms { get; }
             public SocialNetworkRuntime PreviousSocialNetworks { get; }
+            public SocialDecisionRuntime PreviousSocialDecisions { get; }
         }
     }
 }
