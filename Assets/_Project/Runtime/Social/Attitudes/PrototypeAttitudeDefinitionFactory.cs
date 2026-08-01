@@ -13,6 +13,7 @@ namespace UnityIsekaiGame.Social.Attitudes
         public const string FearId = "attitude.fear";
         public const string LoyaltyId = "attitude.loyalty";
         public const string HostilityId = "attitude.hostility";
+        public const string RomanticAttractionId = "attitude.romantic-attraction";
 
         public static IReadOnlyList<ScriptableObject> CreateDefinitions()
         {
@@ -23,7 +24,8 @@ namespace UnityIsekaiGame.Social.Attitudes
                 Definition(RespectId, "Respect", AttitudeDimensionCategory.Regard, -100, 100, 0, true, "Negative values represent contempt; positive values represent respect or admiration."),
                 Definition(FearId, "Fear", AttitudeDimensionCategory.Threat, 0, 100, 0, false, "Higher values represent greater fear."),
                 Definition(LoyaltyId, "Loyalty", AttitudeDimensionCategory.Commitment, -100, 100, 0, true, "Negative values represent disloyalty; positive values represent commitment."),
-                Definition(HostilityId, "Hostility", AttitudeDimensionCategory.Conflict, 0, 100, 0, false, "Higher values represent greater hostility.")
+                Definition(HostilityId, "Hostility", AttitudeDimensionCategory.Conflict, 0, 100, 0, false, "Higher values represent greater hostility."),
+                Definition(RomanticAttractionId, "Romantic Attraction", AttitudeDimensionCategory.Attachment, 0, 100, 0, false, "Directional romantic interest. This never implies consent, compatibility, or a formal relationship.")
             };
         }
 
