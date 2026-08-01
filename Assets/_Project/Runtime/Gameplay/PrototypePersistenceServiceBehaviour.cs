@@ -41,6 +41,7 @@ using UnityIsekaiGame.Quests;
 using UnityIsekaiGame.ResourceSystem;
 using UnityIsekaiGame.Skills;
 using UnityIsekaiGame.Social.Attitudes;
+using UnityIsekaiGame.Social.Interactions;
 using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
 using UnityIsekaiGame.Social.Rumors;
@@ -124,6 +125,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerPlayerInterpersonalAttitudes = true;
         [SerializeField] private bool registerWorldReputation = true;
         [SerializeField] private bool registerWorldRumors = true;
+        [SerializeField] private bool registerWorldSocialInteractions = true;
         [SerializeField] private bool registerPlayerInformationSources = true;
         [SerializeField] private bool registerPlayerInformationTransfers = true;
         [SerializeField] private bool registerPlayerInformationAccess = true;
@@ -169,6 +171,7 @@ namespace UnityIsekaiGame.Gameplay
         private InterpersonalAttitudePersistenceParticipant playerInterpersonalAttitudeParticipant;
         private ReputationPersistenceParticipant worldReputationParticipant;
         private RumorPersistenceParticipant worldRumorParticipant;
+        private SocialInteractionPersistenceParticipant worldSocialInteractionParticipant;
         private PlayerInventoryEquipmentPersistenceParticipant inventoryEquipmentParticipant;
         private ItemInstanceIdentityPersistenceParticipant itemIdentityParticipant;
         private EconomyPersistenceParticipant economyParticipant;
@@ -214,6 +217,7 @@ namespace UnityIsekaiGame.Gameplay
         private InterpersonalAttitudeRuntime playerInterpersonalAttitudes;
         private ReputationRuntime worldReputation;
         private RumorRuntime worldRumors;
+        private SocialInteractionRuntime worldSocialInteractions;
         private ItemInstanceIdentityRuntime playerItemIdentities;
         private EconomyRuntime worldEconomy;
         private MarketRuntime worldMarkets;
@@ -303,6 +307,20 @@ namespace UnityIsekaiGame.Gameplay
                 }
 
                 return worldRumors;
+            }
+        }
+        public SocialInteractionRuntime SocialInteractions
+        {
+            get
+            {
+                if (worldSocialInteractions == null)
+                {
+                    string personId = playerIdentityProgression == null ? PersistenceService.LocalPlayerId : playerIdentityProgression.PersonId;
+                    worldSocialInteractions = new SocialInteractionRuntime();
+                    worldSocialInteractions.Configure(GetDefinitionRegistry(), GetPrototypeSocialPersonIds(personId), Relationships, InterpersonalAttitudes, Reputation, Rumors);
+                }
+
+                return worldSocialInteractions;
             }
         }
         public PersonProfessionRuntime Professions
@@ -793,6 +811,18 @@ namespace UnityIsekaiGame.Gameplay
                 worldReputationParticipant = null;
             }
 
+            if (service != null && worldRumorParticipant != null)
+            {
+                service.UnregisterParticipant(worldRumorParticipant);
+                worldRumorParticipant = null;
+            }
+
+            if (service != null && worldSocialInteractionParticipant != null)
+            {
+                service.UnregisterParticipant(worldSocialInteractionParticipant);
+                worldSocialInteractionParticipant = null;
+            }
+
             if (service != null && statsVitalsStatusParticipant != null)
             {
                 service.UnregisterParticipant(statsVitalsStatusParticipant);
@@ -923,6 +953,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsurePlayerInterpersonalAttitudeParticipant();
             EnsureWorldReputationParticipant();
             EnsureWorldRumorParticipant();
+            EnsureWorldSocialInteractionParticipant();
             EnsurePlayerInformationAccessParticipant();
             EnsurePlayerKnowledgeRecordParticipant();
             EnsurePlayerItemIdentityParticipant();
@@ -2640,6 +2671,39 @@ namespace UnityIsekaiGame.Gameplay
             }
         }
 
+        private void EnsureWorldSocialInteractionParticipant()
+        {
+            if (!registerWorldSocialInteractions || worldSocialInteractionParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("Social Interaction persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = playerIdentityProgression == null || string.IsNullOrWhiteSpace(playerIdentityProgression.PersonId)
+                ? service.PlayerId
+                : playerIdentityProgression.PersonId;
+            string[] knownPersons = GetPrototypeSocialPersonIds(personId);
+            SocialInteractions.Configure(GetDefinitionRegistry(), knownPersons, Relationships, InterpersonalAttitudes, Reputation, Rumors);
+            worldSocialInteractionParticipant = new SocialInteractionPersistenceParticipant(
+                SocialInteractions,
+                GetDefinitionRegistry,
+                () => knownPersons,
+                service.WorldId);
+
+            service.RegisterParticipant(worldSocialInteractionParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                worldSocialInteractionParticipant = null;
+            }
+        }
+
         private void EnsurePlayerInformationAccessParticipant()
         {
             if (!registerPlayerInformationAccess || playerInformationAccessParticipant != null)
@@ -3743,11 +3807,12 @@ namespace UnityIsekaiGame.Gameplay
                 definitions.Add(definition);
             }
 
-            definitionRegistry = PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
-                PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
-                    PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
-                        PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                            PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions))))));
+            definitionRegistry = PrototypeSocialInteractionDefinitionFactory.AddMissingPrototypeSocialInteractionDefinitions(
+                PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
+                    PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
+                        PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
+                            PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                                PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(new DefinitionRegistry(definitions)))))));
             return definitionRegistry;
         }
 

@@ -1,10 +1,12 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.Knowledge;
 using UnityIsekaiGame.Knowledge.History;
 using UnityIsekaiGame.Social.Attitudes;
+using UnityIsekaiGame.Social.Interactions;
 using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
 using UnityIsekaiGame.Social.Rumors;
@@ -106,6 +108,31 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step12-rumor-social-boundary", "Verify rumor separation from other social runtimes", RumorSocialBoundary)),
                     RumorScenario("persistence-validation", "Rumors persist and reject corrupt restores", 60,
                         Step("step12-rumor-persistence", "Save, restore, and reject invalid rumor payloads", RumorPersistenceValidation))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.12.5.social-interactions-relationship-evolution",
+                "Social Interactions and Relationship Evolution",
+                "12.5",
+                "Definition-backed social interaction execution with deterministic consequences, pending responses, promises, persistence, and Step 12 runtime delegation.",
+                12050,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "SocialInteractionRuntime", "SocialInteractionDefinition", "SocialInteractionPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    InteractionScenario("readiness-and-preview", "Interaction definitions resolve and previews are non-mutating", 10,
+                        Step("step12-interaction-preview", "Preview interaction without mutation", InteractionReadinessAndPreview)),
+                    InteractionScenario("attitude-consequences", "Compliments and insults evolve directed attitudes", 20,
+                        Step("step12-interaction-attitudes", "Execute attitude-producing interactions", InteractionAttitudeConsequences)),
+                    InteractionScenario("pending-response-promise", "Pending responses and accepted promises are explicit", 30,
+                        Step("step12-interaction-pending", "Create pending interaction and accept promise", InteractionPendingResponsePromise)),
+                    InteractionScenario("public-reputation", "Witnessed and public interactions affect reputation", 40,
+                        Step("step12-interaction-reputation", "Execute public reputation consequences", InteractionPublicReputation)),
+                    InteractionScenario("rumor-delegation", "Information sharing delegates through Rumor runtime", 50,
+                        Step("step12-interaction-rumor", "Share existing rumor through interaction", InteractionRumorDelegation)),
+                    InteractionScenario("persistence-validation", "Interactions persist and reject corrupt restores", 60,
+                        Step("step12-interaction-persistence", "Save, restore, duplicate, and reject invalid payloads", InteractionPersistenceValidation))
                 }), out _);
         }
 
@@ -1047,6 +1074,138 @@ namespace UnityIsekaiGame.Development.Automation
             };
         }
 
+        private static TestLabAutomationStepResult InteractionReadinessAndPreview(TestLabAutomationContext context)
+        {
+            if (!TryGetInteractionRuntime(context, out SocialInteractionRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-interaction-preview", "Preview interaction without mutation", "SocialInteractionRuntime", "MissingRuntime", failure);
+            }
+
+            bool definitions = registry.TryGet(PrototypeSocialInteractionDefinitionFactory.GreetId, out SocialInteractionDefinition _)
+                && registry.TryGet(PrototypeSocialInteractionDefinitionFactory.ComplimentId, out SocialInteractionDefinition _)
+                && registry.TryGet(PrototypeSocialInteractionDefinitionFactory.PromiseId, out SocialInteractionDefinition _);
+            long before = runtime.Revision;
+            SocialInteractionResult preview = runtime.Preview(InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.GreetId, "preview", worldTime: 10d));
+            bool valid = runtime.IsReady
+                && definitions
+                && preview.Succeeded
+                && preview.Preview
+                && preview.Record != null
+                && runtime.Revision == before
+                && runtime.Count == 0;
+            return TestLabAssertions.True("step12-interaction-preview", "Preview interaction without mutation", valid, $"Ready={runtime.IsReady} Definitions={definitions} Preview={preview.Status} Revision={before}->{runtime.Revision} Count={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult InteractionAttitudeConsequences(TestLabAutomationContext context)
+        {
+            if (!TryGetInteractionRuntime(context, out SocialInteractionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-interaction-attitudes", "Execute attitude-producing interactions", "SocialInteractionRuntime", "MissingRuntime", failure);
+            }
+
+            string initiator = context.ScenarioContext.Runtimes.PersonId;
+            string target = "person.prototype.friend";
+            SocialInteractionResult compliment = runtime.Execute(InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.ComplimentId, "compliment", target, worldTime: 20d));
+            SocialInteractionResult duplicate = runtime.Execute(InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.ComplimentId, "compliment", target, worldTime: 20d));
+            SocialInteractionResult insult = runtime.Execute(InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.InsultId, "insult", target, worldTime: 30d));
+            AttitudeEffectiveValueSnapshot affection = context.ScenarioContext.Runtimes.Attitudes.ResolveValue(target, initiator, PrototypeAttitudeDefinitionFactory.AffectionId);
+            AttitudeEffectiveValueSnapshot hostility = context.ScenarioContext.Runtimes.Attitudes.ResolveValue(target, initiator, PrototypeAttitudeDefinitionFactory.HostilityId);
+            bool valid = compliment.Succeeded
+                && duplicate.Duplicate
+                && insult.Succeeded
+                && affection.EffectiveValue == -2
+                && hostility.EffectiveValue > 0
+                && runtime.QueryByPerson(target).Count >= 2;
+            return TestLabAssertions.True("step12-interaction-attitudes", "Execute attitude-producing interactions", valid, $"Compliment={compliment.Status} Duplicate={duplicate.Status} Insult={insult.Status} Affection={affection.EffectiveValue} Hostility={hostility.EffectiveValue}");
+        }
+
+        private static TestLabAutomationStepResult InteractionPendingResponsePromise(TestLabAutomationContext context)
+        {
+            if (!TryGetInteractionRuntime(context, out SocialInteractionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-interaction-pending", "Create pending interaction and accept promise", "SocialInteractionRuntime", "MissingRuntime", failure);
+            }
+
+            string target = "person.prototype.friend";
+            SocialInteractionResult pending = runtime.Execute(InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.PromiseId, "promise-pending", target, worldTime: 40d));
+            SocialInteractionResult preview = runtime.RespondToPending(Tx(context, "promise-accept-preview"), pending.Pending?.PendingInteractionId, SocialInteractionResponse.Accept, 41d, preview: true);
+            SocialInteractionResult accepted = runtime.RespondToPending(Tx(context, "promise-accept"), pending.Pending?.PendingInteractionId, SocialInteractionResponse.Accept, 42d);
+            bool hasPromise = !string.IsNullOrWhiteSpace(accepted.Promise?.PromiseId) && runtime.TryGetPromise(accepted.Promise.PromiseId, out SocialPromiseSnapshot promise) && promise.Status == SocialPromiseStatus.Active;
+            bool valid = pending.Succeeded
+                && pending.Status == SocialInteractionStatus.Pending
+                && pending.Pending != null
+                && preview.Succeeded
+                && preview.Preview
+                && accepted.Succeeded
+                && accepted.Record.Outcome == SocialInteractionOutcome.Accepted
+                && hasPromise;
+            return TestLabAssertions.True("step12-interaction-pending", "Create pending interaction and accept promise", valid, $"Pending={pending.Status} Preview={preview.Status} Accepted={accepted.Status} Promise={accepted.Promise?.PromiseId}");
+        }
+
+        private static TestLabAutomationStepResult InteractionPublicReputation(TestLabAutomationContext context)
+        {
+            if (!TryGetInteractionRuntime(context, out SocialInteractionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-interaction-reputation", "Execute public reputation consequences", "SocialInteractionRuntime", "MissingRuntime", failure);
+            }
+
+            string target = "person.prototype.friend";
+            SocialInteractionResult praise = runtime.Execute(InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.PublicPraiseId, "public-praise", target, worldTime: 50d, visibility: SocialInteractionVisibility.Public));
+            SocialInteractionResult threat = runtime.Execute(InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.ThreatenId, "threaten", target, worldTime: 60d, witnesses: new[] { "person.prototype.rival" }, visibility: SocialInteractionVisibility.Witnessed));
+            ReputationEffectiveValueSnapshot targetEsteem = context.ScenarioContext.Runtimes.Reputation.ResolveValue(target, PrototypeReputationDefinitionFactory.GlobalPublicAudienceId, PrototypeReputationDefinitionFactory.EsteemId);
+            ReputationEffectiveValueSnapshot initiatorDanger = context.ScenarioContext.Runtimes.Reputation.ResolveValue(context.ScenarioContext.Runtimes.PersonId, PrototypeReputationDefinitionFactory.GlobalPublicAudienceId, PrototypeReputationDefinitionFactory.PerceivedDangerId);
+            bool valid = praise.Succeeded
+                && threat.Succeeded
+                && targetEsteem.EffectiveValue > 0
+                && initiatorDanger.EffectiveValue > 0;
+            return TestLabAssertions.True("step12-interaction-reputation", "Execute public reputation consequences", valid, $"Praise={praise.Status} Threat={threat.Status} Esteem={targetEsteem.EffectiveValue} Danger={initiatorDanger.EffectiveValue}");
+        }
+
+        private static TestLabAutomationStepResult InteractionRumorDelegation(TestLabAutomationContext context)
+        {
+            if (!TryGetInteractionRuntime(context, out SocialInteractionRuntime runtime, out _, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-interaction-rumor", "Share existing rumor through interaction", "SocialInteractionRuntime", "MissingRuntime", failure);
+            }
+
+            RumorRuntime rumorsRuntime = context.ScenarioContext.Runtimes.Rumors;
+            RumorOperationResult created = CreateRootRumor(context, rumorsRuntime, "interaction-share", PrototypeRumorDefinitionFactory.PublicNewsRumorId, context.ScenarioContext.Runtimes.PersonId, RumorAuthenticity.Verified);
+            SocialInteractionRequest request = InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.ShareInformationId, "share-rumor", "person.prototype.friend", worldTime: 70d);
+            request.Subject = new SocialInteractionSubjectData { kind = SocialInteractionSubjectKind.Rumor, subjectId = created.Rumor?.RumorId };
+            SocialInteractionResult shared = runtime.Execute(request);
+            bool valid = created.Succeeded
+                && shared.Succeeded
+                && !string.IsNullOrWhiteSpace(shared.Record?.Data.rumorTransmissionId)
+                && rumorsRuntime.TransmissionCount > 0;
+            return TestLabAssertions.True("step12-interaction-rumor", "Share existing rumor through interaction", valid, $"Create={created.Status} Shared={shared.Status} Transmission={shared.Record?.Data.rumorTransmissionId} Count={rumorsRuntime.TransmissionCount}");
+        }
+
+        private static TestLabAutomationStepResult InteractionPersistenceValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetInteractionRuntime(context, out SocialInteractionRuntime runtime, out DefinitionRegistry registry, out string failure))
+            {
+                return TestLabAssertions.Fail("step12-interaction-persistence", "Save, restore, duplicate, and reject invalid payloads", "SocialInteractionRuntime", "MissingRuntime", failure);
+            }
+
+            SocialInteractionResult execute = runtime.Execute(InteractionRequest(context, PrototypeSocialInteractionDefinitionFactory.ThankId, "persist-thank", "person.prototype.friend", worldTime: 80d));
+            SocialInteractionRuntimeSaveData save = runtime.CreateSaveData();
+            SocialInteractionRuntime restored = new SocialInteractionRuntime();
+            SocialInteractionResult restore = restored.RestoreFromSaveData(save, registry, context.ScenarioContext.Runtimes.KnownPersonIds, restoringState: true);
+            SocialInteractionRuntimeSaveData corrupt = save.Clone();
+            if (corrupt.records.Count > 0)
+            {
+                corrupt.records[0].interactionDefinitionId = "social-interaction.missing";
+            }
+
+            bool rejected = !SocialInteractionRuntime.ValidateSaveData(corrupt, registry, context.ScenarioContext.Runtimes.KnownPersonIds, out string validationFailure);
+            bool valid = execute.Succeeded
+                && restore.Succeeded
+                && restored.Count == runtime.Count
+                && rejected
+                && runtime.Count == save.records.Count;
+            return TestLabAssertions.True("step12-interaction-persistence", "Save, restore, duplicate, and reject invalid payloads", valid, $"Execute={execute.Status} Restore={restore.Status} Rejected={rejected} Failure='{validationFailure}' Counts={runtime.Count}/{restored.Count}");
+        }
+
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
         {
             return new TestLabAutomationScenario(
@@ -1146,6 +1305,77 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario InteractionScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Social | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeSocialInteractionDefinitionFactory.GreetId,
+                    PrototypeSocialInteractionDefinitionFactory.ComplimentId,
+                    PrototypeSocialInteractionDefinitionFactory.InsultId,
+                    PrototypeSocialInteractionDefinitionFactory.PromiseId,
+                    PrototypeSocialInteractionDefinitionFactory.PublicPraiseId,
+                    PrototypeSocialInteractionDefinitionFactory.ThreatenId,
+                    PrototypeSocialInteractionDefinitionFactory.ShareInformationId,
+                    PrototypeAttitudeDefinitionFactory.AffectionId,
+                    PrototypeAttitudeDefinitionFactory.HostilityId,
+                    PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                    PrototypeReputationDefinitionFactory.EsteemId,
+                    PrototypeReputationDefinitionFactory.PerceivedDangerId,
+                    PrototypeRumorDefinitionFactory.PublicNewsRumorId,
+                    PrototypeRumorDefinitionFactory.ConversationChannelId
+                });
+        }
+
+        private static bool TryGetInteractionRuntime(TestLabAutomationContext context, out SocialInteractionRuntime runtime, out DefinitionRegistry registry, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.SocialInteractions;
+            registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            if (runtime == null || registry == null)
+            {
+                failure = runtime == null ? "Social Interaction runtime is missing from the Test Lab runtime bundle." : "Definition registry is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static SocialInteractionRequest InteractionRequest(TestLabAutomationContext context, string definitionId, string suffix, string target = "person.prototype.friend", double worldTime = 0d, IReadOnlyList<string> witnesses = null, SocialInteractionVisibility? visibility = null)
+        {
+            return new SocialInteractionRequest
+            {
+                TransactionId = Tx(context, suffix),
+                InteractionRecordId = InteractionScoped(context, suffix),
+                InteractionDefinitionId = definitionId,
+                InitiatorPersonId = context.ScenarioContext.Runtimes.PersonId,
+                TargetPersonId = target,
+                WitnessPersonIds = witnesses ?? Array.Empty<string>(),
+                AudienceId = PrototypeReputationDefinitionFactory.GlobalPublicAudienceId,
+                PlaceId = "place.prototype.test-lab",
+                Subject = new SocialInteractionSubjectData
+                {
+                    kind = SocialInteractionSubjectKind.Person,
+                    subjectId = target,
+                    ownerPersonId = target,
+                    tags = new[] { "test-lab" }
+                },
+                Channel = SocialInteractionCommunicationChannel.Conversation,
+                VisibilityOverride = visibility,
+                WorldTime = worldTime,
+                DeterministicSeed = context.RunId
+            };
+        }
+
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> run)
         {
             return new TestLabScenarioStep(stepId, displayName, run);
@@ -1164,6 +1394,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static string RumorScoped(TestLabAutomationContext context, string suffix)
         {
             return $"rumor.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
+        }
+
+        private static string InteractionScoped(TestLabAutomationContext context, string suffix)
+        {
+            return $"social-interaction.automation.{context.RunId}.{context.CurrentScenarioId}.{suffix}";
         }
 
         private static string Tx(TestLabAutomationContext context, string suffix)
