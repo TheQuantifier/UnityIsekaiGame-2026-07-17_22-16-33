@@ -34,6 +34,7 @@ using UnityIsekaiGame.Knowledge.Sources;
 using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Social.Attitudes;
 using UnityIsekaiGame.Social.Interactions;
+using UnityIsekaiGame.Social.Networks;
 using UnityIsekaiGame.Social.Norms;
 using UnityIsekaiGame.Social.Reputation;
 using UnityIsekaiGame.Social.Relationships;
@@ -433,6 +434,7 @@ namespace UnityIsekaiGame.Development.Automation
             RumorRuntime rumors,
             SocialInteractionRuntime socialInteractions,
             SocialNormRuntime socialNorms,
+            SocialNetworkRuntime socialNetworks,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -480,6 +482,7 @@ namespace UnityIsekaiGame.Development.Automation
             Rumors = rumors;
             SocialInteractions = socialInteractions;
             SocialNorms = socialNorms;
+            SocialNetworks = socialNetworks;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -529,6 +532,7 @@ namespace UnityIsekaiGame.Development.Automation
         public RumorRuntime Rumors { get; }
         public SocialInteractionRuntime SocialInteractions { get; }
         public SocialNormRuntime SocialNorms { get; }
+        public SocialNetworkRuntime SocialNetworks { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -576,7 +580,8 @@ namespace UnityIsekaiGame.Development.Automation
             ReputationRuntime reputation = null,
             RumorRuntime rumors = null,
             SocialInteractionRuntime socialInteractions = null,
-            SocialNormRuntime socialNorms = null)
+            SocialNormRuntime socialNorms = null,
+            SocialNetworkRuntime socialNetworks = null)
         {
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
@@ -631,7 +636,9 @@ namespace UnityIsekaiGame.Development.Automation
             interactionRuntime.Configure(definitionRegistry, persons, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime);
             SocialNormRuntime normRuntime = socialNorms ?? new SocialNormRuntime();
             normRuntime.Configure(definitionRegistry, persons, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, null);
+            SocialNetworkRuntime networkRuntime = socialNetworks ?? new SocialNetworkRuntime();
+            networkRuntime.Configure(definitionRegistry, persons, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemInstances ?? new ItemInstanceIdentityRuntime(), itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -684,6 +691,7 @@ namespace UnityIsekaiGame.Development.Automation
             RumorRuntime rumors = new RumorRuntime();
             SocialInteractionRuntime socialInteractions = new SocialInteractionRuntime();
             SocialNormRuntime socialNorms = new SocialNormRuntime();
+            SocialNetworkRuntime socialNetworks = new SocialNetworkRuntime();
 
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -722,8 +730,9 @@ namespace UnityIsekaiGame.Development.Automation
                 requestedPersonId => string.Equals(requestedPersonId, personId, StringComparison.Ordinal) ? memory : null);
             socialInteractions.Configure(definitionRegistry, persons, relationships, attitudes, reputation, rumors);
             socialNorms.Configure(definitionRegistry, persons, relationships, attitudes, reputation, rumors, socialInteractions);
+            socialNetworks.Configure(definitionRegistry, persons, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, knowledgeObject);
         }
 
         private static string[] ExpandKnownPersons(IReadOnlyList<string> knownPersonIds, string ownerPersonId)
@@ -797,7 +806,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Reputation?.CreateSaveData(),
                 Rumors?.CreateSaveData(),
                 SocialInteractions?.CreateSaveData(),
-                SocialNorms?.CreateSaveData());
+                SocialNorms?.CreateSaveData(),
+                SocialNetworks?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -843,7 +853,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Reputation", Reputation?.Revision ?? 0L, Reputation?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Rumors", Rumors?.Revision ?? 0L, Rumors?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("SocialInteractions", SocialInteractions?.Revision ?? 0L, SocialInteractions?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("SocialNorms", SocialNorms?.Revision ?? 0L, SocialNorms?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("SocialNorms", SocialNorms?.Revision ?? 0L, SocialNorms?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("SocialNetworks", SocialNetworks?.Revision ?? 0L, SocialNetworks?.CreateSaveData())
             });
         }
 
@@ -1254,6 +1265,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (SocialNetworks != null && snapshot.SocialNetworks != null)
+            {
+                SocialNetworkMutationResult result = SocialNetworks.RestoreFromSaveData(snapshot.SocialNetworks, DefinitionRegistry, KnownPersonIds, restoringState: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Social Network restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1349,7 +1370,8 @@ namespace UnityIsekaiGame.Development.Automation
             ReputationRuntimeSaveData reputation,
             RumorRuntimeSaveData rumors,
             SocialInteractionRuntimeSaveData socialInteractions,
-            SocialNormRuntimeSaveData socialNorms)
+            SocialNormRuntimeSaveData socialNorms,
+            SocialNetworkRuntimeSaveData socialNetworks)
         {
             Knowledge = knowledge;
             History = history;
@@ -1391,6 +1413,7 @@ namespace UnityIsekaiGame.Development.Automation
             Rumors = rumors;
             SocialInteractions = socialInteractions;
             SocialNorms = socialNorms;
+            SocialNetworks = socialNetworks;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1433,6 +1456,7 @@ namespace UnityIsekaiGame.Development.Automation
         public RumorRuntimeSaveData Rumors { get; }
         public SocialInteractionRuntimeSaveData SocialInteractions { get; }
         public SocialNormRuntimeSaveData SocialNorms { get; }
+        public SocialNetworkRuntimeSaveData SocialNetworks { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
