@@ -135,6 +135,27 @@ namespace UnityIsekaiGame.Development.Automation
                     ResourceScenario("persistence-validation", "Resource persistence restores all metadata without replaying money", 150,
                         Step("step13-resources-persistence", "Save, restore, and reject resource graph drift", ResourcePersistenceValidation))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.5.organizational-goals-policies-decisions",
+                "Organizational Goals, Policies, Proposals, and Internal Decisions",
+                "13.5",
+                "Definition-backed organization goals, policies, proposals, voting, resolutions, execution plans, persistence, and projections.",
+                13050,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "OrganizationDecisionRuntime", "OrganizationAuthorityRuntime", "OrganizationResourceRuntime", "OrganizationDecisionPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    DecisionScenario("runtime-readiness", "Organization decision definitions and runtimes are ready", 10,
+                        Step("step13-decisions-readiness", "Validate organization decision definitions", DecisionRuntimeReadiness)),
+                    DecisionScenario("goals-and-policies", "Goals and policies create, resolve, conflict, and progress deterministically", 20,
+                        Step("step13-decisions-goals-policies", "Create goals and resolve policies", DecisionGoalsPolicies)),
+                    DecisionScenario("proposal-vote-resolution", "Proposals, amendments, votes, and resolutions follow procedure", 30,
+                        Step("step13-decisions-proposal", "Submit, amend, vote, and close proposal", DecisionProposalVoteResolution)),
+                    DecisionScenario("execution-persistence-projection", "Resolution execution, persistence, and projections preserve authoritative ownership", 40,
+                        Step("step13-decisions-execution", "Execute resolution and validate persistence", DecisionExecutionPersistenceProjection))
+                }), out _);
         }
 
         private static TestLabAutomationStepResult ReadinessAndPrototypeDefinitions(TestLabAutomationContext context)
@@ -1178,6 +1199,182 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step13-resources-persistence", "Save, restore, and reject resource graph drift", valid, $"Restore={restore.Code} Accounts={resources.AccountCount}/{restored.AccountCount} Records={restored.RestrictionCount}/{restored.BudgetCount}/{restored.ReservationCount}/{restored.RevenueRoutingRules.Count}/{restored.DissolutionPlans.Count} Balance={restored.GetBalance(ResourceOperatingAccountId(context), 10d)?.BalanceUnits} EconomyRevision={economyRevision}->{runtimes.Economy.Revision} Rejected={rejected}:{validationFailure}");
         }
 
+        private static TestLabAutomationStepResult DecisionRuntimeReadiness(TestLabAutomationContext context)
+        {
+            OrganizationDecisionRuntime decisions = context?.ScenarioContext?.Runtimes?.OrganizationDecisions;
+            DefinitionRegistry registry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
+            bool definitions = registry != null
+                && registry.TryGet(PrototypeOrganizationDecisionDefinitionFactory.RecruitmentGoalId, out OrganizationGoalDefinition goal)
+                && registry.TryGet(PrototypeOrganizationDecisionDefinitionFactory.ConfidentialityPolicyId, out OrganizationPolicyDefinition policy)
+                && registry.TryGet(PrototypeOrganizationDecisionDefinitionFactory.SimpleMajorityProcedureId, out OrganizationDecisionProcedureDefinition procedure)
+                && registry.TryGet(PrototypeOrganizationDecisionDefinitionFactory.EstablishGoalProposalId, out OrganizationProposalDefinition proposal)
+                && goal.ProgressSourceKind == OrganizationGoalProgressSourceKind.ActiveMembershipCount
+                && policy.ParameterSchema.Count >= 2
+                && procedure.VoterEligibility == OrganizationVoterEligibilityKind.ActiveMembers
+                && proposal.SupportedExecutionOperations.Contains(OrganizationDecisionExecutionOperationKind.EstablishGoal);
+            bool valid = decisions?.IsReady == true && definitions;
+            return TestLabAssertions.True("step13-decisions-readiness", "Validate organization decision definitions", valid, $"Ready={decisions?.IsReady} Definitions={definitions} Counts={decisions?.GoalCount}/{decisions?.PolicyCount}/{decisions?.ProposalCount}");
+        }
+
+        private static TestLabAutomationStepResult DecisionGoalsPolicies(TestLabAutomationContext context)
+        {
+            if (!PrepareDecisionFixture(context, 100L, out OrganizationDecisionRuntime decisions, out _, out _, out string actorId, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-decisions-goals-policies", "Create goals and resolve policies", "DecisionFixture", "Ready", "Missing", failure);
+            }
+
+            OrganizationDecisionOperationResult goal = decisions.CreateGoal(new OrganizationGoalRequest
+            {
+                transactionId = $"testlab.decisions.goal.{context.RunId}",
+                goalId = $"organization-goal-record.testlab.recruit.{context.RunId}",
+                organizationId = "organization.prototype.guild",
+                goalDefinitionId = PrototypeOrganizationDecisionDefinitionFactory.RecruitmentGoalId,
+                targetValue = 3L,
+                priority = 25,
+                actorPersonId = actorId,
+                worldTime = 10d
+            });
+            OrganizationDecisionOperationResult policy = decisions.CreatePolicy(PolicyRequest(context, $"organization-policy-record.testlab.confidentiality.{context.RunId}", actorId, 12d));
+            OrganizationDecisionOperationResult conflict = decisions.CreatePolicy(PolicyRequest(context, $"organization-policy-record.testlab.confidentiality.conflict.{context.RunId}", actorId, 13d));
+            OrganizationPolicyRequest replacementRequest = PolicyRequest(context, $"organization-policy-record.testlab.confidentiality.replacement.{context.RunId}", actorId, 14d);
+            replacementRequest.supersedesPolicyId = policy.Policy?.policyId;
+            replacementRequest.parameters = new[] { PolicyParam("visibility", OrganizationPolicyParameterType.EnumValue, stringValue: OrganizationVisibility.Secret.ToString()), PolicyParam("reshare_allowed", OrganizationPolicyParameterType.Boolean, boolValue: false) };
+            OrganizationDecisionOperationResult replacement = decisions.CreatePolicy(replacementRequest);
+            OrganizationPolicyResolutionResult resolved = decisions.ResolvePolicies(new OrganizationPolicyQuery
+            {
+                organizationId = "organization.prototype.guild",
+                policyDefinitionId = PrototypeOrganizationDecisionDefinitionFactory.ConfidentialityPolicyId,
+                scope = OrganizationPolicyScopeData.EntireOrganization("organization.prototype.guild"),
+                worldTime = 15d
+            });
+            OrganizationPolicyRecordData supersededPolicy = decisions.Policies.FirstOrDefault(item => item.policyId == policy.Policy?.policyId);
+            bool valid = goal.Succeeded
+                && goal.Goal?.lifecycleState == OrganizationGoalLifecycleState.Completed
+                && policy.Succeeded
+                && conflict.Code == OrganizationDecisionOperationCode.InvalidConflict
+                && replacement.Succeeded
+                && supersededPolicy?.lifecycleState == OrganizationPolicyLifecycleState.Superseded
+                && supersededPolicy?.supersededByPolicyId == replacement.Policy?.policyId
+                && resolved.EffectivePolicy?.policyId == replacement.Policy?.policyId
+                && resolved.SuppressedPolicies.Count == 0;
+            return TestLabAssertions.True("step13-decisions-goals-policies", "Create goals and resolve policies", valid, $"Goal={goal.Code}:{goal.Goal?.currentValue}/{goal.Goal?.targetValue}:{goal.Goal?.lifecycleState} Policy={policy.Code} Conflict={conflict.Code} Replacement={replacement.Code} Superseded={supersededPolicy?.lifecycleState}:{supersededPolicy?.supersededByPolicyId} Effective={resolved.EffectivePolicy?.policyId} Suppressed={resolved.SuppressedPolicies.Count}");
+        }
+
+        private static TestLabAutomationStepResult DecisionProposalVoteResolution(TestLabAutomationContext context)
+        {
+            if (!PrepareDecisionFixture(context, 100L, out OrganizationDecisionRuntime decisions, out _, out _, out string actorId, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-decisions-proposal", "Submit, amend, vote, and close proposal", "DecisionFixture", "Ready", "Missing", failure);
+            }
+
+            string proposalId = $"organization-proposal.testlab.goal.{context.RunId}";
+            OrganizationDecisionOperationResult submit = decisions.SubmitProposal(new OrganizationProposalRequest
+            {
+                transactionId = $"testlab.decisions.proposal.submit.{context.RunId}",
+                proposalId = proposalId,
+                organizationId = "organization.prototype.guild",
+                proposalDefinitionId = PrototypeOrganizationDecisionDefinitionFactory.EstablishGoalProposalId,
+                title = "Create recruitment goal",
+                proposerPersonId = actorId,
+                requestedExecutionOperations = new[] { GoalOperation(context, "initial", $"organization-goal-record.testlab.execution.initial.{context.RunId}", 5L) },
+                submittedWorldTime = 10d,
+                votingStartWorldTime = 10d,
+                votingEndWorldTime = 20d
+            });
+            OrganizationDecisionOperationResult amend = decisions.SubmitAmendment(new OrganizationAmendmentRequest
+            {
+                transactionId = $"testlab.decisions.proposal.amend.{context.RunId}",
+                amendmentId = $"organization-amendment.testlab.goal.{context.RunId}",
+                proposalId = proposalId,
+                proposerPersonId = "person.prototype.friend",
+                summary = "Reduce target to current membership.",
+                replacementExecutionOperations = new[] { GoalOperation(context, "amended", $"organization-goal-record.testlab.execution.amended.{context.RunId}", 3L) },
+                worldTime = 11d
+            });
+            OrganizationDecisionOperationResult voteOne = decisions.CastVote(VoteRequest(context, proposalId, actorId, "actor", OrganizationVoteChoice.Approve));
+            OrganizationDecisionOperationResult voteTwo = decisions.CastVote(VoteRequest(context, proposalId, "person.prototype.friend", "friend", OrganizationVoteChoice.Approve));
+            OrganizationDecisionOperationResult voteReplacement = decisions.CastVote(VoteRequest(context, proposalId, "person.prototype.friend", "friend-replace", OrganizationVoteChoice.Reject));
+            OrganizationDecisionTallySnapshot tally = decisions.TallyProposal(proposalId);
+            OrganizationDecisionOperationResult close = decisions.CloseVote(new OrganizationCloseVoteRequest
+            {
+                transactionId = $"testlab.decisions.proposal.close.{context.RunId}",
+                proposalId = proposalId,
+                resolutionId = $"organization-resolution.testlab.goal.{context.RunId}",
+                actorPersonId = actorId,
+                worldTime = 21d
+            });
+            bool valid = submit.Succeeded
+                && amend.Succeeded
+                && voteOne.Succeeded
+                && voteTwo.Succeeded
+                && voteReplacement.Succeeded
+                && tally.ParticipatingCount == 2
+                && tally.ApproveWeight == 1L
+                && tally.RejectWeight == 1L
+                && close.Succeeded
+                && close.Resolution?.outcome == OrganizationResolutionOutcome.Tied;
+            return TestLabAssertions.True("step13-decisions-proposal", "Submit, amend, vote, and close proposal", valid, $"Submit={submit.Code} Amend={amend.Code} Votes={voteOne.Code}/{voteTwo.Code}/{voteReplacement.Code} Tally={tally.ApproveWeight}/{tally.RejectWeight}/{tally.ParticipatingCount} Close={close.Code}:{close.Resolution?.outcome}");
+        }
+
+        private static TestLabAutomationStepResult DecisionExecutionPersistenceProjection(TestLabAutomationContext context)
+        {
+            if (!PrepareDecisionFixture(context, 250L, out OrganizationDecisionRuntime decisions, out OrganizationResourceRuntime resources, out CurrencyDefinition currency, out string actorId, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-decisions-execution", "Execute resolution and validate persistence", "DecisionFixture", "Ready", "Missing", failure);
+            }
+
+            string proposalId = $"organization-proposal.testlab.execute.{context.RunId}";
+            string resolutionId = $"organization-resolution.testlab.execute.{context.RunId}";
+            OrganizationDecisionOperationResult submit = decisions.SubmitProposal(new OrganizationProposalRequest
+            {
+                transactionId = $"testlab.decisions.execute.submit.{context.RunId}",
+                proposalId = proposalId,
+                organizationId = "organization.prototype.guild",
+                proposalDefinitionId = PrototypeOrganizationDecisionDefinitionFactory.ApproveBudgetProposalId,
+                title = "Approve training budget",
+                proposerPersonId = actorId,
+                requestedExecutionOperations = new[] { BudgetOperation(context, currency.Id, 40L) },
+                submittedWorldTime = 10d,
+                votingStartWorldTime = 10d,
+                votingEndWorldTime = 20d
+            });
+            OrganizationDecisionOperationResult voteActor = decisions.CastVote(VoteRequest(context, proposalId, actorId, "execute-actor", OrganizationVoteChoice.Approve));
+            OrganizationDecisionOperationResult voteFriend = decisions.CastVote(VoteRequest(context, proposalId, "person.prototype.friend", "execute-friend", OrganizationVoteChoice.Approve));
+            OrganizationDecisionOperationResult close = decisions.CloseVote(new OrganizationCloseVoteRequest { transactionId = $"testlab.decisions.execute.close.{context.RunId}", proposalId = proposalId, resolutionId = resolutionId, actorPersonId = actorId, worldTime = 21d });
+            OrganizationDecisionOperationResult preview = decisions.ExecuteResolution(new OrganizationDecisionExecutionRequest { transactionId = $"testlab.decisions.execute.preview.{context.RunId}", executionId = $"organization-execution.testlab.preview.{context.RunId}", resolutionId = resolutionId, actorPersonId = actorId, worldTime = 22d, preview = true });
+            bool previewNoMutation = resources.BudgetCount == 0;
+            OrganizationDecisionOperationResult execute = decisions.ExecuteResolution(new OrganizationDecisionExecutionRequest { transactionId = $"testlab.decisions.execute.apply.{context.RunId}", executionId = $"organization-execution.testlab.apply.{context.RunId}", resolutionId = resolutionId, actorPersonId = actorId, worldTime = 23d });
+            OrganizationDecisionProjection redacted = decisions.GetProposalProjection(proposalId, OrganizationDecisionProjectionAccess.Redacted);
+            OrganizationDecisionProjection denied = decisions.GetProposalProjection(proposalId, OrganizationDecisionProjectionAccess.Denied);
+            OrganizationDecisionRuntimeSaveData save = decisions.CreateSaveData();
+            OrganizationDecisionRuntime restored = new OrganizationDecisionRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.OrganizationMemberships, context.ScenarioContext.Runtimes.OrganizationAuthority, context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, context.ScenarioContext.Runtimes.Economy);
+            OrganizationDecisionOperationResult restore = restored.RestoreFromSaveData(save, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.OrganizationMemberships, context.ScenarioContext.Runtimes.OrganizationAuthority, context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds);
+            OrganizationDecisionRuntimeSaveData corrupt = save.Clone();
+            if (corrupt.proposals.Count > 0) corrupt.proposals[0].organizationId = "organization.missing";
+            bool rejected = !OrganizationDecisionRuntime.ValidateSaveData(corrupt, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.OrganizationMemberships, context.ScenarioContext.Runtimes.OrganizationAuthority, context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, out string validationFailure);
+            OrganizationDecisionPersistenceParticipant participant = new OrganizationDecisionPersistenceParticipant(decisions, () => context.ScenarioContext.Runtimes.DefinitionRegistry, () => context.ScenarioContext.Runtimes.Organizations, () => context.ScenarioContext.Runtimes.OrganizationMemberships, () => context.ScenarioContext.Runtimes.OrganizationAuthority, () => context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.WorldId, () => context.ScenarioContext.Runtimes.KnownPersonIds.ToArray());
+            PersistenceParticipantPrepareResult prepared = participant.PreparePayload(JsonUtility.ToJson(save), OrganizationDecisionPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = submit.Succeeded
+                && voteActor.Succeeded
+                && voteFriend.Succeeded
+                && close.Succeeded
+                && close.Resolution?.outcome == OrganizationResolutionOutcome.Adopted
+                && preview.Succeeded
+                && previewNoMutation
+                && execute.Succeeded
+                && resources.BudgetCount == 1
+                && redacted.Succeeded
+                && redacted.Redacted
+                && !denied.Succeeded
+                && restore.Succeeded
+                && restored.ProposalCount == decisions.ProposalCount
+                && corrupt.proposals.Count > 0
+                && rejected
+                && prepared.Succeeded;
+            return TestLabAssertions.True("step13-decisions-execution", "Execute resolution and validate persistence", valid, $"Submit={submit.Code} Votes={voteActor.Code}/{voteFriend.Code} Close={close.Code}:{close.Resolution?.outcome} Preview={preview.Code}/{previewNoMutation} Execute={execute.Code} Budgets={resources.BudgetCount} Projection={redacted.Access}/{denied.Access} Restore={restore.Code} Rejected={rejected}:{validationFailure} Prepare={prepared.Succeeded}");
+        }
+
         private static bool PrepareResourceAccounts(TestLabAutomationContext context, long openingBalance, out OrganizationResourceRuntime resources, out CurrencyDefinition currency, out string actorId, out string failure)
         {
             resources = context?.ScenarioContext?.Runtimes?.OrganizationResources;
@@ -1227,6 +1424,98 @@ namespace UnityIsekaiGame.Development.Automation
         private static string ResourceReserveAccountId(TestLabAutomationContext context) => $"organization-account.testlab.reserve.{context.RunId}";
         private static string ResourceOperatingEconomyAccountId(TestLabAutomationContext context) => $"economy.organization.testlab.operating.{context.RunId}";
         private static string ResourceReserveEconomyAccountId(TestLabAutomationContext context) => $"economy.organization.testlab.reserve.{context.RunId}";
+
+        private static bool PrepareDecisionFixture(TestLabAutomationContext context, long openingBalance, out OrganizationDecisionRuntime decisions, out OrganizationResourceRuntime resources, out CurrencyDefinition currency, out string actorId, out string failure)
+        {
+            decisions = context?.ScenarioContext?.Runtimes?.OrganizationDecisions;
+            if (!PrepareResourceAccounts(context, openingBalance, out resources, out currency, out actorId, out failure))
+            {
+                decisions = null;
+                return false;
+            }
+
+            if (decisions == null || !decisions.IsReady)
+            {
+                failure = "OrganizationDecisionRuntime is missing or not ready.";
+                return false;
+            }
+
+            OrganizationMembershipRuntime memberships = context.ScenarioContext.Runtimes.OrganizationMemberships;
+            memberships.ApplyMembership(MembershipRequest($"organization-membership.testlab.decision.friend.{context.RunId}", "organization.prototype.guild", "person.prototype.friend", PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.decision.member.friend.{context.RunId}", consent: true));
+            memberships.ApplyMembership(MembershipRequest($"organization-membership.testlab.decision.mentor.{context.RunId}", "organization.prototype.guild", "person.prototype.mentor", PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, $"testlab.decision.member.mentor.{context.RunId}", consent: true));
+            decisions.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, memberships, context.ScenarioContext.Runtimes.OrganizationAuthority, resources, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, context.ScenarioContext.Runtimes.Economy);
+            return true;
+        }
+
+        private static OrganizationPolicyRequest PolicyRequest(TestLabAutomationContext context, string policyId, string actorId, double worldTime) => new OrganizationPolicyRequest
+        {
+            transactionId = $"testlab.decisions.policy.{policyId}.{context.RunId}",
+            policyId = policyId,
+            organizationId = "organization.prototype.guild",
+            policyDefinitionId = PrototypeOrganizationDecisionDefinitionFactory.ConfidentialityPolicyId,
+            scope = OrganizationPolicyScopeData.EntireOrganization("organization.prototype.guild"),
+            parameters = new[]
+            {
+                PolicyParam("visibility", OrganizationPolicyParameterType.EnumValue, stringValue: OrganizationVisibility.Restricted.ToString()),
+                PolicyParam("reshare_allowed", OrganizationPolicyParameterType.Boolean, boolValue: true)
+            },
+            priority = 100,
+            actorPersonId = actorId,
+            adoptedWorldTime = worldTime,
+            effectiveStartWorldTime = worldTime,
+            visibility = OrganizationVisibility.Restricted
+        };
+
+        private static OrganizationPolicyParameterValueData PolicyParam(string parameterId, OrganizationPolicyParameterType type, string stringValue = "", long longValue = 0L, bool boolValue = false) => new OrganizationPolicyParameterValueData
+        {
+            parameterId = parameterId,
+            type = type,
+            stringValue = stringValue ?? string.Empty,
+            longValue = longValue,
+            boolValue = boolValue
+        };
+
+        private static OrganizationVoteRequest VoteRequest(TestLabAutomationContext context, string proposalId, string voterId, string suffix, OrganizationVoteChoice choice) => new OrganizationVoteRequest
+        {
+            transactionId = $"testlab.decisions.vote.{suffix}.{context.RunId}",
+            voteId = $"organization-vote.testlab.{suffix}.{context.RunId}",
+            proposalId = proposalId,
+            voterPersonId = voterId,
+            choice = choice,
+            worldTime = 12d
+        };
+
+        private static OrganizationDecisionExecutionOperationData GoalOperation(TestLabAutomationContext context, string suffix, string goalId, long targetValue) => new OrganizationDecisionExecutionOperationData
+        {
+            operationId = $"decision-operation.goal.{suffix}.{context.RunId}",
+            kind = OrganizationDecisionExecutionOperationKind.EstablishGoal,
+            targetId = goalId,
+            definitionId = PrototypeOrganizationDecisionDefinitionFactory.RecruitmentGoalId,
+            goalPayload = new OrganizationGoalRecordData
+            {
+                goalId = goalId,
+                organizationId = "organization.prototype.guild",
+                goalDefinitionId = PrototypeOrganizationDecisionDefinitionFactory.RecruitmentGoalId,
+                displayName = $"Recruitment Goal {suffix}",
+                targetValue = targetValue,
+                priority = 50,
+                visibility = OrganizationVisibility.Restricted
+            },
+            required = true
+        };
+
+        private static OrganizationDecisionExecutionOperationData BudgetOperation(TestLabAutomationContext context, string currencyId, long units) => new OrganizationDecisionExecutionOperationData
+        {
+            operationId = $"decision-operation.budget.{context.RunId}",
+            kind = OrganizationDecisionExecutionOperationKind.ApproveBudget,
+            targetId = $"organization-budget.testlab.decision.{context.RunId}",
+            treasuryId = ResourceTreasuryId(context),
+            accountId = ResourceOperatingAccountId(context),
+            currencyDefinitionId = currencyId,
+            units = units,
+            purpose = "decision-approved training budget",
+            required = true
+        };
 
         private static ITestLabScenarioStep Step(string stepId, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
         {
@@ -1339,6 +1628,44 @@ namespace UnityIsekaiGame.Development.Automation
                     PrototypeOrganizationAuthorityDefinitionFactory.TransferOrganizationFundsActionId,
                     PrototypeOrganizationAuthorityDefinitionFactory.ManageRestrictedFundsActionId,
                     PrototypeOrganizationAuthorityDefinitionFactory.AssignAssetCustodyActionId,
+                    PrototypeOrganizationResourceDefinitionFactory.CurrencyResourceTypeId,
+                    "currency.gold"
+                });
+        }
+
+        private static ITestLabAutomationScenario DecisionScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeOrganizationDefinitionFactory.GuildDefinitionId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildMasterRankId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildmasterOfficeId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterRoleId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.SubmitDecisionProposalActionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.AmendDecisionProposalActionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.CastOrganizationVoteActionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.CloseOrganizationVoteActionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.ExecuteOrganizationResolutionActionId,
+                    PrototypeOrganizationDecisionDefinitionFactory.RecruitmentGoalId,
+                    PrototypeOrganizationDecisionDefinitionFactory.ReserveFundGoalId,
+                    PrototypeOrganizationDecisionDefinitionFactory.ConfidentialityPolicyId,
+                    PrototypeOrganizationDecisionDefinitionFactory.BudgetLimitPolicyId,
+                    PrototypeOrganizationDecisionDefinitionFactory.SimpleMajorityProcedureId,
+                    PrototypeOrganizationDecisionDefinitionFactory.SecretBallotProcedureId,
+                    PrototypeOrganizationDecisionDefinitionFactory.AdoptPolicyProposalId,
+                    PrototypeOrganizationDecisionDefinitionFactory.EstablishGoalProposalId,
+                    PrototypeOrganizationDecisionDefinitionFactory.ApproveBudgetProposalId,
                     PrototypeOrganizationResourceDefinitionFactory.CurrencyResourceTypeId,
                     "currency.gold"
                 });
