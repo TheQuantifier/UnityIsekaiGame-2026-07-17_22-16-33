@@ -15,6 +15,7 @@ namespace UnityIsekaiGame.Organizations
         ManageAccess = 80,
         ManagePropertyAssociation = 90,
         ManageResourcesPlaceholder = 100,
+        ManageResources = 105,
         ManagePolicyPlaceholder = 110,
         ParticipateInGovernancePlaceholder = 120,
         ExerciseLegalAuthorityPlaceholder = 130,
@@ -32,6 +33,7 @@ namespace UnityIsekaiGame.Organizations
         InformationAccess = 60,
         Delegation = 70,
         Command = 80,
+        Financial = 85,
         GovernancePlaceholder = 90,
         LegalPlaceholder = 100,
         Custom = 1000

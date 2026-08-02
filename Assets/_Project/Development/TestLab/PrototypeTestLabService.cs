@@ -14513,9 +14513,10 @@ namespace UnityIsekaiGame.Development
                                                 PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
                                                     PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
                                                         PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(
-                                                            PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
-                                                                PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
-                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))));
+                                                            PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(
+                                                                PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
+                                                                    PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
+                                                                        PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions)))))))))))))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()

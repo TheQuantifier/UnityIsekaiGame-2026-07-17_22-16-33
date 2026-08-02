@@ -34,6 +34,21 @@ namespace UnityIsekaiGame.Organizations
         public const string ManageResourcesPlaceholderPermissionId = "organization-permission.prototype.manage-resources-placeholder";
         public const string GovernanceVotePlaceholderPermissionId = "organization-permission.prototype.governance-vote-placeholder";
         public const string LegalAuthorityPlaceholderPermissionId = "organization-permission.prototype.legal-authority-placeholder";
+        public const string ViewTreasuryPermissionId = "organization-permission.prototype.view-treasury";
+        public const string ViewRestrictedTreasuryPermissionId = "organization-permission.prototype.view-restricted-treasury";
+        public const string CreateTreasuryAccountPermissionId = "organization-permission.prototype.create-treasury-account";
+        public const string CloseTreasuryAccountPermissionId = "organization-permission.prototype.close-treasury-account";
+        public const string DepositOrganizationFundsPermissionId = "organization-permission.prototype.deposit-organization-funds";
+        public const string WithdrawOrganizationFundsPermissionId = "organization-permission.prototype.withdraw-organization-funds";
+        public const string TransferOrganizationFundsPermissionId = "organization-permission.prototype.transfer-organization-funds";
+        public const string ApproveOrganizationExpensePermissionId = "organization-permission.prototype.approve-organization-expense";
+        public const string ManageRestrictedFundsPermissionId = "organization-permission.prototype.manage-restricted-funds";
+        public const string ManageResourceReservationsPermissionId = "organization-permission.prototype.manage-resource-reservations";
+        public const string ManageOrganizationInventoryPermissionId = "organization-permission.prototype.manage-organization-inventory";
+        public const string AssignAssetCustodyPermissionId = "organization-permission.prototype.assign-asset-custody";
+        public const string ManageBusinessAssociationPermissionId = "organization-permission.prototype.manage-business-association";
+        public const string ViewFinancialAuditPermissionId = "organization-permission.prototype.view-financial-audit";
+        public const string PerformFinancialCorrectionPermissionId = "organization-permission.prototype.perform-financial-correction";
 
         public const string ReviewMembershipApplicationActionId = "organization-action.prototype.review-membership-application";
         public const string InviteMemberActionId = "organization-action.prototype.invite-member";
@@ -57,6 +72,22 @@ namespace UnityIsekaiGame.Organizations
         public const string AccessSecretRecordActionId = "organization-action.prototype.access-secret-record";
         public const string DelegatePermissionActionId = "organization-action.prototype.delegate-permission";
         public const string RevokeDelegationActionId = "organization-action.prototype.revoke-delegation";
+        public const string CreateTreasuryActionId = "organization-action.prototype.create-treasury";
+        public const string CreateTreasuryAccountActionId = "organization-action.prototype.create-treasury-account";
+        public const string ManageTreasuryAccountActionId = "organization-action.prototype.manage-treasury-account";
+        public const string DepositOrganizationFundsActionId = "organization-action.prototype.deposit-organization-funds";
+        public const string WithdrawOrganizationFundsActionId = "organization-action.prototype.withdraw-organization-funds";
+        public const string TransferOrganizationFundsActionId = "organization-action.prototype.transfer-organization-funds";
+        public const string LargeOrganizationTransferActionId = "organization-action.prototype.large-organization-transfer";
+        public const string ManageRestrictedFundsActionId = "organization-action.prototype.manage-restricted-funds";
+        public const string ManageOrganizationBudgetActionId = "organization-action.prototype.manage-organization-budget";
+        public const string ManageResourceReservationActionId = "organization-action.prototype.manage-resource-reservation";
+        public const string ManageOrganizationInventoryActionId = "organization-action.prototype.manage-organization-inventory";
+        public const string AssignAssetCustodyActionId = "organization-action.prototype.assign-asset-custody";
+        public const string ManagePropertyAssociationActionId = "organization-action.prototype.manage-property-association";
+        public const string ManageBusinessAssociationActionId = "organization-action.prototype.manage-business-association";
+        public const string ViewFinancialAuditActionId = "organization-action.prototype.view-financial-audit";
+        public const string PerformFinancialCorrectionActionId = "organization-action.prototype.perform-financial-correction";
 
         public const string GeneralMemberRoleId = "organization-authority-role.prototype.general-member";
         public const string MembershipOfficerRoleId = "organization-authority-role.prototype.membership-officer";
@@ -124,6 +155,21 @@ namespace UnityIsekaiGame.Organizations
             AddPermission(definitions, ids, ManageResourcesPlaceholderPermissionId, "Manage Resources Placeholder", OrganizationPermissionCategory.ManageResourcesPlaceholder, generalScopes);
             AddPermission(definitions, ids, GovernanceVotePlaceholderPermissionId, "Governance Vote Placeholder", OrganizationPermissionCategory.ParticipateInGovernancePlaceholder, generalScopes);
             AddPermission(definitions, ids, LegalAuthorityPlaceholderPermissionId, "Legal Authority Placeholder", OrganizationPermissionCategory.ExerciseLegalAuthorityPlaceholder, generalScopes);
+            AddPermission(definitions, ids, ViewTreasuryPermissionId, "View Treasury", OrganizationPermissionCategory.ViewInformation, generalScopes, canDelegate: true);
+            AddPermission(definitions, ids, ViewRestrictedTreasuryPermissionId, "View Restricted Treasury", OrganizationPermissionCategory.ViewInformation, generalScopes, visibility: OrganizationVisibility.Restricted);
+            AddPermission(definitions, ids, CreateTreasuryAccountPermissionId, "Create Treasury Accounts", OrganizationPermissionCategory.ManageResources, generalScopes);
+            AddPermission(definitions, ids, CloseTreasuryAccountPermissionId, "Close Treasury Accounts", OrganizationPermissionCategory.ManageResources, generalScopes, jointAllowed: true);
+            AddPermission(definitions, ids, DepositOrganizationFundsPermissionId, "Deposit Organization Funds", OrganizationPermissionCategory.ManageResources, generalScopes, canDelegate: true);
+            AddPermission(definitions, ids, WithdrawOrganizationFundsPermissionId, "Withdraw Organization Funds", OrganizationPermissionCategory.ManageResources, generalScopes, canDelegate: true);
+            AddPermission(definitions, ids, TransferOrganizationFundsPermissionId, "Transfer Organization Funds", OrganizationPermissionCategory.ManageResources, generalScopes, canDelegate: true);
+            AddPermission(definitions, ids, ApproveOrganizationExpensePermissionId, "Approve Organization Expense", OrganizationPermissionCategory.ManageResources, generalScopes, jointAllowed: true);
+            AddPermission(definitions, ids, ManageRestrictedFundsPermissionId, "Manage Restricted Funds", OrganizationPermissionCategory.ManageResources, generalScopes);
+            AddPermission(definitions, ids, ManageResourceReservationsPermissionId, "Manage Resource Reservations", OrganizationPermissionCategory.ManageResources, generalScopes, canDelegate: true);
+            AddPermission(definitions, ids, ManageOrganizationInventoryPermissionId, "Manage Organization Inventory", OrganizationPermissionCategory.ManageResources, generalScopes, canDelegate: true);
+            AddPermission(definitions, ids, AssignAssetCustodyPermissionId, "Assign Asset Custody", OrganizationPermissionCategory.ManageResources, generalScopes, canDelegate: true);
+            AddPermission(definitions, ids, ManageBusinessAssociationPermissionId, "Manage Business Association", OrganizationPermissionCategory.ManageResources, generalScopes);
+            AddPermission(definitions, ids, ViewFinancialAuditPermissionId, "View Financial Audit", OrganizationPermissionCategory.ViewInformation, generalScopes);
+            AddPermission(definitions, ids, PerformFinancialCorrectionPermissionId, "Perform Financial Correction", OrganizationPermissionCategory.ManageResources, generalScopes, jointAllowed: true);
             return definitions;
         }
 
@@ -153,6 +199,22 @@ namespace UnityIsekaiGame.Organizations
             AddAction(definitions, ids, AccessSecretRecordActionId, "Access Secret Record", InstitutionalActionCategory.InformationAccess, new[] { ViewSecretInformationPermissionId }, target: "record", audit: OrganizationAuthorityAuditPolicy.Always);
             AddAction(definitions, ids, DelegatePermissionActionId, "Delegate Permission", InstitutionalActionCategory.Delegation, new[] { DelegatePermissionsPermissionId }, target: "authority-grant");
             AddAction(definitions, ids, RevokeDelegationActionId, "Revoke Delegation", InstitutionalActionCategory.Delegation, new[] { RevokeDelegationsPermissionId }, target: "authority-grant");
+            AddAction(definitions, ids, CreateTreasuryActionId, "Create Treasury", InstitutionalActionCategory.Financial, new[] { CreateTreasuryAccountPermissionId }, target: "organization-treasury");
+            AddAction(definitions, ids, CreateTreasuryAccountActionId, "Create Treasury Account", InstitutionalActionCategory.Financial, new[] { CreateTreasuryAccountPermissionId }, target: "organization-account");
+            AddAction(definitions, ids, ManageTreasuryAccountActionId, "Manage Treasury Account", InstitutionalActionCategory.Financial, new[] { CloseTreasuryAccountPermissionId }, target: "organization-account");
+            AddAction(definitions, ids, DepositOrganizationFundsActionId, "Deposit Organization Funds", InstitutionalActionCategory.Financial, new[] { DepositOrganizationFundsPermissionId }, target: "organization-account");
+            AddAction(definitions, ids, WithdrawOrganizationFundsActionId, "Withdraw Organization Funds", InstitutionalActionCategory.Financial, new[] { WithdrawOrganizationFundsPermissionId }, target: "organization-account");
+            AddAction(definitions, ids, TransferOrganizationFundsActionId, "Transfer Organization Funds", InstitutionalActionCategory.Financial, new[] { TransferOrganizationFundsPermissionId }, target: "organization-account");
+            AddAction(definitions, ids, LargeOrganizationTransferActionId, "Approve Large Organization Transfer", InstitutionalActionCategory.Financial, new[] { TransferOrganizationFundsPermissionId, ApproveOrganizationExpensePermissionId }, OrganizationPermissionCombinationPolicy.JointApproval, target: "organization-account", approvals: 2, audit: OrganizationAuthorityAuditPolicy.Always);
+            AddAction(definitions, ids, ManageRestrictedFundsActionId, "Manage Restricted Funds", InstitutionalActionCategory.Financial, new[] { ManageRestrictedFundsPermissionId }, target: "organization-fund-restriction");
+            AddAction(definitions, ids, ManageOrganizationBudgetActionId, "Manage Organization Budget Record", InstitutionalActionCategory.Financial, new[] { ManageRestrictedFundsPermissionId }, target: "organization-budget");
+            AddAction(definitions, ids, ManageResourceReservationActionId, "Manage Resource Reservation", InstitutionalActionCategory.Financial, new[] { ManageResourceReservationsPermissionId }, target: "organization-reservation");
+            AddAction(definitions, ids, ManageOrganizationInventoryActionId, "Manage Organization Inventory", InstitutionalActionCategory.Financial, new[] { ManageOrganizationInventoryPermissionId }, target: "organization-inventory");
+            AddAction(definitions, ids, AssignAssetCustodyActionId, "Assign Asset Custody", InstitutionalActionCategory.Financial, new[] { AssignAssetCustodyPermissionId }, target: "organization-custody");
+            AddAction(definitions, ids, ManagePropertyAssociationActionId, "Manage Property Association", InstitutionalActionCategory.Financial, new[] { ProposeHeadquartersPermissionId }, target: "property");
+            AddAction(definitions, ids, ManageBusinessAssociationActionId, "Manage Business Association", InstitutionalActionCategory.Financial, new[] { ManageBusinessAssociationPermissionId }, target: "business");
+            AddAction(definitions, ids, ViewFinancialAuditActionId, "View Financial Audit", InstitutionalActionCategory.Financial, new[] { ViewFinancialAuditPermissionId }, target: "organization-financial-audit", audit: OrganizationAuthorityAuditPolicy.Always);
+            AddAction(definitions, ids, PerformFinancialCorrectionActionId, "Perform Financial Correction", InstitutionalActionCategory.Financial, new[] { PerformFinancialCorrectionPermissionId, ApproveOrganizationExpensePermissionId }, OrganizationPermissionCombinationPolicy.JointApproval, target: "organization-account", approvals: 2, audit: OrganizationAuthorityAuditPolicy.Always);
             return definitions;
         }
 
@@ -163,9 +225,9 @@ namespace UnityIsekaiGame.Organizations
             AddRole(definitions, ids, GeneralMemberRoleId, "General Member Authority", new[] { ViewPublicInformationPermissionId }, priority: 10);
             AddRole(definitions, ids, MembershipOfficerRoleId, "Membership Officer Authority", new[] { ViewPublicInformationPermissionId, ReviewMembershipApplicationsPermissionId, InviteMembersPermissionId, AdmitMembersPermissionId, SuspendMembersPermissionId, ReinstateMembersPermissionId, RemoveMembersPermissionId }, delegation: OrganizationAuthorityDelegationPolicy.DelegableNoRedelegation, priority: 80);
             AddRole(definitions, ids, RankOfficerRoleId, "Rank Officer Authority", new[] { ViewPublicInformationPermissionId, AssignRanksPermissionId, PromoteMembersPermissionId, DemoteMembersPermissionId }, delegation: OrganizationAuthorityDelegationPolicy.DelegableNoRedelegation, priority: 90);
-            AddRole(definitions, ids, TreasurerRoleId, "Treasurer Authority", new[] { ViewPublicInformationPermissionId, ViewRestrictedInformationPermissionId, ProposeHeadquartersPermissionId, ManageResourcesPlaceholderPermissionId }, priority: 90);
+            AddRole(definitions, ids, TreasurerRoleId, "Treasurer Authority", new[] { ViewPublicInformationPermissionId, ViewRestrictedInformationPermissionId, ViewTreasuryPermissionId, ViewRestrictedTreasuryPermissionId, CreateTreasuryAccountPermissionId, CloseTreasuryAccountPermissionId, DepositOrganizationFundsPermissionId, WithdrawOrganizationFundsPermissionId, TransferOrganizationFundsPermissionId, ApproveOrganizationExpensePermissionId, ManageRestrictedFundsPermissionId, ManageResourceReservationsPermissionId, ManageOrganizationInventoryPermissionId, AssignAssetCustodyPermissionId, ManageBusinessAssociationPermissionId, ViewFinancialAuditPermissionId, ProposeHeadquartersPermissionId }, priority: 90);
             AddRole(definitions, ids, ChapterMasterRoleId, "Chapter Master Authority", new[] { ViewPublicInformationPermissionId, ReviewMembershipApplicationsPermissionId, InviteMembersPermissionId, AdmitMembersPermissionId, AssignActingOfficeholdersPermissionId, IssueOrdersPermissionId, RepresentExternallyPermissionId }, delegation: OrganizationAuthorityDelegationPolicy.DelegableNoRedelegation, priority: 100);
-            AddRole(definitions, ids, GuildmasterRoleId, "Guildmaster Authority", new[] { ViewPublicInformationPermissionId, ViewRestrictedInformationPermissionId, ReviewMembershipApplicationsPermissionId, InviteMembersPermissionId, AdmitMembersPermissionId, SuspendMembersPermissionId, ReinstateMembersPermissionId, RemoveMembersPermissionId, AssignRanksPermissionId, PromoteMembersPermissionId, DemoteMembersPermissionId, CreateOfficesPermissionId, AppointOfficeholdersPermissionId, RemoveOfficeholdersPermissionId, AssignActingOfficeholdersPermissionId, IssueOrdersPermissionId, RepresentExternallyPermissionId, ManageAliasesPermissionId, ProposeHeadquartersPermissionId, AuthorizeHeadquartersPermissionId, DelegatePermissionsPermissionId, RevokeDelegationsPermissionId }, delegation: OrganizationAuthorityDelegationPolicy.Redelegable, priority: 150);
+            AddRole(definitions, ids, GuildmasterRoleId, "Guildmaster Authority", new[] { ViewPublicInformationPermissionId, ViewRestrictedInformationPermissionId, ReviewMembershipApplicationsPermissionId, InviteMembersPermissionId, AdmitMembersPermissionId, SuspendMembersPermissionId, ReinstateMembersPermissionId, RemoveMembersPermissionId, AssignRanksPermissionId, PromoteMembersPermissionId, DemoteMembersPermissionId, CreateOfficesPermissionId, AppointOfficeholdersPermissionId, RemoveOfficeholdersPermissionId, AssignActingOfficeholdersPermissionId, IssueOrdersPermissionId, RepresentExternallyPermissionId, ManageAliasesPermissionId, ProposeHeadquartersPermissionId, AuthorizeHeadquartersPermissionId, DelegatePermissionsPermissionId, RevokeDelegationsPermissionId, ViewTreasuryPermissionId, ViewRestrictedTreasuryPermissionId, CreateTreasuryAccountPermissionId, CloseTreasuryAccountPermissionId, DepositOrganizationFundsPermissionId, WithdrawOrganizationFundsPermissionId, TransferOrganizationFundsPermissionId, ApproveOrganizationExpensePermissionId, ManageRestrictedFundsPermissionId, ManageResourceReservationsPermissionId, ManageOrganizationInventoryPermissionId, AssignAssetCustodyPermissionId, ManageBusinessAssociationPermissionId, ViewFinancialAuditPermissionId, PerformFinancialCorrectionPermissionId }, delegation: OrganizationAuthorityDelegationPolicy.Redelegable, priority: 150);
             AddRole(definitions, ids, RecordClerkRoleId, "Record Clerk Authority", new[] { ViewPublicInformationPermissionId, ViewRestrictedInformationPermissionId }, priority: 70);
             AddRole(definitions, ids, ActingExecutiveRoleId, "Acting Executive Authority", new[] { ViewPublicInformationPermissionId, ReviewMembershipApplicationsPermissionId, InviteMembersPermissionId, AdmitMembersPermissionId, AssignActingOfficeholdersPermissionId, IssueOrdersPermissionId }, delegation: OrganizationAuthorityDelegationPolicy.DelegableNoRedelegation, priority: 120);
             AddRole(definitions, ids, SecretMemberRoleId, "Secret Member Authority", new[] { ViewPublicInformationPermissionId, ViewRestrictedInformationPermissionId, ViewSecretInformationPermissionId }, visibility: OrganizationVisibility.Hidden, priority: 60);

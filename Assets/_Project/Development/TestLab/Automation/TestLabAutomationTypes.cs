@@ -67,7 +67,8 @@ namespace UnityIsekaiGame.Development.Automation
         Social = 1 << 8,
         Organizations = 1 << 9,
         OrganizationMemberships = 1 << 10,
-        OrganizationAuthority = 1 << 11
+        OrganizationAuthority = 1 << 11,
+        OrganizationResources = 1 << 12
     }
 
     [Flags]
