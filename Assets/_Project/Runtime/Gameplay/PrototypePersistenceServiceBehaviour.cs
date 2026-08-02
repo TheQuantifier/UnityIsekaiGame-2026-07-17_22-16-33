@@ -16,6 +16,7 @@ using UnityIsekaiGame.Economy.Payroll;
 using UnityIsekaiGame.Economy.Properties;
 using UnityIsekaiGame.Economy.RegionalFlow;
 using UnityIsekaiGame.Equipment;
+using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Input;
@@ -112,6 +113,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldOrganizationAuthority = true;
         [SerializeField] private bool registerWorldOrganizationResources = true;
         [SerializeField] private bool registerWorldOrganizationDecisions = true;
+        [SerializeField] private bool registerWorldFactions = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -214,6 +216,7 @@ namespace UnityIsekaiGame.Gameplay
         private OrganizationAuthorityPersistenceParticipant organizationAuthorityParticipant;
         private OrganizationResourcePersistenceParticipant organizationResourceParticipant;
         private OrganizationDecisionPersistenceParticipant organizationDecisionParticipant;
+        private FactionPersistenceParticipant factionParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -270,6 +273,7 @@ namespace UnityIsekaiGame.Gameplay
         private OrganizationAuthorityRuntime worldOrganizationAuthority;
         private OrganizationResourceRuntime worldOrganizationResources;
         private OrganizationDecisionRuntime worldOrganizationDecisions;
+        private FactionRuntime worldFactions;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -764,6 +768,20 @@ namespace UnityIsekaiGame.Gameplay
                 return worldOrganizationDecisions;
             }
         }
+        public FactionRuntime Factions
+        {
+            get
+            {
+                if (worldFactions == null)
+                {
+                    worldFactions = new FactionRuntime();
+                }
+
+                string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+                worldFactions.Configure(GetDefinitionRegistry(), Organizations, OrganizationMemberships, OrganizationAuthority, OrganizationResources, OrganizationDecisions, service == null ? PersistenceService.LocalWorldId : service.WorldId, GetPrototypeSocialPersonIds(personId));
+                return worldFactions;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -882,6 +900,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(organizationDecisionParticipant);
                 organizationDecisionParticipant = null;
+            }
+
+            if (service != null && factionParticipant != null)
+            {
+                service.UnregisterParticipant(factionParticipant);
+                factionParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -1242,6 +1266,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldOrganizationAuthorityParticipant();
             EnsureWorldOrganizationResourceParticipant();
             EnsureWorldOrganizationDecisionParticipant();
+            EnsureWorldFactionParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -1979,6 +2004,40 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 organizationDecisionParticipant = null;
+            }
+        }
+
+        private void EnsureWorldFactionParticipant()
+        {
+            if (!registerWorldFactions || factionParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World faction persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+            factionParticipant = new FactionPersistenceParticipant(
+                Factions,
+                GetDefinitionRegistry,
+                () => Organizations,
+                () => OrganizationMemberships,
+                () => OrganizationAuthority,
+                () => OrganizationResources,
+                () => OrganizationDecisions,
+                service.WorldId,
+                () => GetPrototypeSocialPersonIds(personId));
+
+            service.RegisterParticipant(factionParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                factionParticipant = null;
             }
         }
 
@@ -4459,6 +4518,7 @@ namespace UnityIsekaiGame.Gameplay
                                                                     PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
                                                                         PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
                                                                             PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))))));
+            definitionRegistry = PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(definitionRegistry);
             return definitionRegistry;
         }
 

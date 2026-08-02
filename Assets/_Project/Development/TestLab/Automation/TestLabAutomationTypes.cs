@@ -69,7 +69,8 @@ namespace UnityIsekaiGame.Development.Automation
         OrganizationMemberships = 1 << 10,
         OrganizationAuthority = 1 << 11,
         OrganizationResources = 1 << 12,
-        OrganizationDecisions = 1 << 13
+        OrganizationDecisions = 1 << 13,
+        Factions = 1 << 14
     }
 
     [Flags]

@@ -25,6 +25,19 @@ namespace UnityIsekaiGame.Factions
         [SerializeField] private PersonDefinition defaultLeader;
         [SerializeField] private FactionAuthorityFlags authority = FactionAuthorityFlags.None;
         [SerializeField] private FactionVisibility visibility = FactionVisibility.Public;
+        [SerializeField] private PoliticalFactionCategory politicalCategory = PoliticalFactionCategory.Custom;
+        [SerializeField] private FactionHostContextKind supportedHostContext = FactionHostContextKind.Independent;
+        [SerializeField] private bool formalMembershipSupported = true;
+        [SerializeField] private bool publicSupportWithoutMembershipSupported = true;
+        [SerializeField] private bool secretMembershipSupported;
+        [SerializeField] private bool organizationMembershipRequired;
+        [SerializeField] private bool maySpanOrganizations;
+        [SerializeField] private bool internalRolesSupported = true;
+        [SerializeField] private bool splitOrMergeSupported = true;
+        [SerializeField] private bool mayBecomeIndependent = true;
+        [SerializeField] private FactionLifecyclePolicy lifecyclePolicy = FactionLifecyclePolicy.HistoricalRecordsPreserved;
+        [SerializeField] private string[] alignmentAxisIds = Array.Empty<string>();
+        [SerializeField] private string[] platformTemplateIds = Array.Empty<string>();
         [SerializeField] private Color presentationColor = Color.white;
         [SerializeField] private string culturePlaceholder;
         [SerializeField] private string foundingMetadataPlaceholder;
@@ -46,9 +59,59 @@ namespace UnityIsekaiGame.Factions
         public PersonDefinition DefaultLeader => defaultLeader;
         public FactionAuthorityFlags Authority => authority;
         public FactionVisibility Visibility => visibility;
+        public PoliticalFactionCategory PoliticalCategory => politicalCategory;
+        public FactionHostContextKind SupportedHostContext => supportedHostContext;
+        public bool FormalMembershipSupported => formalMembershipSupported;
+        public bool PublicSupportWithoutMembershipSupported => publicSupportWithoutMembershipSupported;
+        public bool SecretMembershipSupported => secretMembershipSupported;
+        public bool OrganizationMembershipRequired => organizationMembershipRequired;
+        public bool MaySpanOrganizations => maySpanOrganizations;
+        public bool InternalRolesSupported => internalRolesSupported;
+        public bool SplitOrMergeSupported => splitOrMergeSupported;
+        public bool MayBecomeIndependent => mayBecomeIndependent;
+        public FactionLifecyclePolicy LifecyclePolicy => lifecyclePolicy;
+        public IReadOnlyList<string> AlignmentAxisIds => FactionModelUtility.Clean(alignmentAxisIds);
+        public IReadOnlyList<string> PlatformTemplateIds => FactionModelUtility.Clean(platformTemplateIds);
         public Color PresentationColor => presentationColor;
         public string CulturePlaceholder => culturePlaceholder;
         public string FoundingMetadataPlaceholder => foundingMetadataPlaceholder;
+
+        public void DevelopmentConfigure(
+            string id,
+            string name,
+            FactionKind factionKind,
+            PoliticalFactionCategory category,
+            FactionHostContextKind hostContext,
+            bool formalMembership = true,
+            bool supportWithoutMembership = true,
+            bool secretMembership = false,
+            bool requiresOrganizationMembership = false,
+            bool spansOrganizations = false,
+            bool roles = true,
+            bool splitMerge = true,
+            bool independent = true,
+            FactionVisibility factionVisibility = FactionVisibility.Public,
+            IEnumerable<string> axes = null,
+            IEnumerable<string> platforms = null)
+        {
+            factionId = string.IsNullOrWhiteSpace(id) ? string.Empty : id.Trim();
+            displayName = string.IsNullOrWhiteSpace(name) ? factionId : name.Trim();
+            description = string.Empty;
+            kind = factionKind;
+            politicalCategory = category;
+            supportedHostContext = hostContext;
+            formalMembershipSupported = formalMembership;
+            publicSupportWithoutMembershipSupported = supportWithoutMembership;
+            secretMembershipSupported = secretMembership;
+            organizationMembershipRequired = requiresOrganizationMembership;
+            maySpanOrganizations = spansOrganizations;
+            internalRolesSupported = roles;
+            splitOrMergeSupported = splitMerge;
+            mayBecomeIndependent = independent;
+            visibility = factionVisibility;
+            alignmentAxisIds = FactionModelUtility.Clean(axes);
+            platformTemplateIds = FactionModelUtility.Clean(platforms);
+        }
 
         public bool HasAuthority(FactionAuthorityFlags capability)
         {
@@ -80,6 +143,21 @@ namespace UnityIsekaiGame.Factions
             if (!Enum.IsDefined(typeof(FactionVisibility), visibility))
             {
                 report.AddError($"FactionDefinition '{DisplayName}' has invalid visibility '{visibility}'.");
+            }
+
+            if (!Enum.IsDefined(typeof(PoliticalFactionCategory), politicalCategory))
+            {
+                report.AddError($"FactionDefinition '{DisplayName}' has invalid political category '{politicalCategory}'.");
+            }
+
+            if (!Enum.IsDefined(typeof(FactionHostContextKind), supportedHostContext) || supportedHostContext == FactionHostContextKind.Unknown)
+            {
+                report.AddError($"FactionDefinition '{DisplayName}' has invalid supported host context.");
+            }
+
+            if (organizationMembershipRequired && supportedHostContext == FactionHostContextKind.Independent)
+            {
+                report.AddError($"FactionDefinition '{DisplayName}' requires organization membership but is configured as independent.");
             }
 
             ValidateAuthority(report);

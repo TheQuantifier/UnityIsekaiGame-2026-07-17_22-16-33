@@ -4,6 +4,7 @@ using System.Linq;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.Properties;
+using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityEngine;
 using UnityIsekaiGame.GameData.Persistence;
@@ -155,6 +156,29 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step13-decisions-proposal", "Submit, amend, vote, and close proposal", DecisionProposalVoteResolution)),
                     DecisionScenario("execution-persistence-projection", "Resolution execution, persistence, and projections preserve authoritative ownership", 40,
                         Step("step13-decisions-execution", "Execute resolution and validate persistence", DecisionExecutionPersistenceProjection))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.6.faction-identity-alignment-internal-politics",
+                "Faction Identity, Alignment, and Internal Political Dynamics",
+                "13.6",
+                "Definition-backed political factions with affiliations, roles, platforms, vote recommendations, influence reports, split/merge history, visibility projections, and persistence.",
+                13060,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "FactionRuntime", "FactionDefinition", "FactionPersistenceParticipant", "OrganizationDecisionRuntime" },
+                scenarios: new[]
+                {
+                    FactionScenario("runtime-readiness", "Faction definitions and owned runtime are ready", 10,
+                        Step("step13-factions-readiness", "Validate faction definitions and runtime ownership", FactionRuntimeReadiness)),
+                    FactionScenario("identity-lifecycle-hosts", "Factions create, rename, and transition lifecycle without becoming organizations", 20,
+                        Step("step13-factions-identity", "Create hosted and independent faction records", FactionIdentityLifecycleHosts)),
+                    FactionScenario("affiliations-and-roles", "Faction affiliations and internal roles remain separate from organization membership", 30,
+                        Step("step13-factions-affiliations", "Apply affiliations and assign roles through eligibility rules", FactionAffiliationsAndRoles)),
+                    FactionScenario("positions-recommendations-cohesion", "Faction positions and vote recommendations read organization decisions without owning votes", 40,
+                        Step("step13-factions-cohesion", "Set platform positions and measure vote cohesion", FactionPositionsRecommendationsCohesion)),
+                    FactionScenario("split-merge-disposition-projection-persistence", "Split, merge, disposition, projection, and persistence preserve faction state", 50,
+                        Step("step13-factions-persistence", "Validate structural changes, redaction, and save restore", FactionSplitMergeDispositionProjectionPersistence))
                 }), out _);
         }
 
@@ -1375,6 +1399,182 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step13-decisions-execution", "Execute resolution and validate persistence", valid, $"Submit={submit.Code} Votes={voteActor.Code}/{voteFriend.Code} Close={close.Code}:{close.Resolution?.outcome} Preview={preview.Code}/{previewNoMutation} Execute={execute.Code} Budgets={resources.BudgetCount} Projection={redacted.Access}/{denied.Access} Restore={restore.Code} Rejected={rejected}:{validationFailure} Prepare={prepared.Succeeded}");
         }
 
+        private static TestLabAutomationStepResult FactionRuntimeReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetFactionRuntime(context, out FactionRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-factions-readiness", "Validate faction definitions and runtime ownership", "FactionRuntime", "Present", "Missing", failure);
+            }
+
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool reform = registry.TryGet(PrototypeFactionDefinitionFactory.ReformFactionId, out FactionDefinition reformDefinition);
+            bool secret = registry.TryGet(PrototypeFactionDefinitionFactory.SecretMemberAffiliationId, out FactionAffiliationDefinition secretAffiliation);
+            bool role = registry.TryGet(PrototypeFactionDefinitionFactory.SeniorLeaderRoleId, out FactionRoleDefinition leaderRole);
+            bool position = registry.TryGet(PrototypeFactionDefinitionFactory.ProposalPositionId, out FactionPositionDefinition proposalPosition);
+            bool axis = registry.TryGet(PrototypeFactionDefinitionFactory.ReformTraditionAxisId, out FactionAlignmentAxisDefinition axisDefinition);
+            bool valid = runtime.IsReady
+                && reform
+                && secret
+                && role
+                && position
+                && axis
+                && reformDefinition.OrganizationMembershipRequired
+                && FactionModelUtility.IsSecret(secretAffiliation.Visibility)
+                && leaderRole.LeadershipRole
+                && proposalPosition.TargetKind == FactionPositionTargetKind.OrganizationProposal
+                && axisDefinition.MinimumValue < axisDefinition.MaximumValue;
+            return TestLabAssertions.True("step13-factions-readiness", "Validate faction definitions and runtime ownership", valid, $"Ready={runtime.IsReady} Definitions={reform}/{secret}/{role}/{position}/{axis} Counts={runtime.FactionCount}/{runtime.AffiliationCount}");
+        }
+
+        private static TestLabAutomationStepResult FactionIdentityLifecycleHosts(TestLabAutomationContext context)
+        {
+            if (!TryGetFactionRuntime(context, out FactionRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-factions-identity", "Create hosted and independent faction records", "FactionRuntime", "Present", "Missing", failure);
+            }
+
+            long before = runtime.Revision;
+            FactionOperationResult preview = runtime.CreateFaction(FactionCreate(context, "preview", PrototypeFactionDefinitionFactory.ReformFactionId, "Preview Reformists", FactionHostContextData.ForOrganization("organization.prototype.guild"), preview: true));
+            FactionOperationResult create = runtime.CreateFaction(FactionCreate(context, "identity", PrototypeFactionDefinitionFactory.ReformFactionId, "Guild Reform Bloc", FactionHostContextData.ForOrganization("organization.prototype.guild")));
+            FactionOperationResult duplicate = runtime.CreateFaction(FactionCreate(context, "identity", PrototypeFactionDefinitionFactory.ReformFactionId, "Guild Reform Bloc", FactionHostContextData.ForOrganization("organization.prototype.guild")));
+            FactionOperationResult independent = runtime.CreateFaction(FactionCreate(context, "independent", PrototypeFactionDefinitionFactory.IndependentMovementFactionId, "Free Company Voice", FactionHostContextData.Independent()));
+            FactionOperationResult rename = runtime.RenameFaction(Tx(context, "faction-rename"), create.Faction?.factionId, $"faction-name.testlab.rename.{context.RunId}", "Guild Reform Caucus", FactionNameCategory.Public, 2d);
+            FactionOperationResult transition = runtime.TransitionFaction(new FactionLifecycleRequest { transactionId = Tx(context, "faction-dormant"), factionId = independent.Faction?.factionId, targetState = FactionLifecycleState.Dormant, worldTime = 3d });
+            bool noOrganizationMutation = context.ScenarioContext.Runtimes.Organizations.Count == PrototypeOrganizationDefinitionFactory.PrototypeOrganizationIds.Length;
+            bool valid = preview.Succeeded
+                && preview.Preview
+                && create.Succeeded
+                && duplicate.Code == FactionOperationCode.Duplicate
+                && independent.Succeeded
+                && rename.Succeeded
+                && transition.Succeeded
+                && runtime.Revision > before
+                && noOrganizationMutation;
+            return TestLabAssertions.True("step13-factions-identity", "Create hosted and independent faction records", valid, $"Preview={preview.Code} Create={create.Code} Duplicate={duplicate.Code} Independent={independent.Code} Rename={rename.Code} Transition={transition.Code} OrgStable={noOrganizationMutation}");
+        }
+
+        private static TestLabAutomationStepResult FactionAffiliationsAndRoles(TestLabAutomationContext context)
+        {
+            if (!TryGetFactionRuntime(context, out FactionRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-factions-affiliations", "Apply affiliations and assign roles through eligibility rules", "FactionRuntime", "Present", "Missing", failure);
+            }
+
+            string actorId = PrimaryAuthorityActorId(context);
+            string factionId = $"faction.testlab.affiliation.{context.RunId}";
+            FactionOperationResult faction = runtime.CreateFaction(FactionCreate(context, "affiliation", PrototypeFactionDefinitionFactory.ReformFactionId, "Affiliation Reformists", FactionHostContextData.ForOrganization("organization.prototype.guild")));
+            FactionOperationResult denied = runtime.ApplyAffiliation(FactionAffiliation(context, "denied", factionId, "person.prototype.friend", PrototypeFactionDefinitionFactory.FormalMemberAffiliationId, consent: true));
+            OrganizationMembershipOperationResult membership = context.ScenarioContext.Runtimes.OrganizationMemberships.ApplyMembership(MembershipRequest($"organization-membership.testlab.faction.actor.{context.RunId}", "organization.prototype.guild", actorId, PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId, OrganizationMembershipStatus.Active, OrganizationMembershipSourceKind.WorldSetup, Tx(context, "faction-org-member"), consent: true));
+            FactionEligibilityResult eligibility = runtime.EvaluateAffiliationEligibility(FactionAffiliation(context, "eligible", factionId, actorId, PrototypeFactionDefinitionFactory.FormalMemberAffiliationId, consent: true));
+            FactionOperationResult affiliation = runtime.ApplyAffiliation(FactionAffiliation(context, "actor", factionId, actorId, PrototypeFactionDefinitionFactory.FormalMemberAffiliationId, consent: true));
+            FactionOperationResult role = runtime.AssignRole(new FactionRoleAssignmentRequest { transactionId = Tx(context, "faction-role"), roleAssignmentId = $"faction-role-assignment.testlab.organizer.{context.RunId}", affiliationId = affiliation.Affiliation?.affiliationId, roleDefinitionId = PrototypeFactionDefinitionFactory.OrganizerRoleId, worldTime = 2d });
+            FactionOperationResult supporter = runtime.ApplyAffiliation(FactionAffiliation(context, "supporter", factionId, "person.prototype.friend", PrototypeFactionDefinitionFactory.SupporterAffiliationId, consent: false));
+            bool membershipNotGranted = !context.ScenarioContext.Runtimes.OrganizationMemberships.Memberships.Any(item => item.PersonId == "person.prototype.friend" && item.OrganizationId == "organization.prototype.guild" && item.IsActive);
+            bool valid = faction.Succeeded
+                && !denied.Succeeded
+                && membership.Succeeded
+                && eligibility.Eligible
+                && affiliation.Succeeded
+                && role.Succeeded
+                && supporter.Succeeded
+                && membershipNotGranted;
+            return TestLabAssertions.True("step13-factions-affiliations", "Apply affiliations and assign roles through eligibility rules", valid, $"Faction={faction.Code} Denied={denied.Code} Membership={membership.Status} Eligibility={eligibility.Eligible}:{eligibility.RequiresConsent} Affiliation={affiliation.Code} Role={role.Code} Supporter={supporter.Code} NoOrgGrant={membershipNotGranted}");
+        }
+
+        private static TestLabAutomationStepResult FactionPositionsRecommendationsCohesion(TestLabAutomationContext context)
+        {
+            if (!TryGetFactionRuntime(context, out FactionRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-factions-cohesion", "Set platform positions and measure vote cohesion", "FactionRuntime", "Present", "Missing", failure);
+            }
+
+            if (!PrepareDecisionFixture(context, 100L, out OrganizationDecisionRuntime decisions, out _, out _, out string actorId, out failure))
+            {
+                return TestLabAssertions.Fail("step13-factions-cohesion", "Set platform positions and measure vote cohesion", "DecisionFixture", "Ready", "Missing", failure);
+            }
+
+            string factionId = $"faction.testlab.cohesion.{context.RunId}";
+            FactionOperationResult faction = runtime.CreateFaction(FactionCreate(context, "cohesion", PrototypeFactionDefinitionFactory.ReformFactionId, "Cohesion Reformists", FactionHostContextData.ForOrganization("organization.prototype.guild")));
+            FactionOperationResult actorAffiliation = runtime.ApplyAffiliation(FactionAffiliation(context, "cohesion-actor", factionId, actorId, PrototypeFactionDefinitionFactory.FormalMemberAffiliationId, consent: true));
+            FactionOperationResult friendAffiliation = runtime.ApplyAffiliation(FactionAffiliation(context, "cohesion-friend", factionId, "person.prototype.friend", PrototypeFactionDefinitionFactory.FormalMemberAffiliationId, consent: true));
+            string proposalId = $"organization-proposal.testlab.faction.{context.RunId}";
+            OrganizationDecisionOperationResult submit = decisions.SubmitProposal(new OrganizationProposalRequest
+            {
+                transactionId = Tx(context, "faction-proposal-submit"),
+                proposalId = proposalId,
+                organizationId = "organization.prototype.guild",
+                proposalDefinitionId = PrototypeOrganizationDecisionDefinitionFactory.EstablishGoalProposalId,
+                title = "Faction backed recruitment goal",
+                proposerPersonId = actorId,
+                requestedExecutionOperations = new[] { GoalOperation(context, "faction", $"organization-goal-record.testlab.faction.{context.RunId}", 4L) },
+                submittedWorldTime = 10d,
+                votingStartWorldTime = 10d,
+                votingEndWorldTime = 20d
+            });
+            FactionOperationResult position = runtime.SetPosition(new FactionPositionRequest { transactionId = Tx(context, "faction-position"), positionId = $"faction-position.testlab.proposal.{context.RunId}", factionId = factionId, positionDefinitionId = PrototypeFactionDefinitionFactory.ProposalPositionId, targetKind = FactionPositionTargetKind.OrganizationProposal, targetId = proposalId, stance = FactionPositionStance.Supports, weight = 5, worldTime = 11d });
+            FactionOperationResult recommendation = runtime.RecommendVote(new FactionRecommendationRequest { transactionId = Tx(context, "faction-recommend"), recommendationId = $"faction-recommendation.testlab.{context.RunId}", factionId = factionId, proposalId = proposalId, recommendation = FactionVoteRecommendationKind.Support, issuedByPersonId = actorId, worldTime = 12d });
+            OrganizationDecisionOperationResult voteActor = decisions.CastVote(VoteRequest(context, proposalId, actorId, "faction-actor", OrganizationVoteChoice.Approve));
+            OrganizationDecisionOperationResult voteFriend = decisions.CastVote(VoteRequest(context, proposalId, "person.prototype.friend", "faction-friend", OrganizationVoteChoice.Reject));
+            FactionVoteCohesionReport cohesion = runtime.CreateVoteCohesionReport(factionId, proposalId, 13d);
+            FactionInfluenceReport influence = runtime.CreateInfluenceReport(factionId, "organization.prototype.guild", 13d);
+            bool voteRuntimeOwner = decisions.VoteCount == 2;
+            bool valid = faction.Succeeded
+                && actorAffiliation.Succeeded
+                && friendAffiliation.Succeeded
+                && submit.Succeeded
+                && position.Succeeded
+                && recommendation.Succeeded
+                && voteActor.Succeeded
+                && voteFriend.Succeeded
+                && cohesion.AlignedVotes == 1
+                && cohesion.OpposedVotes == 1
+                && influence.InfluenceScore > 0
+                && voteRuntimeOwner;
+            return TestLabAssertions.True("step13-factions-cohesion", "Set platform positions and measure vote cohesion", valid, $"Faction={faction.Code} Affiliations={actorAffiliation.Code}/{friendAffiliation.Code} Proposal={submit.Code} Position={position.Code} Recommend={recommendation.Code} Votes={voteActor.Code}/{voteFriend.Code} Cohesion={cohesion.AlignedVotes}/{cohesion.OpposedVotes}/{cohesion.CountedVotes} Influence={influence.InfluenceScore} VoteOwner={voteRuntimeOwner}");
+        }
+
+        private static TestLabAutomationStepResult FactionSplitMergeDispositionProjectionPersistence(TestLabAutomationContext context)
+        {
+            if (!TryGetFactionRuntime(context, out FactionRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-factions-persistence", "Validate structural changes, redaction, and save restore", "FactionRuntime", "Present", "Missing", failure);
+            }
+
+            string sourceId = $"faction.testlab.source.{context.RunId}";
+            string rivalId = $"faction.testlab.rival.{context.RunId}";
+            FactionOperationResult source = runtime.CreateFaction(FactionCreate(context, "source", PrototypeFactionDefinitionFactory.CrossOrgMovementFactionId, "Source Coalition", new FactionHostContextData { contextKind = FactionHostContextKind.MultipleOrganizations, organizationIds = new[] { "organization.prototype.guild", "organization.prototype.royal-forge" } }));
+            FactionOperationResult rival = runtime.CreateFaction(FactionCreate(context, "rival", PrototypeFactionDefinitionFactory.TraditionalistFactionId, "Traditionalist Rival", FactionHostContextData.ForOrganization("organization.prototype.guild")));
+            FactionOperationResult disposition = runtime.SetDisposition(new FactionDispositionRequest { transactionId = Tx(context, "faction-disposition"), dispositionId = $"faction-disposition.testlab.{context.RunId}", sourceFactionId = sourceId, targetFactionId = rivalId, disposition = FactionDispositionKind.Competitive, intensity = 60, worldTime = 2d });
+            FactionOperationResult secret = runtime.CreateFaction(FactionCreate(context, "secret", PrototypeFactionDefinitionFactory.SecretFactionId, "Hidden Lantern Society", FactionHostContextData.ForOrganization("organization.prototype.guild"), visibility: FactionVisibility.Secret));
+            FactionProjection concealed = runtime.GetFactionProjection(secret.Faction?.factionId, new FactionProjectionContext());
+            FactionProjection development = runtime.GetFactionProjection(secret.Faction?.factionId, new FactionProjectionContext { developmentView = true, privileged = true });
+            FactionOperationResult split = runtime.SplitFaction(Tx(context, "faction-split"), sourceId, new[]
+            {
+                FactionCreate(context, "split-a", PrototypeFactionDefinitionFactory.MerchantInterestFactionId, "Merchant Successor", new FactionHostContextData { contextKind = FactionHostContextKind.MultipleOrganizations, organizationIds = new[] { "organization.prototype.guild", "organization.prototype.royal-forge" } }),
+                FactionCreate(context, "split-b", PrototypeFactionDefinitionFactory.ReligiousInterestFactionId, "Sanctuary Successor", new FactionHostContextData { contextKind = FactionHostContextKind.PlaceOrRegion, placeOrRegionId = "place.prototype.region" })
+            }, Array.Empty<string>(), 3d);
+            FactionOperationResult merge = runtime.MergeFactions(Tx(context, "faction-merge"), new[] { rivalId, secret.Faction?.factionId }, FactionCreate(context, "merged", PrototypeFactionDefinitionFactory.LeaderSupportFactionId, "Merged Loyalists", FactionHostContextData.ForOrganization("organization.prototype.guild")), 4d);
+            FactionRuntimeSaveData save = runtime.CreateSaveData();
+            FactionRuntime restored = new FactionRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.OrganizationMemberships, context.ScenarioContext.Runtimes.OrganizationAuthority, context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.OrganizationDecisions, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds);
+            FactionOperationResult restore = restored.RestoreFromSaveData(save, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.OrganizationMemberships, context.ScenarioContext.Runtimes.OrganizationAuthority, context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.OrganizationDecisions, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds);
+            FactionRuntimeSaveData corrupt = save.Clone();
+            if (corrupt.factions.Count > 0) corrupt.factions[0].factionDefinitionId = "faction.missing-definition";
+            bool rejected = !FactionRuntime.ValidateSaveData(corrupt, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.OrganizationMemberships, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, out string validationFailure);
+            bool valid = source.Succeeded
+                && rival.Succeeded
+                && disposition.Succeeded
+                && secret.Succeeded
+                && concealed.Access == FactionProjectionAccess.Concealed
+                && development.Access == FactionProjectionAccess.Development
+                && split.Succeeded
+                && merge.Succeeded
+                && restore.Succeeded
+                && restored.FactionCount == runtime.FactionCount
+                && rejected;
+            return TestLabAssertions.True("step13-factions-persistence", "Validate structural changes, redaction, and save restore", valid, $"Source={source.Code} Rival={rival.Code} Disposition={disposition.Code} Secret={secret.Code} Projection={concealed.Access}/{development.Access} Split={split.Code} Merge={merge.Code} Restore={restore.Code} Counts={restored.FactionCount}/{runtime.FactionCount} Reject={rejected}:{validationFailure}");
+        }
+
         private static bool PrepareResourceAccounts(TestLabAutomationContext context, long openingBalance, out OrganizationResourceRuntime resources, out CurrencyDefinition currency, out string actorId, out string failure)
         {
             resources = context?.ScenarioContext?.Runtimes?.OrganizationResources;
@@ -1671,6 +1871,84 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario FactionScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeOrganizationDefinitionFactory.GuildDefinitionId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildMasterRankId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildmasterOfficeId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterRoleId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.SubmitDecisionProposalActionId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.CastOrganizationVoteActionId,
+                    PrototypeOrganizationDecisionDefinitionFactory.EstablishGoalProposalId,
+                    PrototypeOrganizationDecisionDefinitionFactory.SimpleMajorityProcedureId,
+                    PrototypeFactionDefinitionFactory.ReformFactionId,
+                    PrototypeFactionDefinitionFactory.TraditionalistFactionId,
+                    PrototypeFactionDefinitionFactory.SecretFactionId,
+                    PrototypeFactionDefinitionFactory.CrossOrgMovementFactionId,
+                    PrototypeFactionDefinitionFactory.IndependentMovementFactionId,
+                    PrototypeFactionDefinitionFactory.FormalMemberAffiliationId,
+                    PrototypeFactionDefinitionFactory.SupporterAffiliationId,
+                    PrototypeFactionDefinitionFactory.SecretMemberAffiliationId,
+                    PrototypeFactionDefinitionFactory.OrganizerRoleId,
+                    PrototypeFactionDefinitionFactory.SeniorLeaderRoleId,
+                    PrototypeFactionDefinitionFactory.ProposalPositionId,
+                    PrototypeFactionDefinitionFactory.ReformTraditionAxisId,
+                    PrototypeOrganizationResourceDefinitionFactory.CurrencyResourceTypeId,
+                    "currency.gold"
+                });
+        }
+
+        private static FactionCreateRequest FactionCreate(TestLabAutomationContext context, string suffix, string definitionId, string name, FactionHostContextData host, FactionVisibility visibility = FactionVisibility.Public, bool preview = false)
+        {
+            return new FactionCreateRequest
+            {
+                transactionId = Tx(context, $"faction-create-{suffix}"),
+                factionId = $"faction.testlab.{suffix}.{context.RunId}",
+                factionDefinitionId = definitionId,
+                officialName = name,
+                publicDescription = $"{name} prototype faction.",
+                hostContext = host?.Clone() ?? FactionHostContextData.Independent(),
+                founderPersonId = PrimaryAuthorityActorId(context),
+                founderOrganizationId = host?.primaryOrganizationId ?? string.Empty,
+                worldTime = 1d,
+                initialState = FactionLifecycleState.Active,
+                visibility = visibility,
+                tags = new[] { "testlab", "feature13.6" },
+                preview = preview
+            };
+        }
+
+        private static FactionAffiliationRequest FactionAffiliation(TestLabAutomationContext context, string suffix, string factionId, string personId, string definitionId, bool consent)
+        {
+            return new FactionAffiliationRequest
+            {
+                transactionId = Tx(context, $"faction-affiliation-{suffix}"),
+                affiliationId = $"faction-affiliation.testlab.{suffix}.{context.RunId}",
+                factionId = factionId,
+                personId = personId,
+                affiliationDefinitionId = definitionId,
+                explicitConsent = consent,
+                organizationContextId = "organization.prototype.guild",
+                worldTime = 2d,
+                visibility = definitionId == PrototypeFactionDefinitionFactory.SecretMemberAffiliationId ? FactionVisibility.Secret : FactionVisibility.Public
+            };
+        }
+
+        private static string Tx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.6.{suffix}.{context?.RunId ?? "run"}";
+
         private static OrganizationCreateRequest CreateGuildRequest(string organizationId, string name, string runId, bool preview = false)
         {
             return new OrganizationCreateRequest
@@ -1856,6 +2134,19 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null)
             {
                 failure = "OrganizationAuthorityRuntime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetFactionRuntime(TestLabAutomationContext context, out FactionRuntime runtime, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.Factions;
+            if (runtime == null)
+            {
+                failure = "FactionRuntime is missing from the Test Lab runtime bundle.";
                 return false;
             }
 
