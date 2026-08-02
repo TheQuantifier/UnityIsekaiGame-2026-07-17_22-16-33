@@ -20,6 +20,7 @@ using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
+using UnityIsekaiGame.Governments;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Crafting;
@@ -116,6 +117,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldOrganizationDecisions = true;
         [SerializeField] private bool registerWorldFactions = true;
         [SerializeField] private bool registerWorldDiplomacy = true;
+        [SerializeField] private bool registerWorldGovernments = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -220,6 +222,7 @@ namespace UnityIsekaiGame.Gameplay
         private OrganizationDecisionPersistenceParticipant organizationDecisionParticipant;
         private FactionPersistenceParticipant factionParticipant;
         private DiplomacyPersistenceParticipant diplomacyParticipant;
+        private GovernmentPersistenceParticipant governmentParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -278,6 +281,7 @@ namespace UnityIsekaiGame.Gameplay
         private OrganizationDecisionRuntime worldOrganizationDecisions;
         private FactionRuntime worldFactions;
         private DiplomacyRuntime worldDiplomacy;
+        private GovernmentRuntime worldGovernments;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -800,6 +804,20 @@ namespace UnityIsekaiGame.Gameplay
                 return worldDiplomacy;
             }
         }
+        public GovernmentRuntime Governments
+        {
+            get
+            {
+                if (worldGovernments == null)
+                {
+                    worldGovernments = new GovernmentRuntime();
+                }
+
+                string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+                worldGovernments.Configure(GetDefinitionRegistry(), Organizations, OrganizationMemberships, OrganizationAuthority, OrganizationDecisions, OrganizationResources, Factions, Diplomacy, Properties, service == null ? PersistenceService.LocalWorldId : service.WorldId, GetPrototypeSocialPersonIds(personId), GetKnownPlaceIds());
+                return worldGovernments;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -930,6 +948,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(diplomacyParticipant);
                 diplomacyParticipant = null;
+            }
+
+            if (service != null && governmentParticipant != null)
+            {
+                service.UnregisterParticipant(governmentParticipant);
+                governmentParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -1292,6 +1316,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldOrganizationDecisionParticipant();
             EnsureWorldFactionParticipant();
             EnsureWorldDiplomacyParticipant();
+            EnsureWorldGovernmentParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -2097,6 +2122,44 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 diplomacyParticipant = null;
+            }
+        }
+
+        private void EnsureWorldGovernmentParticipant()
+        {
+            if (!registerWorldGovernments || governmentParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World government persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+            governmentParticipant = new GovernmentPersistenceParticipant(
+                Governments,
+                GetDefinitionRegistry,
+                () => Organizations,
+                () => OrganizationMemberships,
+                () => OrganizationAuthority,
+                () => OrganizationDecisions,
+                () => OrganizationResources,
+                () => Factions,
+                () => Diplomacy,
+                () => Properties,
+                service.WorldId,
+                () => GetPrototypeSocialPersonIds(personId),
+                GetKnownPlaceIds);
+
+            service.RegisterParticipant(governmentParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                governmentParticipant = null;
             }
         }
 
@@ -4579,6 +4642,7 @@ namespace UnityIsekaiGame.Gameplay
                                                                             PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))))));
             definitionRegistry = PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(definitionRegistry);
             definitionRegistry = PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(definitionRegistry);
+            definitionRegistry = PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(definitionRegistry);
             return definitionRegistry;
         }
 
@@ -4592,6 +4656,18 @@ namespace UnityIsekaiGame.Gameplay
             return string.Equals(playerIdentityProgression.PersonId, personId, System.StringComparison.Ordinal)
                 ? playerKnowledge
                 : null;
+        }
+
+        private string[] GetKnownPlaceIds()
+        {
+            DefinitionRegistry registry = GetDefinitionRegistry();
+            return registry?.DefinitionsById.Values
+                .OfType<PlaceDefinition>()
+                .Select(definition => definition.Id)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray() ?? Array.Empty<string>();
         }
 
         private PersonMemoryRuntime ResolveMemoryRuntimeForPerson(string personId)
