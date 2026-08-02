@@ -16,6 +16,7 @@ using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Justice;
 using UnityIsekaiGame.Organizations;
+using UnityIsekaiGame.Organizations.Integration;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Progression;
 
@@ -328,6 +329,195 @@ namespace UnityIsekaiGame.Development.Automation
                     JusticeScenario("projection-persistence-validation", "Justice projections redact restricted data and persistence rejects corrupt graphs", 70,
                         Step("step13-justice-persistence", "Project, save, restore, and reject invalid justice graph", JusticeProjectionPersistenceValidation))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.12.organizations-governments-law-integration-finalization",
+                "Organizations, Factions, Governments, Law, and Justice Integration Finalization",
+                "13.12",
+                "Step 13 integration readiness, runtime ownership, protected action ordering, bounded projections, persistence dependency graph, and cross-runtime transaction hardening.",
+                13120,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[]
+                {
+                    "Step13InstitutionalIntegrationFacade",
+                    "OrganizationRuntime",
+                    "OrganizationMembershipRuntime",
+                    "OrganizationAuthorityRuntime",
+                    "OrganizationResourceRuntime",
+                    "OrganizationDecisionRuntime",
+                    "FactionRuntime",
+                    "DiplomacyRuntime",
+                    "GovernmentRuntime",
+                    "LegalRuntime",
+                    "CrimeRuntime",
+                    "JusticeRuntime"
+                },
+                scenarios: new[]
+                {
+                    IntegrationScenario("readiness-ownership-graph", "Step 13 readiness and ownership graph are complete", 10,
+                        Step("step13-integration-readiness", "Validate readiness, ownership, and persistence dependencies", Step13IntegrationReadinessOwnershipGraph)),
+                    IntegrationScenario("identity-action-pipeline", "Protected institutional actions evaluate gates in stable order", 20,
+                        Step("step13-integration-action", "Evaluate identity, authority, jurisdiction, law, domain, consent, resource, and timing gates", Step13IntegrationActionPipeline)),
+                    IntegrationScenario("projection-persistence-restore", "Bounded institutional projections and runtime snapshots are deterministic", 30,
+                        Step("step13-integration-snapshot", "Create immutable access-aware institutional context snapshots", Step13IntegrationProjectionPersistenceRestore)),
+                    IntegrationScenario("transaction-atomicity-idempotence", "Cross-runtime transaction coordination is atomic and idempotent", 40,
+                        Step("step13-integration-transaction", "Preview, rollback failed commits, and reject duplicate side effects", Step13IntegrationTransactionAtomicity)),
+                    IntegrationScenario("boundaries-and-handoffs", "Step 13 exposes clean ownership handoffs to adjacent systems", 50,
+                        Step("step13-integration-boundaries", "Validate non-owned domains stay external and derived", Step13IntegrationBoundariesAndHandoffs))
+                }), out _);
+        }
+
+        private static TestLabAutomationStepResult Step13IntegrationReadinessOwnershipGraph(TestLabAutomationContext context)
+        {
+            Step13InstitutionalIntegrationFacade facade = CreateIntegrationFacade(context);
+            Step13IntegrationValidationReport report = facade.ValidateComplete();
+            Step13ReadinessSnapshot readiness = facade.CreateReadinessSnapshot();
+
+            bool uniqueOwnership = facade.OwnershipMap.Select(item => item.DomainId).Distinct(StringComparer.Ordinal).Count() == facade.OwnershipMap.Count;
+            bool organizationOwned = facade.OwnershipMap.Any(item => item.DomainId == "organization-identity" && item.AuthoritativeRuntime == nameof(OrganizationRuntime));
+            bool warrantOwned = facade.OwnershipMap.Any(item => item.DomainId == "warrant" && item.AuthoritativeRuntime == nameof(CrimeRuntime));
+            bool judgmentOwned = facade.OwnershipMap.Any(item => item.DomainId == "judgment" && item.AuthoritativeRuntime == nameof(JusticeRuntime));
+            bool justiceDependsOnCrime = facade.PersistenceDependencies.Any(item => item.ParticipantKey == JusticePersistenceParticipant.Key && item.DependsOn.Contains(CrimePersistenceParticipant.Key));
+            bool valid = report.Succeeded && readiness.Status == Step13IntegrationHealthStatus.Ready && uniqueOwnership && organizationOwned && warrantOwned && judgmentOwned && justiceDependsOnCrime && readiness.Runtimes.Count == 11;
+
+            string diagnostics = report.Diagnostics.Count == 0 ? "None" : string.Join(" | ", report.Diagnostics.Select(item => item.ToString()));
+            return TestLabAssertions.True("step13-integration-readiness", "Validate readiness, ownership, and persistence dependencies", valid, $"Status={readiness.Status} {report.ToSummary()} Runtimes={readiness.Runtimes.Count} Ownership={facade.OwnershipMap.Count} Dependencies={facade.PersistenceDependencies.Count} Diagnostics={diagnostics}");
+        }
+
+        private static TestLabAutomationStepResult Step13IntegrationActionPipeline(TestLabAutomationContext context)
+        {
+            Step13InstitutionalIntegrationFacade facade = CreateIntegrationFacade(context);
+            Step13InstitutionalActionContext validContext = new Step13InstitutionalActionContext(
+                PrimaryAuthorityActorId(context),
+                "organization.prototype.guild",
+                "government.prototype.village",
+                $"office-assignment.testlab.integration.{context.RunId}",
+                $"authority-grant.testlab.integration.{context.RunId}",
+                new Step13InstitutionalSubjectReference(Step13InstitutionalSubjectType.Warrant, $"warrant.testlab.integration.{context.RunId}", context.ScenarioContext.Runtimes.WorldId, nameof(CrimeRuntime)),
+                "institutional-action.prototype.issue-warrant",
+                "place.testlab.capital",
+                "political-territory.testlab.integration",
+                "jurisdiction.testlab.integration",
+                "legal-subject.prototype.public-order",
+                string.Empty,
+                string.Empty,
+                $"incident.testlab.integration.{context.RunId}",
+                string.Empty,
+                100d,
+                $"provenance.testlab.integration.{context.RunId}",
+                Step13ProjectionVisibility.Official);
+            Step13InstitutionalActionContext missingAuthority = new Step13InstitutionalActionContext(
+                PrimaryAuthorityActorId(context),
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                new Step13InstitutionalSubjectReference(Step13InstitutionalSubjectType.Warrant, $"warrant.testlab.integration.{context.RunId}", context.ScenarioContext.Runtimes.WorldId, nameof(CrimeRuntime)),
+                "institutional-action.prototype.issue-warrant",
+                "place.testlab.capital",
+                "political-territory.testlab.integration",
+                "jurisdiction.testlab.integration",
+                "legal-subject.prototype.public-order",
+                string.Empty,
+                string.Empty,
+                $"incident.testlab.integration.{context.RunId}",
+                string.Empty,
+                100d);
+
+            Step13ActionEvaluationResult allowed = facade.EvaluateProtectedAction(validContext);
+            Step13ActionEvaluationResult denied = facade.EvaluateProtectedAction(missingAuthority);
+            bool ordered = allowed.Gates.Select(item => item.Gate).SequenceEqual(allowed.Gates.Select(item => item.Gate).OrderBy(item => item));
+            bool authorityBlocked = denied.FailedGates.Any(item => item.Gate == Step13ActionGate.Authority);
+            bool valid = allowed.Executable && ordered && !denied.Executable && authorityBlocked && denied.FailedGates.Any(item => item.Gate == Step13ActionGate.Prepared);
+
+            return TestLabAssertions.True("step13-integration-action", "Evaluate identity, authority, jurisdiction, law, domain, consent, resource, and timing gates", valid, $"Allowed={allowed.Executable} Denied={denied.Executable} Ordered={ordered} Failed={string.Join(",", denied.FailedGates.Select(item => item.Gate))} Fingerprints={allowed.Fingerprint}/{denied.Fingerprint}");
+        }
+
+        private static TestLabAutomationStepResult Step13IntegrationProjectionPersistenceRestore(TestLabAutomationContext context)
+        {
+            Step13InstitutionalIntegrationFacade facade = CreateIntegrationFacade(context);
+            string organizationId = $"organization.testlab.integration.snapshot.{context.RunId}";
+            OrganizationOperationResult organization = context.ScenarioContext.Runtimes.Organizations.CreateOrganization(new OrganizationCreateRequest
+            {
+                organizationId = organizationId,
+                organizationDefinitionId = PrototypeOrganizationDefinitionFactory.GuildDefinitionId,
+                officialName = "Integration Snapshot Guild",
+                shortName = "Integration",
+                initialLifecycleState = OrganizationLifecycleState.Active,
+                visibility = OrganizationVisibility.Public,
+                transactionId = $"testlab.integration.snapshot.organization.{context.RunId}"
+            });
+            Step13InstitutionalContextOptions options = new Step13InstitutionalContextOptions
+            {
+                MaxOrganizations = 1,
+                MaxMemberships = 1,
+                MaxAuthority = 1,
+                MaxResources = 1,
+                MaxDecisions = 1,
+                MaxFactions = 1,
+                MaxDiplomacy = 1,
+                MaxGovernments = 1,
+                MaxLaws = 1,
+                MaxCrimes = 1,
+                MaxJustice = 1
+            };
+
+            Step13InstitutionalContextSnapshot first = facade.CreateInstitutionalContextSnapshot(PrimaryAuthorityActorId(context), PrimaryAuthorityActorId(context), organizationId, string.Empty, string.Empty, 100d, options);
+            Step13InstitutionalContextSnapshot second = facade.CreateInstitutionalContextSnapshot(PrimaryAuthorityActorId(context), PrimaryAuthorityActorId(context), organizationId, string.Empty, string.Empty, 100d, options);
+            Step13ContextRecordReference[] returned = first.Records as Step13ContextRecordReference[];
+            if (returned != null && returned.Length > 0)
+            {
+                returned[0] = new Step13ContextRecordReference("mutated", "mutated", Step13InstitutionalProjectionState.Diagnostic, Step13ProjectionVisibility.Diagnostic);
+            }
+
+            bool deterministic = first.Fingerprint == second.Fingerprint;
+            bool immutable = !first.Records.Any(item => item.RuntimeName == "mutated");
+            bool bounded = first.Records.Count <= 11;
+            bool sourced = first.SourceRuntimes.Count == 11;
+            bool valid = organization.Succeeded && deterministic && immutable && bounded && sourced && first.Records.Count > 0;
+
+            return TestLabAssertions.True("step13-integration-snapshot", "Create immutable access-aware institutional context snapshots", valid, $"Organization={organization.Status} Deterministic={deterministic} Immutable={immutable} Records={first.Records.Count} Runtimes={first.SourceRuntimes.Count} Truncated={first.Truncated} Diagnostics={string.Join(",", first.Diagnostics)}");
+        }
+
+        private static TestLabAutomationStepResult Step13IntegrationTransactionAtomicity(TestLabAutomationContext context)
+        {
+            Step13InstitutionalTransactionCoordinator coordinator = new Step13InstitutionalTransactionCoordinator();
+            bool previewed = false;
+            bool committed = false;
+            bool rolledBack = false;
+            Step13TransactionParticipantPlan[] failingPlans =
+            {
+                new Step13TransactionParticipantPlan(nameof(CrimeRuntime), Step13TransactionFailurePolicy.Required, () => previewed = true, () => true, () => committed = true, () => rolledBack = true),
+                new Step13TransactionParticipantPlan(nameof(JusticeRuntime), Step13TransactionFailurePolicy.Required, () => true, () => true, () => false, () => rolledBack = true)
+            };
+
+            Step13TransactionResult preview = coordinator.Execute($"tx.step13.integration.preview.{context.RunId}", failingPlans, preview: true);
+            Step13TransactionResult failed = coordinator.Execute($"tx.step13.integration.fail.{context.RunId}", failingPlans);
+            Step13TransactionResult success = coordinator.Execute($"tx.step13.integration.success.{context.RunId}", new[]
+            {
+                new Step13TransactionParticipantPlan(nameof(JusticeRuntime), Step13TransactionFailurePolicy.Required, () => true, () => true, () => true, () => true)
+            });
+            Step13TransactionResult duplicate = coordinator.Execute($"tx.step13.integration.success.{context.RunId}", failingPlans);
+
+            bool rollbackRecorded = failed.Participants.Any(item => item.Stage == Step13TransactionStage.Rollback && item.RuntimeName == nameof(CrimeRuntime));
+            bool valid = preview.Succeeded && preview.Preview && previewed && !failed.Succeeded && committed && rolledBack && rollbackRecorded && success.Succeeded && duplicate.Succeeded && duplicate.Duplicate;
+
+            return TestLabAssertions.True("step13-integration-transaction", "Preview, rollback failed commits, and reject duplicate side effects", valid, $"Preview={preview.Succeeded}/{preview.Preview} Failed={failed.Succeeded} Success={success.Succeeded} Duplicate={duplicate.Duplicate} Rollback={rollbackRecorded}");
+        }
+
+        private static TestLabAutomationStepResult Step13IntegrationBoundariesAndHandoffs(TestLabAutomationContext context)
+        {
+            Step13InstitutionalIntegrationFacade facade = CreateIntegrationFacade(context);
+            Step13OwnershipEntry[] ownership = facade.OwnershipMap.ToArray();
+            bool economyExternal = ownership.Any(item => item.DomainId == "financial-transaction" && item.AuthoritativeRuntime == nameof(EconomyRuntime) && item.Derived);
+            bool propertyExternal = ownership.Any(item => item.DomainId == "property-ownership" && item.AuthoritativeRuntime == nameof(PropertyRuntime) && item.Derived);
+            bool reputationExternal = ownership.Any(item => item.DomainId == "social-reputation" && item.AuthoritativeRuntime == "ReputationRuntime" && item.Derived);
+            bool knowledgeExternal = ownership.Any(item => item.DomainId == "knowledge-visibility" && item.AuthoritativeRuntime == "InformationAccessRuntime" && item.Derived);
+            bool unique = ownership.Select(item => item.DomainId).Distinct(StringComparer.Ordinal).Count() == ownership.Length;
+            bool valid = economyExternal && propertyExternal && reputationExternal && knowledgeExternal && unique;
+
+            return TestLabAssertions.True("step13-integration-boundaries", "Validate non-owned domains stay external and derived", valid, $"Economy={economyExternal} Property={propertyExternal} Reputation={reputationExternal} Knowledge={knowledgeExternal} Unique={unique} Domains={ownership.Length}");
         }
 
         private static TestLabAutomationStepResult ReadinessAndPrototypeDefinitions(TestLabAutomationContext context)
@@ -2696,6 +2886,58 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario IntegrationScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations
+                    | TestLabRuntimeArea.OrganizationMemberships
+                    | TestLabRuntimeArea.OrganizationAuthority
+                    | TestLabRuntimeArea.OrganizationResources
+                    | TestLabRuntimeArea.OrganizationDecisions
+                    | TestLabRuntimeArea.Factions
+                    | TestLabRuntimeArea.Diplomacy
+                    | TestLabRuntimeArea.Governments
+                    | TestLabRuntimeArea.Laws
+                    | TestLabRuntimeArea.Crimes
+                    | TestLabRuntimeArea.Justice
+                    | TestLabRuntimeArea.Economy
+                    | TestLabRuntimeArea.Items
+                    | TestLabRuntimeArea.KnowledgeHistory,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeOrganizationDefinitionFactory.GuildDefinitionId,
+                    PrototypeOrganizationDefinitionFactory.CompanyDefinitionId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildFullMemberId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildMasterRankId,
+                    PrototypeOrganizationMembershipDefinitionFactory.GuildmasterOfficeId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.GuildmasterRoleId,
+                    PrototypeOrganizationAuthorityDefinitionFactory.IssueOrderActionId,
+                    PrototypeOrganizationResourceDefinitionFactory.CurrencyResourceTypeId,
+                    PrototypeOrganizationDecisionDefinitionFactory.SimpleMajorityProcedureId,
+                    PrototypeFactionDefinitionFactory.ReformFactionId,
+                    PrototypeDiplomacyDefinitionFactory.RecognitionRelationId,
+                    PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId,
+                    PrototypeLegalDefinitionFactory.SovereignAuthorityId,
+                    PrototypeLegalDefinitionFactory.CentralStatuteId,
+                    PrototypeLegalDefinitionFactory.ProhibitionProvisionId,
+                    PrototypeCrimeDefinitionFactory.UnlawfulPhysicalAttackOffenseId,
+                    PrototypeCrimeDefinitionFactory.ArrestWarrantDefinitionId,
+                    PrototypeJusticeDefinitionFactory.GeneralJusticeInstitutionId,
+                    PrototypeJusticeDefinitionFactory.GeneralCourtDefinitionId
+                });
+        }
+
         private static void PrepareLegalFixture(TestLabAutomationContext context, out LegalRuntime laws, out string polityId, out string governmentId, out string territoryId, out string jurisdictionId)
         {
             laws = context.ScenarioContext.Runtimes.Laws;
@@ -3624,6 +3866,31 @@ namespace UnityIsekaiGame.Development.Automation
         {
             string personId = context?.ScenarioContext?.Runtimes?.PersonId;
             return string.IsNullOrWhiteSpace(personId) ? PersistenceService.LocalPlayerId : personId;
+        }
+
+        private static Step13InstitutionalIntegrationFacade CreateIntegrationFacade(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            return new Step13InstitutionalIntegrationFacade(
+                runtimes?.DefinitionRegistry,
+                runtimes?.WorldId,
+                runtimes?.KnownPersonIds ?? Array.Empty<string>(),
+                Array.Empty<string>(),
+                runtimes?.Organizations,
+                runtimes?.OrganizationMemberships,
+                runtimes?.OrganizationAuthority,
+                runtimes?.OrganizationResources,
+                runtimes?.OrganizationDecisions,
+                runtimes?.Factions,
+                runtimes?.Diplomacy,
+                runtimes?.Governments,
+                runtimes?.Laws,
+                runtimes?.Crimes,
+                runtimes?.Justice,
+                runtimes?.Economy,
+                runtimes?.Properties,
+                runtimes?.Businesses,
+                runtimes?.ItemInstances);
         }
 
         private static bool TryGetRuntime(TestLabAutomationContext context, out OrganizationRuntime runtime, out string failure)
