@@ -31,6 +31,7 @@ using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Factions;
+using UnityIsekaiGame.Governments;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
@@ -14502,8 +14503,9 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(
-                PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(
+            return PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(
+                PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(
+                    PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(
                     PrototypeFamilyRelationshipDefinitionFactory.AddMissingPrototypeFamilyRelationshipDefinitions(
                         PrototypeSocialEmotionDefinitionFactory.AddMissingPrototypeSocialEmotionDefinitions(
                             PrototypeSocialInfluenceDefinitionFactory.AddMissingPrototypeSocialInfluenceDefinitions(
@@ -14520,7 +14522,7 @@ namespace UnityIsekaiGame.Development
                                                                         PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(
                                                                             PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
                                                                                 PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
-                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))))))));
+                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions)))))))))))))))))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()

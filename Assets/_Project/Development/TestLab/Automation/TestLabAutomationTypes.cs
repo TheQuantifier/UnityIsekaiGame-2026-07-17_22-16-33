@@ -71,7 +71,8 @@ namespace UnityIsekaiGame.Development.Automation
         OrganizationResources = 1 << 12,
         OrganizationDecisions = 1 << 13,
         Factions = 1 << 14,
-        Diplomacy = 1 << 15
+        Diplomacy = 1 << 15,
+        Governments = 1 << 16
     }
 
     [Flags]

@@ -9,6 +9,7 @@ using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityEngine;
 using UnityIsekaiGame.GameData.Persistence;
+using UnityIsekaiGame.Governments;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Organizations;
@@ -203,6 +204,27 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step13-diplomacy-war", "Declare and transition formal war", DiplomacyWarStatusIncidents)),
                     DiplomacyScenario("projection-persistence-validation", "Diplomacy projections and persistence validate before restore", 50,
                         Step("step13-diplomacy-persistence", "Project, save, restore, and reject corrupt diplomacy graph", DiplomacyProjectionPersistenceValidation))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.8.governments-territories-sovereignty-jurisdictions",
+                "Governments, Territories, Sovereignty, and Jurisdictions",
+                "13.8",
+                "Persistent polity, government, territory, sovereignty, control, administration, seat, transition, and jurisdiction records with deterministic resolution.",
+                13080,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "GovernmentRuntime", "PolityDefinition", "GovernmentDefinition", "PoliticalTerritoryDefinition", "JurisdictionDefinition", "GovernmentPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    GovernmentScenario("runtime-readiness", "Government definitions and runtime ownership are ready", 10,
+                        Step("step13-government-readiness", "Resolve government definitions", GovernmentRuntimeReadiness)),
+                    GovernmentScenario("polity-government-territory", "Polity, government, and territory identities remain distinct", 20,
+                        Step("step13-government-identity", "Create polity, government, and territory records", GovernmentIdentityAndTerritory)),
+                    GovernmentScenario("claims-control-administration-jurisdiction", "Claims, control, administration, sovereignty, seats, and jurisdiction are explicit", 30,
+                        Step("step13-government-jurisdiction", "Resolve territorial authority records", GovernmentClaimsAndJurisdiction)),
+                    GovernmentScenario("projection-persistence-validation", "Government projections and persistence validate before restore", 40,
+                        Step("step13-government-persistence", "Project, save, restore, and reject corrupt government graph", GovernmentProjectionPersistenceValidation))
                 }), out _);
         }
 
@@ -1967,6 +1989,125 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario GovernmentScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeOrganizationDefinitionFactory.GuildDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.SovereigntyClaimDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.MunicipalJurisdictionDefinitionId
+                });
+        }
+
+        private static TestLabAutomationStepResult GovernmentRuntimeReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetGovernmentRuntime(context, out GovernmentRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-government-readiness", "Resolve government definitions", "GovernmentRuntime", "Present", "Missing", failure);
+            }
+
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool ready = registry.TryGet(PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId, out PolityDefinition polity)
+                && registry.TryGet(PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId, out GovernmentDefinition government)
+                && registry.TryGet(PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId, out PoliticalTerritoryDefinition territory)
+                && registry.TryGet(PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId, out JurisdictionDefinition jurisdiction)
+                && polity.Category == PolityCategory.Kingdom
+                && government.Category == GovernmentCategory.MonarchicalGovernment
+                && territory.Category == PoliticalTerritoryCategory.Realm
+                && jurisdiction.Category == JurisdictionCategory.GeneralGovernment
+                && runtime.Revision == 0L;
+            return TestLabAssertions.True("step13-government-readiness", "Resolve government definitions", ready, $"Ready={ready} Revision={runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult GovernmentIdentityAndTerritory(TestLabAutomationContext context)
+        {
+            if (!TryGetGovernmentRuntime(context, out GovernmentRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-government-identity", "Create polity, government, and territory records", "GovernmentRuntime", "Present", "Missing", failure);
+            }
+
+            string suffix = context.RunId;
+            string polityId = $"polity.testlab.kingdom.{suffix}";
+            string governmentId = $"government.testlab.royal.{suffix}";
+            string territoryId = $"political-territory.testlab.realm.{suffix}";
+            PoliticalOperationResult polity = runtime.CreatePolity(new PolityCreateRequest { transactionId = GovernmentTx(context, "polity"), polityId = polityId, polityDefinitionId = PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId, officialName = "Test Lab Kingdom", worldTime = 1d });
+            PoliticalOperationResult government = runtime.RegisterGovernment(new GovernmentRegisterRequest { transactionId = GovernmentTx(context, "government"), governmentId = governmentId, governmentDefinitionId = PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId, polityId = polityId, officialName = "Test Lab Royal Government", primaryGoverningOrganizationId = "organization.prototype.guild", governingOrganizationIds = new[] { "organization.prototype.guild" }, level = GovernmentLevel.Central, worldTime = 2d });
+            PoliticalOperationResult territory = runtime.CreateTerritory(new TerritoryCreateRequest { transactionId = GovernmentTx(context, "territory"), territoryId = territoryId, territoryDefinitionId = PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId, displayName = "Test Lab Realm", polityId = polityId, primaryGovernmentId = governmentId, placeIds = new[] { "place.testlab.capital" }, worldTime = 3d });
+            PoliticalOperationResult duplicate = runtime.CreateTerritory(new TerritoryCreateRequest { transactionId = GovernmentTx(context, "territory"), territoryId = territoryId, territoryDefinitionId = PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId, displayName = "Test Lab Realm", polityId = polityId, primaryGovernmentId = governmentId, placeIds = new[] { "place.testlab.capital" }, worldTime = 3d });
+            bool valid = polity.Succeeded && government.Succeeded && territory.Succeeded && duplicate.Succeeded && duplicate.Code == PoliticalOperationCode.Duplicate
+                && runtime.PolityCount == 1 && runtime.GovernmentCount == 1 && runtime.TerritoryCount == 1;
+            return TestLabAssertions.True("step13-government-identity", "Create polity, government, and territory records", valid, $"Polity={polity.Code} Government={government.Code} Territory={territory.Code} Duplicate={duplicate.Code} Counts={runtime.PolityCount}/{runtime.GovernmentCount}/{runtime.TerritoryCount}");
+        }
+
+        private static TestLabAutomationStepResult GovernmentClaimsAndJurisdiction(TestLabAutomationContext context)
+        {
+            if (!TryGetGovernmentRuntime(context, out GovernmentRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-government-jurisdiction", "Resolve territorial authority records", "GovernmentRuntime", "Present", "Missing", failure);
+            }
+
+            CreateGovernmentFixture(context, runtime, out string polityId, out string governmentId, out string territoryId);
+            PoliticalOperationResult claim = runtime.AssertTerritorialClaim(new TerritorialClaimRequest { transactionId = GovernmentTx(context, "claim"), claimId = $"territorial-claim.testlab.{context.RunId}", claimDefinitionId = PrototypeGovernmentDefinitionFactory.SovereigntyClaimDefinitionId, territoryId = territoryId, claimantPolityId = polityId, claimantGovernmentId = governmentId, category = TerritorialClaimCategory.Sovereignty, worldTime = 4d });
+            PoliticalOperationResult control = runtime.RecordControl(new TerritorialControlRequest { transactionId = GovernmentTx(context, "control"), controlId = $"territorial-control.testlab.{context.RunId}", territoryId = territoryId, controllingGovernmentId = governmentId, worldTime = 5d });
+            PoliticalOperationResult administration = runtime.RecordAdministration(new TerritoryAdministrationRequest { transactionId = GovernmentTx(context, "administration"), administrationId = $"territory-administration.testlab.{context.RunId}", territoryId = territoryId, administeringGovernmentId = governmentId, worldTime = 5d });
+            PoliticalOperationResult seat = runtime.RegisterSeat(new GovernmentSeatRequest { transactionId = GovernmentTx(context, "seat"), seatId = $"government-seat.testlab.{context.RunId}", governmentId = governmentId, placeId = "place.testlab.capital", primary = true, worldTime = 5d });
+            PoliticalOperationResult sovereignty = runtime.AssertSovereignty(new SovereigntyClaimRequest { transactionId = GovernmentTx(context, "sovereignty"), sovereigntyClaimId = $"sovereignty-claim.testlab.{context.RunId}", polityId = polityId, governmentId = governmentId, territoryId = territoryId, worldTime = 6d });
+            string generalId = $"jurisdiction.testlab.general.{context.RunId}";
+            PoliticalOperationResult jurisdiction = runtime.CreateJurisdiction(new JurisdictionCreateRequest { transactionId = GovernmentTx(context, "jurisdiction"), jurisdictionId = generalId, jurisdictionDefinitionId = PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId, governmentId = governmentId, category = JurisdictionCategory.GeneralGovernment, scopeDimensions = JurisdictionScopeDimension.Territory | JurisdictionScopeDimension.SubjectMatter, subjectMatters = new[] { JurisdictionSubjectMatter.GeneralAdministration }, territoryIds = new[] { territoryId }, priority = 10, worldTime = 7d });
+            JurisdictionResolutionResult resolved = runtime.ResolveJurisdiction(new JurisdictionResolutionRequest { requesterGovernmentId = governmentId, territoryId = territoryId, subjectMatter = JurisdictionSubjectMatter.GeneralAdministration, worldTime = 8d });
+            bool valid = claim.Succeeded && control.Succeeded && administration.Succeeded && seat.Succeeded && sovereignty.Succeeded && jurisdiction.Succeeded
+                && resolved.Status == JurisdictionResolutionStatus.Applicable && resolved.SelectedJurisdiction?.jurisdictionId == generalId;
+            return TestLabAssertions.True("step13-government-jurisdiction", "Resolve territorial authority records", valid, $"Claim={claim.Code} Control={control.Code} Administration={administration.Code} Seat={seat.Code} Sovereignty={sovereignty.Code} Jurisdiction={jurisdiction.Code} Resolution={resolved.Status}");
+        }
+
+        private static TestLabAutomationStepResult GovernmentProjectionPersistenceValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetGovernmentRuntime(context, out GovernmentRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-government-persistence", "Project, save, restore, and reject corrupt government graph", "GovernmentRuntime", "Present", "Missing", failure);
+            }
+
+            CreateGovernmentFixture(context, runtime, out string polityId, out string governmentId, out _ , PoliticalVisibility.Secret);
+            PoliticalProjectionResult<GovernmentRecordData> redacted = runtime.ProjectGovernment(governmentId, privileged: false);
+            PoliticalProjectionResult<GovernmentRecordData> full = runtime.ProjectGovernment(governmentId, privileged: true);
+            GovernmentRuntimeSaveData save = runtime.CreateSaveData();
+            GovernmentRuntime restored = new GovernmentRuntime();
+            PoliticalOperationResult restore = restored.RestoreFromSaveData(save, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.OrganizationMemberships, context.ScenarioContext.Runtimes.OrganizationAuthority, context.ScenarioContext.Runtimes.OrganizationDecisions, context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.Factions, context.ScenarioContext.Runtimes.Diplomacy, context.ScenarioContext.Runtimes.Properties, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, Array.Empty<string>(), restoring: true);
+            GovernmentRuntimeSaveData corrupt = save.Clone();
+            corrupt.governments[0].polityId = "polity.missing";
+            long before = restored.Revision;
+            PoliticalOperationResult rejected = restored.RestoreFromSaveData(corrupt, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.OrganizationMemberships, context.ScenarioContext.Runtimes.OrganizationAuthority, context.ScenarioContext.Runtimes.OrganizationDecisions, context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.Factions, context.ScenarioContext.Runtimes.Diplomacy, context.ScenarioContext.Runtimes.Properties, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, Array.Empty<string>(), restoring: true);
+            bool valid = redacted.Succeeded && redacted.Redacted && full.Succeeded && !full.Redacted && restore.Succeeded && !rejected.Succeeded && restored.Revision == before && restored.TryGetPolity(polityId, out _);
+            restored.Dispose();
+            return TestLabAssertions.True("step13-government-persistence", "Project, save, restore, and reject corrupt government graph", valid, $"Redacted={redacted.Decision} Full={full.Decision} Restore={restore.Code} Reject={rejected.Code} NoMutation={restored.Revision == before}");
+        }
+
+        private static void CreateGovernmentFixture(TestLabAutomationContext context, GovernmentRuntime runtime, out string polityId, out string governmentId, out string territoryId, PoliticalVisibility visibility = PoliticalVisibility.Public)
+        {
+            polityId = $"polity.testlab.fixture.{context.RunId}";
+            governmentId = $"government.testlab.fixture.{context.RunId}";
+            territoryId = $"political-territory.testlab.fixture.{context.RunId}";
+            runtime.CreatePolity(new PolityCreateRequest { transactionId = GovernmentTx(context, "fixture-polity"), polityId = polityId, polityDefinitionId = PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId, officialName = "Fixture Kingdom", worldTime = 1d, visibility = visibility });
+            runtime.RegisterGovernment(new GovernmentRegisterRequest { transactionId = GovernmentTx(context, "fixture-government"), governmentId = governmentId, governmentDefinitionId = PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId, polityId = polityId, officialName = "Fixture Government", primaryGoverningOrganizationId = "organization.prototype.guild", governingOrganizationIds = new[] { "organization.prototype.guild" }, level = GovernmentLevel.Central, worldTime = 2d, visibility = visibility });
+            runtime.CreateTerritory(new TerritoryCreateRequest { transactionId = GovernmentTx(context, "fixture-territory"), territoryId = territoryId, territoryDefinitionId = PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId, displayName = "Fixture Realm", polityId = polityId, primaryGovernmentId = governmentId, placeIds = new[] { "place.testlab.capital" }, worldTime = 3d, visibility = visibility });
+        }
+
+        private static string GovernmentTx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.8.{suffix}.{context?.RunId ?? "run"}";
+
         private static TestLabAutomationStepResult DiplomacyRuntimeReadiness(TestLabAutomationContext context)
         {
             if (!TryGetDiplomacyRuntime(context, out DiplomacyRuntime runtime, out string failure))
@@ -2461,6 +2602,19 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null)
             {
                 failure = "DiplomacyRuntime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetGovernmentRuntime(TestLabAutomationContext context, out GovernmentRuntime runtime, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.Governments;
+            if (runtime == null)
+            {
+                failure = "GovernmentRuntime is missing from the Test Lab runtime bundle.";
                 return false;
             }
 
