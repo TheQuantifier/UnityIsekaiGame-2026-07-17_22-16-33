@@ -74,7 +74,8 @@ namespace UnityIsekaiGame.Development.Automation
         Diplomacy = 1 << 15,
         Governments = 1 << 16,
         Laws = 1 << 17,
-        Crimes = 1 << 18
+        Crimes = 1 << 18,
+        Justice = 1 << 19
     }
 
     [Flags]

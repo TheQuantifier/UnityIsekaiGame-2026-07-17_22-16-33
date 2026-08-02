@@ -22,6 +22,7 @@ using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Governments;
+using UnityIsekaiGame.Justice;
 using UnityIsekaiGame.Laws;
 using UnityIsekaiGame.Input;
 using UnityIsekaiGame.Inventory;
@@ -122,6 +123,7 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private bool registerWorldGovernments = true;
         [SerializeField] private bool registerWorldLaws = true;
         [SerializeField] private bool registerWorldCrimes = true;
+        [SerializeField] private bool registerWorldJustice = true;
         [SerializeField] private bool registerPlayerItemCompositions = true;
         [SerializeField] private bool registerPlayerItemQualityAffixes = true;
         [SerializeField] private bool registerPlayerItemDurability = true;
@@ -229,6 +231,7 @@ namespace UnityIsekaiGame.Gameplay
         private GovernmentPersistenceParticipant governmentParticipant;
         private LegalPersistenceParticipant legalParticipant;
         private CrimePersistenceParticipant crimeParticipant;
+        private JusticePersistenceParticipant justiceParticipant;
         private ItemCompositionPersistenceParticipant itemCompositionParticipant;
         private ItemQualityAffixPersistenceParticipant itemQualityAffixParticipant;
         private ItemDurabilityPersistenceParticipant itemDurabilityParticipant;
@@ -290,6 +293,7 @@ namespace UnityIsekaiGame.Gameplay
         private GovernmentRuntime worldGovernments;
         private LegalRuntime worldLaws;
         private CrimeRuntime worldCrimes;
+        private JusticeRuntime worldJustice;
         private ItemCompositionRuntime playerItemCompositions;
         private ItemQualityAffixRuntime playerItemQualityAffixes;
         private ItemDurabilityRuntime playerItemDurability;
@@ -854,6 +858,20 @@ namespace UnityIsekaiGame.Gameplay
                 return worldCrimes;
             }
         }
+        public JusticeRuntime Justice
+        {
+            get
+            {
+                if (worldJustice == null)
+                {
+                    worldJustice = new JusticeRuntime();
+                }
+
+                string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+                worldJustice.Configure(GetDefinitionRegistry(), Governments, Laws, Organizations, OrganizationAuthority, Crimes, service == null ? PersistenceService.LocalWorldId : service.WorldId, GetPrototypeSocialPersonIds(personId), GetKnownPlaceIds());
+                return worldJustice;
+            }
+        }
         public ItemCompositionRuntime ItemCompositions => playerItemCompositions ??= new ItemCompositionRuntime();
         public ItemQualityAffixRuntime ItemQualityAffixes => playerItemQualityAffixes ??= new ItemQualityAffixRuntime();
         public ItemDurabilityRuntime ItemDurability => playerItemDurability ??= new ItemDurabilityRuntime();
@@ -1002,6 +1020,12 @@ namespace UnityIsekaiGame.Gameplay
             {
                 service.UnregisterParticipant(crimeParticipant);
                 crimeParticipant = null;
+            }
+
+            if (service != null && justiceParticipant != null)
+            {
+                service.UnregisterParticipant(justiceParticipant);
+                justiceParticipant = null;
             }
 
             if (service != null && itemCompositionParticipant != null)
@@ -1367,6 +1391,7 @@ namespace UnityIsekaiGame.Gameplay
             EnsureWorldGovernmentParticipant();
             EnsureWorldLegalParticipant();
             EnsureWorldCrimeParticipant();
+            EnsureWorldJusticeParticipant();
             EnsurePlayerItemCompositionParticipant();
             EnsurePlayerItemQualityAffixParticipant();
             EnsurePlayerItemDurabilityParticipant();
@@ -2280,6 +2305,41 @@ namespace UnityIsekaiGame.Gameplay
             {
                 Debug.LogWarning(failureReason);
                 crimeParticipant = null;
+            }
+        }
+
+        private void EnsureWorldJusticeParticipant()
+        {
+            if (!registerWorldJustice || justiceParticipant != null)
+            {
+                return;
+            }
+
+            ResolvePlayerPersistenceReferences();
+            if (definitionCatalog == null)
+            {
+                Debug.LogWarning("World justice persistence participant was not registered because no definition catalog is assigned.");
+                return;
+            }
+
+            string personId = service == null ? PersistenceService.LocalPlayerId : service.PlayerId;
+            justiceParticipant = new JusticePersistenceParticipant(
+                Justice,
+                GetDefinitionRegistry,
+                () => Governments,
+                () => Laws,
+                () => Organizations,
+                () => OrganizationAuthority,
+                () => Crimes,
+                service.WorldId,
+                () => GetPrototypeSocialPersonIds(personId),
+                GetKnownPlaceIds);
+
+            service.RegisterParticipant(justiceParticipant, out string failureReason);
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                Debug.LogWarning(failureReason);
+                justiceParticipant = null;
             }
         }
 
@@ -4765,6 +4825,7 @@ namespace UnityIsekaiGame.Gameplay
             definitionRegistry = PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(definitionRegistry);
             definitionRegistry = PrototypeLegalDefinitionFactory.AddMissingPrototypeLegalDefinitions(definitionRegistry);
             definitionRegistry = PrototypeCrimeDefinitionFactory.AddMissingPrototypeCrimeDefinitions(definitionRegistry);
+            definitionRegistry = PrototypeJusticeDefinitionFactory.AddMissingPrototypeJusticeDefinitions(definitionRegistry);
             return definitionRegistry;
         }
 
