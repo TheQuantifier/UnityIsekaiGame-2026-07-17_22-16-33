@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityIsekaiGame.Development.Automation.Fixtures.Core;
 using UnityIsekaiGame.Development.Automation.Fixtures.History;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Crimes;
 using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
@@ -462,6 +463,7 @@ namespace UnityIsekaiGame.Development.Automation
             DiplomacyRuntime diplomacy,
             GovernmentRuntime governments,
             LegalRuntime laws,
+            CrimeRuntime crimes,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -523,6 +525,7 @@ namespace UnityIsekaiGame.Development.Automation
             Diplomacy = diplomacy;
             Governments = governments;
             Laws = laws;
+            Crimes = crimes;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -586,6 +589,7 @@ namespace UnityIsekaiGame.Development.Automation
         public DiplomacyRuntime Diplomacy { get; }
         public GovernmentRuntime Governments { get; }
         public LegalRuntime Laws { get; }
+        public CrimeRuntime Crimes { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -647,7 +651,8 @@ namespace UnityIsekaiGame.Development.Automation
             FactionRuntime factions = null,
             DiplomacyRuntime diplomacy = null,
             GovernmentRuntime governments = null,
-            LegalRuntime laws = null)
+            LegalRuntime laws = null,
+            CrimeRuntime crimes = null)
         {
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
@@ -736,7 +741,9 @@ namespace UnityIsekaiGame.Development.Automation
             governmentRuntime.Configure(definitionRegistry, organizationRuntime, membershipRuntime, authorityRuntime, organizationDecisionRuntime, resourceRuntime, factionRuntime, diplomacyRuntime, propertyRuntime, worldId, persons, Array.Empty<string>());
             LegalRuntime legalRuntime = laws ?? new LegalRuntime();
             legalRuntime.Configure(definitionRegistry, governmentRuntime, organizationRuntime, authorityRuntime, organizationDecisionRuntime, diplomacyRuntime, propertyRuntime, worldId, persons, Array.Empty<string>());
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemRuntime, itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, factionRuntime, diplomacyRuntime, governmentRuntime, legalRuntime, null);
+            CrimeRuntime crimeRuntime = crimes ?? new CrimeRuntime();
+            crimeRuntime.Configure(definitionRegistry, governmentRuntime, legalRuntime, authorityRuntime, diplomacyRuntime, worldId, persons, Array.Empty<string>());
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemRuntime, itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, factionRuntime, diplomacyRuntime, governmentRuntime, legalRuntime, crimeRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -803,6 +810,7 @@ namespace UnityIsekaiGame.Development.Automation
             DiplomacyRuntime diplomacy = new DiplomacyRuntime();
             GovernmentRuntime governments = new GovernmentRuntime();
             LegalRuntime laws = new LegalRuntime();
+            CrimeRuntime crimes = new CrimeRuntime();
 
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -856,8 +864,9 @@ namespace UnityIsekaiGame.Development.Automation
             diplomacy.Configure(definitionRegistry, organizations, factions, organizationAuthority, organizationDecisions, organizationResources, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons);
             governments.Configure(definitionRegistry, organizations, organizationMemberships, organizationAuthority, organizationDecisions, organizationResources, factions, diplomacy, properties, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
             laws.Configure(definitionRegistry, governments, organizations, organizationAuthority, organizationDecisions, diplomacy, properties, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
+            crimes.Configure(definitionRegistry, governments, laws, organizationAuthority, diplomacy, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, factions, diplomacy, governments, laws, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, factions, diplomacy, governments, laws, crimes, knowledgeObject);
         }
 
         private static string[] ExpandKnownPersons(IReadOnlyList<string> knownPersonIds, string ownerPersonId)
@@ -954,7 +963,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Factions?.CreateSaveData(),
                 Diplomacy?.CreateSaveData(),
                 Governments?.CreateSaveData(),
-                Laws?.CreateSaveData());
+                Laws?.CreateSaveData(),
+                Crimes?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -1014,7 +1024,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Factions", Factions?.Revision ?? 0L, Factions?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Diplomacy", Diplomacy?.Revision ?? 0L, Diplomacy?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Governments", Governments?.Revision ?? 0L, Governments?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("Laws", Laws?.Revision ?? 0L, Laws?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("Laws", Laws?.Revision ?? 0L, Laws?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Crimes", Crimes?.Revision ?? 0L, Crimes?.CreateSaveData())
             });
         }
 
@@ -1565,6 +1576,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (Crimes != null && snapshot.Crimes != null)
+            {
+                CrimeOperationResult result = Crimes.RestoreFromSaveData(snapshot.Crimes, DefinitionRegistry, Governments, Laws, OrganizationAuthority, Diplomacy, WorldId, KnownPersonIds, Array.Empty<string>());
+                if (!result.Succeeded)
+                {
+                    failure = $"Crime restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1672,7 +1693,8 @@ namespace UnityIsekaiGame.Development.Automation
             FactionRuntimeSaveData factions,
             DiplomacyRuntimeSaveData diplomacy,
             GovernmentRuntimeSaveData governments,
-            LegalRuntimeSaveData laws)
+            LegalRuntimeSaveData laws,
+            CrimeRuntimeSaveData crimes)
         {
             Knowledge = knowledge;
             History = history;
@@ -1728,6 +1750,7 @@ namespace UnityIsekaiGame.Development.Automation
             Diplomacy = diplomacy;
             Governments = governments;
             Laws = laws;
+            Crimes = crimes;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1784,6 +1807,7 @@ namespace UnityIsekaiGame.Development.Automation
         public DiplomacyRuntimeSaveData Diplomacy { get; }
         public GovernmentRuntimeSaveData Governments { get; }
         public LegalRuntimeSaveData Laws { get; }
+        public CrimeRuntimeSaveData Crimes { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
@@ -2133,7 +2157,7 @@ namespace UnityIsekaiGame.Development.Automation
             return new string(chars).Trim('.', '-');
         }
 
-        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Laws;
+        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Laws | TestLabRuntimeArea.Crimes;
 
         private static bool CanIsolate(TestLabRuntimeArea supported, TestLabRuntimeArea required)
         {

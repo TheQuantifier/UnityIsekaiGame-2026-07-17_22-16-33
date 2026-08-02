@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
 using System.Linq;
+using UnityIsekaiGame.Crimes;
 using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
@@ -270,6 +271,35 @@ namespace UnityIsekaiGame.Development.Automation
                     LegalScenario("persistence", "Legal persistence restores and rejects corrupt graphs", 150,
                         Step("step13-legal-persistence", "Save, restore, and reject invalid legal state", LegalPersistenceValidation))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.10.crimes-reporting-warrants-wanted-status",
+                "Crimes, Reporting, Warrants, and Wanted Status",
+                "13.10",
+                "Potential offense incidents, reports, allegations, suspects, evidentiary links, warrants, wanted notices, lifecycle transitions, projections, and persistence.",
+                13100,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "CrimeRuntime", "LegalRuntime", "GovernmentRuntime", "LegalOffenseDefinition", "WarrantDefinition", "WantedStatusDefinition", "CrimePersistenceParticipant" },
+                scenarios: new[]
+                {
+                    CrimeScenario("runtime-readiness", "Crime definitions and runtime ownership are ready", 10,
+                        Step("step13-crime-readiness", "Resolve crime definitions", CrimeRuntimeReadiness)),
+                    CrimeScenario("incident-report-offense", "Incident reports produce legally evaluated potential offenses", 20,
+                        Step("step13-crime-incident-report", "Record incident, report, and potential offense", CrimeIncidentReportOffense)),
+                    CrimeScenario("allegation-suspect-evidence", "Allegations, suspects, and evidence remain explicit records", 30,
+                        Step("step13-crime-allegation-suspect", "Link allegation, suspect, and evidence", CrimeAllegationSuspectEvidence)),
+                    CrimeScenario("warrant-threshold-authority", "Warrants require sufficient evidence and explicit authority", 40,
+                        Step("step13-crime-warrant-authority", "Request, review, and issue warrant", CrimeWarrantThresholdAuthority)),
+                    CrimeScenario("wanted-status-notice", "Wanted status and notices are scoped lifecycle records", 50,
+                        Step("step13-crime-wanted-notice", "Create and publish wanted status", CrimeWantedStatusNotice)),
+                    CrimeScenario("projection-boundaries", "Crime projections redact restricted records", 60,
+                        Step("step13-crime-projection", "Project restricted incident and wanted status", CrimeProjectionBoundaries)),
+                    CrimeScenario("time-and-derived-lifecycle", "Warrant and derived wanted status expire deterministically", 70,
+                        Step("step13-crime-time", "Process crime time boundaries", CrimeTimeAndDerivedLifecycle)),
+                    CrimeScenario("persistence", "Crime persistence restores and rejects corrupt graphs", 80,
+                        Step("step13-crime-persistence", "Save, restore, and reject invalid crime state", CrimePersistenceValidation))
+                }), out _);
         }
 
         private static TestLabAutomationStepResult ReadinessAndPrototypeDefinitions(TestLabAutomationContext context)
@@ -470,6 +500,156 @@ namespace UnityIsekaiGame.Development.Automation
             bool valid = restore.Succeeded && !rejected.Succeeded && restored.Revision == before && restored.Instruments.Count == 1;
             restored.Dispose();
             return TestLabAssertions.True("step13-legal-persistence", "Save, restore, and reject invalid legal state", valid, $"Restore={restore.Code} Reject={rejected.Code} NoMutation={restored.Revision == 0 || before > 0}");
+        }
+
+        private static TestLabAutomationStepResult CrimeRuntimeReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetCrimeRuntime(context, out CrimeRuntime runtime, out string failure)) return CrimeFail("step13-crime-readiness", failure);
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool offenseFound = registry.TryGet(PrototypeCrimeDefinitionFactory.UnlawfulPhysicalAttackOffenseId, out LegalOffenseDefinition offense);
+            bool warrantFound = registry.TryGet(PrototypeCrimeDefinitionFactory.ArrestWarrantDefinitionId, out WarrantDefinition warrant);
+            bool wantedFound = registry.TryGet(PrototypeCrimeDefinitionFactory.WantedForArrestDefinitionId, out WantedStatusDefinition wanted);
+            bool valid = offenseFound
+                && warrantFound
+                && wantedFound
+                && offense.Category == OffenseCategory.ViolenceAgainstPerson
+                && offense.LegalActionId == "crime.attack"
+                && warrant.Category == WarrantCategory.Arrest
+                && wanted.Purpose == WantedPurposeCategory.Arrest
+                && runtime.Revision == 0L;
+            return TestLabAssertions.True("step13-crime-readiness", "Resolve crime definitions", valid, $"Definitions={offenseFound}/{warrantFound}/{wantedFound} Revision={runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult CrimeIncidentReportOffense(TestLabAutomationContext context)
+        {
+            CrimeFixture fixture = PrepareCrimeFixture(context, "incident");
+            CrimeOperationResult incident = fixture.Crimes.RecordIncident(CrimeIncident(context, fixture, "incident"));
+            CrimeOperationResult report = fixture.Crimes.SubmitReport(CrimeReport(context, fixture, "incident"));
+            CrimeOperationResult preview = fixture.Crimes.EvaluatePotentialOffense(CrimeOffense(context, fixture, "incident-preview", preview: true));
+            CrimeOperationResult offense = fixture.Crimes.EvaluatePotentialOffense(CrimeOffense(context, fixture, "incident"));
+            CrimeOperationResult duplicate = fixture.Crimes.EvaluatePotentialOffense(CrimeOffense(context, fixture, "incident"));
+            fixture.Crimes.TryGetPotentialOffense(fixture.OffenseId, out PotentialOffenseRecordData record);
+            bool valid = incident.Succeeded
+                && report.Succeeded
+                && preview.Preview
+                && offense.Succeeded
+                && duplicate.Duplicate
+                && record != null
+                && record.legalApplicabilityStatus == LegalApplicabilityStatus.Prohibited
+                && record.status == PotentialOffenseStatus.ElementsSupported
+                && !string.IsNullOrWhiteSpace(record.legalProvisionId);
+            return TestLabAssertions.True("step13-crime-incident-report", "Record incident, report, and potential offense", valid, $"Incident={incident.Code} Report={report.Code} Preview={preview.Code} Offense={offense.Code} Duplicate={duplicate.Code} Legal={record?.legalApplicabilityStatus} Status={record?.status}");
+        }
+
+        private static TestLabAutomationStepResult CrimeAllegationSuspectEvidence(TestLabAutomationContext context)
+        {
+            CrimeFixture fixture = PrepareCrimeFixture(context, "records");
+            CreateCrimeCoreRecords(context, fixture, "records");
+            CrimeOperationResult allegation = fixture.Crimes.RecordAllegation(new CrimeAllegationRequest { transactionId = CrimeTx(context, "allegation"), allegationId = fixture.AllegationId, incidentId = fixture.IncidentId, reportId = fixture.ReportId, potentialOffenseId = fixture.OffenseId, claimedActorId = fixture.ActorId, claimedVictimId = fixture.VictimId, conductSummary = "Reported physical attack.", sufficiency = EvidenceSufficiencyState.Substantial });
+            CrimeOperationResult suspect = fixture.Crimes.AddSuspect(new CrimeSuspectRequest { transactionId = CrimeTx(context, "suspect"), suspectId = fixture.SuspectId, incidentId = fixture.IncidentId, potentialOffenseId = fixture.OffenseId, subjectId = fixture.ActorId, participation = ParticipationCategory.PrincipalActor, basis = "victim and witness report", worldTime = 13d });
+            CrimeOperationResult evidence = fixture.Crimes.LinkEvidence(new CrimeEvidenceLinkRequest { transactionId = CrimeTx(context, "evidence"), evidenceLinkId = fixture.EvidenceLinkId, incidentId = fixture.IncidentId, reportId = fixture.ReportId, potentialOffenseId = fixture.OffenseId, evidenceId = $"evidence.testlab.crime.{context.RunId}", relevance = EvidenceRelevance.Supports, sufficiency = EvidenceSufficiencyState.Substantial, sourceId = fixture.ReportId, worldTime = 14d });
+            CrimeOperationResult cleared = fixture.Crimes.TransitionSuspect(new CrimeSuspectTransitionRequest { transactionId = CrimeTx(context, "clear-suspect"), suspectId = fixture.SuspectId, targetState = SuspectLifecycleState.Misidentified, misidentified = true, reason = "Later evidence contradicted identification.", worldTime = 15d });
+            fixture.Crimes.TryGetSuspect(fixture.SuspectId, out CrimeSuspectRecordData suspectRecord);
+            bool valid = allegation.Succeeded
+                && suspect.Succeeded
+                && evidence.Succeeded
+                && cleared.Succeeded
+                && suspectRecord != null
+                && suspectRecord.lifecycleState == SuspectLifecycleState.Misidentified
+                && suspectRecord.misidentified
+                && fixture.Crimes.Allegations.Count == 1
+                && fixture.Crimes.EvidenceLinks.Count == 1;
+            return TestLabAssertions.True("step13-crime-allegation-suspect", "Link allegation, suspect, and evidence", valid, $"Allegation={allegation.Code} Suspect={suspect.Code} Evidence={evidence.Code} Cleared={cleared.Code} State={suspectRecord?.lifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult CrimeWarrantThresholdAuthority(TestLabAutomationContext context)
+        {
+            CrimeFixture fixture = PrepareCrimeFixture(context, "warrant");
+            CreateCrimeCoreRecords(context, fixture, "warrant");
+            WarrantRequestCreateRequest low = CrimeWarrantRequest(context, fixture, "low", EvidenceSufficiencyState.Partial);
+            CrimeOperationResult thresholdDenied = fixture.Crimes.RequestWarrant(low);
+            CrimeOperationResult requested = fixture.Crimes.RequestWarrant(CrimeWarrantRequest(context, fixture, "arrest", EvidenceSufficiencyState.Substantial));
+            CrimeOperationResult authorityDenied = fixture.Crimes.ReviewWarrantRequest(new WarrantReviewRequest { transactionId = CrimeTx(context, "review-denied"), warrantRequestId = fixture.WarrantRequestId, reviewId = "authority-grant.missing", approve = true });
+            CrimeOperationResult approved = fixture.Crimes.ReviewWarrantRequest(new WarrantReviewRequest { transactionId = CrimeTx(context, "review-approved"), warrantRequestId = fixture.WarrantRequestId, reviewId = "trusted.system", approve = true, trustedSystemOperation = true });
+            CrimeOperationResult issued = fixture.Crimes.IssueWarrant(new WarrantIssueRequest { transactionId = CrimeTx(context, "issue"), warrantId = fixture.WarrantId, warrantRequestId = fixture.WarrantRequestId, issuedByPersonId = fixture.ActorId, issuedWorldTime = 16d, activationWorldTime = 16d, expirationWorldTime = 30d, trustedSystemOperation = true });
+            bool derivedWanted = fixture.Crimes.WantedStatuses.Any(item => item.warrantId == fixture.WarrantId && item.subjectId == fixture.ActorId && item.derivedFromWarrant);
+            bool valid = thresholdDenied.Code == CrimeOperationCode.ThresholdNotMet
+                && requested.Succeeded
+                && authorityDenied.Code == CrimeOperationCode.MissingAuthority
+                && approved.Succeeded
+                && issued.Succeeded
+                && fixture.Crimes.Warrants.Count == 1
+                && derivedWanted;
+            return TestLabAssertions.True("step13-crime-warrant-authority", "Request, review, and issue warrant", valid, $"Threshold={thresholdDenied.Code} Request={requested.Code} Authority={authorityDenied.Code} Approve={approved.Code} Issue={issued.Code} Wanted={derivedWanted}");
+        }
+
+        private static TestLabAutomationStepResult CrimeWantedStatusNotice(TestLabAutomationContext context)
+        {
+            CrimeFixture fixture = PrepareCrimeFixture(context, "wanted");
+            CreateCrimeCoreRecords(context, fixture, "wanted");
+            CrimeOperationResult wanted = fixture.Crimes.CreateWantedStatus(new WantedStatusRequest { transactionId = CrimeTx(context, "wanted"), wantedStatusId = fixture.WantedId, wantedDefinitionId = PrototypeCrimeDefinitionFactory.WantedForQuestioningDefinitionId, incidentId = fixture.IncidentId, subjectId = fixture.ActorId, jurisdictionId = fixture.JurisdictionId, territoryId = fixture.TerritoryId, risk = WantedRiskAssessment.Nonviolent, activeWorldTime = 18d, expirationWorldTime = 24d, visibility = PoliticalVisibility.Restricted });
+            CrimeOperationResult notice = fixture.Crimes.PublishWantedNotice(new WantedNoticeRequest { transactionId = CrimeTx(context, "notice"), noticeId = fixture.NoticeId, wantedStatusId = fixture.WantedId, issuingGovernmentId = fixture.GovernmentId, text = "Wanted for questioning in a reported assault.", publishedWorldTime = 19d, visibility = PoliticalVisibility.Public });
+            CrimeOperationResult corrected = fixture.Crimes.TransitionWantedStatus(new WantedStatusTransitionRequest { transactionId = CrimeTx(context, "wanted-clear"), wantedStatusId = fixture.WantedId, targetState = WantedStatusLifecycleState.Cleared, correctionReason = "Questioning completed.", worldTime = 20d });
+            fixture.Crimes.TryGetWantedStatus(fixture.WantedId, out WantedStatusRecordData status);
+            bool valid = wanted.Succeeded && notice.Succeeded && corrected.Succeeded && status != null && status.lifecycleState == WantedStatusLifecycleState.Cleared && fixture.Crimes.WantedNotices.Count == 1;
+            return TestLabAssertions.True("step13-crime-wanted-notice", "Create and publish wanted status", valid, $"Wanted={wanted.Code} Notice={notice.Code} Clear={corrected.Code} State={status?.lifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult CrimeProjectionBoundaries(TestLabAutomationContext context)
+        {
+            CrimeFixture fixture = PrepareCrimeFixture(context, "projection");
+            CreateCrimeCoreRecords(context, fixture, "projection");
+            fixture.Crimes.CreateWantedStatus(new WantedStatusRequest { transactionId = CrimeTx(context, "projection-wanted"), wantedStatusId = fixture.WantedId, wantedDefinitionId = PrototypeCrimeDefinitionFactory.WantedForLocationDefinitionId, incidentId = fixture.IncidentId, subjectId = fixture.ActorId, jurisdictionId = fixture.JurisdictionId, territoryId = fixture.TerritoryId, activeWorldTime = 18d, visibility = PoliticalVisibility.Restricted });
+            CrimeProjectionResult<CrimeIncidentRecordData> publicIncident = fixture.Crimes.ProjectIncident(fixture.IncidentId, privileged: false);
+            CrimeProjectionResult<CrimeIncidentRecordData> privilegedIncident = fixture.Crimes.ProjectIncident(fixture.IncidentId, privileged: true);
+            CrimeProjectionResult<WantedStatusRecordData> publicWanted = fixture.Crimes.ProjectWantedStatus(fixture.WantedId, privileged: false);
+            bool valid = publicIncident.Succeeded
+                && publicIncident.Redacted
+                && publicIncident.Record.victimIds.Length == 0
+                && privilegedIncident.Succeeded
+                && !privilegedIncident.Redacted
+                && privilegedIncident.Record.victimIds.Length == 1
+                && publicWanted.Succeeded
+                && publicWanted.Redacted
+                && string.IsNullOrEmpty(publicWanted.Record.subjectId);
+            return TestLabAssertions.True("step13-crime-projection", "Project restricted incident and wanted status", valid, $"Incident={publicIncident.Succeeded}/{publicIncident.Redacted} Privileged={privilegedIncident.Succeeded}/{privilegedIncident.Redacted} Wanted={publicWanted.Succeeded}/{publicWanted.Redacted}");
+        }
+
+        private static TestLabAutomationStepResult CrimeTimeAndDerivedLifecycle(TestLabAutomationContext context)
+        {
+            CrimeFixture fixture = PrepareCrimeFixture(context, "time");
+            CreateCrimeCoreRecords(context, fixture, "time");
+            CrimeOperationResult requested = fixture.Crimes.RequestWarrant(CrimeWarrantRequest(context, fixture, "time", EvidenceSufficiencyState.Substantial));
+            CrimeOperationResult approved = fixture.Crimes.ReviewWarrantRequest(new WarrantReviewRequest { transactionId = CrimeTx(context, "time-review"), warrantRequestId = fixture.WarrantRequestId, reviewId = "trusted.system", approve = true, trustedSystemOperation = true });
+            CrimeOperationResult issued = fixture.Crimes.IssueWarrant(new WarrantIssueRequest { transactionId = CrimeTx(context, "time-issue"), warrantId = fixture.WarrantId, warrantRequestId = fixture.WarrantRequestId, issuedByPersonId = fixture.ActorId, issuedWorldTime = 10d, activationWorldTime = 10d, expirationWorldTime = 20d, trustedSystemOperation = true });
+            CrimeOperationResult processed = fixture.Crimes.ProcessWorldTime(new CrimeTimeEvaluationRequest { transactionId = CrimeTx(context, "time-boundary"), boundaryId = $"crime-boundary.testlab.{context.RunId}", worldTime = 21d });
+            long revision = fixture.Crimes.Revision;
+            CrimeOperationResult duplicate = fixture.Crimes.ProcessWorldTime(new CrimeTimeEvaluationRequest { transactionId = CrimeTx(context, "time-boundary"), boundaryId = $"crime-boundary.testlab.{context.RunId}", worldTime = 21d });
+            fixture.Crimes.TryGetWarrant(fixture.WarrantId, out WarrantRecordData warrant);
+            WantedStatusRecordData derived = fixture.Crimes.WantedStatuses.SingleOrDefault(item => item.warrantId == fixture.WarrantId);
+            bool valid = requested.Succeeded && approved.Succeeded && issued.Succeeded && processed.Succeeded && duplicate.Duplicate && fixture.Crimes.Revision == revision && warrant?.lifecycleState == WarrantLifecycleState.Expired && derived?.lifecycleState == WantedStatusLifecycleState.Expired;
+            return TestLabAssertions.True("step13-crime-time", "Process crime time boundaries", valid, $"Issue={issued.Code} Process={processed.Code} Duplicate={duplicate.Code} Warrant={warrant?.lifecycleState} Wanted={derived?.lifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult CrimePersistenceValidation(TestLabAutomationContext context)
+        {
+            CrimeFixture fixture = PrepareCrimeFixture(context, "persist");
+            CreateCrimeCoreRecords(context, fixture, "persist");
+            fixture.Crimes.OpenInvestigation(new InvestigationRecordRequest { transactionId = CrimeTx(context, "investigation"), investigationId = fixture.InvestigationId, incidentId = fixture.IncidentId, responsibleGovernmentId = fixture.GovernmentId, responsibleOrganizationId = "organization.prototype.guild", reviewerPersonIds = new[] { fixture.ActorId }, openedWorldTime = 15d });
+            CrimeRuntimeSaveData save = fixture.Crimes.CreateSaveData();
+            CrimeRuntime restored = new CrimeRuntime();
+            TestLabRuntimeBundle bundle = context.ScenarioContext.Runtimes;
+            CrimeOperationResult restore = restored.RestoreFromSaveData(save, bundle.DefinitionRegistry, bundle.Governments, bundle.Laws, bundle.OrganizationAuthority, bundle.Diplomacy, bundle.WorldId, bundle.KnownPersonIds, Array.Empty<string>());
+            CrimeRuntimeSaveData corrupt = save.Clone();
+            corrupt.reports[0].incidentId = "crime-incident.missing";
+            long before = restored.Revision;
+            CrimeOperationResult rejected = restored.RestoreFromSaveData(corrupt, bundle.DefinitionRegistry, bundle.Governments, bundle.Laws, bundle.OrganizationAuthority, bundle.Diplomacy, bundle.WorldId, bundle.KnownPersonIds, Array.Empty<string>());
+            int incidentCount = restored.Incidents.Count;
+            int reportCount = restored.Reports.Count;
+            int offenseCount = restored.PotentialOffenses.Count;
+            bool valid = restore.Succeeded && rejected.Code == CrimeOperationCode.ValidationFailed && restored.Revision == before && incidentCount == 1 && reportCount == 1 && offenseCount == 1;
+            restored.Dispose();
+            return TestLabAssertions.True("step13-crime-persistence", "Save, restore, and reject invalid crime state", valid, $"Restore={restore.Code} Reject={rejected.Code} Counts={incidentCount}/{reportCount}/{offenseCount}");
         }
 
         private static TestLabAutomationStepResult CreateRenameLifecycle(TestLabAutomationContext context)
@@ -2263,6 +2443,33 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario CrimeScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Laws | TestLabRuntimeArea.Crimes | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId,
+                    PrototypeLegalDefinitionFactory.SovereignAuthorityId,
+                    PrototypeLegalDefinitionFactory.CentralStatuteId,
+                    PrototypeLegalDefinitionFactory.ProhibitionProvisionId,
+                    PrototypeCrimeDefinitionFactory.UnlawfulPhysicalAttackOffenseId,
+                    PrototypeCrimeDefinitionFactory.ArrestWarrantDefinitionId,
+                    PrototypeCrimeDefinitionFactory.WantedForArrestDefinitionId
+                });
+        }
+
         private static void PrepareLegalFixture(TestLabAutomationContext context, out LegalRuntime laws, out string polityId, out string governmentId, out string territoryId, out string jurisdictionId)
         {
             laws = context.ScenarioContext.Runtimes.Laws;
@@ -2321,6 +2528,155 @@ namespace UnityIsekaiGame.Development.Automation
 
         private static TestLabAutomationStepResult LegalFail(string stepId, string failure) => TestLabAssertions.Fail(stepId, "Resolve legal runtime", "LegalRuntime", "Present", "Missing", failure);
         private static string LegalTx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.9.{suffix}.{context?.RunId ?? "run"}";
+
+        private static CrimeFixture PrepareCrimeFixture(TestLabAutomationContext context, string suffix)
+        {
+            PrepareLegalFixture(context, out LegalRuntime laws, out _, out string governmentId, out string territoryId, out string jurisdictionId);
+            EnactLegal(context, laws, $"crime-{suffix}", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.ProhibitionProvisionId, LegalEffectCategory.Prohibition, "crime.attack", territoryId, 10d);
+            CrimeRuntime crimes = context.ScenarioContext.Runtimes.Crimes;
+            return new CrimeFixture(
+                crimes,
+                context.ScenarioContext.Runtimes.PersonId,
+                "person.prototype.friend",
+                governmentId,
+                territoryId,
+                jurisdictionId,
+                $"crime-incident.testlab.{suffix}.{context.RunId}",
+                $"crime-report.testlab.{suffix}.{context.RunId}",
+                $"potential-offense.testlab.{suffix}.{context.RunId}",
+                $"crime-allegation.testlab.{suffix}.{context.RunId}",
+                $"crime-suspect.testlab.{suffix}.{context.RunId}",
+                $"crime-evidence-link.testlab.{suffix}.{context.RunId}",
+                $"crime-investigation.testlab.{suffix}.{context.RunId}",
+                $"warrant-request.testlab.{suffix}.{context.RunId}",
+                $"warrant.testlab.{suffix}.{context.RunId}",
+                $"wanted-status.testlab.{suffix}.{context.RunId}",
+                $"wanted-notice.testlab.{suffix}.{context.RunId}");
+        }
+
+        private static void CreateCrimeCoreRecords(TestLabAutomationContext context, CrimeFixture fixture, string suffix)
+        {
+            fixture.Crimes.RecordIncident(CrimeIncident(context, fixture, suffix));
+            fixture.Crimes.SubmitReport(CrimeReport(context, fixture, suffix));
+            fixture.Crimes.EvaluatePotentialOffense(CrimeOffense(context, fixture, suffix));
+        }
+
+        private static CrimeIncidentRequest CrimeIncident(TestLabAutomationContext context, CrimeFixture fixture, string suffix) => new CrimeIncidentRequest
+        {
+            transactionId = CrimeTx(context, $"incident-{suffix}"),
+            incidentId = fixture.IncidentId,
+            category = CrimeIncidentCategory.ViolentIncident,
+            occurrenceStartWorldTime = 12d,
+            occurrenceEndWorldTime = 12.25d,
+            discoveryWorldTime = 12.5d,
+            reportingWorldTime = 13d,
+            historicalEventIds = new[] { $"event.testlab.crime.{suffix}.{context.RunId}" },
+            primaryPlaceId = "place.testlab.capital",
+            primaryTerritoryId = fixture.TerritoryId,
+            jurisdictionIds = new[] { fixture.JurisdictionId },
+            involvedSubjects = new[] { CrimeSubjectReferenceData.Person(fixture.ActorId, "alleged-actor"), CrimeSubjectReferenceData.Person(fixture.VictimId, "victim") },
+            victimIds = new[] { fixture.VictimId },
+            witnessIds = new[] { "person.prototype.mentor" },
+            visibility = PoliticalVisibility.Restricted,
+            provenanceId = $"source.testlab.crime.{suffix}.{context.RunId}"
+        };
+
+        private static CrimeReportRequest CrimeReport(TestLabAutomationContext context, CrimeFixture fixture, string suffix) => new CrimeReportRequest
+        {
+            transactionId = CrimeTx(context, $"report-{suffix}"),
+            reportId = fixture.ReportId,
+            incidentId = fixture.IncidentId,
+            category = CrimeReportCategory.VictimReport,
+            reporterSubjectId = fixture.VictimId,
+            reporterSubjectType = "Person",
+            firstHand = true,
+            submittedWorldTime = 13d,
+            reporterReliabilityBasisPoints = 8000,
+            visibility = PoliticalVisibility.Restricted,
+            provenanceId = $"source.testlab.report.{suffix}.{context.RunId}"
+        };
+
+        private static PotentialOffenseEvaluationRequest CrimeOffense(TestLabAutomationContext context, CrimeFixture fixture, string suffix, bool preview = false) => new PotentialOffenseEvaluationRequest
+        {
+            transactionId = CrimeTx(context, $"offense-{suffix}"),
+            potentialOffenseId = preview ? $"{fixture.OffenseId}.preview" : fixture.OffenseId,
+            incidentId = fixture.IncidentId,
+            offenseDefinitionId = PrototypeCrimeDefinitionFactory.UnlawfulPhysicalAttackOffenseId,
+            allegedActorIds = new[] { fixture.ActorId },
+            victimOrTargetIds = new[] { fixture.VictimId },
+            actionId = "crime.attack",
+            stage = OffenseStage.Completed,
+            participation = ParticipationCategory.PrincipalActor,
+            evidenceSufficiency = EvidenceSufficiencyState.Substantial,
+            elementEvaluations = new[]
+            {
+                new OffenseElementEvaluationData { kind = OffenseElementKind.ActorConduct, key = "conduct", expectedValue = "crime.attack", observedValue = "crime.attack", supported = true, evidenceId = $"evidence.testlab.crime.{suffix}.{context.RunId}" }
+            },
+            visibility = PoliticalVisibility.Restricted,
+            provenanceId = $"source.testlab.offense.{suffix}.{context.RunId}",
+            preview = preview
+        };
+
+        private static WarrantRequestCreateRequest CrimeWarrantRequest(TestLabAutomationContext context, CrimeFixture fixture, string suffix, EvidenceSufficiencyState assertedThreshold) => new WarrantRequestCreateRequest
+        {
+            transactionId = CrimeTx(context, $"warrant-request-{suffix}"),
+            warrantRequestId = string.Equals(suffix, "low", StringComparison.Ordinal) ? $"{fixture.WarrantRequestId}.low" : fixture.WarrantRequestId,
+            warrantDefinitionId = PrototypeCrimeDefinitionFactory.ArrestWarrantDefinitionId,
+            incidentId = fixture.IncidentId,
+            potentialOffenseId = fixture.OffenseId,
+            requestedByPersonId = fixture.VictimId,
+            issuingGovernmentId = fixture.GovernmentId,
+            issuingOrganizationId = "organization.prototype.guild",
+            scope = new WarrantScopeData { kind = WarrantScopeKind.Person, targetId = fixture.ActorId, jurisdictionIds = new[] { fixture.JurisdictionId }, territoryIds = new[] { fixture.TerritoryId }, purpose = "arrest for reported assault" },
+            assertedThreshold = assertedThreshold,
+            requestedWorldTime = 15d,
+            visibility = PoliticalVisibility.Restricted
+        };
+
+        private static TestLabAutomationStepResult CrimeFail(string stepId, string failure) => TestLabAssertions.Fail(stepId, "Resolve crime runtime", "CrimeRuntime", "Present", "Missing", failure);
+        private static string CrimeTx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.10.{suffix}.{context?.RunId ?? "run"}";
+
+        private sealed class CrimeFixture
+        {
+            public CrimeFixture(CrimeRuntime crimes, string actorId, string victimId, string governmentId, string territoryId, string jurisdictionId, string incidentId, string reportId, string offenseId, string allegationId, string suspectId, string evidenceLinkId, string investigationId, string warrantRequestId, string warrantId, string wantedId, string noticeId)
+            {
+                Crimes = crimes;
+                ActorId = actorId;
+                VictimId = victimId;
+                GovernmentId = governmentId;
+                TerritoryId = territoryId;
+                JurisdictionId = jurisdictionId;
+                IncidentId = incidentId;
+                ReportId = reportId;
+                OffenseId = offenseId;
+                AllegationId = allegationId;
+                SuspectId = suspectId;
+                EvidenceLinkId = evidenceLinkId;
+                InvestigationId = investigationId;
+                WarrantRequestId = warrantRequestId;
+                WarrantId = warrantId;
+                WantedId = wantedId;
+                NoticeId = noticeId;
+            }
+
+            public CrimeRuntime Crimes { get; }
+            public string ActorId { get; }
+            public string VictimId { get; }
+            public string GovernmentId { get; }
+            public string TerritoryId { get; }
+            public string JurisdictionId { get; }
+            public string IncidentId { get; }
+            public string ReportId { get; }
+            public string OffenseId { get; }
+            public string AllegationId { get; }
+            public string SuspectId { get; }
+            public string EvidenceLinkId { get; }
+            public string InvestigationId { get; }
+            public string WarrantRequestId { get; }
+            public string WarrantId { get; }
+            public string WantedId { get; }
+            public string NoticeId { get; }
+        }
 
         private static TestLabAutomationStepResult GovernmentRuntimeReadiness(TestLabAutomationContext context)
         {
@@ -2937,6 +3293,19 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null)
             {
                 failure = "LegalRuntime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetCrimeRuntime(TestLabAutomationContext context, out CrimeRuntime runtime, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.Crimes;
+            if (runtime == null)
+            {
+                failure = "CrimeRuntime is missing from the Test Lab runtime bundle.";
                 return false;
             }
 

@@ -28,6 +28,7 @@ using UnityIsekaiGame.Combat.Integration;
 using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Combat.Reactions;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Crimes;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Factions;
@@ -14504,7 +14505,8 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeLegalDefinitionFactory.AddMissingPrototypeLegalDefinitions(
+            return PrototypeCrimeDefinitionFactory.AddMissingPrototypeCrimeDefinitions(
+            PrototypeLegalDefinitionFactory.AddMissingPrototypeLegalDefinitions(
                 PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(
                 PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(
                     PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(
@@ -14524,7 +14526,7 @@ namespace UnityIsekaiGame.Development
                                                                         PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(
                                                                             PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
                                                                                 PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
-                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))))))))));
+                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions)))))))))))))))))))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()
