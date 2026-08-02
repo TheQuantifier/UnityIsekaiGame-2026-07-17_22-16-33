@@ -32,6 +32,7 @@ using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.Governments;
+using UnityIsekaiGame.Laws;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Gameplay;
@@ -14503,7 +14504,8 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(
+            return PrototypeLegalDefinitionFactory.AddMissingPrototypeLegalDefinitions(
+                PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(
                 PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(
                     PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(
                     PrototypeFamilyRelationshipDefinitionFactory.AddMissingPrototypeFamilyRelationshipDefinitions(
@@ -14522,7 +14524,7 @@ namespace UnityIsekaiGame.Development
                                                                         PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(
                                                                             PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
                                                                                 PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
-                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions)))))))))))))))))))));
+                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))))))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()

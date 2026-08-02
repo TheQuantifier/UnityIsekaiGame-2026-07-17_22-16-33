@@ -10,6 +10,7 @@ using UnityIsekaiGame.GameData;
 using UnityEngine;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Governments;
+using UnityIsekaiGame.Laws;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
 using UnityIsekaiGame.Organizations;
@@ -226,6 +227,49 @@ namespace UnityIsekaiGame.Development.Automation
                     GovernmentScenario("projection-persistence-validation", "Government projections and persistence validate before restore", 40,
                         Step("step13-government-persistence", "Project, save, restore, and reject corrupt government graph", GovernmentProjectionPersistenceValidation))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.9.laws-rights-permissions-citizenship",
+                "Laws, Rights, Legal Permissions, and Citizenship",
+                "13.9",
+                "Definition-backed legal instruments, provisions, applicability, entitlements, legal status, citizenship, historical law, transitions, and persistence.",
+                13090,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "LegalRuntime", "GovernmentRuntime", "LegalAuthorityDefinition", "LegalInstrumentDefinition", "LegalProvisionDefinition", "LegalStatusDefinition", "LegalPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    LegalScenario("runtime-readiness", "Legal definitions and runtime ownership are ready", 10,
+                        Step("step13-legal-readiness", "Resolve legal definitions", LegalRuntimeReadiness)),
+                    LegalScenario("central-and-municipal-law", "Central and municipal instruments preserve legal hierarchy", 20,
+                        Step("step13-legal-enact", "Enact and evaluate central law", LegalEnactAndEvaluate)),
+                    LegalScenario("legal-authority-separation", "Institutional authority and legal permission remain separate", 30,
+                        Step("step13-legal-authority", "Reject missing legal authority", LegalAuthoritySeparation)),
+                    LegalScenario("publication-and-effective-time", "Publication and effective time control activation", 40,
+                        Step("step13-legal-time", "Activate scheduled law deterministically", LegalPublicationAndTime)),
+                    LegalScenario("amendment-and-historical-law", "Amendments preserve historical provision versions", 50,
+                        Step("step13-legal-amendment", "Evaluate historical and amended law", LegalAmendmentHistory)),
+                    LegalScenario("repeal-and-supersession", "Repeal and supersession preserve instrument identity", 60,
+                        Step("step13-legal-repeal", "Transition instrument lifecycle", LegalRepeal)),
+                    LegalScenario("rights-and-permits", "Rights and permits produce scoped entitlement records", 70,
+                        Step("step13-legal-entitlement", "Grant and evaluate scoped entitlement", LegalEntitlements)),
+                    LegalScenario("immunity", "Immunity overrides applicable prohibitions without deleting law", 80,
+                        Step("step13-legal-immunity", "Evaluate individual immunity", LegalImmunity)),
+                    LegalScenario("citizenship", "Citizenship is persistent Person legal status", 90,
+                        Step("step13-legal-citizenship", "Grant and transition citizenship", LegalCitizenship)),
+                    LegalScenario("government-in-exile", "Government-in-exile law remains explicit", 100,
+                        Step("step13-legal-exile", "Enact under government lifecycle boundaries", LegalGovernmentLifecycle)),
+                    LegalScenario("territorial-transition", "Territorial legal transitions remain planned records", 110,
+                        Step("step13-legal-transition", "Preserve transition data", LegalTransitionPersistence)),
+                    LegalScenario("treaty-implementation", "Treaty implementation keeps the source agreement reference", 120,
+                        Step("step13-legal-treaty", "Enact treaty implementation law", LegalTreatyImplementation)),
+                    LegalScenario("conflict-resolution", "Conflicting provisions resolve deterministically", 130,
+                        Step("step13-legal-conflict", "Resolve legal hierarchy conflict", LegalConflictResolution)),
+                    LegalScenario("visibility-boundary", "Hidden law remains authoritative without public disclosure", 140,
+                        Step("step13-legal-visibility", "Evaluate hidden authoritative law", LegalVisibilityBoundary)),
+                    LegalScenario("persistence", "Legal persistence restores and rejects corrupt graphs", 150,
+                        Step("step13-legal-persistence", "Save, restore, and reject invalid legal state", LegalPersistenceValidation))
+                }), out _);
         }
 
         private static TestLabAutomationStepResult ReadinessAndPrototypeDefinitions(TestLabAutomationContext context)
@@ -248,6 +292,184 @@ namespace UnityIsekaiGame.Development.Automation
                 && guildSnapshot.CurrentName.Length > 0;
 
             return TestLabAssertions.True("step13-organization-readiness", "Resolve definitions and seeded records", valid, $"Definitions={guildDefinition}/{secretDefinition} Seeded={runtime.Count} Guild={guildSnapshot?.CurrentName}");
+        }
+
+        private static TestLabAutomationStepResult LegalRuntimeReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetLegalRuntime(context, out LegalRuntime runtime, out string failure)) return LegalFail("step13-legal-readiness", failure);
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool valid = registry.TryGet(PrototypeLegalDefinitionFactory.SovereignAuthorityId, out LegalAuthorityDefinition authority)
+                && registry.TryGet(PrototypeLegalDefinitionFactory.CentralStatuteId, out LegalInstrumentDefinition instrument)
+                && registry.TryGet(PrototypeLegalDefinitionFactory.RightProvisionId, out LegalProvisionDefinition provision)
+                && registry.TryGet(PrototypeLegalDefinitionFactory.CitizenStatusId, out LegalStatusDefinition status)
+                && registry.TryGet(PrototypeLegalDefinitionFactory.CitizenshipId, out CitizenshipDefinition citizenship)
+                && authority.Category == LegalAuthorityCategory.SovereignLegislative
+                && instrument.Category == LegalInstrumentCategory.Statute
+                && provision.EffectCategory == LegalEffectCategory.Right
+                && status.Category == LegalStatusCategory.Citizen
+                && citizenship.Routes.Count > 0
+                && runtime.Revision == 0L;
+            return TestLabAssertions.True("step13-legal-readiness", "Resolve legal definitions", valid, $"Ready={valid} Revision={runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult LegalEnactAndEvaluate(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            LegalOperationResult enacted = EnactLegal(context, runtime, "central", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.RightProvisionId, LegalEffectCategory.Right, "activity.prototype.trade", territoryId, 10d);
+            LegalApplicabilityResult evaluated = runtime.Evaluate(new LegalApplicabilityRequest { personId = context.ScenarioContext.Runtimes.PersonId, territoryId = territoryId, actionId = "activity.prototype.trade", worldTime = 11d });
+            return TestLabAssertions.True("step13-legal-enact", "Enact and evaluate central law", enacted.Succeeded && evaluated.Status == LegalApplicabilityStatus.Permitted, $"Enact={enacted.Code} Evaluate={evaluated.Status}");
+        }
+
+        private static TestLabAutomationStepResult LegalAuthoritySeparation(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            EnactLegalInstrumentRequest request = LegalRequest(context, "unauthorized", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.PermissionProvisionId, "activity.prototype.trade", territoryId, 10d);
+            request.trustedSystemOperation = false;
+            long before = runtime.Revision;
+            LegalOperationResult result = runtime.Enact(request);
+            return TestLabAssertions.True("step13-legal-authority", "Reject missing legal authority", !result.Succeeded && result.Code == LegalOperationCode.MissingAuthority && runtime.Revision == before, $"Result={result.Code} NoMutation={runtime.Revision == before}");
+        }
+
+        private static TestLabAutomationStepResult LegalPublicationAndTime(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            LegalOperationResult enacted = EnactLegal(context, runtime, "scheduled", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.PermissionProvisionId, LegalEffectCategory.Permission, "activity.prototype.travel", territoryId, 20d, enactmentTime: 10d);
+            LegalApplicabilityStatus before = runtime.Evaluate(new LegalApplicabilityRequest { personId = context.ScenarioContext.Runtimes.PersonId, territoryId = territoryId, actionId = "activity.prototype.travel", worldTime = 15d }).Status;
+            LegalOperationResult activated = runtime.ProcessWorldTime(new LegalTimeEvaluationRequest { transactionId = LegalTx(context, "time"), boundaryId = $"legal-boundary.{context.RunId}", worldTime = 20d });
+            LegalOperationResult duplicate = runtime.ProcessWorldTime(new LegalTimeEvaluationRequest { transactionId = LegalTx(context, "time"), boundaryId = $"legal-boundary.{context.RunId}", worldTime = 20d });
+            LegalApplicabilityStatus after = runtime.Evaluate(new LegalApplicabilityRequest { personId = context.ScenarioContext.Runtimes.PersonId, territoryId = territoryId, actionId = "activity.prototype.travel", worldTime = 20d }).Status;
+            return TestLabAssertions.True("step13-legal-time", "Activate scheduled law deterministically", enacted.Succeeded && before == LegalApplicabilityStatus.NoApplicableLaw && activated.Succeeded && duplicate.Duplicate && after == LegalApplicabilityStatus.Permitted, $"Before={before} Activate={activated.Code} Duplicate={duplicate.Code} After={after}");
+        }
+
+        private static TestLabAutomationStepResult LegalAmendmentHistory(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            EnactLegal(context, runtime, "amended", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.PermissionProvisionId, LegalEffectCategory.Permission, "activity.prototype.trade", territoryId, 10d);
+            string provisionId = $"legal-provision.testlab.amended.{context.RunId}";
+            LegalOperationResult amended = runtime.AmendProvision(new AmendLegalProvisionRequest { transactionId = LegalTx(context, "amend"), amendmentId = $"legal-amendment.testlab.{context.RunId}", provisionId = provisionId, effectiveWorldTime = 20d, trustedSystemOperation = true, version = new LegalProvisionVersionData { effect = LegalEffectCategory.Permission, actionId = "activity.prototype.travel", territoryIds = new[] { territoryId } } });
+            LegalApplicabilityStatus historical = runtime.Evaluate(new LegalApplicabilityRequest { personId = context.ScenarioContext.Runtimes.PersonId, territoryId = territoryId, actionId = "activity.prototype.trade", worldTime = 15d }).Status;
+            LegalApplicabilityStatus current = runtime.Evaluate(new LegalApplicabilityRequest { personId = context.ScenarioContext.Runtimes.PersonId, territoryId = territoryId, actionId = "activity.prototype.travel", worldTime = 25d }).Status;
+            return TestLabAssertions.True("step13-legal-amendment", "Evaluate historical and amended law", amended.Succeeded && historical == LegalApplicabilityStatus.Permitted && current == LegalApplicabilityStatus.Permitted, $"Amend={amended.Code} Historical={historical} Current={current}");
+        }
+
+        private static TestLabAutomationStepResult LegalRepeal(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            EnactLegal(context, runtime, "repeal", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.ProhibitionProvisionId, LegalEffectCategory.Prohibition, "activity.prototype.hunt", territoryId, 10d);
+            string instrumentId = $"legal-instrument.testlab.repeal.{context.RunId}";
+            LegalOperationResult result = runtime.TransitionInstrument(new LegalInstrumentTransitionRequest { transactionId = LegalTx(context, "repeal"), instrumentId = instrumentId, targetState = LegalInstrumentLifecycleState.Repealed, worldTime = 20d, trustedSystemOperation = true });
+            LegalApplicabilityStatus status = runtime.Evaluate(new LegalApplicabilityRequest { territoryId = territoryId, actionId = "activity.prototype.hunt", worldTime = 21d }).Status;
+            return TestLabAssertions.True("step13-legal-repeal", "Transition instrument lifecycle", result.Succeeded && status == LegalApplicabilityStatus.NoApplicableLaw && runtime.TryGetInstrument(instrumentId, out LegalInstrumentRecordData record) && record.lifecycleState == LegalInstrumentLifecycleState.Repealed, $"Transition={result.Code} Evaluate={status}");
+        }
+
+        private static TestLabAutomationStepResult LegalEntitlements(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out _);
+            LegalOperationResult result = runtime.GrantEntitlement(new LegalEntitlementRequest { transactionId = LegalTx(context, "permit"), entitlementId = $"legal-permission.testlab.{context.RunId}", effect = LegalEffectCategory.Permission, personId = context.ScenarioContext.Runtimes.PersonId, actionId = "activity.prototype.trade", territoryId = territoryId, effectiveWorldTime = 10d, expirationWorldTime = 30d, trustedSystemOperation = true });
+            LegalApplicabilityStatus status = runtime.Evaluate(new LegalApplicabilityRequest { personId = context.ScenarioContext.Runtimes.PersonId, territoryId = territoryId, actionId = "activity.prototype.trade", worldTime = 11d }).Status;
+            return TestLabAssertions.True("step13-legal-entitlement", "Grant and evaluate scoped entitlement", result.Succeeded && status == LegalApplicabilityStatus.Permitted && runtime.Entitlements.Count == 1, $"Grant={result.Code} Evaluate={status}");
+        }
+
+        private static TestLabAutomationStepResult LegalImmunity(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            EnactLegal(context, runtime, "immunity-law", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.ProhibitionProvisionId, LegalEffectCategory.Prohibition, "activity.prototype.entry", territoryId, 10d);
+            runtime.GrantEntitlement(new LegalEntitlementRequest { transactionId = LegalTx(context, "immunity"), entitlementId = $"legal-immunity.testlab.{context.RunId}", effect = LegalEffectCategory.Immunity, personId = context.ScenarioContext.Runtimes.PersonId, actionId = "activity.prototype.entry", territoryId = territoryId, effectiveWorldTime = 10d, trustedSystemOperation = true });
+            LegalApplicabilityStatus status = runtime.Evaluate(new LegalApplicabilityRequest { personId = context.ScenarioContext.Runtimes.PersonId, territoryId = territoryId, actionId = "activity.prototype.entry", worldTime = 11d }).Status;
+            return TestLabAssertions.True("step13-legal-immunity", "Evaluate individual immunity", status == LegalApplicabilityStatus.Immune, $"Evaluate={status}");
+        }
+
+        private static TestLabAutomationStepResult LegalCitizenship(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out string polityId, out string governmentId, out _, out _);
+            string statusId = $"legal-status.testlab.citizen.{context.RunId}";
+            LegalOperationResult grant = runtime.GrantLegalStatus(new LegalStatusGrantRequest { transactionId = LegalTx(context, "citizen"), statusId = statusId, statusDefinitionId = PrototypeLegalDefinitionFactory.CitizenStatusId, citizenshipDefinitionId = PrototypeLegalDefinitionFactory.CitizenshipId, personId = context.ScenarioContext.Runtimes.PersonId, polityId = polityId, recognizingGovernmentId = governmentId, acquisitionRoute = CitizenshipAcquisitionRoute.Grant, consentGiven = true, effectiveWorldTime = 10d, trustedSystemOperation = true });
+            LegalOperationResult transition = runtime.TransitionLegalStatus(new LegalStatusTransitionRequest { transactionId = LegalTx(context, "renounce"), statusId = statusId, targetState = LegalStatusLifecycleState.Renounced, personConsent = true, worldTime = 20d, trustedSystemOperation = true });
+            return TestLabAssertions.True("step13-legal-citizenship", "Grant and transition citizenship", grant.Succeeded && transition.Succeeded && runtime.TryGetStatus(statusId, out PersonLegalStatusRecordData status) && status.lifecycleState == LegalStatusLifecycleState.Renounced && status.endedWorldTime == 20d, $"Grant={grant.Code} Transition={transition.Code}");
+        }
+
+        private static TestLabAutomationStepResult LegalGovernmentLifecycle(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            LegalOperationResult enacted = EnactLegal(context, runtime, "exile", jurisdictionId, PrototypeLegalDefinitionFactory.EmergencyOrderId, PrototypeLegalDefinitionFactory.DutyProvisionId, LegalEffectCategory.Duty, "activity.prototype.report", territoryId, 10d, expirationTime: 30d);
+            return TestLabAssertions.True("step13-legal-exile", "Enact under government lifecycle boundaries", enacted.Succeeded && runtime.Instruments.Single().expirationWorldTime == 30d, $"Enact={enacted.Code} Expiry={runtime.Instruments.SingleOrDefault()?.expirationWorldTime}");
+        }
+
+        private static TestLabAutomationStepResult LegalTransitionPersistence(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out string polityId, out _, out _, out _);
+            string targetPolityId = $"polity.successor.{context.RunId}";
+            context.ScenarioContext.Runtimes.Governments.CreatePolity(new PolityCreateRequest { transactionId = LegalTx(context, "successor-polity"), polityId = targetPolityId, polityDefinitionId = PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId, officialName = "Legal Successor Polity", worldTime = 5d });
+            LegalOperationResult result = runtime.PlanTransition(new LegalTransitionPlanRequest { transactionId = LegalTx(context, "transition"), transitionId = $"legal-transition.testlab.{context.RunId}", kind = LegalTransitionKind.TerritorialTransfer, sourcePolityId = polityId, targetPolityId = targetPolityId, plannedWorldTime = 30d, diagnostics = "Transition requires an explicit successor enactment." });
+            return TestLabAssertions.True("step13-legal-transition", "Preserve transition data", result.Succeeded && runtime.Transitions.Count == 1 && !runtime.Transitions[0].executed, $"Plan={result.Code} Count={runtime.Transitions.Count}");
+        }
+
+        private static TestLabAutomationStepResult LegalTreatyImplementation(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            string agreementId = $"diplomatic-agreement.prototype.{context.RunId}";
+            DiplomacyOperationResult agreement = context.ScenarioContext.Runtimes.Diplomacy.CreateAgreement(new DiplomaticAgreementRequest
+            {
+                transactionId = LegalTx(context, "treaty-agreement"),
+                agreementId = agreementId,
+                agreementDefinitionId = PrototypeDiplomacyDefinitionFactory.MutualDefenseAgreementId,
+                title = "Legal Test Implementation Agreement",
+                initialState = DiplomaticAgreementLifecycleState.Draft,
+                visibility = DiplomaticVisibility.Restricted,
+                worldTime = 4d,
+                parties = new[]
+                {
+                    Party($"{agreementId}.party.guild", Org("organization.prototype.guild")),
+                    Party($"{agreementId}.party.forge", Org("organization.prototype.royal-forge"))
+                },
+                clauses = new[]
+                {
+                    Clause($"{agreementId}.clause", PrototypeDiplomacyDefinitionFactory.DefenseAssistanceClauseId, DiplomaticClauseCategory.DefenseAssistance, DiplomaticVisibility.Restricted)
+                }
+            });
+            EnactLegalInstrumentRequest request = LegalRequest(context, "treaty", jurisdictionId, PrototypeLegalDefinitionFactory.TreatyImplementationId, PrototypeLegalDefinitionFactory.DutyProvisionId, "activity.prototype.treaty-duty", territoryId, 10d);
+            request.sourceAgreementId = agreementId;
+            LegalOperationResult result = runtime.Enact(request);
+            bool stored = runtime.TryGetInstrument(request.instrumentId, out LegalInstrumentRecordData record) && record.sourceAgreementId == request.sourceAgreementId;
+            return TestLabAssertions.True("step13-legal-treaty", "Enact treaty implementation law", agreement.Succeeded && result.Succeeded && stored, $"Agreement={agreement.Code} Enact={result.Code} SourceStored={stored}");
+        }
+
+        private static TestLabAutomationStepResult LegalConflictResolution(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            EnactLegal(context, runtime, "conflict-permit", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.PermissionProvisionId, LegalEffectCategory.Permission, "activity.prototype.trade", territoryId, 10d);
+            EnactLegal(context, runtime, "conflict-prohibit", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.ProhibitionProvisionId, LegalEffectCategory.Prohibition, "activity.prototype.trade", territoryId, 11d);
+            LegalApplicabilityStatus status = runtime.Evaluate(new LegalApplicabilityRequest { territoryId = territoryId, actionId = "activity.prototype.trade", worldTime = 12d }).Status;
+            return TestLabAssertions.True("step13-legal-conflict", "Resolve legal hierarchy conflict", status == LegalApplicabilityStatus.Prohibited, $"Evaluate={status}");
+        }
+
+        private static TestLabAutomationStepResult LegalVisibilityBoundary(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            EnactLegalInstrumentRequest request = LegalRequest(context, "hidden", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.ProhibitionProvisionId, "activity.prototype.secret", territoryId, 10d);
+            request.visibility = PoliticalVisibility.Hidden;
+            request.published = false;
+            LegalOperationResult enacted = runtime.Enact(request);
+            LegalApplicabilityStatus authoritative = runtime.Evaluate(new LegalApplicabilityRequest { territoryId = territoryId, actionId = "activity.prototype.secret", worldTime = 11d }).Status;
+            LegalProjectionResult<LegalInstrumentRecordData> projection = runtime.ProjectInstrument(request.instrumentId, privileged: false);
+            return TestLabAssertions.True("step13-legal-visibility", "Evaluate hidden authoritative law", enacted.Succeeded && authoritative == LegalApplicabilityStatus.Prohibited && !projection.Succeeded, $"Enact={enacted.Code} Authoritative={authoritative} Projection={projection.Succeeded}");
+        }
+
+        private static TestLabAutomationStepResult LegalPersistenceValidation(TestLabAutomationContext context)
+        {
+            PrepareLegalFixture(context, out LegalRuntime runtime, out _, out _, out string territoryId, out string jurisdictionId);
+            EnactLegal(context, runtime, "persist", jurisdictionId, PrototypeLegalDefinitionFactory.CentralStatuteId, PrototypeLegalDefinitionFactory.RightProvisionId, LegalEffectCategory.Right, "activity.prototype.trade", territoryId, 10d);
+            LegalRuntimeSaveData save = runtime.CreateSaveData();
+            LegalRuntime restored = new LegalRuntime();
+            TestLabRuntimeBundle bundle = context.ScenarioContext.Runtimes;
+            LegalOperationResult restore = restored.RestoreFromSaveData(save, bundle.DefinitionRegistry, bundle.Governments, bundle.Organizations, bundle.OrganizationAuthority, bundle.OrganizationDecisions, bundle.Diplomacy, bundle.Properties, bundle.WorldId, bundle.KnownPersonIds, Array.Empty<string>());
+            LegalRuntimeSaveData corrupt = save.Clone();
+            corrupt.provisions[0].instrumentId = "legal-instrument.missing";
+            long before = restored.Revision;
+            LegalOperationResult rejected = restored.RestoreFromSaveData(corrupt, bundle.DefinitionRegistry, bundle.Governments, bundle.Organizations, bundle.OrganizationAuthority, bundle.OrganizationDecisions, bundle.Diplomacy, bundle.Properties, bundle.WorldId, bundle.KnownPersonIds, Array.Empty<string>());
+            bool valid = restore.Succeeded && !rejected.Succeeded && restored.Revision == before && restored.Instruments.Count == 1;
+            restored.Dispose();
+            return TestLabAssertions.True("step13-legal-persistence", "Save, restore, and reject invalid legal state", valid, $"Restore={restore.Code} Reject={rejected.Code} NoMutation={restored.Revision == 0 || before > 0}");
         }
 
         private static TestLabAutomationStepResult CreateRenameLifecycle(TestLabAutomationContext context)
@@ -2013,6 +2235,93 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario LegalScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Laws | TestLabRuntimeArea.Economy,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId,
+                    PrototypeLegalDefinitionFactory.SovereignAuthorityId,
+                    PrototypeLegalDefinitionFactory.CentralStatuteId,
+                    PrototypeLegalDefinitionFactory.RightProvisionId,
+                    PrototypeLegalDefinitionFactory.PermissionProvisionId,
+                    PrototypeLegalDefinitionFactory.ProhibitionProvisionId,
+                    PrototypeLegalDefinitionFactory.CitizenStatusId,
+                    PrototypeLegalDefinitionFactory.CitizenshipId
+                });
+        }
+
+        private static void PrepareLegalFixture(TestLabAutomationContext context, out LegalRuntime laws, out string polityId, out string governmentId, out string territoryId, out string jurisdictionId)
+        {
+            laws = context.ScenarioContext.Runtimes.Laws;
+            GovernmentRuntime governments = context.ScenarioContext.Runtimes.Governments;
+            polityId = $"polity.testlab.legal.{context.RunId}";
+            governmentId = $"government.testlab.legal.{context.RunId}";
+            territoryId = $"political-territory.testlab.legal.{context.RunId}";
+            jurisdictionId = $"jurisdiction.testlab.legal.{context.RunId}";
+            governments.CreatePolity(new PolityCreateRequest { transactionId = LegalTx(context, "polity"), polityId = polityId, polityDefinitionId = PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId, officialName = "Legal Test Polity", worldTime = 1d });
+            governments.RegisterGovernment(new GovernmentRegisterRequest { transactionId = LegalTx(context, "government"), governmentId = governmentId, governmentDefinitionId = PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId, polityId = polityId, officialName = "Legal Test Government", primaryGoverningOrganizationId = "organization.prototype.guild", governingOrganizationIds = new[] { "organization.prototype.guild" }, level = GovernmentLevel.Central, worldTime = 2d });
+            governments.CreateTerritory(new TerritoryCreateRequest { transactionId = LegalTx(context, "territory"), territoryId = territoryId, territoryDefinitionId = PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId, displayName = "Legal Test Territory", polityId = polityId, primaryGovernmentId = governmentId, placeIds = new[] { "place.testlab.capital" }, worldTime = 3d });
+            governments.CreateJurisdiction(new JurisdictionCreateRequest { transactionId = LegalTx(context, "jurisdiction"), jurisdictionId = jurisdictionId, jurisdictionDefinitionId = PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId, governmentId = governmentId, category = JurisdictionCategory.GeneralGovernment, scopeDimensions = JurisdictionScopeDimension.Territory | JurisdictionScopeDimension.SubjectMatter, subjectMatters = new[] { JurisdictionSubjectMatter.GeneralAdministration }, territoryIds = new[] { territoryId }, priority = 100, worldTime = 4d });
+        }
+
+        private static LegalOperationResult EnactLegal(TestLabAutomationContext context, LegalRuntime runtime, string suffix, string jurisdictionId, string instrumentDefinitionId, string provisionDefinitionId, LegalEffectCategory effect, string actionId, string territoryId, double effectiveTime, double enactmentTime = 5d, double expirationTime = -1d)
+        {
+            EnactLegalInstrumentRequest request = LegalRequest(context, suffix, jurisdictionId, instrumentDefinitionId, provisionDefinitionId, actionId, territoryId, effectiveTime);
+            request.enactmentWorldTime = enactmentTime;
+            request.publicationWorldTime = enactmentTime;
+            request.expirationWorldTime = expirationTime;
+            return runtime.Enact(request);
+        }
+
+        private static EnactLegalInstrumentRequest LegalRequest(TestLabAutomationContext context, string suffix, string jurisdictionId, string instrumentDefinitionId, string provisionDefinitionId, string actionId, string territoryId, double effectiveTime)
+        {
+            string governmentId = $"government.testlab.legal.{context.RunId}";
+            return new EnactLegalInstrumentRequest
+            {
+                transactionId = LegalTx(context, $"enact-{suffix}"),
+                instrumentId = $"legal-instrument.testlab.{suffix}.{context.RunId}",
+                instrumentDefinitionId = instrumentDefinitionId,
+                authorityDefinitionId = PrototypeLegalDefinitionFactory.SovereignAuthorityId,
+                title = $"Test Lab {suffix} Law",
+                governmentId = governmentId,
+                organizationId = "organization.prototype.guild",
+                jurisdictionIds = new[] { jurisdictionId },
+                enactmentWorldTime = 5d,
+                publicationWorldTime = 5d,
+                effectiveWorldTime = effectiveTime,
+                published = true,
+                promulgated = true,
+                visibility = PoliticalVisibility.Public,
+                trustedSystemOperation = true,
+                provisions = new[]
+                {
+                    new LegalProvisionCreateRequest
+                    {
+                        provisionId = $"legal-provision.testlab.{suffix}.{context.RunId}",
+                        provisionDefinitionId = provisionDefinitionId,
+                        citation = "section 1",
+                        version = new LegalProvisionVersionData { effect = LegalEffectCategory.Unknown, actionId = actionId, territoryIds = new[] { territoryId }, effectiveWorldTime = effectiveTime }
+                    }
+                }
+            };
+        }
+
+        private static TestLabAutomationStepResult LegalFail(string stepId, string failure) => TestLabAssertions.Fail(stepId, "Resolve legal runtime", "LegalRuntime", "Present", "Missing", failure);
+        private static string LegalTx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.9.{suffix}.{context?.RunId ?? "run"}";
+
         private static TestLabAutomationStepResult GovernmentRuntimeReadiness(TestLabAutomationContext context)
         {
             if (!TryGetGovernmentRuntime(context, out GovernmentRuntime runtime, out string failure))
@@ -2615,6 +2924,19 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null)
             {
                 failure = "GovernmentRuntime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetLegalRuntime(TestLabAutomationContext context, out LegalRuntime runtime, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.Laws;
+            if (runtime == null)
+            {
+                failure = "LegalRuntime is missing from the Test Lab runtime bundle.";
                 return false;
             }
 

@@ -62,7 +62,7 @@ namespace UnityIsekaiGame.Development.Automation
 
     public static class TestLabAutomationValidation
     {
-        private const TestLabRuntimeArea IsolatedRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments;
+        private const TestLabRuntimeArea IsolatedRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Laws;
         private const TestLabRuntimeArea AllRuntimeAreas = TestLabRuntimeArea.KnowledgeHistory
             | TestLabRuntimeArea.Character
             | TestLabRuntimeArea.Combat
@@ -79,7 +79,8 @@ namespace UnityIsekaiGame.Development.Automation
             | TestLabRuntimeArea.OrganizationDecisions
             | TestLabRuntimeArea.Factions
             | TestLabRuntimeArea.Diplomacy
-            | TestLabRuntimeArea.Governments;
+            | TestLabRuntimeArea.Governments
+            | TestLabRuntimeArea.Laws;
         private const TestLabHostFeature AllHostFeatures = TestLabHostFeature.DefinitionContext
             | TestLabHostFeature.SceneReset
             | TestLabHostFeature.SnapshotRestore
