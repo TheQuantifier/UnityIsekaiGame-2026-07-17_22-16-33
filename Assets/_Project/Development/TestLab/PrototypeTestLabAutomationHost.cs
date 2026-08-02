@@ -34,16 +34,17 @@ namespace UnityIsekaiGame.Development
                 | TestLabRuntimeArea.Social
                 | TestLabRuntimeArea.Organizations
                 | TestLabRuntimeArea.OrganizationMemberships
-                | TestLabRuntimeArea.OrganizationAuthority;
+                | TestLabRuntimeArea.OrganizationAuthority
+                | TestLabRuntimeArea.OrganizationResources;
             return new TestLabAutomationHostCapabilities(
                 HostId,
                 "Prototype Test Lab Host",
                 SceneManager.GetActiveScene().name,
                 allAreas,
-                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources,
                 allAreas,
                 allAreas,
-                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority,
+                TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources,
                 new[]
                 {
                     TestLabScenarioIsolationMode.FreshRuntime,

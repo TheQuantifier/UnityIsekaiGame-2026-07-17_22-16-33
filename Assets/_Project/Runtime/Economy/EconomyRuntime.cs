@@ -115,6 +115,58 @@ namespace UnityIsekaiGame.Economy
             return EconomyOperationResult.Success("Account created.", before, Revision, toAccount: Snapshot(account));
         }
 
+        public EconomyOperationResult ChangeAccountState(string transactionId, string accountId, EconomyAccountState targetState, bool preview = false)
+        {
+            long before = Revision;
+            if (string.IsNullOrWhiteSpace(accountId) || !accountsById.TryGetValue(accountId, out EconomyAccountData account))
+            {
+                return Fail(EconomyResultCode.MissingAccount, $"Account '{accountId}' was not found.", preview);
+            }
+
+            if (targetState != EconomyAccountState.Active && targetState != EconomyAccountState.Frozen && targetState != EconomyAccountState.Closed)
+            {
+                return Fail(EconomyResultCode.InvalidRequest, $"Account state '{targetState}' is not supported.", preview);
+            }
+
+            if (!preview && IsDuplicate(transactionId, "account-state", $"{accountId}:{targetState}", out EconomyOperationResult duplicate))
+            {
+                return duplicate;
+            }
+
+            if (account.state == targetState)
+            {
+                return EconomyOperationResult.Success("Account already has the requested state.", before, before, preview: preview, duplicate: !preview, toAccount: Snapshot(account));
+            }
+
+            if (account.state == EconomyAccountState.Closed)
+            {
+                return Fail(EconomyResultCode.AccountClosed, $"Closed account '{accountId}' cannot transition to {targetState}.", preview);
+            }
+
+            if (targetState == EconomyAccountState.Closed && account.balanceUnits != 0L)
+            {
+                return Fail(EconomyResultCode.ValidationFailed, $"Account '{accountId}' must have a zero balance before closure.", preview);
+            }
+
+            if (targetState == EconomyAccountState.Closed && reservationsById.Values.Any(item => item.accountId == accountId && item.state == EconomyReservationState.Active))
+            {
+                return Fail(EconomyResultCode.ValidationFailed, $"Account '{accountId}' has active reservations and cannot close.", preview);
+            }
+
+            if (preview)
+            {
+                EconomyAccountData projected = account.Clone();
+                projected.state = targetState;
+                return EconomyOperationResult.Success("Account state preview succeeded.", before, before, preview: true, toAccount: Snapshot(projected));
+            }
+
+            account.state = targetState;
+            account.revision++;
+            Revision++;
+            Remember(transactionId, "account-state", $"{accountId}:{targetState}");
+            return EconomyOperationResult.Success("Account state changed.", before, Revision, toAccount: Snapshot(account));
+        }
+
         public EconomyOperationResult Issue(string transactionId, string toAccountId, MoneyAmount amount, string actorId, string reason = "", bool preview = false)
         {
             long before = Revision;
@@ -264,6 +316,42 @@ namespace UnityIsekaiGame.Economy
             Revision++;
             Remember(transactionId, "release", reservationId);
             return EconomyOperationResult.Success("Reservation released.", before, Revision, fromAccount: account == null ? null : Snapshot(account), reservation: reservation);
+        }
+
+        public EconomyOperationResult ExpireReservation(string reservationId, double worldTime, string transactionId = "", bool preview = false)
+        {
+            long before = Revision;
+            if (string.IsNullOrWhiteSpace(reservationId) || !reservationsById.TryGetValue(reservationId, out EconomyReservationData reservation))
+            {
+                return Fail(EconomyResultCode.MissingReservation, $"Reservation '{reservationId}' was not found.", preview);
+            }
+
+            if (!preview && IsDuplicate(transactionId, "expire-reservation", reservationId, out EconomyOperationResult duplicate))
+            {
+                return duplicate;
+            }
+
+            if (reservation.state != EconomyReservationState.Active)
+            {
+                return Fail(EconomyResultCode.ReservationUnavailable, $"Reservation '{reservationId}' is {reservation.state}.", preview);
+            }
+
+            if (reservation.expiresWorldTime < 0d || worldTime < reservation.expiresWorldTime)
+            {
+                return Fail(EconomyResultCode.InvalidRequest, $"Reservation '{reservationId}' has not reached its expiration boundary.", preview);
+            }
+
+            if (preview)
+            {
+                return EconomyOperationResult.Success("Reservation expiration preview succeeded.", before, before, preview: true, reservation: reservation);
+            }
+
+            reservation.state = EconomyReservationState.Expired;
+            reservation.revision++;
+            if (accountsById.TryGetValue(reservation.accountId, out EconomyAccountData account)) account.revision++;
+            Revision++;
+            Remember(transactionId, "expire-reservation", reservationId);
+            return EconomyOperationResult.Success("Reservation expired.", before, Revision, fromAccount: account == null ? null : Snapshot(account), reservation: reservation);
         }
 
         public EconomyOperationResult Transfer(string transactionId, string fromAccountId, string toAccountId, MoneyAmount amount, EconomyTransactionKind kind = EconomyTransactionKind.Transfer, string reservationId = "", string actorId = "", string priceSnapshotId = "", bool preview = false)

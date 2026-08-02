@@ -651,6 +651,11 @@ namespace UnityIsekaiGame.Organizations
             }
         }
 
+        public OrganizationAuthorityOperationResult RestoreCheckpoint(OrganizationAuthorityRuntimeSaveData saveData)
+        {
+            return RestoreFromSaveData(saveData, registry, organizations, memberships, worldId, knownPersonIds, knownOrganizationIds, restoring: true);
+        }
+
         public static bool ValidateSaveData(OrganizationAuthorityRuntimeSaveData saveData, DefinitionRegistry registry, OrganizationRuntime organizations, OrganizationMembershipRuntime memberships, string world, IEnumerable<string> persons, IEnumerable<string> organizationIds, out string failure)
         {
             failure = string.Empty;
