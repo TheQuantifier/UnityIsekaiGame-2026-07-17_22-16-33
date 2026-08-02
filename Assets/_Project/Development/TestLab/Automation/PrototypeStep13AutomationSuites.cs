@@ -14,6 +14,7 @@ using UnityIsekaiGame.Governments;
 using UnityIsekaiGame.Laws;
 using UnityIsekaiGame.Inventory;
 using UnityIsekaiGame.Inventory.Identity;
+using UnityIsekaiGame.Justice;
 using UnityIsekaiGame.Organizations;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Progression;
@@ -299,6 +300,33 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step13-crime-time", "Process crime time boundaries", CrimeTimeAndDerivedLifecycle)),
                     CrimeScenario("persistence", "Crime persistence restores and rejects corrupt graphs", 80,
                         Step("step13-crime-persistence", "Save, restore, and reject invalid crime state", CrimePersistenceValidation))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.11.arrest-courts-judgments-punishments",
+                "Arrest, Detention, Courts, Judgments, and Punishments",
+                "13.11",
+                "Definition-backed justice process records for courts, arrest, custody, charges, hearings, findings, judgments, sentences, remedies, appeals, clemency, projections, and persistence.",
+                13110,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "JusticeRuntime", "CrimeRuntime", "LegalRuntime", "GovernmentRuntime", "JusticePersistenceParticipant" },
+                scenarios: new[]
+                {
+                    JusticeScenario("runtime-readiness", "Justice definitions and runtime ownership are ready", 10,
+                        Step("step13-justice-readiness", "Resolve justice definitions and runtime", JusticeRuntimeReadiness)),
+                    JusticeScenario("court-selection", "Courts register and resolve deterministically by jurisdiction", 20,
+                        Step("step13-justice-court-selection", "Register courts and select primary jurisdiction", JusticeCourtSelection)),
+                    JusticeScenario("arrest-custody-release", "Arrest, custody transfer, and release preserve legal basis and history", 30,
+                        Step("step13-justice-arrest-custody", "Execute warrant arrest and custody lifecycle", JusticeArrestCustodyRelease)),
+                    JusticeScenario("case-charge-plea-hearing", "Cases, charges, pleas, and hearings remain explicit process records", 40,
+                        Step("step13-justice-case-charge", "File case, charge, plea, and hearing", JusticeCaseChargePleaHearing)),
+                    JusticeScenario("evidence-finding-judgment", "Evidence rulings, findings, and judgments preserve charge-level outcomes", 50,
+                        Step("step13-justice-judgment", "Submit evidence, record finding, and enter judgment", JusticeEvidenceFindingJudgment)),
+                    JusticeScenario("sentences-remedies-appeals-clemency", "Sentences, remedies, appeals, and clemency operate without rewriting judgment history", 60,
+                        Step("step13-justice-sentence-appeal", "Impose sentence, order remedy, appeal, and clemency", JusticeSentencesRemediesAppealsClemency)),
+                    JusticeScenario("projection-persistence-validation", "Justice projections redact restricted data and persistence rejects corrupt graphs", 70,
+                        Step("step13-justice-persistence", "Project, save, restore, and reject invalid justice graph", JusticeProjectionPersistenceValidation))
                 }), out _);
         }
 
@@ -650,6 +678,171 @@ namespace UnityIsekaiGame.Development.Automation
             bool valid = restore.Succeeded && rejected.Code == CrimeOperationCode.ValidationFailed && restored.Revision == before && incidentCount == 1 && reportCount == 1 && offenseCount == 1;
             restored.Dispose();
             return TestLabAssertions.True("step13-crime-persistence", "Save, restore, and reject invalid crime state", valid, $"Restore={restore.Code} Reject={rejected.Code} Counts={incidentCount}/{reportCount}/{offenseCount}");
+        }
+
+        private static TestLabAutomationStepResult JusticeRuntimeReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetJusticeRuntime(context, out JusticeRuntime runtime, out string failure)) return JusticeFail("step13-justice-readiness", failure);
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool valid = registry.TryGet(PrototypeJusticeDefinitionFactory.GeneralJusticeInstitutionId, out JusticeInstitutionDefinition institution)
+                && registry.TryGet(PrototypeJusticeDefinitionFactory.GeneralCourtDefinitionId, out CourtDefinition court)
+                && registry.TryGet(PrototypeJusticeDefinitionFactory.WarrantArrestDefinitionId, out ArrestDefinition arrest)
+                && registry.TryGet(PrototypeJusticeDefinitionFactory.CriminalChargeDefinitionId, out ChargeDefinition charge)
+                && registry.TryGet(PrototypeJusticeDefinitionFactory.TrialHearingDefinitionId, out HearingDefinition hearing)
+                && registry.TryGet(PrototypeJusticeDefinitionFactory.ImprisonmentSentenceDefinitionId, out SentenceDefinition sentence)
+                && registry.TryGet(PrototypeJusticeDefinitionFactory.JudgmentAppealDefinitionId, out AppealDefinition appeal)
+                && institution.Category == JusticeInstitutionCategory.GeneralCourt
+                && court.SupportedCases.Contains(JusticeCaseCategory.Criminal)
+                && arrest.ValidLegalBases.Contains(ArrestLegalBasisKind.ActiveArrestWarrant)
+                && charge.Category == ChargeCategory.CriminalCharge
+                && hearing.PermitsFindings
+                && sentence.CreatesCustody
+                && appeal.MayStayJudgment
+                && runtime.Revision == 0L;
+            return TestLabAssertions.True("step13-justice-readiness", "Resolve justice definitions and runtime", valid, $"Definitions={valid} Revision={runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult JusticeCourtSelection(TestLabAutomationContext context)
+        {
+            JusticeFixture fixture = PrepareJusticeFixture(context, "court", issueWarrant: false, registerCourt: false);
+            JusticeOperationResult preview = fixture.Justice.RegisterCourt(JusticeCourtRequest(context, fixture, "preview", preview: true));
+            JusticeOperationResult registered = fixture.Justice.RegisterCourt(JusticeCourtRequest(context, fixture, "primary"));
+            JusticeOperationResult duplicate = fixture.Justice.RegisterCourt(JusticeCourtRequest(context, fixture, "primary"));
+            CourtSelectionResult selection = fixture.Justice.SelectCourt(JusticeCaseCategory.Criminal, new[] { fixture.Crime.JurisdictionId }, fixture.CourtId, appellate: false, evaluationWorldTime: 19d);
+            bool valid = preview.Preview
+                && registered.Succeeded
+                && duplicate.Duplicate
+                && selection.Resolved
+                && selection.PrimaryCourtId == fixture.CourtId
+                && selection.CandidateCourtIds.Contains(fixture.CourtId);
+            return TestLabAssertions.True("step13-justice-court-selection", "Register courts and select primary jurisdiction", valid, $"Preview={preview.Code} Register={registered.Code} Duplicate={duplicate.Code} Selection={selection.PrimaryCourtId} Candidates={selection.CandidateCourtIds.Count}");
+        }
+
+        private static TestLabAutomationStepResult JusticeArrestCustodyRelease(TestLabAutomationContext context)
+        {
+            JusticeFixture fixture = PrepareJusticeFixture(context, "arrest");
+            JusticeOperationResult arrest = fixture.Justice.Arrest(JusticeArrestRequest(context, fixture, "arrest"));
+            JusticeOperationResult duplicate = fixture.Justice.Arrest(JusticeArrestRequest(context, fixture, "arrest"));
+            JusticeOperationResult transfer = fixture.Justice.TransferCustody(new CustodyTransferRequest { transactionId = JusticeTx(context, "transfer-arrest"), custodyId = fixture.CustodyId, targetHolderGovernmentId = fixture.Crime.GovernmentId, targetHolderOrganizationId = "organization.prototype.guild", targetFacilityPlaceId = "place.testlab.detention", worldTime = 18d });
+            JusticeOperationResult release = fixture.Justice.OrderRelease(new ReleaseOrderRequest { transactionId = JusticeTx(context, "release-arrest"), releaseOrderId = fixture.ReleaseOrderId, custodyId = fixture.CustodyId, category = ReleaseCategory.PendingTrial, orderedByCourtId = fixture.CourtId, orderedWorldTime = 19d, effectiveWorldTime = 19d, conditions = new[] { "appear-at-next-hearing" } });
+            fixture.Justice.TryGetCustody(fixture.CustodyId, out CustodyRecordData custody);
+            bool valid = arrest.Succeeded
+                && duplicate.Duplicate
+                && transfer.Succeeded
+                && release.Succeeded
+                && custody != null
+                && custody.lifecycleState == CustodyLifecycleState.Released
+                && custody.releaseOrderId == fixture.ReleaseOrderId
+                && fixture.Justice.Arrests.Count == 1
+                && fixture.Justice.ReleaseOrders.Count == 1;
+            return TestLabAssertions.True("step13-justice-arrest-custody", "Execute warrant arrest and custody lifecycle", valid, $"Arrest={arrest.Code} Duplicate={duplicate.Code} Transfer={transfer.Code} Release={release.Code} Custody={custody?.lifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult JusticeCaseChargePleaHearing(TestLabAutomationContext context)
+        {
+            JusticeFixture fixture = PrepareJusticeFixture(context, "case");
+            JusticeOperationResult caseFile = FileJusticeCase(context, fixture);
+            JusticeOperationResult charge = FileJusticeCharge(context, fixture);
+            JusticeOperationResult plea = fixture.Justice.EnterPlea(new PleaRequest { transactionId = JusticeTx(context, "plea-case"), pleaId = fixture.PleaId, caseId = fixture.CaseId, chargeId = fixture.ChargeId, defendantPersonId = fixture.Crime.ActorId, category = PleaCategory.NotGuilty, statement = "Not guilty.", enteredWorldTime = 23d });
+            JusticeOperationResult hearing = fixture.Justice.ScheduleHearing(new HearingScheduleRequest { transactionId = JusticeTx(context, "hearing-case"), hearingId = fixture.HearingId, hearingDefinitionId = PrototypeJusticeDefinitionFactory.InitialHearingDefinitionId, caseId = fixture.CaseId, category = HearingCategory.InitialAppearance, issueIds = new[] { fixture.ChargeId }, scheduledWorldTime = 24d });
+            JusticeOperationResult opened = fixture.Justice.TransitionHearing(new HearingTransitionRequest { transactionId = JusticeTx(context, "hearing-open-case"), hearingId = fixture.HearingId, targetState = HearingLifecycleState.Opened, worldTime = 24d });
+            fixture.Justice.TryGetCase(fixture.CaseId, out CourtCaseRecordData courtCase);
+            bool valid = caseFile.Succeeded
+                && charge.Succeeded
+                && plea.Succeeded
+                && hearing.Succeeded
+                && opened.Succeeded
+                && courtCase != null
+                && courtCase.chargeIds.Contains(fixture.ChargeId)
+                && courtCase.hearingIds.Contains(fixture.HearingId)
+                && fixture.Justice.Judgments.Count == 0;
+            return TestLabAssertions.True("step13-justice-case-charge", "File case, charge, plea, and hearing", valid, $"Case={caseFile.Code} Charge={charge.Code} Plea={plea.Code} Hearing={hearing.Code} Opened={opened.Code} Judgments={fixture.Justice.Judgments.Count}");
+        }
+
+        private static TestLabAutomationStepResult JusticeEvidenceFindingJudgment(TestLabAutomationContext context)
+        {
+            JusticeFixture fixture = PrepareJusticeFixture(context, "judgment");
+            FileJusticeCase(context, fixture);
+            FileJusticeCharge(context, fixture);
+            JusticeOperationResult hearing = fixture.Justice.ScheduleHearing(new HearingScheduleRequest { transactionId = JusticeTx(context, "trial-judgment"), hearingId = fixture.HearingId, hearingDefinitionId = PrototypeJusticeDefinitionFactory.TrialHearingDefinitionId, caseId = fixture.CaseId, category = HearingCategory.Trial, issueIds = new[] { fixture.ChargeId }, scheduledWorldTime = 25d });
+            JusticeOperationResult evidence = fixture.Justice.SubmitEvidence(new EvidenceSubmissionRequest { transactionId = JusticeTx(context, "evidence-judgment"), evidenceSubmissionId = fixture.EvidenceSubmissionId, caseId = fixture.CaseId, hearingId = fixture.HearingId, evidenceId = fixture.Crime.EvidenceLinkId, submittedByPartyId = fixture.ProsecutorPartyId, submittedWorldTime = 25.1d });
+            JusticeOperationResult ruling = fixture.Justice.RuleOnEvidence(new EvidenceRulingRequest { transactionId = JusticeTx(context, "ruling-judgment"), evidenceSubmissionId = fixture.EvidenceSubmissionId, targetState = EvidenceRulingState.Admitted, reason = "Relevant to charge." });
+            JusticeOperationResult finding = fixture.Justice.RecordFinding(new FindingRequest { transactionId = JusticeTx(context, "finding-judgment"), findingId = fixture.FindingId, caseId = fixture.CaseId, chargeId = fixture.ChargeId, category = FindingCategory.Fact, text = "Elements proven by admitted evidence.", proven = true, enteredWorldTime = 26d });
+            JusticeOperationResult judgment = fixture.Justice.EnterJudgment(new JudgmentRequest { transactionId = JusticeTx(context, "judgment"), judgmentId = fixture.JudgmentId, caseId = fixture.CaseId, chargeOutcomes = new[] { new JusticeChargeOutcomeData { chargeId = fixture.ChargeId, findingId = fixture.FindingId, outcome = JudgmentOutcome.Guilty, reason = "Substantial evidence supports every element." } }, enteredWorldTime = 27d });
+            fixture.Justice.TryGetCharge(fixture.ChargeId, out ChargeRecordData charge);
+            bool valid = hearing.Succeeded
+                && evidence.Succeeded
+                && ruling.Succeeded
+                && finding.Succeeded
+                && judgment.Succeeded
+                && charge != null
+                && charge.lifecycleState == ChargeLifecycleState.Adjudicated
+                && fixture.Justice.Findings.Count == 1
+                && fixture.Justice.Judgments.Count == 1;
+            return TestLabAssertions.True("step13-justice-judgment", "Submit evidence, record finding, and enter judgment", valid, $"Hearing={hearing.Code} Evidence={evidence.Code} Ruling={ruling.Code} Finding={finding.Code} Judgment={judgment.Code} Charge={charge?.lifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult JusticeSentencesRemediesAppealsClemency(TestLabAutomationContext context)
+        {
+            JusticeFixture fixture = PrepareJusticeFixture(context, "sentence", registerAppealCourt: true);
+            CreateJudgedCase(context, fixture);
+            JusticeOperationResult sentence = fixture.Justice.ImposeSentence(new SentenceRequest { transactionId = JusticeTx(context, "sentence"), sentenceId = fixture.SentenceId, sentenceDefinitionId = PrototypeJusticeDefinitionFactory.FineSentenceDefinitionId, judgmentId = fixture.JudgmentId, caseId = fixture.CaseId, defendantPersonId = fixture.Crime.ActorId, imposedWorldTime = 28d, components = new[] { new SentenceComponentData { componentId = fixture.SentenceComponentId, category = SentenceCategory.Fine, state = SentenceComponentState.Pending, amount = 25, currencyId = "currency.prototype.coin", destinationRuntime = "economy" } } });
+            JusticeOperationResult execute = fixture.Justice.ExecuteSentenceComponent(new SentenceExecutionRequest { transactionId = JusticeTx(context, "sentence-execute"), sentenceId = fixture.SentenceId, componentId = fixture.SentenceComponentId, worldTime = 29d });
+            JusticeOperationResult remedy = fixture.Justice.OrderRemedy(new RemedyRequest { transactionId = JusticeTx(context, "remedy"), remedyId = fixture.RemedyId, remedyDefinitionId = PrototypeJusticeDefinitionFactory.PropertyReturnRemedyDefinitionId, caseId = fixture.CaseId, judgmentId = fixture.JudgmentId, category = RemedyCategory.PropertyReturn, targetId = "property.prototype.confiscated", destinationRuntime = "property", orderedWorldTime = 30d });
+            JusticeOperationResult appeal = fixture.Justice.FileAppeal(new AppealRequest { transactionId = JusticeTx(context, "appeal"), appealId = fixture.AppealId, appealDefinitionId = PrototypeJusticeDefinitionFactory.JudgmentAppealDefinitionId, sourceJudgmentId = fixture.JudgmentId, appellateCourtId = fixture.AppellateCourtId, staysJudgment = false, staysSentence = true, filedWorldTime = 31d });
+            JusticeOperationResult decision = fixture.Justice.DecideAppeal(new AppealDecisionRequest { transactionId = JusticeTx(context, "appeal-decision"), appealId = fixture.AppealId, outcome = AppealOutcome.Affirmed, decidedWorldTime = 32d });
+            JusticeOperationResult clemency = fixture.Justice.GrantClemency(new ClemencyRequest { transactionId = JusticeTx(context, "clemency"), clemencyId = fixture.ClemencyId, clemencyDefinitionId = PrototypeJusticeDefinitionFactory.CommutationClemencyDefinitionId, judgmentId = fixture.JudgmentId, sentenceId = fixture.SentenceId, grantorGovernmentId = fixture.Crime.GovernmentId, effectSummary = "Fine satisfied by public service.", grantedWorldTime = 33d, trustedSystemOperation = true });
+            fixture.Justice.TryGetJudgment(fixture.JudgmentId, out JudgmentRecordData judgment);
+            fixture.Justice.TryGetSentence(fixture.SentenceId, out SentenceRecordData sentenceRecord);
+            bool valid = sentence.Succeeded
+                && execute.Succeeded
+                && remedy.Succeeded
+                && appeal.Succeeded
+                && decision.Succeeded
+                && clemency.Succeeded
+                && judgment != null
+                && judgment.lifecycleState == JudgmentLifecycleState.Final
+                && sentenceRecord != null
+                && sentenceRecord.lifecycleState == SentenceLifecycleState.Commuted
+                && fixture.Justice.Remedies.Count == 1
+                && fixture.Justice.Appeals.Count == 1
+                && fixture.Justice.Clemencies.Count == 1;
+            return TestLabAssertions.True("step13-justice-sentence-appeal", "Impose sentence, order remedy, appeal, and clemency", valid, $"Sentence={sentence.Code} Execute={execute.Code} Remedy={remedy.Code} Appeal={appeal.Code}/{decision.Code} Clemency={clemency.Code} States={judgment?.lifecycleState}/{sentenceRecord?.lifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult JusticeProjectionPersistenceValidation(TestLabAutomationContext context)
+        {
+            JusticeFixture fixture = PrepareJusticeFixture(context, "persist", registerAppealCourt: true);
+            CreateJudgedCase(context, fixture);
+            JusticeOperationResult arrest = fixture.Justice.Arrest(JusticeArrestRequest(context, fixture, "persist"));
+            JusticeProjectionResult<CourtCaseRecordData> publicCase = fixture.Justice.ProjectCase(fixture.CaseId, privileged: false);
+            JusticeProjectionResult<CourtCaseRecordData> privilegedCase = fixture.Justice.ProjectCase(fixture.CaseId, privileged: true);
+            JusticeProjectionResult<CustodyRecordData> publicCustody = fixture.Justice.ProjectCustody(fixture.CustodyId, privileged: false);
+            JusticeRuntimeSaveData save = fixture.Justice.CreateSaveData();
+            JusticeRuntime restored = new JusticeRuntime();
+            TestLabRuntimeBundle bundle = context.ScenarioContext.Runtimes;
+            JusticeOperationResult restore = restored.RestoreFromSaveData(save, bundle.DefinitionRegistry, bundle.Governments, bundle.Laws, bundle.Organizations, bundle.OrganizationAuthority, bundle.Crimes, bundle.WorldId, bundle.KnownPersonIds, Array.Empty<string>());
+            JusticeRuntimeSaveData corrupt = save.Clone();
+            corrupt.cases[0].courtId = "court.testlab.missing";
+            long before = restored.Revision;
+            JusticeOperationResult rejected = restored.RestoreFromSaveData(corrupt, bundle.DefinitionRegistry, bundle.Governments, bundle.Laws, bundle.Organizations, bundle.OrganizationAuthority, bundle.Crimes, bundle.WorldId, bundle.KnownPersonIds, Array.Empty<string>());
+            bool valid = arrest.Succeeded
+                && publicCase.Succeeded
+                && publicCase.Redacted
+                && publicCase.Record.chargeIds.Length == 0
+                && privilegedCase.Succeeded
+                && !privilegedCase.Redacted
+                && privilegedCase.Record.chargeIds.Length == 1
+                && publicCustody.Succeeded
+                && publicCustody.Redacted
+                && string.IsNullOrEmpty(publicCustody.Record.currentFacilityPlaceId)
+                && restore.Succeeded
+                && rejected.Code == JusticeOperationCode.ValidationFailed
+                && restored.Revision == before
+                && restored.Cases.Count == 1;
+            int restoredCaseCount = restored.Cases.Count;
+            restored.Dispose();
+            return TestLabAssertions.True("step13-justice-persistence", "Project, save, restore, and reject invalid justice graph", valid, $"Arrest={arrest.Code} Case={publicCase.Succeeded}/{publicCase.Redacted} Custody={publicCustody.Succeeded}/{publicCustody.Redacted} Restore={restore.Code} Reject={rejected.Code} Counts={restoredCaseCount}");
         }
 
         private static TestLabAutomationStepResult CreateRenameLifecycle(TestLabAutomationContext context)
@@ -2470,6 +2663,39 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario JusticeScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Laws | TestLabRuntimeArea.Crimes | TestLabRuntimeArea.Justice | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId,
+                    PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId,
+                    PrototypeLegalDefinitionFactory.SovereignAuthorityId,
+                    PrototypeLegalDefinitionFactory.CentralStatuteId,
+                    PrototypeLegalDefinitionFactory.ProhibitionProvisionId,
+                    PrototypeCrimeDefinitionFactory.UnlawfulPhysicalAttackOffenseId,
+                    PrototypeCrimeDefinitionFactory.ArrestWarrantDefinitionId,
+                    PrototypeJusticeDefinitionFactory.GeneralJusticeInstitutionId,
+                    PrototypeJusticeDefinitionFactory.GeneralCourtDefinitionId,
+                    PrototypeJusticeDefinitionFactory.WarrantArrestDefinitionId,
+                    PrototypeJusticeDefinitionFactory.CriminalChargeDefinitionId,
+                    PrototypeJusticeDefinitionFactory.TrialHearingDefinitionId,
+                    PrototypeJusticeDefinitionFactory.FineSentenceDefinitionId,
+                    PrototypeJusticeDefinitionFactory.JudgmentAppealDefinitionId
+                });
+        }
+
         private static void PrepareLegalFixture(TestLabAutomationContext context, out LegalRuntime laws, out string polityId, out string governmentId, out string territoryId, out string jurisdictionId)
         {
             laws = context.ScenarioContext.Runtimes.Laws;
@@ -2635,6 +2861,197 @@ namespace UnityIsekaiGame.Development.Automation
 
         private static TestLabAutomationStepResult CrimeFail(string stepId, string failure) => TestLabAssertions.Fail(stepId, "Resolve crime runtime", "CrimeRuntime", "Present", "Missing", failure);
         private static string CrimeTx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.10.{suffix}.{context?.RunId ?? "run"}";
+
+        private static JusticeFixture PrepareJusticeFixture(TestLabAutomationContext context, string suffix, bool issueWarrant = true, bool registerCourt = true, bool registerAppealCourt = false)
+        {
+            CrimeFixture crime = PrepareCrimeFixture(context, $"justice-{suffix}");
+            CreateCrimeCoreRecords(context, crime, $"justice-{suffix}");
+            JusticeRuntime justice = context.ScenarioContext.Runtimes.Justice;
+            JusticeFixture fixture = new JusticeFixture(
+                justice,
+                crime,
+                $"court.testlab.justice.{suffix}.{context.RunId}",
+                $"court.testlab.justice.appellate.{suffix}.{context.RunId}",
+                $"arrest.testlab.justice.{suffix}.{context.RunId}",
+                $"custody.testlab.justice.{suffix}.{context.RunId}",
+                $"release-order.testlab.justice.{suffix}.{context.RunId}",
+                $"case.testlab.justice.{suffix}.{context.RunId}",
+                $"charge.testlab.justice.{suffix}.{context.RunId}",
+                $"party.testlab.justice.defendant.{suffix}.{context.RunId}",
+                $"party.testlab.justice.prosecutor.{suffix}.{context.RunId}",
+                $"plea.testlab.justice.{suffix}.{context.RunId}",
+                $"hearing.testlab.justice.{suffix}.{context.RunId}",
+                $"evidence-submission.testlab.justice.{suffix}.{context.RunId}",
+                $"finding.testlab.justice.{suffix}.{context.RunId}",
+                $"judgment.testlab.justice.{suffix}.{context.RunId}",
+                $"sentence.testlab.justice.{suffix}.{context.RunId}",
+                $"sentence-component.testlab.justice.{suffix}.{context.RunId}",
+                $"remedy.testlab.justice.{suffix}.{context.RunId}",
+                $"appeal.testlab.justice.{suffix}.{context.RunId}",
+                $"clemency.testlab.justice.{suffix}.{context.RunId}");
+
+            if (issueWarrant)
+            {
+                crime.Crimes.RequestWarrant(CrimeWarrantRequest(context, crime, $"justice-{suffix}", EvidenceSufficiencyState.Substantial));
+                crime.Crimes.ReviewWarrantRequest(new WarrantReviewRequest { transactionId = JusticeTx(context, $"warrant-review-{suffix}"), warrantRequestId = crime.WarrantRequestId, reviewId = "trusted.system", approve = true, trustedSystemOperation = true });
+                crime.Crimes.IssueWarrant(new WarrantIssueRequest { transactionId = JusticeTx(context, $"warrant-issue-{suffix}"), warrantId = crime.WarrantId, warrantRequestId = crime.WarrantRequestId, issuedByPersonId = crime.VictimId, issuedWorldTime = 16d, activationWorldTime = 16d, expirationWorldTime = 40d, trustedSystemOperation = true });
+            }
+
+            if (registerCourt)
+            {
+                justice.RegisterCourt(JusticeCourtRequest(context, fixture, "primary"));
+            }
+
+            if (registerAppealCourt)
+            {
+                justice.RegisterCourt(JusticeCourtRequest(context, fixture, "appeal"));
+            }
+
+            return fixture;
+        }
+
+        private static CourtRegisterRequest JusticeCourtRequest(TestLabAutomationContext context, JusticeFixture fixture, string suffix, bool preview = false)
+        {
+            bool appellate = string.Equals(suffix, "appeal", StringComparison.Ordinal);
+            return new CourtRegisterRequest
+            {
+                transactionId = JusticeTx(context, $"court-{suffix}"),
+                courtId = appellate ? fixture.AppellateCourtId : preview ? $"{fixture.CourtId}.preview" : fixture.CourtId,
+                courtDefinitionId = appellate ? PrototypeJusticeDefinitionFactory.AppellateCourtDefinitionId : PrototypeJusticeDefinitionFactory.GeneralCourtDefinitionId,
+                justiceInstitutionDefinitionId = PrototypeJusticeDefinitionFactory.GeneralJusticeInstitutionId,
+                governmentId = fixture.Crime.GovernmentId,
+                jurisdictionIds = new[] { fixture.Crime.JurisdictionId },
+                territoryIds = new[] { fixture.Crime.TerritoryId },
+                courthousePlaceId = appellate ? "place.testlab.appellate-court" : "place.testlab.court",
+                judgeOfficeIds = new[] { "office.prototype.judge" },
+                clerkOfficeIds = new[] { "office.prototype.clerk" },
+                appealParentCourtId = appellate ? string.Empty : fixture.AppellateCourtId,
+                worldTime = 17d,
+                visibility = PoliticalVisibility.Public,
+                preview = preview
+            };
+        }
+
+        private static ArrestRequest JusticeArrestRequest(TestLabAutomationContext context, JusticeFixture fixture, string suffix) => new ArrestRequest
+        {
+            transactionId = JusticeTx(context, $"arrest-{suffix}"),
+            arrestId = fixture.ArrestId,
+            arrestDefinitionId = PrototypeJusticeDefinitionFactory.WarrantArrestDefinitionId,
+            arrestedPersonId = fixture.Crime.ActorId,
+            executingPersonId = fixture.Crime.VictimId,
+            executingGovernmentId = fixture.Crime.GovernmentId,
+            executingOrganizationId = "organization.prototype.guild",
+            legalBasis = new JusticeLegalBasisData { kind = ArrestLegalBasisKind.ActiveArrestWarrant, warrantId = fixture.Crime.WarrantId, incidentId = fixture.Crime.IncidentId, potentialOffenseId = fixture.Crime.OffenseId, effectiveWorldTime = 16d, expirationWorldTime = 40d },
+            jurisdictionId = fixture.Crime.JurisdictionId,
+            territoryId = fixture.Crime.TerritoryId,
+            placeId = "place.testlab.arrest-location",
+            custodyId = fixture.CustodyId,
+            custodyFacilityPlaceId = "place.testlab.detention",
+            arrestWorldTime = 17.5d,
+            visibility = PoliticalVisibility.Restricted,
+            trustedSystemOperation = true
+        };
+
+        private static JusticeOperationResult FileJusticeCase(TestLabAutomationContext context, JusticeFixture fixture)
+        {
+            return fixture.Justice.FileCase(new CaseFileRequest
+            {
+                transactionId = JusticeTx(context, $"case-{fixture.CaseId}"),
+                caseId = fixture.CaseId,
+                category = JusticeCaseCategory.Criminal,
+                courtId = fixture.CourtId,
+                incidentIds = new[] { fixture.Crime.IncidentId },
+                parties = new[]
+                {
+                    new JusticePartyData { partyId = fixture.DefendantPartyId, personId = fixture.Crime.ActorId, role = CasePartyRole.Defendant, visibility = PoliticalVisibility.Restricted },
+                    new JusticePartyData { partyId = fixture.ProsecutorPartyId, organizationId = "organization.prototype.guild", role = CasePartyRole.Prosecutor, visibility = PoliticalVisibility.Public }
+                },
+                filedWorldTime = 21d,
+                visibility = PoliticalVisibility.Restricted
+            });
+        }
+
+        private static JusticeOperationResult FileJusticeCharge(TestLabAutomationContext context, JusticeFixture fixture)
+        {
+            return fixture.Justice.FileCharge(new ChargeFileRequest
+            {
+                transactionId = JusticeTx(context, $"charge-{fixture.ChargeId}"),
+                chargeId = fixture.ChargeId,
+                chargeDefinitionId = PrototypeJusticeDefinitionFactory.CriminalChargeDefinitionId,
+                caseId = fixture.CaseId,
+                defendantPersonId = fixture.Crime.ActorId,
+                incidentId = fixture.Crime.IncidentId,
+                potentialOffenseId = fixture.Crime.OffenseId,
+                filingThreshold = EvidenceSufficiencyState.Substantial,
+                filedWorldTime = 22d,
+                trustedSystemOperation = true,
+                visibility = PoliticalVisibility.Restricted
+            });
+        }
+
+        private static void CreateJudgedCase(TestLabAutomationContext context, JusticeFixture fixture)
+        {
+            FileJusticeCase(context, fixture);
+            FileJusticeCharge(context, fixture);
+            fixture.Justice.ScheduleHearing(new HearingScheduleRequest { transactionId = JusticeTx(context, $"trial-{fixture.HearingId}"), hearingId = fixture.HearingId, hearingDefinitionId = PrototypeJusticeDefinitionFactory.TrialHearingDefinitionId, caseId = fixture.CaseId, category = HearingCategory.Trial, issueIds = new[] { fixture.ChargeId }, scheduledWorldTime = 25d });
+            fixture.Justice.SubmitEvidence(new EvidenceSubmissionRequest { transactionId = JusticeTx(context, $"evidence-{fixture.EvidenceSubmissionId}"), evidenceSubmissionId = fixture.EvidenceSubmissionId, caseId = fixture.CaseId, hearingId = fixture.HearingId, evidenceId = fixture.Crime.EvidenceLinkId, submittedByPartyId = fixture.ProsecutorPartyId, submittedWorldTime = 25.1d });
+            fixture.Justice.RuleOnEvidence(new EvidenceRulingRequest { transactionId = JusticeTx(context, $"ruling-{fixture.EvidenceSubmissionId}"), evidenceSubmissionId = fixture.EvidenceSubmissionId, targetState = EvidenceRulingState.Admitted, reason = "Relevant to charge." });
+            fixture.Justice.RecordFinding(new FindingRequest { transactionId = JusticeTx(context, $"finding-{fixture.FindingId}"), findingId = fixture.FindingId, caseId = fixture.CaseId, chargeId = fixture.ChargeId, category = FindingCategory.Fact, text = "Elements proven.", proven = true, enteredWorldTime = 26d });
+            fixture.Justice.EnterJudgment(new JudgmentRequest { transactionId = JusticeTx(context, $"judgment-{fixture.JudgmentId}"), judgmentId = fixture.JudgmentId, caseId = fixture.CaseId, chargeOutcomes = new[] { new JusticeChargeOutcomeData { chargeId = fixture.ChargeId, findingId = fixture.FindingId, outcome = JudgmentOutcome.Guilty, reason = "Elements proven." } }, enteredWorldTime = 27d });
+        }
+
+        private static TestLabAutomationStepResult JusticeFail(string stepId, string failure) => TestLabAssertions.Fail(stepId, "Resolve justice runtime", "JusticeRuntime", "Present", "Missing", failure);
+        private static string JusticeTx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.11.{suffix}.{context?.RunId ?? "run"}";
+
+        private sealed class JusticeFixture
+        {
+            public JusticeFixture(JusticeRuntime justice, CrimeFixture crime, string courtId, string appellateCourtId, string arrestId, string custodyId, string releaseOrderId, string caseId, string chargeId, string defendantPartyId, string prosecutorPartyId, string pleaId, string hearingId, string evidenceSubmissionId, string findingId, string judgmentId, string sentenceId, string sentenceComponentId, string remedyId, string appealId, string clemencyId)
+            {
+                Justice = justice;
+                Crime = crime;
+                CourtId = courtId;
+                AppellateCourtId = appellateCourtId;
+                ArrestId = arrestId;
+                CustodyId = custodyId;
+                ReleaseOrderId = releaseOrderId;
+                CaseId = caseId;
+                ChargeId = chargeId;
+                DefendantPartyId = defendantPartyId;
+                ProsecutorPartyId = prosecutorPartyId;
+                PleaId = pleaId;
+                HearingId = hearingId;
+                EvidenceSubmissionId = evidenceSubmissionId;
+                FindingId = findingId;
+                JudgmentId = judgmentId;
+                SentenceId = sentenceId;
+                SentenceComponentId = sentenceComponentId;
+                RemedyId = remedyId;
+                AppealId = appealId;
+                ClemencyId = clemencyId;
+            }
+
+            public JusticeRuntime Justice { get; }
+            public CrimeFixture Crime { get; }
+            public string CourtId { get; }
+            public string AppellateCourtId { get; }
+            public string ArrestId { get; }
+            public string CustodyId { get; }
+            public string ReleaseOrderId { get; }
+            public string CaseId { get; }
+            public string ChargeId { get; }
+            public string DefendantPartyId { get; }
+            public string ProsecutorPartyId { get; }
+            public string PleaId { get; }
+            public string HearingId { get; }
+            public string EvidenceSubmissionId { get; }
+            public string FindingId { get; }
+            public string JudgmentId { get; }
+            public string SentenceId { get; }
+            public string SentenceComponentId { get; }
+            public string RemedyId { get; }
+            public string AppealId { get; }
+            public string ClemencyId { get; }
+        }
 
         private sealed class CrimeFixture
         {
@@ -3306,6 +3723,19 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null)
             {
                 failure = "CrimeRuntime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetJusticeRuntime(TestLabAutomationContext context, out JusticeRuntime runtime, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.Justice;
+            if (runtime == null)
+            {
+                failure = "JusticeRuntime is missing from the Test Lab runtime bundle.";
                 return false;
             }
 

@@ -33,6 +33,7 @@ using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.Governments;
+using UnityIsekaiGame.Justice;
 using UnityIsekaiGame.Laws;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -14505,7 +14506,8 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeCrimeDefinitionFactory.AddMissingPrototypeCrimeDefinitions(
+            return PrototypeJusticeDefinitionFactory.AddMissingPrototypeJusticeDefinitions(
+            PrototypeCrimeDefinitionFactory.AddMissingPrototypeCrimeDefinitions(
             PrototypeLegalDefinitionFactory.AddMissingPrototypeLegalDefinitions(
                 PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(
                 PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(
@@ -14526,7 +14528,7 @@ namespace UnityIsekaiGame.Development
                                                                         PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(
                                                                             PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
                                                                                 PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
-                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions)))))))))))))))))))))));
+                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))))))))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()
