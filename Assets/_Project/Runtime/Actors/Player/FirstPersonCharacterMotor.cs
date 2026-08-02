@@ -15,6 +15,7 @@ namespace UnityIsekaiGame.Player
         [SerializeField] private ActorStats stats;
 
         private CharacterController controller;
+        private float currentHorizontalSpeed;
         private float verticalVelocity;
 
         private void Awake()
@@ -39,7 +40,9 @@ namespace UnityIsekaiGame.Player
             bool sprinting = stamina != null
                 ? stamina.EvaluateSprint(input.SprintHeld, isMoving, input.GameplayInputBlocked, Time.deltaTime)
                 : input.SprintHeld && isMoving;
-            float speed = ResolveHorizontalSpeed(sprinting);
+            float targetSpeed = isMoving ? ResolveHorizontalSpeed(sprinting) : 0f;
+            float speedChangeRate = targetSpeed > currentHorizontalSpeed ? movementSettings.Acceleration : movementSettings.Deceleration;
+            currentHorizontalSpeed = Mathf.MoveTowards(currentHorizontalSpeed, targetSpeed, speedChangeRate * Time.deltaTime);
 
             if (controller.isGrounded && verticalVelocity < 0f)
             {
@@ -53,7 +56,7 @@ namespace UnityIsekaiGame.Player
 
             verticalVelocity -= movementSettings.Gravity * Time.deltaTime;
 
-            Vector3 horizontalVelocity = transform.TransformDirection(localMove) * speed;
+            Vector3 horizontalVelocity = transform.TransformDirection(localMove) * currentHorizontalSpeed;
             Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity;
             controller.Move(velocity * Time.deltaTime);
         }
@@ -75,6 +78,7 @@ namespace UnityIsekaiGame.Player
 
         public void ResetTransientMotionForPersistenceRestore()
         {
+            currentHorizontalSpeed = 0f;
             verticalVelocity = 0f;
         }
     }

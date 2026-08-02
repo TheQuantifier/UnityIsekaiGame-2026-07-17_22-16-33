@@ -12,12 +12,12 @@ namespace UnityIsekaiGame.Editor
     {
         public const float TargetCharacterHeight = 1.8f;
         public const float TargetMedievalHouseHeight = 9.3f;
-        public const float MinimumTreeHeight = 5.6f;
-        public const float MaximumTreeHeight = 11.9f;
-        public const float MaximumTreeFootprint = 11.9f;
-        public const float MinimumShrubHeight = 0.7f;
-        public const float MaximumShrubHeight = 2.6f;
-        public const float MaximumShrubFootprint = 3.0f;
+        public const float MinimumTreeHeight = 6.0f;
+        public const float MaximumTreeHeight = 9.9f;
+        public const float MaximumTreeFootprint = 13.0f;
+        public const float MinimumShrubHeight = 2.0f;
+        public const float MaximumShrubHeight = 3.3f;
+        public const float MaximumShrubFootprint = 3.8f;
 
         private const string PrototypeScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
         private const string MedievalHouseScenePath = "PrototypeScene/Environment/Landmarks/Buildings/Prototype Medieval House";

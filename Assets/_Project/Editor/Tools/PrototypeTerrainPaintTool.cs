@@ -18,33 +18,69 @@ namespace UnityIsekaiGame.Editor
         private const string TerrainMaterialPath = TerrainMaterialFolder + "/Prototype Terrain URP.mat";
         private const string UrpTerrainTemplatePath = "Packages/com.unity.render-pipelines.universal/Runtime/Materials/TerrainLit.mat";
 
+        private enum TerrainTargetScope
+        {
+            AllPrototypeTerrains,
+            SelectedTerrains
+        }
+
         [MenuItem("Tools/Prototype Scene/Paint Prototype Terrain Ground")]
         public static void PaintPrototypeTerrainGround()
         {
-            var scene = SceneManager.GetActiveScene();
-            if (!string.Equals(scene.path, PrototypeScenePath, StringComparison.OrdinalIgnoreCase))
-            {
-                scene = EditorSceneManager.OpenScene(PrototypeScenePath, OpenSceneMode.Single);
-            }
+            PaintPrototypeTerrainGround(TerrainTargetScope.AllPrototypeTerrains);
+        }
 
-            var ground = FindScenePath("PrototypeScene/Environment/Ground");
-            if (ground == null)
-            {
-                throw new InvalidOperationException("PrototypeScene/Environment/Ground was not found.");
-            }
+        [MenuItem("Tools/Prototype Scene/Paint Selected Prototype Terrain Ground")]
+        public static void PaintSelectedPrototypeTerrainGround()
+        {
+            PaintPrototypeTerrainGround(TerrainTargetScope.SelectedTerrains);
+        }
 
-            var terrains = ground.GetComponentsInChildren<Terrain>(true)
-                .Where(terrain => terrain != null && terrain.terrainData != null)
-                .OrderBy(terrain => terrain.transform.position.z)
-                .ThenBy(terrain => terrain.transform.position.x)
-                .ToArray();
+        [MenuItem("Tools/Prototype Scene/Assign Prototype Terrain Layers/All Prototype Terrains")]
+        public static void AssignPrototypeTerrainLayers()
+        {
+            AssignPrototypeTerrainLayers(TerrainTargetScope.AllPrototypeTerrains);
+        }
 
-            if (terrains.Length == 0)
-            {
-                throw new InvalidOperationException("No Terrain components were found under PrototypeScene/Environment/Ground.");
-            }
+        [MenuItem("Tools/Prototype Scene/Assign Prototype Terrain Layers/Selected Terrains")]
+        public static void AssignSelectedPrototypeTerrainLayers()
+        {
+            AssignPrototypeTerrainLayers(TerrainTargetScope.SelectedTerrains);
+        }
 
+        private static void AssignPrototypeTerrainLayers(TerrainTargetScope scope)
+        {
+            var scene = EnsurePrototypeSceneLoaded(scope);
+            var terrains = FindTargetTerrains(scope);
             var layers = LoadGroundLayers();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            var terrainMaterial = LoadOrCreateTerrainMaterial();
+
+            foreach (var terrain in terrains)
+            {
+                UseTerrainMaterial(terrain, terrainMaterial);
+                AssignTerrainLayers(terrain, layers);
+                EditorUtility.SetDirty(terrain);
+                EditorUtility.SetDirty(terrain.terrainData);
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            AssetDatabase.SaveAssets();
+
+            Debug.Log($"Assigned {layers.Length} prototype terrain layer(s) to {terrains.Length} terrain tile(s): {string.Join(", ", layers.Select(layer => layer.name))}.");
+        }
+
+        private static void PaintPrototypeTerrainGround(TerrainTargetScope scope)
+        {
+            var scene = EnsurePrototypeSceneLoaded(scope);
+            var terrains = FindTargetTerrains(scope);
+            var layers = LoadGroundLayers();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
             var terrainMaterial = LoadOrCreateTerrainMaterial();
             var globalHeightRange = FindHeightRange(terrains);
             Debug.Log($"Prototype terrain global height range: {globalHeightRange.x:0.00} to {globalHeightRange.y:0.00}.");
@@ -64,6 +100,94 @@ namespace UnityIsekaiGame.Editor
 
             Debug.Log($"Painted {terrains.Length} prototype terrain tile(s) with height-aware grass, dirt, and rock layers.");
             Debug.Log("Prototype terrain layer averages: " + string.Join(" | ", summaries));
+        }
+
+        private static Scene EnsurePrototypeSceneLoaded(TerrainTargetScope scope)
+        {
+            var scene = SceneManager.GetActiveScene();
+            if (scope == TerrainTargetScope.SelectedTerrains)
+            {
+                if (!string.Equals(scene.path, PrototypeScenePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Selected terrain operations must be run while PrototypeScene is open.");
+                }
+
+                return scene;
+            }
+
+            if (!string.Equals(scene.path, PrototypeScenePath, StringComparison.OrdinalIgnoreCase))
+            {
+                scene = EditorSceneManager.OpenScene(PrototypeScenePath, OpenSceneMode.Single);
+            }
+
+            return scene;
+        }
+
+        private static Terrain[] FindTargetTerrains(TerrainTargetScope scope)
+        {
+            return scope == TerrainTargetScope.SelectedTerrains
+                ? FindSelectedTerrains()
+                : FindAllPrototypeTerrains();
+        }
+
+        private static Terrain[] FindAllPrototypeTerrains()
+        {
+            var ground = FindScenePath("PrototypeScene/Environment/Ground");
+            if (ground == null)
+            {
+                throw new InvalidOperationException("PrototypeScene/Environment/Ground was not found.");
+            }
+
+            var terrains = ground.GetComponentsInChildren<Terrain>(true)
+                .Where(terrain => terrain != null && terrain.terrainData != null)
+                .OrderBy(terrain => terrain.transform.position.z)
+                .ThenBy(terrain => terrain.transform.position.x)
+                .ToArray();
+
+            if (terrains.Length == 0)
+            {
+                throw new InvalidOperationException("No Terrain components were found under PrototypeScene/Environment/Ground.");
+            }
+
+            return terrains;
+        }
+
+        private static Terrain[] FindSelectedTerrains()
+        {
+            var terrains = new List<Terrain>();
+
+            foreach (var selected in Selection.gameObjects)
+            {
+                if (selected == null || !selected.scene.IsValid())
+                {
+                    continue;
+                }
+
+                foreach (var terrain in selected.GetComponentsInChildren<Terrain>(true))
+                {
+                    if (terrain == null || terrain.terrainData == null)
+                    {
+                        continue;
+                    }
+
+                    if (!terrains.Any(existing => existing == terrain))
+                    {
+                        terrains.Add(terrain);
+                    }
+                }
+            }
+
+            var ordered = terrains
+                .OrderBy(terrain => terrain.transform.position.z)
+                .ThenBy(terrain => terrain.transform.position.x)
+                .ToArray();
+
+            if (ordered.Length == 0)
+            {
+                throw new InvalidOperationException("Select one or more Terrain GameObjects, or a parent containing Terrain children, before running this selected terrain command.");
+            }
+
+            return ordered;
         }
 
         private static TerrainLayer[] LoadGroundLayers()
@@ -119,6 +243,15 @@ namespace UnityIsekaiGame.Editor
             layer.name = $"Prototype {label}";
             PrepareLayer(layer, label);
             UnityEditor.EditorUtility.SetDirty(layer);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.ImportAsset(targetPath, ImportAssetOptions.ForceUpdate);
+            layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(targetPath);
+            if (layer == null)
+            {
+                throw new InvalidOperationException($"Could not load project-owned TerrainLayer '{targetPath}' after creation.");
+            }
+
+            PrepareLayer(layer, label);
             return layer;
         }
 
@@ -229,14 +362,15 @@ namespace UnityIsekaiGame.Editor
         private static string PaintTerrain(Terrain terrain, TerrainLayer[] layers, Vector2 globalHeightRange)
         {
             var data = terrain.terrainData;
-            data.terrainLayers = layers;
+            AssignTerrainLayers(terrain, layers);
 
             var width = data.alphamapWidth;
             var height = data.alphamapHeight;
-            var map = new float[height, width, layers.Length];
+            var assignedLayers = data.terrainLayers;
+            var map = new float[height, width, assignedLayers.Length];
             var origin = terrain.transform.position;
             var size = data.size;
-            var totals = new float[layers.Length];
+            var totals = new float[assignedLayers.Length];
             var totalNormalizedHeight = 0f;
             var totalSlope = 0f;
             var maxSlope = 0f;
@@ -287,7 +421,7 @@ namespace UnityIsekaiGame.Editor
                     }
 
                     Normalize(map, y, x, grassWeight, dirtWeight, packedWeight, rockWeight);
-                    for (var layerIndex = 0; layerIndex < layers.Length; layerIndex++)
+                    for (var layerIndex = 0; layerIndex < assignedLayers.Length; layerIndex++)
                     {
                         totals[layerIndex] += map[y, x, layerIndex];
                     }
@@ -297,6 +431,36 @@ namespace UnityIsekaiGame.Editor
             data.SetAlphamaps(0, 0, map);
             var count = Mathf.Max(1, width * height);
             return $"{terrain.name}=height:{totalNormalizedHeight / count:0.00}, slope:{totalSlope / count:0.0}/{maxSlope:0.0}, grass:{totals[0] / count:0.00}, dirt:{totals[1] / count:0.00}, packed:{totals[2] / count:0.00}, rock:{totals[3] / count:0.00}";
+        }
+
+        private static void AssignTerrainLayers(Terrain terrain, TerrainLayer[] layers)
+        {
+            if (terrain == null || terrain.terrainData == null)
+            {
+                throw new InvalidOperationException("Cannot assign prototype terrain layers to a missing Terrain or TerrainData.");
+            }
+
+            var validLayers = layers
+                .Where(layer => layer != null)
+                .ToArray();
+
+            if (validLayers.Length != layers.Length || validLayers.Length == 0)
+            {
+                throw new InvalidOperationException("Prototype terrain layer assignment requires a complete non-empty TerrainLayer set.");
+            }
+
+            var data = terrain.terrainData;
+            Undo.RecordObject(data, "Assign Prototype Terrain Layers");
+            data.terrainLayers = validLayers;
+
+            var assignedLayers = data.terrainLayers;
+            if (assignedLayers == null || assignedLayers.Length != validLayers.Length || assignedLayers.Any(layer => layer == null))
+            {
+                throw new InvalidOperationException($"Terrain '{terrain.name}' did not retain the assigned prototype terrain layer set.");
+            }
+
+            EditorUtility.SetDirty(data);
+            Debug.Log($"Terrain '{terrain.name}' layers: {string.Join(", ", assignedLayers.Select(layer => $"{layer.name} ({AssetDatabase.GetAssetPath(layer)})"))}.");
         }
 
         private static Vector2 FindHeightRange(IReadOnlyCollection<Terrain> terrains)

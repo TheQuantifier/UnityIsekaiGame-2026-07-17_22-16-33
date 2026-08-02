@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.Persistence;
 
 namespace UnityIsekaiGame.Combat
 {
@@ -12,6 +13,7 @@ namespace UnityIsekaiGame.Combat
         [SerializeField, Min(0f)] private float moveSpeed = 2f;
         [SerializeField, Min(0.1f)] private float stoppingDistance = 1.35f;
         [SerializeField, Min(0f)] private float turnSpeed = 12f;
+        [SerializeField] private bool snapToGround = true;
 
         private void Awake()
         {
@@ -32,6 +34,11 @@ namespace UnityIsekaiGame.Combat
             moveSpeed = Mathf.Max(0f, moveSpeed);
             stoppingDistance = Mathf.Max(0.1f, stoppingDistance);
             turnSpeed = Mathf.Max(0f, turnSpeed);
+        }
+
+        private void Start()
+        {
+            SnapToGround();
         }
 
         private void Update()
@@ -72,11 +79,28 @@ namespace UnityIsekaiGame.Combat
             Vector3 direction = toTarget.normalized;
             float step = Mathf.Min(moveSpeed * Time.deltaTime, distance - stoppingDistance);
             transform.position += direction * step;
+            SnapToGround();
         }
 
         public void ResetControllerState()
         {
-            // The prototype controller is currently stateless; this method keeps reset orchestration explicit.
+            SnapToGround();
+        }
+
+        public bool SnapToGround()
+        {
+            if (!snapToGround)
+            {
+                return false;
+            }
+
+            if (!SpawnGroundingUtility.TrySnapToNearestSolidSurface(transform.position, transform, out Vector3 groundedPosition, out _))
+            {
+                return false;
+            }
+
+            transform.position = groundedPosition;
+            return true;
         }
 
         private void FaceTarget(Vector3 toTarget)

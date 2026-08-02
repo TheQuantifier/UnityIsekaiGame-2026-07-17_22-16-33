@@ -22,20 +22,26 @@ namespace UnityIsekaiGame.Editor
         private const float MaximumTrunkFootprintSlice = 0.35f;
         private const int MinimumTrunkFootprintVertexCount = 8;
 
+        private enum TerrainTargetScope
+        {
+            AllPrototypeTerrains,
+            SelectedTerrains
+        }
+
         private static readonly PrototypeTreePaletteEntry[] TreePalette =
         {
-            new("Broadleaf Tree", "prototype-tree-broadleaf", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/bigLeavesTreeL.prefab", PrototypeTreePaletteStyle.GreenTree, 0.25f, 6.5f, 0.85f, 1.35f),
-            new("Simple Tree", "prototype-tree-simple", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/simpleTreeL.prefab", PrototypeTreePaletteStyle.GreenTree, 0.3f, 7.25f, 0.8f, 1.4f),
-            new("Classic Tree", "prototype-tree-classic", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/tree1L.prefab", PrototypeTreePaletteStyle.GreenTree, 0.35f, 7.75f, 0.85f, 1.45f),
-            new("Fallen Branch Tree", "prototype-tree-fallen-branch", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/fallenBranchesTreeL.prefab", PrototypeTreePaletteStyle.GreenTree, 0.3f, 6.75f, 0.8f, 1.3f),
-            new("Purple Accent Tree", "prototype-tree-purple-accent", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/purpleTreeL.prefab", PrototypeTreePaletteStyle.PurpleTree, 0.2f, 6.25f, 0.85f, 1.25f),
-            new("Dry Broadleaf Tree", "prototype-tree-dry-broadleaf", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/dryTree/dryBigLeavesTreeL.prefab", PrototypeTreePaletteStyle.DryTree, 0.2f, 6.0f, 0.75f, 1.25f),
-            new("Dry Simple Tree", "prototype-tree-dry-simple", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/dryTree/drySimpleTreeL.prefab", PrototypeTreePaletteStyle.DryTree, 0.25f, 6.5f, 0.75f, 1.3f),
-            new("Dry Tree", "prototype-tree-dry", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/dryTree/dryTreeL.prefab", PrototypeTreePaletteStyle.DryTree, 0.25f, 6.75f, 0.75f, 1.35f),
-            new("Dead Tree", "prototype-tree-dead", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/dryBranchL/deadTreeL.prefab", PrototypeTreePaletteStyle.DeadTree, 0.15f, 5.75f, 0.7f, 1.2f),
-            new("Big Leaf Shrub", "prototype-shrub-big-leaf", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/shurbs/bigLeavesShrubsL.prefab", PrototypeTreePaletteStyle.GreenShrub, 0.45f, 2.6f, 0.7f, 1.35f),
-            new("Small Leaf Shrub", "prototype-shrub-small-leaf", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/shurbs/littleLeavesShrubL.prefab", PrototypeTreePaletteStyle.GreenShrub, 0.45f, 2.2f, 0.65f, 1.25f),
-            new("Shrub", "prototype-shrub", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/shurbs/shrubL.prefab", PrototypeTreePaletteStyle.GreenShrub, 0.4f, 2.4f, 0.7f, 1.3f)
+            new("Broadleaf Tree", "prototype-tree-broadleaf", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/bigLeavesTreeL.prefab", PrototypeTreePaletteStyle.GreenTree, 0.25f, 7.3f, 0.85f, 1.25f),
+            new("Simple Tree", "prototype-tree-simple", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/simpleTreeL.prefab", PrototypeTreePaletteStyle.GreenTree, 0.3f, 7.6f, 0.85f, 1.25f),
+            new("Classic Tree", "prototype-tree-classic", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/tree1L.prefab", PrototypeTreePaletteStyle.GreenTree, 0.35f, 8.0f, 0.85f, 1.25f),
+            new("Fallen Branch Tree", "prototype-tree-fallen-branch", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/fallenBranchesTreeL.prefab", PrototypeTreePaletteStyle.GreenTree, 0.3f, 7.1f, 0.85f, 1.2f),
+            new("Purple Accent Tree", "prototype-tree-purple-accent", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/trees/purpleTreeL.prefab", PrototypeTreePaletteStyle.PurpleTree, 0.2f, 6.8f, 0.85f, 1.18f),
+            new("Dry Broadleaf Tree", "prototype-tree-dry-broadleaf", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/dryTree/dryBigLeavesTreeL.prefab", PrototypeTreePaletteStyle.DryTree, 0.2f, 6.6f, 0.8f, 1.18f),
+            new("Dry Simple Tree", "prototype-tree-dry-simple", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/dryTree/drySimpleTreeL.prefab", PrototypeTreePaletteStyle.DryTree, 0.25f, 7.0f, 0.8f, 1.2f),
+            new("Dry Tree", "prototype-tree-dry", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/dryTree/dryTreeL.prefab", PrototypeTreePaletteStyle.DryTree, 0.25f, 7.2f, 0.8f, 1.2f),
+            new("Dead Tree", "prototype-tree-dead", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/dryBranchL/deadTreeL.prefab", PrototypeTreePaletteStyle.DeadTree, 0.15f, 6.3f, 0.8f, 1.12f),
+            new("Big Leaf Shrub", "prototype-shrub-big-leaf", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/shurbs/bigLeavesShrubsL.prefab", PrototypeTreePaletteStyle.GreenShrub, 0.45f, 2.75f, 0.8f, 1.2f),
+            new("Small Leaf Shrub", "prototype-shrub-small-leaf", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/shurbs/littleLeavesShrubL.prefab", PrototypeTreePaletteStyle.GreenShrub, 0.45f, 2.4f, 0.8f, 1.18f),
+            new("Shrub", "prototype-shrub", "Assets/ThirdParty/polygonTrees/polygonTrees/prefabs/prefabLODs/shurbs/shrubL.prefab", PrototypeTreePaletteStyle.GreenShrub, 0.4f, 2.55f, 0.8f, 1.2f)
         };
 
         [MenuItem("Tools/Prototype Scene/Configure Prototype Terrain Tree Palette")]
@@ -43,7 +49,7 @@ namespace UnityIsekaiGame.Editor
         {
             EnsurePrototypeTreeAssets();
 
-            var scene = OpenPrototypeSceneIfNeeded();
+            var scene = OpenPrototypeSceneIfNeeded(TerrainTargetScope.AllPrototypeTerrains);
             EnsurePrototypeTerrainDataAssetsAreProjectOwned();
             var terrains = FindPrototypeTerrains();
 
@@ -80,9 +86,30 @@ namespace UnityIsekaiGame.Editor
         [MenuItem("Tools/Prototype Scene/Randomize Painted Prototype Tree Heights")]
         public static void RandomizePaintedPrototypeTreeHeights()
         {
-            var scene = OpenPrototypeSceneIfNeeded();
-            var terrains = FindPrototypeTerrains();
+            RandomizePaintedPrototypeTreeHeights(TerrainTargetScope.AllPrototypeTerrains);
+        }
+
+        [MenuItem("Tools/Prototype Scene/Randomize All Painted Prototype Tree Heights")]
+        public static void RandomizeAllPaintedPrototypeTreeHeights()
+        {
+            RandomizePaintedPrototypeTreeHeights(TerrainTargetScope.AllPrototypeTerrains);
+        }
+
+        [MenuItem("Tools/Prototype Scene/Randomize Selected Painted Prototype Tree Heights")]
+        public static void RandomizeSelectedPaintedPrototypeTreeHeights()
+        {
+            RandomizePaintedPrototypeTreeHeights(TerrainTargetScope.SelectedTerrains);
+        }
+
+        private static void RandomizePaintedPrototypeTreeHeights(TerrainTargetScope scope)
+        {
+            var scene = OpenPrototypeSceneIfNeeded(scope);
+            var terrains = FindPrototypeTerrains(scope);
             var changedInstances = 0;
+            var minimumHeight = float.PositiveInfinity;
+            var maximumHeight = float.NegativeInfinity;
+            var minimumWidth = float.PositiveInfinity;
+            var maximumWidth = float.NegativeInfinity;
 
             foreach (var terrain in terrains)
             {
@@ -103,6 +130,10 @@ namespace UnityIsekaiGame.Editor
                     instance.widthScale = width;
                     instances[i] = instance;
                     changedInstances++;
+                    minimumHeight = Mathf.Min(minimumHeight, height);
+                    maximumHeight = Mathf.Max(maximumHeight, height);
+                    minimumWidth = Mathf.Min(minimumWidth, width);
+                    maximumWidth = Mathf.Max(maximumWidth, width);
                 }
 
                 terrain.terrainData.treeInstances = instances;
@@ -114,7 +145,13 @@ namespace UnityIsekaiGame.Editor
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
 
-            Debug.Log($"Randomized prototype terrain tree scale for {changedInstances} painted tree instance(s) across {terrains.Length} terrain tile(s).");
+            if (changedInstances == 0)
+            {
+                Debug.Log($"No prototype terrain tree instances were found to randomize across {terrains.Length} terrain tile(s).");
+                return;
+            }
+
+            Debug.Log($"Randomized prototype terrain tree scale for {changedInstances} painted tree instance(s) across {terrains.Length} terrain tile(s). HeightScale={minimumHeight:0.00}-{maximumHeight:0.00}, WidthScale={minimumWidth:0.00}-{maximumWidth:0.00}.");
         }
 
         private static void EnsurePrototypeTreeAssets()
@@ -139,7 +176,7 @@ namespace UnityIsekaiGame.Editor
             EnsureFolder("Assets/_Project/Prototype/Environment/Terrain");
             EnsureFolder(TerrainDataRoot);
 
-            foreach (var terrain in FindPrototypeTerrains())
+            foreach (var terrain in FindPrototypeTerrains(TerrainTargetScope.AllPrototypeTerrains))
             {
                 var data = terrain == null ? null : terrain.terrainData;
                 if (data == null)
@@ -203,9 +240,10 @@ namespace UnityIsekaiGame.Editor
             {
                 instance.name = entry.Name;
                 PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-                instance.transform.localScale = Vector3.one * entry.PrefabScale;
+                instance.transform.localScale = Vector3.one;
                 AssignProjectMaterials(instance, entry.Style, materials);
                 RemoveImportedRuntimeColliders(instance);
+                instance.transform.localScale = Vector3.one * CalculateRootScaleForTargetHeight(instance, entry);
                 AddGeneratedTrunkCollider(instance, entry);
                 ValidateGeneratedPrefab(instance, entry);
 
@@ -242,6 +280,32 @@ namespace UnityIsekaiGame.Editor
                 UnityEngine.Object.DestroyImmediate(collider);
             }
         }
+
+        private static float CalculateRootScaleForTargetHeight(GameObject instance, PrototypeTreePaletteEntry entry)
+        {
+            var renderers = instance.GetComponentsInChildren<MeshRenderer>(true)
+                .Where(renderer => renderer != null)
+                .ToArray();
+
+            if (renderers.Length == 0)
+            {
+                throw new InvalidOperationException($"Cannot scale '{entry.Name}' because it has no renderable mesh.");
+            }
+
+            var bounds = renderers[0].bounds;
+            for (var i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            if (bounds.size.y <= 0.001f)
+            {
+                throw new InvalidOperationException($"Cannot scale '{entry.Name}' because its visual height is zero.");
+            }
+
+            return Mathf.Clamp(entry.TargetVisualHeight / bounds.size.y, 0.01f, 100f);
+        }
+
 
         private static void AddGeneratedTrunkCollider(GameObject instance, PrototypeTreePaletteEntry entry)
         {
@@ -422,9 +486,19 @@ namespace UnityIsekaiGame.Editor
             return prototypes.ToArray();
         }
 
-        private static Scene OpenPrototypeSceneIfNeeded()
+        private static Scene OpenPrototypeSceneIfNeeded(TerrainTargetScope scope = TerrainTargetScope.AllPrototypeTerrains)
         {
             var scene = SceneManager.GetActiveScene();
+            if (scope == TerrainTargetScope.SelectedTerrains)
+            {
+                if (!string.Equals(scene.path, PrototypeScenePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Selected terrain operations must be run while PrototypeScene is open.");
+                }
+
+                return scene;
+            }
+
             if (!string.Equals(scene.path, PrototypeScenePath, StringComparison.OrdinalIgnoreCase))
             {
                 scene = EditorSceneManager.OpenScene(PrototypeScenePath, OpenSceneMode.Single);
@@ -433,7 +507,14 @@ namespace UnityIsekaiGame.Editor
             return scene;
         }
 
-        private static Terrain[] FindPrototypeTerrains()
+        private static Terrain[] FindPrototypeTerrains(TerrainTargetScope scope = TerrainTargetScope.AllPrototypeTerrains)
+        {
+            return scope == TerrainTargetScope.SelectedTerrains
+                ? FindSelectedPrototypeTerrains()
+                : FindAllPrototypeTerrains();
+        }
+
+        private static Terrain[] FindAllPrototypeTerrains()
         {
             var ground = FindScenePath("PrototypeScene/Environment/Ground");
             if (ground == null)
@@ -453,6 +534,44 @@ namespace UnityIsekaiGame.Editor
             }
 
             return terrains;
+        }
+
+        private static Terrain[] FindSelectedPrototypeTerrains()
+        {
+            var terrains = new List<Terrain>();
+
+            foreach (var selected in Selection.gameObjects)
+            {
+                if (selected == null || !selected.scene.IsValid())
+                {
+                    continue;
+                }
+
+                foreach (var terrain in selected.GetComponentsInChildren<Terrain>(true))
+                {
+                    if (terrain == null || terrain.terrainData == null)
+                    {
+                        continue;
+                    }
+
+                    if (!terrains.Any(existing => existing == terrain))
+                    {
+                        terrains.Add(terrain);
+                    }
+                }
+            }
+
+            var ordered = terrains
+                .OrderBy(terrain => terrain.transform.position.z)
+                .ThenBy(terrain => terrain.transform.position.x)
+                .ToArray();
+
+            if (ordered.Length == 0)
+            {
+                throw new InvalidOperationException("Select one or more Terrain GameObjects, or a parent containing Terrain children, before running this selected terrain command.");
+            }
+
+            return ordered;
         }
 
         private static float Deterministic01(TreeInstance instance, int salt)
@@ -552,7 +671,7 @@ namespace UnityIsekaiGame.Editor
                 string sourcePrefabPath,
                 PrototypeTreePaletteStyle style,
                 float bendFactor,
-                float prefabScale,
+                float targetVisualHeight,
                 float minimumPaintedHeightScale,
                 float maximumPaintedHeightScale)
             {
@@ -561,7 +680,7 @@ namespace UnityIsekaiGame.Editor
                 SourcePrefabPath = sourcePrefabPath;
                 Style = style;
                 BendFactor = bendFactor;
-                PrefabScale = prefabScale;
+                TargetVisualHeight = targetVisualHeight;
                 MinimumPaintedHeightScale = minimumPaintedHeightScale;
                 MaximumPaintedHeightScale = maximumPaintedHeightScale;
             }
@@ -576,7 +695,7 @@ namespace UnityIsekaiGame.Editor
 
             public float BendFactor { get; }
 
-            public float PrefabScale { get; }
+            public float TargetVisualHeight { get; }
 
             public float MinimumPaintedHeightScale { get; }
 

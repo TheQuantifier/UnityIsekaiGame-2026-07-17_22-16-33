@@ -76,6 +76,22 @@ namespace UnityIsekaiGame.Persistence
             return true;
         }
 
+        public static bool TrySnapToNearestSolidSurface(Vector3 position, Transform targetRoot, out Vector3 groundedPosition, out string reason)
+        {
+            groundedPosition = position;
+            reason = string.Empty;
+
+            if (!TryFindNearestSolidSurface(position, targetRoot, out RaycastHit surface, out float desiredY))
+            {
+                reason = "NoColliderAtSpawnColumn";
+                return false;
+            }
+
+            groundedPosition = new Vector3(position.x, desiredY, position.z);
+            reason = $"SnappedToCollider:{surface.collider.name}";
+            return true;
+        }
+
         public static float CalculateRootGroundClearance(Transform targetRoot)
         {
             if (targetRoot != null && targetRoot.TryGetComponent(out CharacterController controller))
@@ -116,6 +132,47 @@ namespace UnityIsekaiGame.Persistence
                     found = true;
                     lowestY = hit.point.y;
                     lowest = hit;
+                }
+            }
+
+            return found;
+        }
+
+        private static bool TryFindNearestSolidSurface(Vector3 position, Transform ignoredRoot, out RaycastHit nearest, out float desiredRootY)
+        {
+            nearest = default;
+            desiredRootY = position.y;
+            if (!IsFinite(position))
+            {
+                return false;
+            }
+
+            float clearance = CalculateRootGroundClearance(ignoredRoot);
+            RaycastHit[] hits = Physics.RaycastAll(
+                new Vector3(position.x, WorldProbeLimit, position.z),
+                Vector3.down,
+                WorldProbeLimit * 2f,
+                ~0,
+                QueryTriggerInteraction.Ignore);
+
+            bool found = false;
+            float nearestDistance = float.PositiveInfinity;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                RaycastHit hit = hits[i];
+                if (!IsUsableGroundHit(hit.collider, ignoredRoot))
+                {
+                    continue;
+                }
+
+                float candidateRootY = hit.point.y + clearance;
+                float distance = Mathf.Abs(candidateRootY - position.y);
+                if (!found || distance < nearestDistance)
+                {
+                    found = true;
+                    nearestDistance = distance;
+                    desiredRootY = candidateRootY;
+                    nearest = hit;
                 }
             }
 

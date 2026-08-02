@@ -16,11 +16,15 @@ namespace UnityIsekaiGame.Gameplay
         [SerializeField] private CharacterResourceCollection resources;
 
         private float regenerationBlockedUntil;
+        private float pendingSprintResourceSpend;
+        private float lastNotifiedCurrentStamina = float.NaN;
+        private float lastNotifiedMaximumStamina = float.NaN;
         private bool exhausted;
         private bool sprintingThisFrame;
         private bool resourceEventsSubscribed;
+        private const float StaminaNotificationThreshold = 0.5f;
 
-        public float CurrentStamina => UseResourceRuntime ? resources.GetCurrent(ResourceIds.Stamina) : stamina.CurrentValue;
+        public float CurrentStamina => UseResourceRuntime ? Mathf.Max(resources.GetMinimum(ResourceIds.Stamina), resources.GetCurrent(ResourceIds.Stamina) - pendingSprintResourceSpend) : stamina.CurrentValue;
         public float MaximumStamina => UseResourceRuntime ? resources.GetMaximum(ResourceIds.Stamina) : stamina.MaximumValue;
         public bool CanSprint => !exhausted;
         private bool UseResourceRuntime => EnsureResourceRuntime() && resources.HasResource(ResourceIds.Stamina);
@@ -66,6 +70,7 @@ namespace UnityIsekaiGame.Gameplay
 
         private void OnDisable()
         {
+            FlushPendingSprintResourceSpend();
             stamina.ValueChanged -= OnStaminaChanged;
 
             if (stats != null)
@@ -93,7 +98,12 @@ namespace UnityIsekaiGame.Gameplay
                 }
                 else if (exhausted && CurrentStamina > restartThreshold)
                 {
+                    FlushPendingSprintResourceSpend();
                     exhausted = false;
+                }
+                else
+                {
+                    FlushPendingSprintResourceSpend();
                 }
             }
 
@@ -113,22 +123,25 @@ namespace UnityIsekaiGame.Gameplay
         {
             if (gameplayInputBlocked || !wantsSprint || !isMoving || sprintDrainPerSecond <= 0f)
             {
+                FlushPendingSprintResourceSpend();
                 return false;
             }
 
             if (exhausted)
             {
+                FlushPendingSprintResourceSpend();
                 return false;
+            }
+
+            if (UseResourceRuntime)
+            {
+                return EvaluateResourceRuntimeSprint(deltaTime);
             }
 
             VitalChangeResult result = Spend(sprintDrainPerSecond * deltaTime, "Sprint");
             if (!result.Succeeded)
             {
-                if (!UseResourceRuntime)
-                {
-                    stamina.SetCurrent(0f);
-                }
-
+                stamina.SetCurrent(0f);
                 exhausted = true;
                 return false;
             }
@@ -146,6 +159,7 @@ namespace UnityIsekaiGame.Gameplay
         {
             if (UseResourceRuntime)
             {
+                FlushPendingSprintResourceSpend();
                 VitalChangeResult resourceResult = ToVitalChangeResult(resources.TryGain(ResourceIds.Stamina, amount, "player.stamina", "Stamina restore"), "stamina");
                 if (CurrentStamina > restartThreshold)
                 {
@@ -169,6 +183,8 @@ namespace UnityIsekaiGame.Gameplay
             exhausted = false;
             sprintingThisFrame = false;
             regenerationBlockedUntil = 0f;
+            pendingSprintResourceSpend = 0f;
+            ResetStaminaNotificationCache();
             if (UseResourceRuntime)
             {
                 resources.SetCurrent(ResourceIds.Stamina, resources.GetMaximum(ResourceIds.Stamina), "player.stamina", "Restore to maximum", restoration: true);
@@ -189,6 +205,8 @@ namespace UnityIsekaiGame.Gameplay
 
             sprintingThisFrame = false;
             regenerationBlockedUntil = 0f;
+            pendingSprintResourceSpend = 0f;
+            ResetStaminaNotificationCache();
             if (UseResourceRuntime)
             {
                 resources.SetCurrent(ResourceIds.Stamina, Mathf.Clamp(restoredStamina, 0f, MaximumStamina), "player.stamina", "Persistence restore", restoration: true);
@@ -205,7 +223,7 @@ namespace UnityIsekaiGame.Gameplay
         {
             if (UseResourceRuntime)
             {
-                return amount <= 0f || resources.CanSpend(ResourceIds.Stamina, amount);
+                return amount <= 0f || resources.CanSpend(ResourceIds.Stamina, amount + pendingSprintResourceSpend);
             }
 
             return amount <= 0f || stamina.CanSpend(amount);
@@ -220,6 +238,7 @@ namespace UnityIsekaiGame.Gameplay
 
             if (UseResourceRuntime)
             {
+                FlushPendingSprintResourceSpend();
                 ResourceChangeResult resourceResult = resources.TrySpend(ResourceIds.Stamina, amount, "player.stamina", reason);
                 if (!resourceResult.Succeeded)
                 {
@@ -257,6 +276,61 @@ namespace UnityIsekaiGame.Gameplay
             return VitalChangeResult.Success(result.RequestedAmount, result.ChangedAmount, message);
         }
 
+        public void FlushPendingSprintResourceSpend()
+        {
+            if (pendingSprintResourceSpend <= CharacterResourceCollection.Epsilon || resources == null || !resources.HasResource(ResourceIds.Stamina))
+            {
+                pendingSprintResourceSpend = 0f;
+                return;
+            }
+
+            float amount = pendingSprintResourceSpend;
+            pendingSprintResourceSpend = 0f;
+            ResetStaminaNotificationCache();
+            ResourceChangeResult resourceResult = resources.TrySpend(ResourceIds.Stamina, amount, "player.stamina", "Sprint", allowPartial: true);
+            if (!resourceResult.Succeeded || resources.GetCurrent(ResourceIds.Stamina) <= resources.GetMinimum(ResourceIds.Stamina) + CharacterResourceCollection.Epsilon)
+            {
+                exhausted = true;
+            }
+        }
+
+        private bool EvaluateResourceRuntimeSprint(float deltaTime)
+        {
+            float requested = sprintDrainPerSecond * Mathf.Max(0f, deltaTime);
+            if (requested <= 0f)
+            {
+                return false;
+            }
+
+            float available = resources.GetCurrent(ResourceIds.Stamina) - resources.GetMinimum(ResourceIds.Stamina) - pendingSprintResourceSpend;
+            if (available <= CharacterResourceCollection.Epsilon)
+            {
+                FlushPendingSprintResourceSpend();
+                exhausted = true;
+                return false;
+            }
+
+            if (requested > available + CharacterResourceCollection.Epsilon)
+            {
+                FlushPendingSprintResourceSpend();
+                exhausted = true;
+                return false;
+            }
+
+            pendingSprintResourceSpend += requested;
+            sprintingThisFrame = true;
+            if (pendingSprintResourceSpend >= resources.GetCurrent(ResourceIds.Stamina) - resources.GetMinimum(ResourceIds.Stamina) - CharacterResourceCollection.Epsilon)
+            {
+                FlushPendingSprintResourceSpend();
+            }
+            else
+            {
+                NotifyStaminaChangedIfMeaningful();
+            }
+
+            return true;
+        }
+
         private void Regenerate(float deltaTime)
         {
             if (regenerationPerSecond <= 0f || Time.time < regenerationBlockedUntil || stamina.IsAtMaximum)
@@ -274,6 +348,8 @@ namespace UnityIsekaiGame.Gameplay
 
         private void OnStaminaChanged(float current, float maximum)
         {
+            lastNotifiedCurrentStamina = current;
+            lastNotifiedMaximumStamina = maximum;
             StaminaChanged?.Invoke(current, maximum);
         }
 
@@ -281,6 +357,7 @@ namespace UnityIsekaiGame.Gameplay
         {
             if (UseResourceRuntime)
             {
+                FlushPendingSprintResourceSpend();
                 resources.ReconcileResource(ResourceIds.Stamina);
                 if (exhausted && CurrentStamina > restartThreshold)
                 {
@@ -313,21 +390,56 @@ namespace UnityIsekaiGame.Gameplay
                 exhausted = true;
             }
 
-            StaminaChanged?.Invoke(CurrentStamina, MaximumStamina);
+            NotifyStaminaChanged(force: true);
         }
 
         private void OnResourceMaximumChanged(CharacterResourceCollection collection, ResourceSnapshot snapshot, float oldMaximum, bool restoring)
         {
             if (string.Equals(snapshot.ResourceId, ResourceIds.Stamina, StringComparison.Ordinal))
             {
-                StaminaChanged?.Invoke(CurrentStamina, MaximumStamina);
+                NotifyStaminaChanged(force: true);
             }
         }
 
         private void OnResourcesRestored(CharacterResourceCollection collection, bool restoring)
         {
             exhausted = CurrentStamina <= 0f;
-            StaminaChanged?.Invoke(CurrentStamina, MaximumStamina);
+            NotifyStaminaChanged(force: true);
+        }
+
+        private void NotifyStaminaChangedIfMeaningful()
+        {
+            float current = CurrentStamina;
+            float maximum = MaximumStamina;
+            if (float.IsNaN(lastNotifiedCurrentStamina)
+                || Mathf.Abs(current - lastNotifiedCurrentStamina) >= StaminaNotificationThreshold
+                || !Mathf.Approximately(maximum, lastNotifiedMaximumStamina))
+            {
+                NotifyStaminaChanged(force: true);
+            }
+        }
+
+        private void NotifyStaminaChanged(bool force)
+        {
+            float current = CurrentStamina;
+            float maximum = MaximumStamina;
+            if (!force
+                && !float.IsNaN(lastNotifiedCurrentStamina)
+                && Mathf.Abs(current - lastNotifiedCurrentStamina) < StaminaNotificationThreshold
+                && Mathf.Approximately(maximum, lastNotifiedMaximumStamina))
+            {
+                return;
+            }
+
+            lastNotifiedCurrentStamina = current;
+            lastNotifiedMaximumStamina = maximum;
+            StaminaChanged?.Invoke(current, maximum);
+        }
+
+        private void ResetStaminaNotificationCache()
+        {
+            lastNotifiedCurrentStamina = float.NaN;
+            lastNotifiedMaximumStamina = float.NaN;
         }
 
         private bool EnsureResourceRuntime()

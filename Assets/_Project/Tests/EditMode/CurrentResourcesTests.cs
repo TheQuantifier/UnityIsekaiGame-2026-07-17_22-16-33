@@ -4,6 +4,8 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Gameplay;
+using UnityIsekaiGame.ResourceSystem;
 
 namespace UnityIsekaiGame.Tests
 {
@@ -148,6 +150,44 @@ namespace UnityIsekaiGame.Tests
                 Assert.That(GetProperty<bool>(spendAfterReset, "Succeeded"), Is.True, GetProperty<string>(spendAfterReset, "Message"));
                 Assert.That(GetProperty<bool>(spendAfterReset, "DuplicateEvent"), Is.False, "Reset must clear processed resource transaction IDs.");
                 Assert.That(GetCurrent(resources, ResourceMana), Is.EqualTo(GetMaximum(resources, ResourceMana) - 5f).Within(0.001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
+        public void ResourceBackedPlayerStaminaBatchesContinuousSprintSpends()
+        {
+            DefinitionRegistry registry = LoadCatalog().CreateRegistry();
+            GameObject owner = CreateConfiguredOwner(registry, out _, out _, out Component resourcesComponent);
+            try
+            {
+                CharacterResourceCollection resources = (CharacterResourceCollection)resourcesComponent;
+                PlayerStamina stamina = owner.AddComponent<PlayerStamina>();
+                int staminaResourceEvents = 0;
+                resources.ResourceChanged += (_, result) =>
+                {
+                    if (string.Equals(result.Request.ResourceId, ResourceStamina, StringComparison.Ordinal))
+                    {
+                        staminaResourceEvents++;
+                    }
+                };
+
+                float maximum = GetMaximum(resources, ResourceStamina);
+                for (int i = 0; i < 10; i++)
+                {
+                    Assert.That(stamina.EvaluateSprint(true, true, false, 0.016f), Is.True);
+                }
+
+                Assert.That(staminaResourceEvents, Is.EqualTo(0), "Continuous sprint should reserve stamina locally instead of mutating the resource runtime while the key is held.");
+                Assert.That(stamina.CurrentStamina, Is.EqualTo(maximum - 3.2f).Within(0.001f), "Pending sprint spend must still be visible to gameplay before the batch commits.");
+
+                stamina.FlushPendingSprintResourceSpend();
+
+                Assert.That(staminaResourceEvents, Is.EqualTo(1));
+                Assert.That(GetCurrent(resources, ResourceStamina), Is.EqualTo(maximum - 3.2f).Within(0.001f));
             }
             finally
             {

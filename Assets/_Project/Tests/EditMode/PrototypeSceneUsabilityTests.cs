@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityIsekaiGame.Configuration;
 
 namespace UnityIsekaiGame.Tests
 {
@@ -15,6 +16,7 @@ namespace UnityIsekaiGame.Tests
         private const string PrototypeTerrainRoot = "Assets/_Project/Prototype/Environment/Terrain";
         private const string PrototypeVegetationPrefabRoot = "Assets/_Project/Prototype/Environment/Vegetation/Prefabs";
         private const string PrototypeMedievalHousePrefabPath = "Assets/_Project/Prototype/Environment/Buildings/MedievalHouseLite/Prefabs/medieval_house_lite_v2.prefab";
+        private const string PrototypeMovementSettingsPath = "Assets/_Project/Prototype/Content/Configuration/PrototypePlayerMovementSettings.asset";
 
         [Test]
         public void PrototypeSceneKeepsCleanPlayableTestingShell()
@@ -95,6 +97,18 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void PrototypeMovementSettingsUseBoundedSprintMultiplier()
+        {
+            PlayerMovementSettings settings = AssetDatabase.LoadAssetAtPath<PlayerMovementSettings>(PrototypeMovementSettingsPath);
+
+            Assert.That(settings, Is.Not.Null);
+            Assert.That(settings.SprintSpeedMultiplier, Is.InRange(1.5f, 2f));
+            Assert.That(settings.SprintSpeed, Is.EqualTo(settings.WalkSpeed * settings.SprintSpeedMultiplier).Within(0.001f));
+            Assert.That(settings.Acceleration, Is.GreaterThan(0f));
+            Assert.That(settings.Deceleration, Is.GreaterThan(0f));
+        }
+
+        [Test]
         public void PrototypeVegetationPaintPrefabsHaveRenderableMeshesAndMaterials()
         {
             string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { PrototypeVegetationPrefabRoot });
@@ -124,13 +138,13 @@ namespace UnityIsekaiGame.Tests
                 bool isTree = prefab.name.StartsWith("prototype-tree-", System.StringComparison.Ordinal);
                 if (isTree)
                 {
-                    Assert.That(bounds.size.y, Is.InRange(5.5f, 12.1f), path);
-                    Assert.That(Mathf.Max(bounds.size.x, bounds.size.z), Is.LessThanOrEqualTo(12.1f), path);
+                    Assert.That(bounds.size.y, Is.InRange(6.0f, 9.9f), path);
+                    Assert.That(Mathf.Max(bounds.size.x, bounds.size.z), Is.LessThanOrEqualTo(13.1f), path);
                 }
                 else
                 {
-                    Assert.That(bounds.size.y, Is.InRange(0.6f, 2.7f), path);
-                    Assert.That(Mathf.Max(bounds.size.x, bounds.size.z), Is.LessThanOrEqualTo(3.1f), path);
+                    Assert.That(bounds.size.y, Is.InRange(1.9f, 3.4f), path);
+                    Assert.That(Mathf.Max(bounds.size.x, bounds.size.z), Is.LessThanOrEqualTo(3.9f), path);
                 }
             }
         }

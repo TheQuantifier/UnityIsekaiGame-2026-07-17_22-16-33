@@ -61,6 +61,7 @@ namespace UnityIsekaiGame.Persistence
                 return PersistenceParticipantSaveResult.Failure("Cannot save the prototype player while defeated. Reset or recover before saving.");
             }
 
+            stamina.FlushPendingSprintResourceSpend();
             PlayerStatsVitalsStatusSaveData saveData = new PlayerStatsVitalsStatusSaveData
             {
                 schemaVersion = CurrentParticipantSchemaVersion,

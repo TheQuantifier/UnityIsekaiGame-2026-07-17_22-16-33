@@ -202,6 +202,31 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
+        public void PrototypeEnemyGroundsToRaisedTerrainAtSceneEntryAndReset()
+        {
+            CreateGround("Enemy Raised Ground", new Vector3(4f, 3.9f, -2f), new Vector3(8f, 0.2f, 8f));
+            GameObject enemy = CreateGameObject("Enemy");
+            enemy.transform.position = new Vector3(4f, 0f, -2f);
+            Component controller = enemy.AddComponent(RequiredType("UnityIsekaiGame.Combat.PrototypeEnemyController"));
+            Physics.SyncTransforms();
+
+            Invoke(controller, "Awake");
+            Invoke(controller, "Start");
+
+            Assert.That(enemy.transform.position.x, Is.EqualTo(4f).Within(0.001f));
+            Assert.That(enemy.transform.position.y, Is.EqualTo(4.05f).Within(0.001f));
+            Assert.That(enemy.transform.position.z, Is.EqualTo(-2f).Within(0.001f));
+
+            enemy.transform.position = new Vector3(4f, 0f, -2f);
+            Physics.SyncTransforms();
+            Invoke(controller, "ResetControllerState");
+
+            Assert.That(enemy.transform.position.x, Is.EqualTo(4f).Within(0.001f));
+            Assert.That(enemy.transform.position.y, Is.EqualTo(4.05f).Within(0.001f));
+            Assert.That(enemy.transform.position.z, Is.EqualTo(-2f).Within(0.001f));
+        }
+
+        [Test]
         public void CurrentPlaceTrackerChoosesDeepestPlaceAndReturnsToParent()
         {
             ScriptableObject parent = CreatePlace("place.region.prototype", "Region", "scene.prototype");
