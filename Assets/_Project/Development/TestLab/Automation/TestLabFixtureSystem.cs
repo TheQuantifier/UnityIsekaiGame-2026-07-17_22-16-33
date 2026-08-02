@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityIsekaiGame.Development.Automation.Fixtures.Core;
 using UnityIsekaiGame.Development.Automation.Fixtures.History;
 using UnityIsekaiGame.Contracts;
+using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.InstitutionalRevenue;
@@ -456,6 +457,7 @@ namespace UnityIsekaiGame.Development.Automation
             OrganizationResourceRuntime organizationResources,
             OrganizationDecisionRuntime organizationDecisions,
             FactionRuntime factions,
+            DiplomacyRuntime diplomacy,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -514,6 +516,7 @@ namespace UnityIsekaiGame.Development.Automation
             OrganizationResources = organizationResources;
             OrganizationDecisions = organizationDecisions;
             Factions = factions;
+            Diplomacy = diplomacy;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -574,6 +577,7 @@ namespace UnityIsekaiGame.Development.Automation
         public OrganizationResourceRuntime OrganizationResources { get; }
         public OrganizationDecisionRuntime OrganizationDecisions { get; }
         public FactionRuntime Factions { get; }
+        public DiplomacyRuntime Diplomacy { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -632,7 +636,8 @@ namespace UnityIsekaiGame.Development.Automation
             OrganizationAuthorityRuntime organizationAuthority = null,
             OrganizationResourceRuntime organizationResources = null,
             OrganizationDecisionRuntime organizationDecisions = null,
-            FactionRuntime factions = null)
+            FactionRuntime factions = null,
+            DiplomacyRuntime diplomacy = null)
         {
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
@@ -715,7 +720,9 @@ namespace UnityIsekaiGame.Development.Automation
             organizationDecisionRuntime.Configure(definitionRegistry, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, worldId, persons, economyRuntime);
             FactionRuntime factionRuntime = factions ?? new FactionRuntime();
             factionRuntime.Configure(definitionRegistry, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, worldId, persons);
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemRuntime, itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, factionRuntime, null);
+            DiplomacyRuntime diplomacyRuntime = diplomacy ?? new DiplomacyRuntime();
+            diplomacyRuntime.Configure(definitionRegistry, organizationRuntime, factionRuntime, authorityRuntime, organizationDecisionRuntime, resourceRuntime, worldId, persons);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemRuntime, itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, factionRuntime, diplomacyRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -779,6 +786,7 @@ namespace UnityIsekaiGame.Development.Automation
             OrganizationResourceRuntime organizationResources = new OrganizationResourceRuntime();
             OrganizationDecisionRuntime organizationDecisions = new OrganizationDecisionRuntime();
             FactionRuntime factions = new FactionRuntime();
+            DiplomacyRuntime diplomacy = new DiplomacyRuntime();
 
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -829,8 +837,9 @@ namespace UnityIsekaiGame.Development.Automation
             organizationResources.Configure(definitionRegistry, organizations, organizationAuthority, economy, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, properties, businesses, itemInstances, contracts, payroll);
             organizationDecisions.Configure(definitionRegistry, organizations, organizationMemberships, organizationAuthority, organizationResources, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, economy);
             factions.Configure(definitionRegistry, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons);
+            diplomacy.Configure(definitionRegistry, organizations, factions, organizationAuthority, organizationDecisions, organizationResources, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, factions, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, factions, diplomacy, knowledgeObject);
         }
 
         private static string[] ExpandKnownPersons(IReadOnlyList<string> knownPersonIds, string ownerPersonId)
@@ -924,7 +933,8 @@ namespace UnityIsekaiGame.Development.Automation
                 OrganizationAuthority?.CreateSaveData(),
                 OrganizationResources?.CreateSaveData(),
                 OrganizationDecisions?.CreateSaveData(),
-                Factions?.CreateSaveData());
+                Factions?.CreateSaveData(),
+                Diplomacy?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -981,7 +991,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("OrganizationAuthority", OrganizationAuthority?.Revision ?? 0L, OrganizationAuthority?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("OrganizationResources", OrganizationResources?.Revision ?? 0L, OrganizationResources?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("OrganizationDecisions", OrganizationDecisions?.Revision ?? 0L, OrganizationDecisions?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("Factions", Factions?.Revision ?? 0L, Factions?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("Factions", Factions?.Revision ?? 0L, Factions?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("Diplomacy", Diplomacy?.Revision ?? 0L, Diplomacy?.CreateSaveData())
             });
         }
 
@@ -1502,6 +1513,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (Diplomacy != null && snapshot.Diplomacy != null)
+            {
+                DiplomacyOperationResult result = Diplomacy.RestoreFromSaveData(snapshot.Diplomacy, DefinitionRegistry, Organizations, Factions, OrganizationAuthority, OrganizationDecisions, OrganizationResources, WorldId, KnownPersonIds, restoring: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Diplomacy restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1531,6 +1552,7 @@ namespace UnityIsekaiGame.Development.Automation
 
         public void Dispose()
         {
+            Diplomacy?.Dispose();
             Factions?.Dispose();
             OrganizationDecisions?.Dispose();
             OrganizationResources?.Dispose();
@@ -1603,7 +1625,8 @@ namespace UnityIsekaiGame.Development.Automation
             OrganizationAuthorityRuntimeSaveData organizationAuthority,
             OrganizationResourceRuntimeSaveData organizationResources,
             OrganizationDecisionRuntimeSaveData organizationDecisions,
-            FactionRuntimeSaveData factions)
+            FactionRuntimeSaveData factions,
+            DiplomacyRuntimeSaveData diplomacy)
         {
             Knowledge = knowledge;
             History = history;
@@ -1656,6 +1679,7 @@ namespace UnityIsekaiGame.Development.Automation
             OrganizationResources = organizationResources;
             OrganizationDecisions = organizationDecisions;
             Factions = factions;
+            Diplomacy = diplomacy;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1709,6 +1733,7 @@ namespace UnityIsekaiGame.Development.Automation
         public OrganizationResourceRuntimeSaveData OrganizationResources { get; }
         public OrganizationDecisionRuntimeSaveData OrganizationDecisions { get; }
         public FactionRuntimeSaveData Factions { get; }
+        public DiplomacyRuntimeSaveData Diplomacy { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint
@@ -2058,7 +2083,7 @@ namespace UnityIsekaiGame.Development.Automation
             return new string(chars).Trim('.', '-');
         }
 
-        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions;
+        private const TestLabRuntimeArea RuntimeIsolationSupportedAreas = TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy;
 
         private static bool CanIsolate(TestLabRuntimeArea supported, TestLabRuntimeArea required)
         {

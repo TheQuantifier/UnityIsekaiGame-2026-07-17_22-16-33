@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
 using System.Linq;
+using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Economy;
 using UnityIsekaiGame.Economy.Businesses;
 using UnityIsekaiGame.Economy.Properties;
@@ -179,6 +180,29 @@ namespace UnityIsekaiGame.Development.Automation
                         Step("step13-factions-cohesion", "Set platform positions and measure vote cohesion", FactionPositionsRecommendationsCohesion)),
                     FactionScenario("split-merge-disposition-projection-persistence", "Split, merge, disposition, projection, and persistence preserve faction state", 50,
                         Step("step13-factions-persistence", "Validate structural changes, redaction, and save restore", FactionSplitMergeDispositionProjectionPersistence))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.13.7.diplomacy-alliances-rivalries-war-status",
+                "Diplomacy, Alliances, Rivalries, and War Status",
+                "13.7",
+                "Formal organization and eligible faction diplomacy with relations, agreements, clauses, breaches, war status, projections, and persistence.",
+                13070,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "DiplomacyRuntime", "DiplomaticRelationDefinition", "DiplomaticAgreementDefinition", "DiplomacyPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    DiplomacyScenario("runtime-readiness", "Diplomacy definitions and runtime ownership are ready", 10,
+                        Step("step13-diplomacy-readiness", "Resolve diplomacy definitions", DiplomacyRuntimeReadiness)),
+                    DiplomacyScenario("actor-eligibility-relations", "Organizations and eligible factions can form relations while internal factions are rejected", 20,
+                        Step("step13-diplomacy-relations", "Create recognition, alliance, rivalry, and reject internal faction treaty actor", DiplomacyActorEligibilityRelations)),
+                    DiplomacyScenario("agreements-clauses-breaches", "Agreements, clauses, signatures, ratification, activation, and breach state remain explicit", 30,
+                        Step("step13-diplomacy-agreements", "Create agreement lifecycle and breach record", DiplomacyAgreementsClausesBreaches)),
+                    DiplomacyScenario("war-status-and-incidents", "War status tracks sides, participation, ceasefire, peace, and incidents without combat simulation", 40,
+                        Step("step13-diplomacy-war", "Declare and transition formal war", DiplomacyWarStatusIncidents)),
+                    DiplomacyScenario("projection-persistence-validation", "Diplomacy projections and persistence validate before restore", 50,
+                        Step("step13-diplomacy-persistence", "Project, save, restore, and reject corrupt diplomacy graph", DiplomacyProjectionPersistenceValidation))
                 }), out _);
         }
 
@@ -1911,6 +1935,230 @@ namespace UnityIsekaiGame.Development.Automation
                 });
         }
 
+        private static ITestLabAutomationScenario DiplomacyScenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
+        {
+            return new TestLabAutomationScenario(
+                scenarioId,
+                displayName,
+                displayName,
+                order,
+                TestLabAutomationCategory.Standard,
+                includeInQuickRun: true,
+                steps: steps,
+                isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
+                requiredRuntimeAreas: TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Items,
+                requiredDefinitionIds: new[]
+                {
+                    PrototypeOrganizationDefinitionFactory.GuildDefinitionId,
+                    PrototypeOrganizationDefinitionFactory.CompanyDefinitionId,
+                    PrototypeFactionDefinitionFactory.ReformFactionId,
+                    PrototypeFactionDefinitionFactory.CrossOrgMovementFactionId,
+                    PrototypeFactionDefinitionFactory.IndependentMovementFactionId,
+                    PrototypeDiplomacyDefinitionFactory.RecognitionRelationId,
+                    PrototypeDiplomacyDefinitionFactory.AllianceRelationId,
+                    PrototypeDiplomacyDefinitionFactory.RivalryRelationId,
+                    PrototypeDiplomacyDefinitionFactory.MutualDefenseAgreementId,
+                    PrototypeDiplomacyDefinitionFactory.TradeCooperationAgreementId,
+                    PrototypeDiplomacyDefinitionFactory.DefenseAssistanceClauseId,
+                    PrototypeDiplomacyDefinitionFactory.TradeResourceClauseId,
+                    PrototypeDiplomacyDefinitionFactory.FormalWarDefinitionId,
+                    PrototypeDiplomacyDefinitionFactory.CeasefireAgreementId,
+                    PrototypeDiplomacyDefinitionFactory.PeaceAgreementId
+                });
+        }
+
+        private static TestLabAutomationStepResult DiplomacyRuntimeReadiness(TestLabAutomationContext context)
+        {
+            if (!TryGetDiplomacyRuntime(context, out DiplomacyRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-diplomacy-readiness", "Resolve diplomacy definitions", "DiplomacyRuntime", "Present", "Missing", failure);
+            }
+
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool relation = registry.TryGet(PrototypeDiplomacyDefinitionFactory.AllianceRelationId, out DiplomaticRelationDefinition alliance);
+            bool agreement = registry.TryGet(PrototypeDiplomacyDefinitionFactory.MutualDefenseAgreementId, out DiplomaticAgreementDefinition pact);
+            bool clause = registry.TryGet(PrototypeDiplomacyDefinitionFactory.DefenseAssistanceClauseId, out DiplomaticClauseDefinition defense);
+            bool war = registry.TryGet(PrototypeDiplomacyDefinitionFactory.FormalWarDefinitionId, out DiplomaticWarDefinition formalWar);
+            bool valid = runtime != null
+                && relation
+                && agreement
+                && clause
+                && war
+                && alliance.Category == DiplomaticRelationCategory.Allied
+                && pact.Category == DiplomaticAgreementCategory.MutualDefense
+                && defense.BreachTrackable
+                && !formalWar.SupportsFactionalParticipants;
+            return TestLabAssertions.True("step13-diplomacy-readiness", "Resolve diplomacy definitions", valid, $"Definitions={relation}/{agreement}/{clause}/{war} RuntimeRevision={runtime?.Revision ?? -1}");
+        }
+
+        private static TestLabAutomationStepResult DiplomacyActorEligibilityRelations(TestLabAutomationContext context)
+        {
+            if (!TryGetDiplomacyRuntime(context, out DiplomacyRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-diplomacy-relations", "Create recognition, alliance, rivalry, and reject internal faction treaty actor", "DiplomacyRuntime", "Present", "Missing", failure);
+            }
+
+            FactionRuntime factions = context.ScenarioContext.Runtimes.Factions;
+            FactionOperationResult internalFaction = factions.CreateFaction(FactionCreate(context, "diplomacy-internal", PrototypeFactionDefinitionFactory.ReformFactionId, "Internal Diplomacy Reformists", FactionHostContextData.ForOrganization("organization.prototype.guild")));
+            FactionOperationResult crossFaction = factions.CreateFaction(FactionCreate(context, "diplomacy-cross", PrototypeFactionDefinitionFactory.CrossOrgMovementFactionId, "Cross Organization Diplomats", new FactionHostContextData { contextKind = FactionHostContextKind.MultipleOrganizations, organizationIds = new[] { "organization.prototype.guild", "organization.prototype.royal-forge" } }));
+
+            DiplomacyOperationResult preview = runtime.CreateRelation(Relation(context, "preview", PrototypeDiplomacyDefinitionFactory.RecognitionRelationId, Org("organization.prototype.guild"), Org("organization.prototype.royal-forge"), preview: true));
+            DiplomacyOperationResult recognition = runtime.CreateRelation(Relation(context, "recognition", PrototypeDiplomacyDefinitionFactory.RecognitionRelationId, Org("organization.prototype.guild"), Org("organization.prototype.royal-forge")));
+            DiplomacyOperationResult duplicate = runtime.CreateRelation(Relation(context, "recognition", PrototypeDiplomacyDefinitionFactory.RecognitionRelationId, Org("organization.prototype.guild"), Org("organization.prototype.royal-forge")));
+            DiplomacyOperationResult alliance = runtime.CreateRelation(Relation(context, "alliance", PrototypeDiplomacyDefinitionFactory.AllianceRelationId, Org("organization.prototype.guild"), Org("organization.prototype.royal-forge")));
+            DiplomacyOperationResult rivalry = runtime.CreateRelation(Relation(context, "rivalry", PrototypeDiplomacyDefinitionFactory.RivalryRelationId, Org("organization.prototype.guild"), Faction(crossFaction.Faction?.factionId)));
+            DiplomacyOperationResult rejected = runtime.CreateRelation(Relation(context, "rejected-internal", PrototypeDiplomacyDefinitionFactory.AllianceRelationId, Org("organization.prototype.guild"), Faction(internalFaction.Faction?.factionId)));
+
+            bool mirrored = runtime.QueryRelationsForActor(Org("organization.prototype.royal-forge"), activeOnly: true).Any(item => item.relationId.EndsWith(".reciprocal", StringComparison.Ordinal));
+            bool valid = internalFaction.Succeeded
+                && crossFaction.Succeeded
+                && preview.Code == DiplomaticOperationCode.Preview
+                && recognition.Succeeded
+                && duplicate.Duplicate
+                && alliance.Succeeded
+                && rivalry.Succeeded
+                && !rejected.Succeeded
+                && rejected.Code == DiplomaticOperationCode.ActorIneligible
+                && mirrored;
+            return TestLabAssertions.True("step13-diplomacy-relations", "Create recognition, alliance, rivalry, and reject internal faction treaty actor", valid, $"Preview={preview.Code} Recognition={recognition.Code} Duplicate={duplicate.Code}/{duplicate.Duplicate} Alliance={alliance.Code} Rivalry={rivalry.Code} Rejected={rejected.Code} Mirrored={mirrored}");
+        }
+
+        private static TestLabAutomationStepResult DiplomacyAgreementsClausesBreaches(TestLabAutomationContext context)
+        {
+            if (!TryGetDiplomacyRuntime(context, out DiplomacyRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-diplomacy-agreements", "Create agreement lifecycle and breach record", "DiplomacyRuntime", "Present", "Missing", failure);
+            }
+
+            string agreementId = $"diplomatic-agreement.testlab.mutual-defense.{context.RunId}";
+            string guildParty = $"{agreementId}.party.guild";
+            string forgeParty = $"{agreementId}.party.forge";
+            string clauseId = $"{agreementId}.clause.defense";
+            DiplomacyOperationResult draft = runtime.CreateAgreement(new DiplomaticAgreementRequest
+            {
+                transactionId = DiplomacyTx(context, "agreement-draft"),
+                agreementId = agreementId,
+                agreementDefinitionId = PrototypeDiplomacyDefinitionFactory.MutualDefenseAgreementId,
+                title = "Test Lab Mutual Defense Pact",
+                initialState = DiplomaticAgreementLifecycleState.Draft,
+                visibility = DiplomaticVisibility.Restricted,
+                worldTime = 10d,
+                parties = new[] { Party(guildParty, Org("organization.prototype.guild")), Party(forgeParty, Org("organization.prototype.royal-forge")) },
+                clauses = new[] { Clause(clauseId, PrototypeDiplomacyDefinitionFactory.DefenseAssistanceClauseId, DiplomaticClauseCategory.DefenseAssistance, DiplomaticVisibility.Restricted) }
+            });
+            DiplomacyOperationResult signA = runtime.SignAgreement(new DiplomaticSignatureRequest { transactionId = DiplomacyTx(context, "agreement-sign-a"), agreementId = agreementId, partyId = guildParty, signerPersonId = PrimaryAuthorityActorId(context), worldTime = 11d });
+            DiplomacyOperationResult signB = runtime.SignAgreement(new DiplomaticSignatureRequest { transactionId = DiplomacyTx(context, "agreement-sign-b"), agreementId = agreementId, partyId = forgeParty, signerPersonId = "person.prototype.friend", worldTime = 12d });
+            DiplomacyOperationResult ratify = runtime.RatifyAgreement(DiplomacyTx(context, "agreement-ratify"), agreementId, guildParty, $"organization-resolution.testlab.diplomacy.{context.RunId}", 13d);
+            DiplomacyOperationResult activate = runtime.ActivateAgreement(DiplomacyTx(context, "agreement-activate"), agreementId, 14d);
+            DiplomacyOperationResult breach = runtime.RecordBreach(new DiplomaticBreachRequest
+            {
+                transactionId = DiplomacyTx(context, "agreement-breach"),
+                breachId = $"diplomatic-breach.testlab.defense.{context.RunId}",
+                agreementId = agreementId,
+                clauseId = clauseId,
+                allegedActor = Org("organization.prototype.royal-forge"),
+                state = DiplomaticBreachState.Confirmed,
+                worldTime = 15d,
+                notes = "Defense assistance did not arrive."
+            });
+            runtime.TryGetAgreement(agreementId, out DiplomaticAgreementRecordData saved);
+
+            bool valid = draft.Succeeded
+                && signA.Succeeded
+                && signB.Succeeded
+                && ratify.Succeeded
+                && activate.Succeeded
+                && breach.Succeeded
+                && saved != null
+                && saved.lifecycleState == DiplomaticAgreementLifecycleState.Active
+                && saved.clauseIds.Contains(clauseId);
+            return TestLabAssertions.True("step13-diplomacy-agreements", "Create agreement lifecycle and breach record", valid, $"Draft={draft.Code} Sign={signA.Code}/{signB.Code} Ratify={ratify.Code} Activate={activate.Code} Breach={breach.Code} State={saved?.lifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult DiplomacyWarStatusIncidents(TestLabAutomationContext context)
+        {
+            if (!TryGetDiplomacyRuntime(context, out DiplomacyRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-diplomacy-war", "Declare and transition formal war", "DiplomacyRuntime", "Present", "Missing", failure);
+            }
+
+            string warId = $"diplomatic-war.testlab.guild-forge.{context.RunId}";
+            DiplomacyOperationResult declare = runtime.DeclareWar(new DiplomaticWarDeclarationRequest
+            {
+                transactionId = DiplomacyTx(context, "war-declare"),
+                warId = warId,
+                warDefinitionId = PrototypeDiplomacyDefinitionFactory.FormalWarDefinitionId,
+                title = "Guild Forge War",
+                sideA = new[] { Org("organization.prototype.guild") },
+                sideB = new[] { Org("organization.prototype.royal-forge") },
+                worldTime = 20d,
+                declarationRecordId = $"diplomatic-record.testlab.war.declaration.{context.RunId}"
+            });
+            DiplomacyOperationResult duplicate = runtime.DeclareWar(new DiplomaticWarDeclarationRequest
+            {
+                transactionId = DiplomacyTx(context, "war-declare"),
+                warId = warId,
+                warDefinitionId = PrototypeDiplomacyDefinitionFactory.FormalWarDefinitionId,
+                sideA = new[] { Org("organization.prototype.guild") },
+                sideB = new[] { Org("organization.prototype.royal-forge") },
+                worldTime = 20d
+            });
+            DiplomacyOperationResult incident = runtime.RecordIncident(new DiplomaticIncidentRequest
+            {
+                transactionId = DiplomacyTx(context, "war-incident"),
+                incidentId = $"diplomatic-incident.testlab.border.{context.RunId}",
+                warId = warId,
+                category = DiplomaticIncidentCategory.BorderIncident,
+                sourceActor = Org("organization.prototype.guild"),
+                targetActor = Org("organization.prototype.royal-forge"),
+                worldTime = 21d,
+                publicSummary = "Border clash reported."
+            });
+            DiplomacyOperationResult ceasefire = runtime.TransitionWar(DiplomacyTx(context, "war-ceasefire"), warId, DiplomaticWarLifecycleState.Ceasefire, 22d, $"diplomatic-agreement.testlab.ceasefire.{context.RunId}");
+            DiplomacyOperationResult peace = runtime.TransitionWar(DiplomacyTx(context, "war-peace"), warId, DiplomaticWarLifecycleState.Ended, 23d, $"diplomatic-agreement.testlab.peace.{context.RunId}");
+            runtime.TryGetWar(warId, out DiplomaticWarRecordData saved);
+
+            bool valid = declare.Succeeded
+                && duplicate.Duplicate
+                && incident.Succeeded
+                && ceasefire.Succeeded
+                && peace.Succeeded
+                && saved != null
+                && saved.lifecycleState == DiplomaticWarLifecycleState.Ended
+                && saved.sideIds.Length == 2
+                && saved.participationIds.Length == 2;
+            return TestLabAssertions.True("step13-diplomacy-war", "Declare and transition formal war", valid, $"Declare={declare.Code} Duplicate={duplicate.Code}/{duplicate.Duplicate} Incident={incident.Code} Ceasefire={ceasefire.Code} Peace={peace.Code} State={saved?.lifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult DiplomacyProjectionPersistenceValidation(TestLabAutomationContext context)
+        {
+            if (!TryGetDiplomacyRuntime(context, out DiplomacyRuntime runtime, out string failure))
+            {
+                return TestLabAssertions.Fail("step13-diplomacy-persistence", "Project, save, restore, and reject corrupt diplomacy graph", "DiplomacyRuntime", "Present", "Missing", failure);
+            }
+
+            string relationId = $"diplomatic-relation.testlab.secret.{context.RunId}";
+            DiplomacyOperationResult relation = runtime.CreateRelation(Relation(context, "secret", PrototypeDiplomacyDefinitionFactory.CooperativeRelationId, Org("organization.prototype.guild"), Org("organization.prototype.royal-forge"), visibility: DiplomaticVisibility.Secret));
+            DiplomaticProjection redacted = runtime.GetProjection(relationId, privileged: false);
+            DiplomaticProjection privileged = runtime.GetProjection(relationId, privileged: true);
+            DiplomacyRuntimeSaveData save = runtime.CreateSaveData();
+            DiplomacyRuntime restored = new DiplomacyRuntime();
+            DiplomacyOperationResult restore = restored.RestoreFromSaveData(save, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.Factions, context.ScenarioContext.Runtimes.OrganizationAuthority, context.ScenarioContext.Runtimes.OrganizationDecisions, context.ScenarioContext.Runtimes.OrganizationResources, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, restoring: true);
+            DiplomacyRuntimeSaveData corrupt = save.Clone();
+            corrupt.relations[0].targetActor.actorId = "organization.prototype.missing";
+            bool rejected = !DiplomacyRuntime.ValidateSaveData(corrupt, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.Organizations, context.ScenarioContext.Runtimes.Factions, context.ScenarioContext.Runtimes.WorldId, context.ScenarioContext.Runtimes.KnownPersonIds, out string rejectFailure);
+
+            bool valid = relation.Succeeded
+                && redacted.Access == DiplomaticProjectionAccess.Redacted
+                && privileged.Access == DiplomaticProjectionAccess.Privileged
+                && restore.Succeeded
+                && restored.RelationCount == runtime.RelationCount
+                && rejected
+                && !string.IsNullOrWhiteSpace(rejectFailure);
+            restored.Dispose();
+            return TestLabAssertions.True("step13-diplomacy-persistence", "Project, save, restore, and reject corrupt diplomacy graph", valid, $"Relation={relation.Code} Redacted={redacted.Access} Privileged={privileged.Access} Restore={restore.Code} Rejected={rejected} Failure={rejectFailure}");
+        }
+
         private static FactionCreateRequest FactionCreate(TestLabAutomationContext context, string suffix, string definitionId, string name, FactionHostContextData host, FactionVisibility visibility = FactionVisibility.Public, bool preview = false)
         {
             return new FactionCreateRequest
@@ -1947,6 +2195,59 @@ namespace UnityIsekaiGame.Development.Automation
             };
         }
 
+        private static DiplomaticRelationRequest Relation(TestLabAutomationContext context, string suffix, string definitionId, DiplomaticActorReferenceData source, DiplomaticActorReferenceData target, DiplomaticVisibility visibility = DiplomaticVisibility.Public, bool preview = false)
+        {
+            return new DiplomaticRelationRequest
+            {
+                transactionId = DiplomacyTx(context, $"relation-{suffix}"),
+                relationId = $"diplomatic-relation.testlab.{suffix}.{context.RunId}",
+                relationDefinitionId = definitionId,
+                sourceActor = source,
+                targetActor = target,
+                visibility = visibility,
+                worldTime = 3d,
+                publicSummary = $"Test Lab diplomacy relation {suffix}.",
+                preview = preview
+            };
+        }
+
+        private static DiplomaticAgreementPartyRecordData Party(string partyId, DiplomaticActorReferenceData actor, DiplomaticPartyRole role = DiplomaticPartyRole.Principal)
+        {
+            return new DiplomaticAgreementPartyRecordData
+            {
+                partyId = partyId,
+                actor = actor,
+                role = role,
+                joinedWorldTime = 10d,
+                active = true
+            };
+        }
+
+        private static DiplomaticClauseRecordData Clause(string clauseId, string definitionId, DiplomaticClauseCategory category, DiplomaticVisibility visibility)
+        {
+            return new DiplomaticClauseRecordData
+            {
+                clauseId = clauseId,
+                clauseDefinitionId = definitionId,
+                category = category,
+                lifecycleState = DiplomaticClauseLifecycleState.Draft,
+                visibility = visibility,
+                effectiveWorldTime = 10d,
+                parameters = new[]
+                {
+                    new DiplomaticClauseParameterData
+                    {
+                        parameterId = "scope",
+                        valueType = DiplomaticClauseParameterType.Text,
+                        stringValue = "prototype diplomatic obligation"
+                    }
+                }
+            };
+        }
+
+        private static DiplomaticActorReferenceData Org(string organizationId) => DiplomaticActorReferenceData.Organization(organizationId);
+        private static DiplomaticActorReferenceData Faction(string factionId) => DiplomaticActorReferenceData.Faction(factionId);
+        private static string DiplomacyTx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.7.{suffix}.{context?.RunId ?? "run"}";
         private static string Tx(TestLabAutomationContext context, string suffix) => $"testlab.feature13.6.{suffix}.{context?.RunId ?? "run"}";
 
         private static OrganizationCreateRequest CreateGuildRequest(string organizationId, string name, string runId, bool preview = false)
@@ -2147,6 +2448,19 @@ namespace UnityIsekaiGame.Development.Automation
             if (runtime == null)
             {
                 failure = "FactionRuntime is missing from the Test Lab runtime bundle.";
+                return false;
+            }
+
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetDiplomacyRuntime(TestLabAutomationContext context, out DiplomacyRuntime runtime, out string failure)
+        {
+            runtime = context?.ScenarioContext?.Runtimes?.Diplomacy;
+            if (runtime == null)
+            {
+                failure = "DiplomacyRuntime is missing from the Test Lab runtime bundle.";
                 return false;
             }
 

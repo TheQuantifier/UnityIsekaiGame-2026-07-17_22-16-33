@@ -29,6 +29,7 @@ using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Combat.Reactions;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Equipment;
+using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Factions;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
@@ -14501,24 +14502,25 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(
-                PrototypeFamilyRelationshipDefinitionFactory.AddMissingPrototypeFamilyRelationshipDefinitions(
-                    PrototypeSocialEmotionDefinitionFactory.AddMissingPrototypeSocialEmotionDefinitions(
-                        PrototypeSocialInfluenceDefinitionFactory.AddMissingPrototypeSocialInfluenceDefinitions(
-                            PrototypeSocialDecisionDefinitionFactory.AddMissingPrototypeSocialDecisionDefinitions(
-                                PrototypeSocialNetworkDefinitionFactory.AddMissingPrototypeSocialNetworkDefinitions(
-                                    PrototypeSocialNormDefinitionFactory.AddMissingPrototypeSocialNormDefinitions(
-                                        PrototypeSocialInteractionDefinitionFactory.AddMissingPrototypeSocialInteractionDefinitions(
-                                            PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
-                                                PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
-                                                    PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
-                                                        PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                                                            PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(
-                                                                PrototypeOrganizationDecisionDefinitionFactory.AddMissingPrototypeOrganizationDecisionDefinitions(
-                                                                    PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(
-                                                                        PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
-                                                                            PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
-                                                                                PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions)))))))))))))))))));
+            return PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(
+                PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(
+                    PrototypeFamilyRelationshipDefinitionFactory.AddMissingPrototypeFamilyRelationshipDefinitions(
+                        PrototypeSocialEmotionDefinitionFactory.AddMissingPrototypeSocialEmotionDefinitions(
+                            PrototypeSocialInfluenceDefinitionFactory.AddMissingPrototypeSocialInfluenceDefinitions(
+                                PrototypeSocialDecisionDefinitionFactory.AddMissingPrototypeSocialDecisionDefinitions(
+                                    PrototypeSocialNetworkDefinitionFactory.AddMissingPrototypeSocialNetworkDefinitions(
+                                        PrototypeSocialNormDefinitionFactory.AddMissingPrototypeSocialNormDefinitions(
+                                            PrototypeSocialInteractionDefinitionFactory.AddMissingPrototypeSocialInteractionDefinitions(
+                                                PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
+                                                    PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
+                                                        PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
+                                                            PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
+                                                                PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(
+                                                                    PrototypeOrganizationDecisionDefinitionFactory.AddMissingPrototypeOrganizationDecisionDefinitions(
+                                                                        PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(
+                                                                            PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
+                                                                                PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
+                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))))))));
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()
