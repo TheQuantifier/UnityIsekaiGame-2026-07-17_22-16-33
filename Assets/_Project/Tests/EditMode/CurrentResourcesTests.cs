@@ -158,7 +158,7 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
-        public void ResourceBackedPlayerStaminaBatchesContinuousSprintSpends()
+        public void ResourceBackedPlayerStaminaProjectsContinuousSprintSpendsWithoutCommitting()
         {
             DefinitionRegistry registry = LoadCatalog().CreateRegistry();
             GameObject owner = CreateConfiguredOwner(registry, out _, out _, out Component resourcesComponent);
@@ -166,7 +166,11 @@ namespace UnityIsekaiGame.Tests
             {
                 CharacterResourceCollection resources = (CharacterResourceCollection)resourcesComponent;
                 PlayerStamina stamina = owner.AddComponent<PlayerStamina>();
+                int projectedStaminaEvents = 0;
                 int staminaResourceEvents = 0;
+                int committedStaminaEvents = 0;
+                stamina.StaminaChanged += (_, _) => projectedStaminaEvents++;
+                stamina.CommittedStaminaChanged += (_, _) => committedStaminaEvents++;
                 resources.ResourceChanged += (_, result) =>
                 {
                     if (string.Equals(result.Request.ResourceId, ResourceStamina, StringComparison.Ordinal))
@@ -181,13 +185,79 @@ namespace UnityIsekaiGame.Tests
                     Assert.That(stamina.EvaluateSprint(true, true, false, 0.016f), Is.True);
                 }
 
+                Assert.That(projectedStaminaEvents, Is.GreaterThan(0), "Continuous sprint should publish projected stamina changes for responsive HUD updates.");
+                Assert.That(projectedStaminaEvents, Is.LessThan(10), "Projected stamina notifications should be coalesced instead of emitted once per movement frame.");
                 Assert.That(staminaResourceEvents, Is.EqualTo(0), "Continuous sprint should reserve stamina locally instead of mutating the resource runtime while the key is held.");
+                Assert.That(committedStaminaEvents, Is.EqualTo(0), "Projected sprint stamina must not dirty persistence before the reserved spend commits.");
                 Assert.That(stamina.CurrentStamina, Is.EqualTo(maximum - 3.2f).Within(0.001f), "Pending sprint spend must still be visible to gameplay before the batch commits.");
 
                 stamina.FlushPendingSprintResourceSpend();
 
                 Assert.That(staminaResourceEvents, Is.EqualTo(1));
+                Assert.That(committedStaminaEvents, Is.EqualTo(1));
                 Assert.That(GetCurrent(resources, ResourceStamina), Is.EqualTo(maximum - 3.2f).Within(0.001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
+        public void PlayerStaminaOwnsStaminaProjectionWhenResourceRuntimeIsPresent()
+        {
+            DefinitionRegistry registry = LoadCatalog().CreateRegistry();
+            GameObject owner = CreateConfiguredOwner(registry, out _, out _, out Component resourcesComponent);
+            try
+            {
+                CharacterResourceCollection resources = (CharacterResourceCollection)resourcesComponent;
+                float maximum = GetMaximum(resources, ResourceStamina);
+                object spend = Invoke(resources, "TrySpend", ResourceStamina, 20f, "test", "Spend", string.Empty, false);
+                Assert.That(GetProperty<bool>(spend, "Succeeded"), Is.True, GetProperty<string>(spend, "Message"));
+
+                PlayerStamina stamina = owner.AddComponent<PlayerStamina>();
+                Assert.That(stamina.CurrentStamina, Is.EqualTo(maximum - 20f).Within(0.001f));
+                Assert.That(resources.IsAutomaticResourceTickSuppressed(ResourceStamina), Is.True);
+
+                Invoke(resources, "TickResources", 10f, 100f);
+
+                Assert.That(GetCurrent(resources, ResourceStamina), Is.EqualTo(maximum - 20f).Within(0.001f), "PlayerStamina projection owns stamina regeneration; the shared resource ticker must not mutate stamina underneath it.");
+                Assert.That(stamina.CurrentStamina, Is.EqualTo(maximum - 20f).Within(0.001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
+        public void LocalPlayerStaminaProjectsContinuousSprintSpendsWithoutCommitting()
+        {
+            GameObject owner = new GameObject("local-stamina-sprint-test");
+            try
+            {
+                PlayerStamina stamina = owner.AddComponent<PlayerStamina>();
+                stamina.RestoreToMaximum();
+                int staminaEvents = 0;
+                int committedStaminaEvents = 0;
+                stamina.StaminaChanged += (_, _) => staminaEvents++;
+                stamina.CommittedStaminaChanged += (_, _) => committedStaminaEvents++;
+
+                float maximum = stamina.MaximumStamina;
+                for (int i = 0; i < 10; i++)
+                {
+                    Assert.That(stamina.EvaluateSprint(true, true, false, 0.016f), Is.True);
+                }
+
+                Assert.That(staminaEvents, Is.GreaterThan(0), "Continuous sprint should publish projected stamina changes for responsive HUD updates.");
+                Assert.That(staminaEvents, Is.LessThan(10), "Projected stamina notifications should be coalesced instead of emitted once per movement frame.");
+                Assert.That(committedStaminaEvents, Is.EqualTo(0), "Projected sprint stamina must not dirty persistence before the reserved spend commits.");
+                Assert.That(stamina.CurrentStamina, Is.EqualTo(maximum - 3.2f).Within(0.001f), "Pending sprint spend must still be visible to gameplay before the batch commits.");
+
+                stamina.FlushPendingSprintResourceSpend();
+
+                Assert.That(committedStaminaEvents, Is.EqualTo(1));
+                Assert.That(stamina.CurrentStamina, Is.EqualTo(maximum - 3.2f).Within(0.001f));
             }
             finally
             {

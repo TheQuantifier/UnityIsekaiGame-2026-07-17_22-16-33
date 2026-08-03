@@ -118,12 +118,12 @@ namespace UnityIsekaiGame.UI.Inventory
         {
             if (inventory != null)
             {
-                inventory.InventoryChanged += Refresh;
+                inventory.InventoryChanged += RefreshIfOpen;
             }
 
             if (equipment != null)
             {
-                equipment.EquipmentChanged += Refresh;
+                equipment.EquipmentChanged += RefreshIfOpen;
             }
 
             if (spellLoadout != null)
@@ -134,12 +134,12 @@ namespace UnityIsekaiGame.UI.Inventory
 
             if (contractJournal != null)
             {
-                contractJournal.JournalChanged += Refresh;
+                contractJournal.JournalChanged += RefreshIfOpen;
             }
 
             if (questLog != null)
             {
-                questLog.QuestLogChanged += Refresh;
+                questLog.QuestLogChanged += RefreshIfOpen;
             }
 
             SubscribeCharacterSources();
@@ -189,12 +189,12 @@ namespace UnityIsekaiGame.UI.Inventory
         {
             if (inventory != null)
             {
-                inventory.InventoryChanged -= Refresh;
+                inventory.InventoryChanged -= RefreshIfOpen;
             }
 
             if (equipment != null)
             {
-                equipment.EquipmentChanged -= Refresh;
+                equipment.EquipmentChanged -= RefreshIfOpen;
             }
 
             if (spellLoadout != null)
@@ -205,12 +205,12 @@ namespace UnityIsekaiGame.UI.Inventory
 
             if (contractJournal != null)
             {
-                contractJournal.JournalChanged -= Refresh;
+                contractJournal.JournalChanged -= RefreshIfOpen;
             }
 
             if (questLog != null)
             {
-                questLog.QuestLogChanged -= Refresh;
+                questLog.QuestLogChanged -= RefreshIfOpen;
             }
 
             UnsubscribeCharacterSources();
@@ -378,6 +378,14 @@ namespace UnityIsekaiGame.UI.Inventory
             finally
             {
                 refreshing = false;
+            }
+        }
+
+        private void RefreshIfOpen()
+        {
+            if (isOpen)
+            {
+                Refresh();
             }
         }
 
@@ -617,12 +625,12 @@ namespace UnityIsekaiGame.UI.Inventory
 
         private void OnSpellSlotChanged(SpellLoadoutSlotChangedEventArgs args)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnActiveSpellSlotChanged(int slotIndex, SpellDefinition spell)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void SelectContract(int contractIndex)
@@ -959,62 +967,62 @@ namespace UnityIsekaiGame.UI.Inventory
 
         private void OnHealthChanged(int current, int maximum)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnStaminaChanged(float current, float maximum)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnManaChanged(float current, float maximum)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnStatusChanged(RuntimeStatusEffect status)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnIdentityProgressionChanged(PlayerIdentityProgression progression, bool restoring)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnSkillsChanged(CharacterSkillCollection collection, bool restoring)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnSkillHiddenProgressChanged(CharacterSkillCollection collection, SkillLearningProgressRecord progress, bool restoring)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnTraitsChanged(CharacterTraitCollection collection, TraitOperationResult result, bool restoring)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnTraitRecordChanged(CharacterTraitCollection collection, RuntimeTraitRecord record, bool restoring)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnCharacterRevisionChanged(CharacterSystemCoordinator coordinator, long revision, bool restoring, string reason)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnCharacterReady(CharacterSystemCoordinator coordinator, bool restoring)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void OnCharacterDisposed(CharacterSystemCoordinator coordinator, bool restoring)
         {
-            Refresh();
+            RefreshIfOpen();
         }
 
         private void InitializeSaveLoad()

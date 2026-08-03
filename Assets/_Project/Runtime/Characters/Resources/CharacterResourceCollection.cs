@@ -17,6 +17,7 @@ namespace UnityIsekaiGame.ResourceSystem
         private readonly Dictionary<string, ResourceDefinition> definitionsById = new Dictionary<string, ResourceDefinition>(StringComparer.Ordinal);
         private readonly Dictionary<string, RuntimeResourceRecord> recordsById = new Dictionary<string, RuntimeResourceRecord>(StringComparer.Ordinal);
         private readonly HashSet<string> processedEventIds = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> suppressedAutomaticTickResourceIds = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, float> nextRegenerationTick = new Dictionary<string, float>(StringComparer.Ordinal);
         private readonly Dictionary<string, float> nextDegenerationTick = new Dictionary<string, float>(StringComparer.Ordinal);
         private string ownerId = string.Empty;
@@ -112,6 +113,28 @@ namespace UnityIsekaiGame.ResourceSystem
         {
             EnsureConfiguredFromFallback();
             return recordsById.ContainsKey(resourceId);
+        }
+
+        public void SetAutomaticResourceTickSuppressed(string resourceId, bool suppressed)
+        {
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                return;
+            }
+
+            if (suppressed)
+            {
+                suppressedAutomaticTickResourceIds.Add(resourceId);
+            }
+            else
+            {
+                suppressedAutomaticTickResourceIds.Remove(resourceId);
+            }
+        }
+
+        public bool IsAutomaticResourceTickSuppressed(string resourceId)
+        {
+            return !string.IsNullOrWhiteSpace(resourceId) && suppressedAutomaticTickResourceIds.Contains(resourceId);
         }
 
         public bool TryGetResource(string resourceId, out ResourceSnapshot snapshot)
@@ -570,6 +593,11 @@ namespace UnityIsekaiGame.ResourceSystem
 
             foreach (ResourceDefinition definition in definitionsById.Values.ToList())
             {
+                if (IsAutomaticResourceTickSuppressed(definition.Id))
+                {
+                    continue;
+                }
+
                 if (!recordsById.TryGetValue(definition.Id, out RuntimeResourceRecord record))
                 {
                     continue;

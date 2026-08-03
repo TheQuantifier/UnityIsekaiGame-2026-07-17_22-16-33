@@ -15,15 +15,27 @@ namespace UnityIsekaiGame.Persistence
 
         public void MarkDirty(string reason)
         {
+            string normalizedReason = string.IsNullOrWhiteSpace(reason) ? "State changed." : reason;
+            if (isDirty && string.Equals(lastReason, normalizedReason, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             isDirty = true;
-            lastReason = string.IsNullOrWhiteSpace(reason) ? "State changed." : reason;
+            lastReason = normalizedReason;
             DirtyStateChanged?.Invoke(true, lastReason);
         }
 
         public void MarkClean(string reason)
         {
+            string normalizedReason = string.IsNullOrWhiteSpace(reason) ? "State saved." : reason;
+            if (!isDirty && string.Equals(lastReason, normalizedReason, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             isDirty = false;
-            lastReason = string.IsNullOrWhiteSpace(reason) ? "State saved." : reason;
+            lastReason = normalizedReason;
             DirtyStateChanged?.Invoke(false, lastReason);
         }
 

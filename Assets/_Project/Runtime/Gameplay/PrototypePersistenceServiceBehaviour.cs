@@ -4314,7 +4314,7 @@ namespace UnityIsekaiGame.Gameplay
 
             if (playerStamina != null)
             {
-                playerStamina.StaminaChanged += OnResourceChanged;
+                playerStamina.CommittedStaminaChanged += OnResourceChanged;
             }
 
             if (playerResources != null)
@@ -4442,7 +4442,7 @@ namespace UnityIsekaiGame.Gameplay
 
             if (playerStamina != null)
             {
-                playerStamina.StaminaChanged -= OnResourceChanged;
+                playerStamina.CommittedStaminaChanged -= OnResourceChanged;
             }
 
             if (playerResources != null)

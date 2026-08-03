@@ -11,6 +11,8 @@ namespace UnityIsekaiGame.UI
         [SerializeField] private PlayerMana mana;
         [SerializeField] private Text label;
 
+        private string lastRenderedText = string.Empty;
+
         private void Awake()
         {
             if (label == null)
@@ -81,14 +83,23 @@ namespace UnityIsekaiGame.UI
 
         private void SetText()
         {
-            if (label != null)
+            if (label == null)
             {
-                string healthText = health == null ? "Health: -- / --" : $"Health: {health.CurrentHealth} / {health.MaximumHealth}";
-                string staminaText = stamina == null ? "Stamina: -- / --" : $"Stamina: {stamina.CurrentStamina:0} / {stamina.MaximumStamina:0}";
-                string manaText = mana == null ? "Mana: -- / --" : $"Mana: {mana.CurrentMana:0} / {mana.MaximumMana:0}";
-                string defeatedText = health != null && health.IsDefeated ? "\nDefeated - Press R to reset" : string.Empty;
-                label.text = $"{healthText}\n{staminaText}\n{manaText}{defeatedText}";
+                return;
             }
+
+            string healthText = health == null ? "Health: -- / --" : $"Health: {health.CurrentHealth} / {health.MaximumHealth}";
+            string staminaText = stamina == null ? "Stamina: -- / --" : $"Stamina: {stamina.CurrentStamina:0} / {stamina.MaximumStamina:0}";
+            string manaText = mana == null ? "Mana: -- / --" : $"Mana: {mana.CurrentMana:0} / {mana.MaximumMana:0}";
+            string defeatedText = health != null && health.IsDefeated ? "\nDefeated - Press R to reset" : string.Empty;
+            string text = $"{healthText}\n{staminaText}\n{manaText}{defeatedText}";
+            if (string.Equals(text, lastRenderedText, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            lastRenderedText = text;
+            label.text = text;
         }
     }
 }

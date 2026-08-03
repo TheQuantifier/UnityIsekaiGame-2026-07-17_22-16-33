@@ -17,6 +17,7 @@ namespace UnityIsekaiGame.Tests
         private const string PrototypeVegetationPrefabRoot = "Assets/_Project/Prototype/Environment/Vegetation/Prefabs";
         private const string PrototypeMedievalHousePrefabPath = "Assets/_Project/Prototype/Environment/Buildings/MedievalHouseLite/Prefabs/medieval_house_lite_v2.prefab";
         private const string PrototypeMovementSettingsPath = "Assets/_Project/Prototype/Content/Configuration/PrototypePlayerMovementSettings.asset";
+        private const string InputActionsPath = "Assets/_Project/Configuration/Input/InputSystem_Actions.inputactions";
 
         [Test]
         public void PrototypeSceneKeepsCleanPlayableTestingShell()
@@ -106,6 +107,18 @@ namespace UnityIsekaiGame.Tests
             Assert.That(settings.SprintSpeed, Is.EqualTo(settings.WalkSpeed * settings.SprintSpeedMultiplier).Within(0.001f));
             Assert.That(settings.Acceleration, Is.GreaterThan(0f));
             Assert.That(settings.Deceleration, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void PrototypeInputBindsSprintOnlyToLeftShift()
+        {
+            string inputActions = File.ReadAllText(InputActionsPath);
+
+            Assert.That(Regex.Matches(inputActions, "\"action\": \"Sprint\"").Count, Is.EqualTo(1));
+            Assert.That(inputActions, Does.Contain("\"path\": \"<Keyboard>/leftShift\""));
+            Assert.That(HasSprintBinding(inputActions, "<Keyboard>/rightShift"), Is.False);
+            Assert.That(HasSprintBinding(inputActions, "<Gamepad>/leftStickPress"), Is.False);
+            Assert.That(HasSprintBinding(inputActions, "<XRController>/trigger"), Is.False);
         }
 
         [Test]
@@ -288,6 +301,15 @@ namespace UnityIsekaiGame.Tests
         {
             return assetPath.StartsWith(PrototypeTerrainRoot + "/Layers/", System.StringComparison.Ordinal) ||
                 assetPath.StartsWith("Assets/ThirdParty/", System.StringComparison.Ordinal);
+        }
+
+        private static bool HasSprintBinding(string inputActions, string bindingPath)
+        {
+            string escapedPath = Regex.Escape($"\"path\": \"{bindingPath}\"");
+            return Regex.IsMatch(
+                inputActions,
+                "\\{[^{}]*" + escapedPath + "[^{}]*\"action\": \"Sprint\"[^{}]*\\}",
+                RegexOptions.Singleline);
         }
 
         private static void AssertSceneContains(string scene, string expectedName)

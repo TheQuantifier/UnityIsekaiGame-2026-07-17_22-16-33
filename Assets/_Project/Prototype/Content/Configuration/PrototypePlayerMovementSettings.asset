@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c20f7d3691f147bcb5a598b6ea7c1c92, type: 3}
   m_Name: PrototypePlayerMovementSettings
   m_EditorClassIdentifier: 
-  walkSpeed: 5
-  sprintSpeedMultiplier: 1.6
-  sprintSpeed: 8
+  walkSpeed: 3
+  sprintSpeedMultiplier: 1.6666667
+  sprintSpeed: 5
   acceleration: 30
   deceleration: 36
   jumpHeight: 1.25
