@@ -5362,6 +5362,171 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 513399316}
   m_CullTransparentMesh: 1
+--- !u!1001 &518715559
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 3001000221}
+    m_Modifications:
+    - target: {fileID: 688889819296936332, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_Name
+      value: Prototype Zombie Dungeon Patrol
+      objectReference: {fileID: 0}
+    - target: {fileID: 1770719128905788145, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_Height
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 1770719128905788145, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_Radius
+      value: 0.4
+      objectReference: {fileID: 0}
+    - target: {fileID: 1770719128905788145, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_Center.y
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 2163681123550400602, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: target
+      value: 
+      objectReference: {fileID: 100001}
+    - target: {fileID: 2163681123550400602, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: detectionRadius
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -61.33443
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 8.155
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -91.00609
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3230016897354926214, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: localAuthoredId
+      value: enemy.prototype-zombie.dungeon-patrol
+      objectReference: {fileID: 0}
+    - target: {fileID: 4738959212478438501, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 4738959212478438501, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 4738959212478438501, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 4738959212478438501, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      propertyPath: m_ConstrainProportionsScale
+      value: 1
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 688889819296936332, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 518715565}
+  m_SourcePrefab: {fileID: 100100000, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+--- !u!4 &518715560 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2384314627396990832, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+  m_PrefabInstance: {fileID: 518715559}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &518715561 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 688889819296936332, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+  m_PrefabInstance: {fileID: 518715559}
+  m_PrefabAsset: {fileID: 0}
+--- !u!143 &518715562 stripped
+CharacterController:
+  m_CorrespondingSourceObject: {fileID: 1770719128905788145, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+  m_PrefabInstance: {fileID: 518715559}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &518715563 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 2163681123550400602, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+  m_PrefabInstance: {fileID: 518715559}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 518715561}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c27c243ff3f4971b4379a7b9c790129, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityIsekaiGame.Gameplay::UnityIsekaiGame.Combat.PrototypeEnemyController
+--- !u!114 &518715564 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 1442911671635131326, guid: f7bb2a22483f2b843814c8d6515a7482, type: 3}
+  m_PrefabInstance: {fileID: 518715559}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 518715561}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f0ddba5deeda42459b6476e43d796270, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityIsekaiGame.Gameplay::UnityIsekaiGame.Combat.EnemyHealth
+--- !u!114 &518715565
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 518715561}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2fb9dd917abeb6d49a1d8e265451d389, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityIsekaiGame.Gameplay::UnityIsekaiGame.Combat.PrototypeEnemyPatrolController
+  enemyController: {fileID: 518715563}
+  health: {fileID: 518715564}
+  characterController: {fileID: 518715562}
+  waypoints:
+  - {fileID: 528891561}
+  - {fileID: 1457572628}
+  - {fileID: 543092903}
+  - {fileID: 1479514676}
+  - {fileID: 543092903}
+  - {fileID: 1457572628}
+  moveSpeed: 1.25
+  waypointRadius: 0.35
+  waypointWaitSeconds: 0.4
+  turnSpeed: 10
+  loop: 1
+  snapToGround: 1
 --- !u!1 &520862411
 GameObject:
   m_ObjectHideFlags: 0
@@ -5526,6 +5691,37 @@ MonoBehaviour:
   playTimeTracker: {fileID: 0}
   dirtyTracker: {fileID: 0}
   autosaveCoordinator: {fileID: 0}
+--- !u!1 &528891560
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 528891561}
+  m_Layer: 0
+  m_Name: Waypoint 01
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &528891561
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 528891560}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -61.33443, y: 8, z: -91.00609}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 995938666}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &535185222
 GameObject:
   m_ObjectHideFlags: 0
@@ -5668,6 +5864,37 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnityIsekaiGame.Development.PrototypeTestPoint
   testPointId: test-point.equipment
   displayName: Equipment
+--- !u!1 &543092902
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 543092903}
+  m_Layer: 0
+  m_Name: Waypoint 03
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &543092903
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 543092902}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -57, y: 8, z: -99.97}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 995938666}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &571003106
 GameObject:
   m_ObjectHideFlags: 0
@@ -7871,7 +8098,7 @@ GameObject:
   - component: {fileID: 929592977}
   - component: {fileID: 929592976}
   - component: {fileID: 929592975}
-  - component: {fileID: 929592974}
+  - component: {fileID: 929592986}
   m_Layer: 0
   m_Name: Prototype Zombie Enemy
   m_TagString: Untagged
@@ -7895,29 +8122,6 @@ Transform:
   - {fileID: 1577020294}
   m_Father: {fileID: 3001000221}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!136 &929592974
-CapsuleCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 929592972}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Radius: 0.55
-  m_Height: 3.8
-  m_Direction: 1
-  m_Center: {x: 0, y: 1.9, z: 0}
 --- !u!114 &929592975
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7970,8 +8174,9 @@ MonoBehaviour:
   target: {fileID: 100001}
   health: {fileID: 929592978}
   meleeAttack: {fileID: 929592976}
-  detectionRadius: 30
-  moveSpeed: 1.5
+  characterController: {fileID: 929592986}
+  detectionRadius: 10
+  moveSpeed: 2
   stoppingDistance: 1.35
   turnSpeed: 12
   snapToGround: 1
@@ -8107,6 +8312,31 @@ MonoBehaviour:
   definitionId: actor.prototype-zombie
   expectedEntityType: Actor
   registerInAwake: 1
+--- !u!143 &929592986
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 929592972}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 3.8
+  m_Radius: 0.55
+  m_SlopeLimit: 45
+  m_StepOffset: 0.35
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0
+  m_Center: {x: 0, y: 1.9, z: 0}
 --- !u!1 &940175503
 GameObject:
   m_ObjectHideFlags: 0
@@ -8726,6 +8956,41 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!1 &995938665
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 995938666}
+  m_Layer: 0
+  m_Name: Prototype Zombie Dungeon Patrol Path
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &995938666
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 995938665}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 528891561}
+  - {fileID: 1457572628}
+  - {fileID: 543092903}
+  - {fileID: 1479514676}
+  m_Father: {fileID: 3001000221}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1009198065
 GameObject:
   m_ObjectHideFlags: 0
@@ -13258,6 +13523,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1446881179}
   m_CullTransparentMesh: 1
+--- !u!1 &1457572627
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1457572628}
+  m_Layer: 0
+  m_Name: Waypoint 02
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1457572628
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1457572627}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -61.72, y: 8, z: -95.52}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 995938666}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1464908706
 GameObject:
   m_ObjectHideFlags: 0
@@ -13337,6 +13633,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1464908706}
   m_CullTransparentMesh: 1
+--- !u!1 &1479514675
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1479514676}
+  m_Layer: 0
+  m_Name: Waypoint 04
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1479514676
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1479514675}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -52.36, y: 8, z: -97.71}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 995938666}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1487325337
 GameObject:
   m_ObjectHideFlags: 0
@@ -19847,6 +20174,8 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 929592973}
+  - {fileID: 995938666}
+  - {fileID: 518715560}
   m_Father: {fileID: 3001000201}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &3001000230

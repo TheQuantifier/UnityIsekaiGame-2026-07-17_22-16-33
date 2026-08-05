@@ -68,11 +68,7 @@ namespace UnityIsekaiGame.Editor
             EnemyMeleeAttack melee = enemy.AddComponent<EnemyMeleeAttack>();
             PrototypeEnemyAnimationDriver animationDriver = enemy.AddComponent<PrototypeEnemyAnimationDriver>();
 
-            CapsuleCollider collider = enemy.AddComponent<CapsuleCollider>();
-            collider.radius = 0.55f;
-            collider.height = 3.8f;
-            collider.center = new Vector3(0f, 1.9f, 0f);
-            collider.isTrigger = false;
+            ConfigureCharacterController(enemy);
 
             ConfigureEnemyHealth(health, stats, resources);
             ConfigureController(controller, player == null ? null : player.transform, health, melee);
@@ -116,11 +112,36 @@ namespace UnityIsekaiGame.Editor
             serialized.FindProperty("target").objectReferenceValue = target;
             serialized.FindProperty("health").objectReferenceValue = health;
             serialized.FindProperty("meleeAttack").objectReferenceValue = melee;
+            serialized.FindProperty("characterController").objectReferenceValue = controller.GetComponent<CharacterController>();
             serialized.FindProperty("detectionRadius").floatValue = 10f;
             serialized.FindProperty("moveSpeed").floatValue = 2f;
             serialized.FindProperty("stoppingDistance").floatValue = 1.35f;
             serialized.FindProperty("turnSpeed").floatValue = 12f;
             serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static CharacterController ConfigureCharacterController(GameObject enemy)
+        {
+            foreach (CapsuleCollider capsule in enemy.GetComponents<CapsuleCollider>())
+            {
+                Object.DestroyImmediate(capsule);
+            }
+
+            CharacterController controller = enemy.GetComponent<CharacterController>();
+            if (controller == null)
+            {
+                controller = enemy.AddComponent<CharacterController>();
+            }
+
+            controller.radius = 0.55f;
+            controller.height = 3.8f;
+            controller.center = new Vector3(0f, 1.9f, 0f);
+            controller.slopeLimit = 45f;
+            controller.stepOffset = 0.35f;
+            controller.skinWidth = 0.08f;
+            controller.minMoveDistance = 0f;
+            EditorUtility.SetDirty(controller);
+            return controller;
         }
 
         private static void ConfigureMelee(EnemyMeleeAttack melee, EnemyHealth health)

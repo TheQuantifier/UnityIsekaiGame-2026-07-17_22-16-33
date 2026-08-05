@@ -9,6 +9,7 @@ namespace UnityIsekaiGame.Combat
         [SerializeField] private Transform target;
         [SerializeField] private EnemyHealth health;
         [SerializeField] private EnemyMeleeAttack meleeAttack;
+        [SerializeField] private CharacterController characterController;
         [SerializeField, Min(0.1f)] private float detectionRadius = 7f;
         [SerializeField, Min(0f)] private float moveSpeed = 2f;
         [SerializeField, Min(0.1f)] private float stoppingDistance = 1.35f;
@@ -25,6 +26,11 @@ namespace UnityIsekaiGame.Combat
             if (meleeAttack == null)
             {
                 meleeAttack = GetComponent<EnemyMeleeAttack>();
+            }
+
+            if (characterController == null)
+            {
+                characterController = GetComponent<CharacterController>();
             }
         }
 
@@ -78,7 +84,7 @@ namespace UnityIsekaiGame.Combat
 
             Vector3 direction = toTarget.normalized;
             float step = Mathf.Min(moveSpeed * Time.deltaTime, distance - stoppingDistance);
-            transform.position += direction * step;
+            Move(direction * step);
             SnapToGround();
         }
 
@@ -114,6 +120,34 @@ namespace UnityIsekaiGame.Combat
             transform.rotation = turnSpeed <= 0f
                 ? targetRotation
                 : Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
+        }
+
+        private void Move(Vector3 delta)
+        {
+            if (delta.sqrMagnitude <= 0f)
+            {
+                return;
+            }
+
+            if (characterController != null && characterController.enabled && characterController.gameObject.activeInHierarchy)
+            {
+                characterController.Move(delta);
+                return;
+            }
+
+            transform.position += delta;
+        }
+
+        public bool IsTargetWithinDetectionRadius()
+        {
+            if (target == null || health != null && health.IsDefeated)
+            {
+                return false;
+            }
+
+            Vector3 toTarget = target.position - transform.position;
+            toTarget.y = 0f;
+            return toTarget.sqrMagnitude <= detectionRadius * detectionRadius;
         }
     }
 }
