@@ -97,6 +97,41 @@ namespace UnityIsekaiGame.WorldLocations
             Seed(runtime, "location.prototype.basement-prison", DetentionAreaDefinitionId, "Prototype Basement Prison", "Basement Prison", new[] { "detention", "justice", "restricted" }, governmentId: "government.prototype.civic", visibility: LocationVisibility.Restricted);
             Seed(runtime, "location.prototype.dungeon-entry", DungeonDefinitionId, "Prototype Dungeon Entry", "Dungeon Entry", new[] { "dungeon", "hazard", "interior" }, visibility: LocationVisibility.Secret, binding: "prototype.scene.dungeon-entry");
             Seed(runtime, "location.prototype.wilderness-ring", WildernessDefinitionId, "Prototype Wilderness Ring", "Wilderness Ring", new[] { "wilderness", "outdoor" });
+            SeedPrototypeLocationHierarchy(runtime);
+            SeedPrototypeSpatialRelationships(runtime);
+        }
+
+        public static void SeedPrototypeLocationHierarchy(LocationRuntime runtime)
+        {
+            if (runtime == null)
+            {
+                return;
+            }
+
+            Link(runtime, "location.prototype.world", "location.prototype.region", "world-region");
+            Link(runtime, "location.prototype.region", "location.prototype.village", "region-village");
+            Link(runtime, "location.prototype.region", "location.prototype.wilderness-ring", "region-wilderness");
+            Link(runtime, "location.prototype.village", "location.prototype.market-district", "village-market");
+            Link(runtime, "location.prototype.village", "location.prototype.adventurers-guild", "village-guild");
+            Link(runtime, "location.prototype.village", "location.prototype.civic-office", "village-civic");
+            Link(runtime, "location.prototype.market-district", "location.prototype.merchant-counter", "market-counter", LocationContainmentKind.Site);
+            Link(runtime, "location.prototype.adventurers-guild", "location.prototype.guildmaster-office", "guild-office", LocationContainmentKind.Interior);
+            Link(runtime, "location.prototype.adventurers-guild", "location.prototype.basement-prison", "guild-prison", LocationContainmentKind.Interior);
+            Link(runtime, "location.prototype.civic-office", "location.prototype.mayor-office", "civic-mayor", LocationContainmentKind.Interior);
+            Link(runtime, "location.prototype.wilderness-ring", "location.prototype.dungeon-entry", "wilderness-dungeon", LocationContainmentKind.Dungeon, LocationVisibility.Secret);
+        }
+
+        public static void SeedPrototypeSpatialRelationships(LocationRuntime runtime)
+        {
+            if (runtime == null)
+            {
+                return;
+            }
+
+            Relate(runtime, "location.prototype.market-district", "location.prototype.adventurers-guild", "market-near-guild", LocationSpatialRelationshipKind.Near, LocationSpatialDirectionality.Symmetric);
+            Relate(runtime, "location.prototype.adventurers-guild", "location.prototype.civic-office", "guild-facing-civic", LocationSpatialRelationshipKind.Facing, LocationSpatialDirectionality.Directional);
+            Relate(runtime, "location.prototype.basement-prison", "location.prototype.guildmaster-office", "prison-below-office", LocationSpatialRelationshipKind.Below, LocationSpatialDirectionality.Directional, LocationVisibility.Restricted);
+            Relate(runtime, "location.prototype.dungeon-entry", "location.prototype.wilderness-ring", "dungeon-inside-wilderness", LocationSpatialRelationshipKind.PartOfComplex, LocationSpatialDirectionality.Directional, LocationVisibility.Secret);
         }
 
         private static void Seed(LocationRuntime runtime, string locationId, string definitionId, string officialName, string commonName, IEnumerable<string> tags, string organizationId = null, string governmentId = null, LocationVisibility visibility = LocationVisibility.Public, string binding = null)
@@ -113,6 +148,37 @@ namespace UnityIsekaiGame.WorldLocations
                 associatedGovernmentId = governmentId,
                 visibility = visibility,
                 prototypeSceneBindingKey = binding,
+                sourceEventId = "event.prototype.world-setup",
+                provenanceId = "prototype.location.seed"
+            });
+        }
+
+        private static void Link(LocationRuntime runtime, string parentId, string childId, string suffix, LocationContainmentKind kind = LocationContainmentKind.Primary, LocationVisibility visibility = LocationVisibility.Public)
+        {
+            runtime.AssignContainment(new LocationContainmentRequest
+            {
+                transactionId = $"prototype.seed.containment.{suffix}",
+                linkId = $"location-containment.prototype.{suffix}",
+                parentLocationId = parentId,
+                childLocationId = childId,
+                kind = kind,
+                visibility = visibility,
+                sourceEventId = "event.prototype.world-setup",
+                provenanceId = "prototype.location.seed"
+            });
+        }
+
+        private static void Relate(LocationRuntime runtime, string sourceId, string targetId, string suffix, LocationSpatialRelationshipKind kind, LocationSpatialDirectionality directionality, LocationVisibility visibility = LocationVisibility.Public)
+        {
+            runtime.CreateSpatialRelationship(new LocationSpatialRelationshipRequest
+            {
+                transactionId = $"prototype.seed.spatial.{suffix}",
+                relationshipId = $"location-spatial.prototype.{suffix}",
+                sourceLocationId = sourceId,
+                targetLocationId = targetId,
+                kind = kind,
+                directionality = directionality,
+                visibility = visibility,
                 sourceEventId = "event.prototype.world-setup",
                 provenanceId = "prototype.location.seed"
             });

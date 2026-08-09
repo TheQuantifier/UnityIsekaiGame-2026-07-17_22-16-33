@@ -39,6 +39,31 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("60.11-persistence-validation", "Persistence rejects corrupt graphs before commit", 110, Step("step14-location-persistence", "Save, restore, and reject invalid payload", PersistenceValidation)),
                     Scenario("60.12-fixture-snapshot", "Fixture snapshots restore location mutations", 120, Step("step14-location-fixture", "Snapshot and restore location state", FixtureSnapshot))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.2.location-hierarchy-containment-spatial-relationships",
+                "Location Hierarchy, Containment, and Spatial Relationships",
+                "14.2",
+                "Runtime-authoritative location containment, spatial relationship records, deterministic traversal, persistence validation, and scene-independent projections.",
+                14020,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "LocationRuntime", "LocationContainmentLink", "LocationSpatialRelationship" },
+                scenarios: new[]
+                {
+                    Scenario("72.1-readiness-and-seeded-graph", "Seeded prototype containment graph is authoritative and valid", 10, Step("step14-location-hierarchy-readiness", "Resolve seeded hierarchy and validation", HierarchyReadiness)),
+                    Scenario("72.2-parent-child-traversal", "Parent, child, ancestor, and descendant queries are deterministic", 20, Step("step14-location-hierarchy-traversal", "Query containment traversal", ParentChildTraversal)),
+                    Scenario("72.3-cycle-prevention", "Containment cycles reject without mutation", 30, Step("step14-location-hierarchy-cycle", "Reject containment cycle", CyclePrevention)),
+                    Scenario("72.4-active-parent-constraint", "Ordinary locations have only one active primary parent", 40, Step("step14-location-hierarchy-active-parent", "Reject second active parent", ActiveParentConstraint)),
+                    Scenario("72.5-reparent-history", "Reparenting ends the previous link and preserves history", 50, Step("step14-location-hierarchy-reparent", "Atomic reparent and historical link", ReparentHistory)),
+                    Scenario("72.6-spatial-directionality", "Spatial relationships resolve directional, inverse, and symmetric semantics", 60, Step("step14-location-spatial-directionality", "Evaluate spatial directionality", SpatialDirectionality)),
+                    Scenario("72.7-spatial-no-routing", "Spatial relationships do not imply travel or occupancy state", 70, Step("step14-location-spatial-boundary", "Verify spatial boundary is descriptive only", SpatialNoRouting)),
+                    Scenario("72.8-preview-idempotence", "Preview and duplicate hierarchy/spatial transactions do not mutate twice", 80, Step("step14-location-hierarchy-preview", "Preview and duplicate graph operations", HierarchyPreviewIdempotence)),
+                    Scenario("72.9-persistence-round-trip", "Containment and spatial relationships persist deterministically", 90, Step("step14-location-hierarchy-persistence", "Save and restore graph records", HierarchyPersistence)),
+                    Scenario("72.10-corrupt-restore-rejection", "Corrupt containment payloads reject before commit", 100, Step("step14-location-hierarchy-corrupt", "Reject corrupt graph restore", CorruptHierarchyRejection)),
+                    Scenario("72.11-visibility-projections", "Hidden hierarchy links can be omitted from normal projections", 110, Step("step14-location-hierarchy-visibility", "Evaluate visibility-safe graph queries", VisibilityProjections)),
+                    Scenario("72.12-fixture-snapshot", "Fixture snapshots restore location graph mutations", 120, Step("step14-location-hierarchy-fixture", "Snapshot and restore containment/spatial state", HierarchyFixtureSnapshot))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -208,6 +233,214 @@ namespace UnityIsekaiGame.Development.Automation
             bool missing = !runtime.TryGetSnapshot(Id(context, "fixture"), out _);
             bool valid = restored && missing && runtime.Count == before;
             return TestLabAssertions.True("step14-location-fixture", "Fixture snapshot restore removes undeclared location mutations", valid, $"Restored={restored} Missing={missing} Count={runtime.Count}/{before} Failure={failure}");
+        }
+
+        private static TestLabAutomationStepResult HierarchyReadiness(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationValidationReport report = runtime.ValidateRuntime();
+            LocationContainmentSnapshot villageParent = runtime.GetActiveParentLink("location.prototype.village");
+            bool spatial = runtime.AreSpatiallyRelated("location.prototype.market-district", "location.prototype.adventurers-guild", LocationSpatialRelationshipKind.Near);
+            bool valid = report.Succeeded
+                && villageParent != null
+                && villageParent.ParentLocationId == "location.prototype.region"
+                && runtime.GetRoots().Any(root => root.LocationId == "location.prototype.world")
+                && runtime.ContainmentLinkCount >= 10
+                && runtime.SpatialRelationshipCount >= 4
+                && spatial;
+            return TestLabAssertions.True("step14-location-hierarchy-readiness", "Seeded location graph is valid and queryable", valid, $"Validation={report.Summary} Links={runtime.ContainmentLinkCount} Spatial={runtime.SpatialRelationshipCount} VillageParent={villageParent?.ParentLocationId}");
+        }
+
+        private static TestLabAutomationStepResult ParentChildTraversal(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            IReadOnlyList<LocationSnapshot> path = runtime.GetHierarchyPath("location.prototype.guildmaster-office").Path;
+            IReadOnlyList<LocationSnapshot> children = runtime.GetChildren("location.prototype.village");
+            IReadOnlyList<LocationSnapshot> descendants = runtime.GetDescendants("location.prototype.village");
+            bool deterministic = descendants.Select(item => item.LocationId).SequenceEqual(descendants.Select(item => item.LocationId).OrderBy(id => id, StringComparer.Ordinal));
+            bool valid = path.Select(item => item.LocationId).SequenceEqual(new[] { "location.prototype.world", "location.prototype.region", "location.prototype.village", "location.prototype.adventurers-guild", "location.prototype.guildmaster-office" })
+                && children.Any(item => item.LocationId == "location.prototype.adventurers-guild")
+                && descendants.Any(item => item.LocationId == "location.prototype.basement-prison")
+                && deterministic;
+            return TestLabAssertions.True("step14-location-hierarchy-traversal", "Hierarchy traversal returns deterministic paths and descendants", valid, $"Path={string.Join("/", path.Select(item => item.LocationId))} Children={children.Count} Descendants={descendants.Count}");
+        }
+
+        private static TestLabAutomationStepResult CyclePrevention(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationOperationResult parent = Create(context, "cycle-parent", PrototypeLocationDefinitionFactory.RoomDefinitionId, "Cycle Parent Room", tags: new[] { "room", "interior" });
+            LocationOperationResult child = Create(context, "cycle-child", PrototypeLocationDefinitionFactory.RoomDefinitionId, "Cycle Child Room", tags: new[] { "room", "interior" });
+            LocationOperationResult initial = runtime.AssignContainment(new LocationContainmentRequest
+            {
+                transactionId = Tx(context, "cycle-initial"),
+                linkId = context.ScenarioContext.ScopedId("location-containment.test", "cycle-initial"),
+                parentLocationId = parent.Snapshot?.LocationId,
+                childLocationId = child.Snapshot?.LocationId,
+                kind = LocationContainmentKind.Interior,
+                effectiveWorldTime = 70d
+            });
+            long before = runtime.Revision;
+            LocationOperationResult cycle = runtime.AssignContainment(new LocationContainmentRequest
+            {
+                transactionId = Tx(context, "cycle"),
+                linkId = context.ScenarioContext.ScopedId("location-containment.test", "cycle"),
+                parentLocationId = child.Snapshot?.LocationId,
+                childLocationId = parent.Snapshot?.LocationId,
+                kind = LocationContainmentKind.Interior,
+                effectiveWorldTime = 71d
+            });
+            bool valid = parent.Succeeded && child.Succeeded && initial.Succeeded && cycle.Status == LocationOperationStatus.CycleDetected && runtime.Revision == before && runtime.GetActiveParentLink(parent.Snapshot.LocationId) == null;
+            return TestLabAssertions.True("step14-location-hierarchy-cycle", "Cycle creation rejects without mutation", valid, $"Parent={parent.Status} Child={child.Status} Initial={initial.Status} Cycle={cycle.Status} Revision={before}->{runtime.Revision} Message={cycle.Message}");
+        }
+
+        private static TestLabAutomationStepResult ActiveParentConstraint(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationOperationResult second = runtime.AssignContainment(new LocationContainmentRequest
+            {
+                transactionId = Tx(context, "active-parent"),
+                linkId = context.ScenarioContext.ScopedId("location-containment.test", "second-parent"),
+                parentLocationId = "location.prototype.market-district",
+                childLocationId = "location.prototype.adventurers-guild",
+                effectiveWorldTime = 75d
+            });
+            bool valid = second.Status == LocationOperationStatus.ActiveParentConflict && runtime.GetActiveParentLink("location.prototype.adventurers-guild").ParentLocationId == "location.prototype.village";
+            return TestLabAssertions.True("step14-location-hierarchy-active-parent", "Second active primary parent rejects", valid, $"Status={second.Status} Parent={runtime.GetActiveParentLink("location.prototype.adventurers-guild")?.ParentLocationId}");
+        }
+
+        private static TestLabAutomationStepResult ReparentHistory(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationOperationResult room = Create(context, "reparent-room", PrototypeLocationDefinitionFactory.RoomDefinitionId, "Reparent Room", tags: new[] { "room", "interior" });
+            LocationOperationResult initial = runtime.AssignContainment(new LocationContainmentRequest
+            {
+                transactionId = Tx(context, "reparent-initial"),
+                linkId = context.ScenarioContext.ScopedId("location-containment.test", "reparent-initial"),
+                parentLocationId = "location.prototype.adventurers-guild",
+                childLocationId = room.Snapshot?.LocationId,
+                kind = LocationContainmentKind.Interior,
+                effectiveWorldTime = 80d
+            });
+            LocationOperationResult reparent = runtime.ReparentLocation(new LocationReparentRequest
+            {
+                transactionId = Tx(context, "reparent-new"),
+                oldParentLocationId = "location.prototype.adventurers-guild",
+                newParentLocationId = "location.prototype.civic-office",
+                childLocationId = room.Snapshot?.LocationId,
+                newLinkId = context.ScenarioContext.ScopedId("location-containment.test", "reparent-new"),
+                kind = LocationContainmentKind.Interior,
+                effectiveWorldTime = 90d
+            });
+            bool oldEnded = runtime.ContainmentLinks.Any(link => link.ChildLocationId == room.Snapshot.LocationId && link.ParentLocationId == "location.prototype.adventurers-guild" && link.State == LocationLinkState.Ended);
+            bool valid = room.Succeeded && initial.Succeeded && reparent.Succeeded && oldEnded && runtime.GetActiveParentLink(room.Snapshot.LocationId).ParentLocationId == "location.prototype.civic-office";
+            return TestLabAssertions.True("step14-location-hierarchy-reparent", "Reparenting preserves ended link history and active parent", valid, $"Room={room.Status} Initial={initial.Status} Reparent={reparent.Status} OldEnded={oldEnded}");
+        }
+
+        private static TestLabAutomationStepResult SpatialDirectionality(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationOperationResult directional = runtime.CreateSpatialRelationship(new LocationSpatialRelationshipRequest
+            {
+                transactionId = Tx(context, "spatial-directional"),
+                relationshipId = context.ScenarioContext.ScopedId("location-spatial.test", "above"),
+                sourceLocationId = "location.prototype.guildmaster-office",
+                targetLocationId = "location.prototype.basement-prison",
+                kind = LocationSpatialRelationshipKind.Above,
+                directionality = LocationSpatialDirectionality.Directional
+            });
+            bool above = runtime.AreSpatiallyRelated("location.prototype.guildmaster-office", "location.prototype.basement-prison", LocationSpatialRelationshipKind.Above);
+            bool inverse = runtime.AreSpatiallyRelated("location.prototype.basement-prison", "location.prototype.guildmaster-office", LocationSpatialRelationshipKind.Below);
+            bool symmetric = runtime.AreSpatiallyRelated("location.prototype.adventurers-guild", "location.prototype.market-district", LocationSpatialRelationshipKind.Near);
+            bool valid = directional.Succeeded && above && inverse && symmetric;
+            return TestLabAssertions.True("step14-location-spatial-directionality", "Spatial relationships resolve directional inverse and symmetric semantics", valid, $"Create={directional.Status} Above={above} Inverse={inverse} Symmetric={symmetric}");
+        }
+
+        private static TestLabAutomationStepResult SpatialNoRouting(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationSpatialRelationshipSnapshot spatial = runtime.GetSpatialRelationships("location.prototype.dungeon-entry", includeIncoming: true, includeHidden: true).FirstOrDefault(item => item.Kind == LocationSpatialRelationshipKind.PartOfComplex);
+            bool noRouteFields = spatial != null && spatial.ToSaveData().GetType().GetField("routeCost") == null && spatial.ToSaveData().GetType().GetField("travelMode") == null;
+            bool valid = spatial != null && noRouteFields && runtime.TryGetSnapshot(spatial.SourceLocationId, out _) && runtime.TryGetSnapshot(spatial.TargetLocationId, out _);
+            return TestLabAssertions.True("step14-location-spatial-boundary", "Spatial relationships remain descriptive and do not carry travel semantics", valid, $"Spatial={spatial?.RelationshipId} NoRouteFields={noRouteFields}");
+        }
+
+        private static TestLabAutomationStepResult HierarchyPreviewIdempotence(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationOperationResult room = Create(context, "preview-room", PrototypeLocationDefinitionFactory.RoomDefinitionId, "Preview Link Room", tags: new[] { "room", "interior" });
+            long before = runtime.Revision;
+            LocationContainmentRequest request = new LocationContainmentRequest
+            {
+                transactionId = Tx(context, "preview-link"),
+                linkId = context.ScenarioContext.ScopedId("location-containment.test", "preview-link"),
+                parentLocationId = "location.prototype.adventurers-guild",
+                childLocationId = room.Snapshot?.LocationId,
+                kind = LocationContainmentKind.Interior,
+                effectiveWorldTime = 100d,
+                preview = true
+            };
+            LocationOperationResult preview = runtime.AssignContainment(request);
+            request.preview = false;
+            LocationOperationResult execute = runtime.AssignContainment(request);
+            LocationOperationResult duplicate = runtime.AssignContainment(request);
+            bool valid = room.Succeeded && preview.Preview && execute.Succeeded && duplicate.Duplicate && runtime.Revision == before + 1L;
+            return TestLabAssertions.True("step14-location-hierarchy-preview", "Preview and duplicate graph operations mutate exactly once", valid, $"Preview={preview.Status} Execute={execute.Status} Duplicate={duplicate.Status} Revision={before}->{runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult HierarchyPersistence(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationRuntimeSaveData save = runtime.CreateSaveData();
+            LocationRuntime restored = new LocationRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.WorldId);
+            LocationOperationResult restore = restored.RestoreFromSaveData(save, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.WorldId);
+            bool valid = restore.Succeeded
+                && restored.GetActiveParentLink("location.prototype.guildmaster-office")?.ParentLocationId == "location.prototype.adventurers-guild"
+                && restored.AreSpatiallyRelated("location.prototype.market-district", "location.prototype.adventurers-guild", LocationSpatialRelationshipKind.Near)
+                && restored.CreateSaveData().containmentLinks.Select(link => link.linkId).SequenceEqual(save.containmentLinks.Select(link => link.linkId));
+            return TestLabAssertions.True("step14-location-hierarchy-persistence", "Save and restore preserve graph records deterministically", valid, $"Restore={restore.Status} Links={restored.ContainmentLinkCount}/{runtime.ContainmentLinkCount} Spatial={restored.SpatialRelationshipCount}/{runtime.SpatialRelationshipCount}");
+        }
+
+        private static TestLabAutomationStepResult CorruptHierarchyRejection(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            LocationRuntimeSaveData corrupt = runtime.CreateSaveData();
+            corrupt.containmentLinks[0].parentLocationId = "location.prototype.missing";
+            LocationRuntimeSaveData before = runtime.CreateSaveData();
+            LocationOperationResult rejected = runtime.RestoreFromSaveData(corrupt, context.ScenarioContext.Runtimes.DefinitionRegistry, context.ScenarioContext.Runtimes.WorldId);
+            bool unchanged = runtime.CreateSaveData().containmentLinks.Select(link => link.parentLocationId).SequenceEqual(before.containmentLinks.Select(link => link.parentLocationId));
+            bool valid = rejected.Status == LocationOperationStatus.PersistenceInvalid && unchanged;
+            return TestLabAssertions.True("step14-location-hierarchy-corrupt", "Corrupt hierarchy restore rejects without mutation", valid, $"Rejected={rejected.Status} Unchanged={unchanged} Message={rejected.Message}");
+        }
+
+        private static TestLabAutomationStepResult VisibilityProjections(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            IReadOnlyList<LocationSnapshot> normal = runtime.GetChildren("location.prototype.wilderness-ring", includeHidden: false);
+            IReadOnlyList<LocationSnapshot> privileged = runtime.GetChildren("location.prototype.wilderness-ring", includeHidden: true);
+            bool hiddenOmitted = normal.All(item => item.LocationId != "location.prototype.dungeon-entry");
+            bool hiddenVisible = privileged.Any(item => item.LocationId == "location.prototype.dungeon-entry");
+            bool valid = hiddenOmitted && hiddenVisible;
+            return TestLabAssertions.True("step14-location-hierarchy-visibility", "Hidden containment links are omitted unless privileged", valid, $"Normal={normal.Count} Privileged={privileged.Count} HiddenOmitted={hiddenOmitted}");
+        }
+
+        private static TestLabAutomationStepResult HierarchyFixtureSnapshot(TestLabAutomationContext context)
+        {
+            LocationRuntime runtime = Runtime(context);
+            TestLabRuntimeBundleSnapshot snapshot = context.ScenarioContext.Runtimes.CreateSnapshot();
+            int beforeLinks = runtime.ContainmentLinkCount;
+            LocationOperationResult room = Create(context, "fixture-room", PrototypeLocationDefinitionFactory.RoomDefinitionId, "Fixture Link Room", tags: new[] { "room", "interior" });
+            runtime.AssignContainment(new LocationContainmentRequest
+            {
+                transactionId = Tx(context, "fixture-link"),
+                linkId = context.ScenarioContext.ScopedId("location-containment.test", "fixture-link"),
+                parentLocationId = "location.prototype.adventurers-guild",
+                childLocationId = room.Snapshot?.LocationId,
+                kind = LocationContainmentKind.Interior
+            });
+            bool restored = context.ScenarioContext.Runtimes.RestoreSnapshot(snapshot, out string failure);
+            bool valid = restored && runtime.ContainmentLinkCount == beforeLinks && !runtime.TryGetSnapshot(room.Snapshot?.LocationId, out _);
+            return TestLabAssertions.True("step14-location-hierarchy-fixture", "Fixture snapshot restores graph mutations", valid, $"Restored={restored} Links={runtime.ContainmentLinkCount}/{beforeLinks} Failure={failure}");
         }
 
         private static LocationRuntime Runtime(TestLabAutomationContext context)

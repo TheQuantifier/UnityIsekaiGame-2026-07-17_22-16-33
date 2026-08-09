@@ -74,6 +74,12 @@ namespace UnityIsekaiGame.WorldLocations
         InvalidName,
         InvalidLifecycleTransition,
         InvalidReference,
+        InvalidHierarchy,
+        CycleDetected,
+        DepthLimitExceeded,
+        ActiveParentConflict,
+        MissingContainment,
+        MissingSpatialRelationship,
         UnsupportedByDefinition,
         RevisionConflict,
         PersistenceInvalid,
@@ -88,5 +94,53 @@ namespace UnityIsekaiGame.WorldLocations
         WrongWorld,
         Destroyed,
         InvalidRequest
+    }
+
+    public enum LocationContainmentKind
+    {
+        Unknown,
+        Primary,
+        Administrative,
+        Structural,
+        Interior,
+        Site,
+        Dungeon,
+        Historical,
+        Custom
+    }
+
+    public enum LocationLinkState
+    {
+        Unknown,
+        Active,
+        Ended,
+        Historical,
+        Invalid
+    }
+
+    public enum LocationSpatialRelationshipKind
+    {
+        Unknown,
+        Adjacent,
+        Near,
+        Overlaps,
+        Above,
+        Below,
+        NorthOf,
+        SouthOf,
+        EastOf,
+        WestOf,
+        Facing,
+        AcrossFrom,
+        PartOfComplex,
+        SharesBoundary,
+        Custom
+    }
+
+    public enum LocationSpatialDirectionality
+    {
+        Unknown,
+        Directional,
+        Symmetric
     }
 }
