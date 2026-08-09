@@ -73,6 +73,7 @@ using UnityIsekaiGame.StatusEffects;
 using UnityIsekaiGame.Stats;
 using UnityIsekaiGame.Traits;
 using UnityIsekaiGame.WorldEntities;
+using UnityIsekaiGame.WorldLocations;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -14506,29 +14507,32 @@ namespace UnityIsekaiGame.Development
                 }
             }
 
-            return PrototypeJusticeDefinitionFactory.AddMissingPrototypeJusticeDefinitions(
-            PrototypeCrimeDefinitionFactory.AddMissingPrototypeCrimeDefinitions(
-            PrototypeLegalDefinitionFactory.AddMissingPrototypeLegalDefinitions(
-                PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(
-                PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(
-                    PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(
-                    PrototypeFamilyRelationshipDefinitionFactory.AddMissingPrototypeFamilyRelationshipDefinitions(
-                        PrototypeSocialEmotionDefinitionFactory.AddMissingPrototypeSocialEmotionDefinitions(
-                            PrototypeSocialInfluenceDefinitionFactory.AddMissingPrototypeSocialInfluenceDefinitions(
-                                PrototypeSocialDecisionDefinitionFactory.AddMissingPrototypeSocialDecisionDefinitions(
-                                    PrototypeSocialNetworkDefinitionFactory.AddMissingPrototypeSocialNetworkDefinitions(
-                                        PrototypeSocialNormDefinitionFactory.AddMissingPrototypeSocialNormDefinitions(
-                                            PrototypeSocialInteractionDefinitionFactory.AddMissingPrototypeSocialInteractionDefinitions(
-                                                PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(
-                                                    PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(
-                                                        PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(
-                                                            PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(
-                                                                PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(
-                                                                    PrototypeOrganizationDecisionDefinitionFactory.AddMissingPrototypeOrganizationDecisionDefinitions(
-                                                                        PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(
-                                                                            PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(
-                                                                                PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(
-                                                                                    PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(new DefinitionRegistry(definitions))))))))))))))))))))))));
+            DefinitionRegistry registry = new DefinitionRegistry(definitions);
+            registry = PrototypeOrganizationDefinitionFactory.AddMissingPrototypeOrganizationDefinitions(registry);
+            registry = PrototypeOrganizationMembershipDefinitionFactory.AddMissingPrototypeOrganizationMembershipDefinitions(registry);
+            registry = PrototypeOrganizationAuthorityDefinitionFactory.AddMissingPrototypeOrganizationAuthorityDefinitions(registry);
+            registry = PrototypeOrganizationResourceDefinitionFactory.AddMissingPrototypeOrganizationResourceDefinitions(registry);
+            registry = PrototypeOrganizationDecisionDefinitionFactory.AddMissingPrototypeOrganizationDecisionDefinitions(registry);
+            registry = PrototypeProfessionDefinitionFactory.AddMissingPrototypeProfessionDefinitions(registry);
+            registry = PrototypeRelationshipDefinitionFactory.AddMissingPrototypeRelationshipDefinitions(registry);
+            registry = PrototypeAttitudeDefinitionFactory.AddMissingPrototypeAttitudeDefinitions(registry);
+            registry = PrototypeReputationDefinitionFactory.AddMissingPrototypeReputationDefinitions(registry);
+            registry = PrototypeRumorDefinitionFactory.AddMissingPrototypeRumorDefinitions(registry);
+            registry = PrototypeSocialInteractionDefinitionFactory.AddMissingPrototypeSocialInteractionDefinitions(registry);
+            registry = PrototypeSocialNormDefinitionFactory.AddMissingPrototypeSocialNormDefinitions(registry);
+            registry = PrototypeSocialNetworkDefinitionFactory.AddMissingPrototypeSocialNetworkDefinitions(registry);
+            registry = PrototypeSocialDecisionDefinitionFactory.AddMissingPrototypeSocialDecisionDefinitions(registry);
+            registry = PrototypeSocialInfluenceDefinitionFactory.AddMissingPrototypeSocialInfluenceDefinitions(registry);
+            registry = PrototypeSocialEmotionDefinitionFactory.AddMissingPrototypeSocialEmotionDefinitions(registry);
+            registry = PrototypeFamilyRelationshipDefinitionFactory.AddMissingPrototypeFamilyRelationshipDefinitions(registry);
+            registry = PrototypeFactionDefinitionFactory.AddMissingPrototypeFactionDefinitions(registry);
+            registry = PrototypeDiplomacyDefinitionFactory.AddMissingPrototypeDiplomacyDefinitions(registry);
+            registry = PrototypeGovernmentDefinitionFactory.AddMissingPrototypeGovernmentDefinitions(registry);
+            registry = PrototypeLegalDefinitionFactory.AddMissingPrototypeLegalDefinitions(registry);
+            registry = PrototypeCrimeDefinitionFactory.AddMissingPrototypeCrimeDefinitions(registry);
+            registry = PrototypeJusticeDefinitionFactory.AddMissingPrototypeJusticeDefinitions(registry);
+            registry = PrototypeLocationDefinitionFactory.AddMissingPrototypeLocationDefinitions(registry);
+            return registry;
         }
 
         private static IReadOnlyList<HistoricalEventDefinition> CreateDevelopmentLifeEventDefinitions()

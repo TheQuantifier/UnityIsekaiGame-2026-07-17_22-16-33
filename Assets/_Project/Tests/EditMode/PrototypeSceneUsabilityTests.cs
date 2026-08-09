@@ -15,7 +15,7 @@ namespace UnityIsekaiGame.Tests
         private const string ScenePath = "Assets/_Project/Scenes/Prototype/PrototypeScene.unity";
         private const string PrototypeTerrainRoot = "Assets/_Project/Prototype/Environment/Terrain";
         private const string PrototypeVegetationPrefabRoot = "Assets/_Project/Prototype/Environment/Vegetation/Prefabs";
-        private const string PrototypeMedievalHousePrefabPath = "Assets/_Project/Prototype/Environment/Buildings/MedievalHouseLite/Prefabs/medieval_house_lite_v2.prefab";
+        private const string PrototypeMedievalHousePrefabPath = "Assets/_Project/Prototype/Prefabs/Buildings/PrototypeMedievalHouse/Prototype Medieval House.prefab";
         private const string PrototypeMovementSettingsPath = "Assets/_Project/Prototype/Content/Configuration/PrototypePlayerMovementSettings.asset";
         private const string InputActionsPath = "Assets/_Project/Configuration/Input/InputSystem_Actions.inputactions";
 
@@ -257,7 +257,7 @@ namespace UnityIsekaiGame.Tests
             Assert.That(float.IsNaN(house.transform.position.y), Is.False);
             Bounds houseBounds = CalculateMeshRendererBounds(house);
             Assert.That(houseBounds.size.x, Is.InRange(8f, 13f));
-            Assert.That(houseBounds.size.y, Is.InRange(8f, 10f));
+            Assert.That(houseBounds.size.y, Is.InRange(7.5f, 10f));
             Assert.That(houseBounds.size.z, Is.InRange(7f, 12f));
 
             MeshRenderer[] renderers = house.GetComponentsInChildren<MeshRenderer>(true);

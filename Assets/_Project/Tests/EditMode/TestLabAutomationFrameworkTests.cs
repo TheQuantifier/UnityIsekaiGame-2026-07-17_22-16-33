@@ -1358,7 +1358,7 @@ namespace UnityIsekaiGame.Tests
         }
 
         [Test]
-        public void DefaultPrototypeSuites_RegisterStep3ThroughStep13()
+        public void DefaultPrototypeSuites_RegisterStep3ThroughStep14()
         {
             TestLabAutomationRegistry registry = PrototypeTestLabAutomationCatalog.CreateDefaultRegistry();
 
@@ -1371,12 +1371,12 @@ namespace UnityIsekaiGame.Tests
             string[] actualSuiteIds = registry.Suites.Select(suite => suite.SuiteId).ToArray();
             Assert.That(actualSuiteIds, Is.EqualTo(PrototypeTestLabAutomationCatalog.SuiteIds()));
             Assert.That(actualSuiteIds.First(), Is.EqualTo("feature.3.runtime-taxonomy"));
-            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.13.12.organizations-governments-law-integration-finalization"));
+            Assert.That(actualSuiteIds.Last(), Is.EqualTo("feature.14.1.world-location-identity-foundation"));
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime
                 || scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.MutableStateScopeFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).All(scenario => scenario.RequiredFixtureIds.Contains(TestLabScenarioContext.RuntimeBaselineFixtureId)), Is.True);
             Assert.That(registry.Suites.SelectMany(suite => suite.Scenarios).Where(scenario => scenario.IsolationMode == TestLabScenarioIsolationMode.FreshRuntime || scenario.IsolationMode == TestLabScenarioIsolationMode.SnapshotRestore)
-                .All(scenario => (scenario.RequiredRuntimeAreas & ~(TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Laws | TestLabRuntimeArea.Crimes | TestLabRuntimeArea.Justice)) == TestLabRuntimeArea.None), Is.True);
+                .All(scenario => (scenario.RequiredRuntimeAreas & ~(TestLabRuntimeArea.KnowledgeHistory | TestLabRuntimeArea.Items | TestLabRuntimeArea.Professions | TestLabRuntimeArea.Economy | TestLabRuntimeArea.Social | TestLabRuntimeArea.Organizations | TestLabRuntimeArea.OrganizationMemberships | TestLabRuntimeArea.OrganizationAuthority | TestLabRuntimeArea.OrganizationResources | TestLabRuntimeArea.OrganizationDecisions | TestLabRuntimeArea.Factions | TestLabRuntimeArea.Diplomacy | TestLabRuntimeArea.Governments | TestLabRuntimeArea.Laws | TestLabRuntimeArea.Crimes | TestLabRuntimeArea.Justice | TestLabRuntimeArea.WorldLocations)) == TestLabRuntimeArea.None), Is.True);
         }
 
         [Test]
@@ -1384,8 +1384,8 @@ namespace UnityIsekaiGame.Tests
         {
             PrototypeTestLabAutomationProviderDescriptor[] providers = PrototypeTestLabAutomationCatalog.Providers.ToArray();
 
-            Assert.That(providers.Select(provider => provider.Step), Is.EqualTo(new[] { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 }));
-            Assert.That(providers.Select(provider => provider.Label), Is.EqualTo(new[] { "Runtime Taxonomy", "World Data", "Character", "Combat", "Body", "Knowledge", "Items", "Professions", "Economy", "Social", "Organizations" }));
+            Assert.That(providers.Select(provider => provider.Step), Is.EqualTo(new[] { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 }));
+            Assert.That(providers.Select(provider => provider.Label), Is.EqualTo(new[] { "Runtime Taxonomy", "World Data", "Character", "Combat", "Body", "Knowledge", "Items", "Professions", "Economy", "Social", "Organizations", "World Locations" }));
             Assert.That(providers.Select(provider => provider.Name), Is.EqualTo(new[]
             {
                 nameof(PrototypeStep3AutomationSuites),
@@ -1398,7 +1398,8 @@ namespace UnityIsekaiGame.Tests
                 nameof(PrototypeStep10AutomationSuites),
                 nameof(PrototypeStep11AutomationSuites),
                 nameof(PrototypeStep12AutomationSuites),
-                nameof(PrototypeStep13AutomationSuites)
+                nameof(PrototypeStep13AutomationSuites),
+                nameof(PrototypeStep14AutomationSuites)
             }));
         }
 
