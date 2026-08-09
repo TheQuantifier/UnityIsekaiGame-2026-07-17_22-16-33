@@ -40,25 +40,6 @@ namespace UnityIsekaiGame.Editor.Tools.TestLabAutomation
 
             Debug.Log("Test Lab Automation: Open Tab > Test Lab > Automation to run scenarios.");
         }
-
-        [MenuItem("Tools/Test Lab/Run Quick Automation in Play Mode")]
-        public static void RunQuickAutomationInPlayMode()
-        {
-            if (!Application.isPlaying)
-            {
-                Debug.LogWarning("Test Lab Automation: quick automation can only run in Play Mode. Open PrototypeScene, enter Play Mode, then run this command.");
-                return;
-            }
-
-            PrototypeTestLabMenuExtension extension = Object.FindAnyObjectByType<PrototypeTestLabMenuExtension>();
-            if (extension == null)
-            {
-                Debug.LogWarning("Test Lab Automation: Test Lab menu extension is not registered. Open Tab > Test Lab first.");
-                return;
-            }
-
-            Debug.Log("Test Lab Automation: use the in-game Automation section for Quick runs so results are visible and exportable.");
-        }
     }
 }
 #endif

@@ -24,13 +24,13 @@ namespace UnityIsekaiGame.Editor
             SelectedTerrains
         }
 
-        [MenuItem("Tools/Prototype Scene/Paint Prototype Terrain Ground")]
+        [MenuItem("Tools/Prototype Scene/Paint Prototype Terrain Ground/All Prototype Terrains")]
         public static void PaintPrototypeTerrainGround()
         {
             PaintPrototypeTerrainGround(TerrainTargetScope.AllPrototypeTerrains);
         }
 
-        [MenuItem("Tools/Prototype Scene/Paint Selected Prototype Terrain Ground")]
+        [MenuItem("Tools/Prototype Scene/Paint Prototype Terrain Ground/Selected Terrains")]
         public static void PaintSelectedPrototypeTerrainGround()
         {
             PaintPrototypeTerrainGround(TerrainTargetScope.SelectedTerrains);

@@ -83,19 +83,13 @@ namespace UnityIsekaiGame.Editor
             Debug.Log($"Rebuilt {TreePalette.Length} project-owned prototype vegetation prefab(s) in {GeneratedPrefabRoot}.");
         }
 
-        [MenuItem("Tools/Prototype Scene/Randomize Painted Prototype Tree Heights")]
-        public static void RandomizePaintedPrototypeTreeHeights()
-        {
-            RandomizePaintedPrototypeTreeHeights(TerrainTargetScope.AllPrototypeTerrains);
-        }
-
-        [MenuItem("Tools/Prototype Scene/Randomize All Painted Prototype Tree Heights")]
+        [MenuItem("Tools/Prototype Scene/Randomize Painted Prototype Tree Heights/All Prototype Terrains")]
         public static void RandomizeAllPaintedPrototypeTreeHeights()
         {
             RandomizePaintedPrototypeTreeHeights(TerrainTargetScope.AllPrototypeTerrains);
         }
 
-        [MenuItem("Tools/Prototype Scene/Randomize Selected Painted Prototype Tree Heights")]
+        [MenuItem("Tools/Prototype Scene/Randomize Painted Prototype Tree Heights/Selected Terrains")]
         public static void RandomizeSelectedPaintedPrototypeTreeHeights()
         {
             RandomizePaintedPrototypeTreeHeights(TerrainTargetScope.SelectedTerrains);
