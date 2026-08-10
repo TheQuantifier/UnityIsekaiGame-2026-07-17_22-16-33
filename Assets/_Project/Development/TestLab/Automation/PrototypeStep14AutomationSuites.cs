@@ -132,6 +132,27 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("75.6-persistence-validation", "Connection persistence round-trips and rejects corrupt graphs", 60, Step("step14-connection-persistence", "Save, restore, and reject corrupt connection payload", ConnectionPersistenceValidation)),
                     Scenario("75.7-fixture-snapshot", "Fixture snapshots restore connection mutations", 70, Step("step14-connection-fixture", "Snapshot and restore connection state", ConnectionFixtureSnapshot))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.6.routes-distance-travel-networks",
+                "Routes, Distance, and Travel Networks",
+                "14.6",
+                "Authoritative route segments and networks layered over location connections, deterministic route planning, access-aware traversal, knowledge-safe projections, persistence validation, and fixture ownership.",
+                14060,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "LocationRouteRuntime", "LocationConnectionRuntime", "LocationRuntime", "LocationRoutePersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("76.1-readiness-and-seeded-routes", "Route definitions and seeded graph are available", 10, Step("step14-route-readiness", "Resolve seeded route graph", RouteReadiness)),
+                    Scenario("76.2-multi-edge-planning", "Route plans can compose route segments and connection edges", 20, Step("step14-route-multi-edge", "Plan across routes and local connections", RouteMultiEdgePlanning)),
+                    Scenario("76.3-objectives-and-tie-breaks", "Planning objectives are deterministic across parallel edges", 30, Step("step14-route-objectives", "Compare shortest and lowest-cost planning", RouteObjectivesTieBreaks)),
+                    Scenario("76.4-access-and-unlockable-edges", "Connection access gates participate without mutating connection state", 40, Step("step14-route-access", "Evaluate current and unlockable access", RouteAccessAndUnlockableEdges)),
+                    Scenario("76.5-knowledge-safe-hidden-routes", "Knowledge-safe planning filters hidden routes without leaking counts", 50, Step("step14-route-knowledge", "Filter hidden route edges", RouteKnowledgeSafeHiddenRoutes)),
+                    Scenario("76.6-stale-plan-revalidation", "Route plans are immutable and revalidate against graph revisions", 60, Step("step14-route-revalidation", "Detect changed route graph", RouteStalePlanRevalidation)),
+                    Scenario("76.7-persistence-validation", "Route persistence round-trips and rejects corrupt route graphs", 70, Step("step14-route-persistence", "Save, restore, and reject corrupt route payload", RoutePersistenceValidation)),
+                    Scenario("76.8-fixture-snapshot", "Fixture snapshots restore route mutations", 80, Step("step14-route-fixture", "Snapshot and restore route state", RouteFixtureSnapshot))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -1105,6 +1126,120 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step14-connection-fixture", "Fixture snapshot restores connection mutations", valid, $"Created={created.Status} Restored={restored} Missing={missing} Count={runtime.ConnectionCount}/{before} Failure={failure}");
         }
 
+        private static TestLabAutomationStepResult RouteReadiness(TestLabAutomationContext context)
+        {
+            LocationRouteRuntime runtime = RouteRuntime(context);
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool hasWalking = registry.TryGet(PrototypeLocationRouteDefinitionFactory.WalkingModeDefinitionId, out TravelModeDefinition walking);
+            bool hasStreet = registry.TryGet(PrototypeLocationRouteDefinitionFactory.StreetSegmentDefinitionId, out RouteSegmentDefinition street);
+            bool hasSeed = runtime.TryGetSegment(PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId, out LocationRouteSegmentSnapshot seed);
+            bool hasNetwork = runtime.TryGetNetwork(PrototypeLocationRouteDefinitionFactory.VillageStreetNetworkId, out LocationRouteNetworkSnapshot network);
+            LocationRouteSearchResult plan = runtime.PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess));
+            bool usesSeed = plan.Plan?.Steps.Any(step => step.EdgeKind == RouteEdgeKind.RouteSegment && step.EdgeId == PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId) == true;
+            bool valid = runtime != null && hasWalking && hasStreet && hasSeed && hasNetwork && plan.Succeeded && usesSeed;
+            return TestLabAssertions.True("step14-route-readiness", "Route definitions and seeded graph are available", valid, $"Walking={hasWalking}:{walking?.Id} Street={hasStreet}:{street?.Id} Seed={hasSeed}:{seed?.SegmentId} Network={hasNetwork}:{network?.NetworkId} Plan={plan.Status} Edges={plan.Plan?.EdgeCount ?? 0}");
+        }
+
+        private static TestLabAutomationStepResult RouteMultiEdgePlanning(TestLabAutomationContext context)
+        {
+            LocationRouteRuntime runtime = RouteRuntime(context);
+            LocationRouteSearchResult plan = runtime.PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.merchant-counter", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess));
+            bool includesRoute = plan.Plan?.Steps.Any(step => step.EdgeKind == RouteEdgeKind.RouteSegment) == true;
+            bool includesConnection = plan.Plan?.Steps.Any(step => step.EdgeKind == RouteEdgeKind.LocalConnection) == true;
+            bool valid = plan.Succeeded && includesRoute && includesConnection && plan.Plan.EdgeCount >= 2 && plan.Plan.OrderedLocationIds.SequenceEqual(plan.Plan.OrderedLocationIds.Distinct(StringComparer.Ordinal));
+            return TestLabAssertions.True("step14-route-multi-edge", "Route plans compose route segments and existing connection edges", valid, $"Status={plan.Status} Edges={plan.Plan?.EdgeCount ?? 0} Route={includesRoute} Connection={includesConnection} Distance={plan.Plan?.TotalDistance.meters ?? 0}");
+        }
+
+        private static TestLabAutomationStepResult RouteObjectivesTieBreaks(TestLabAutomationContext context)
+        {
+            LocationRouteRuntime runtime = RouteRuntime(context);
+            LocationRouteMutationResult created = CreateRouteSegment(context, "long-cheap", "location.prototype.village", "location.prototype.market-district", 180d, 5d);
+            LocationRouteSearchResult shortest = runtime.PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess, objective: RoutePlanningObjective.ShortestDistance));
+            LocationRouteSearchResult cheapest = runtime.PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess, objective: RoutePlanningObjective.LowestCost));
+            LocationRouteSearchResult cheapestAgain = runtime.PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess, objective: RoutePlanningObjective.LowestCost));
+            bool deterministic = cheapest.Plan?.PlanId == cheapestAgain.Plan?.PlanId;
+            bool valid = created.Succeeded && shortest.Succeeded && cheapest.Succeeded && deterministic
+                && shortest.Plan.Steps[0].EdgeId == PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId
+                && cheapest.Plan.Steps[0].EdgeId == created.Segment.SegmentId;
+            return TestLabAssertions.True("step14-route-objectives", "Planning objectives are deterministic across parallel edges", valid, $"Created={created.Status} Shortest={shortest.Plan?.Steps.FirstOrDefault()?.EdgeId} Cheapest={cheapest.Plan?.Steps.FirstOrDefault()?.EdgeId} Deterministic={deterministic}");
+        }
+
+        private static TestLabAutomationStepResult RouteAccessAndUnlockableEdges(TestLabAutomationContext context)
+        {
+            LocationRouteRuntime runtime = RouteRuntime(context);
+            EntityLocationReferenceData actor = Person(PrototypeEntityLocationFactory.PlayerPersonId, context);
+            LocationConnectionAccessContextData authorized = AccessContext(context, actor, offices: new[] { "office.prototype.guild-head" }, authorities: new[] { "permission.prototype.guild.rank-admin" });
+            LocationRouteSearchResult denied = runtime.PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.guildmaster-office", RouteAccessEvaluationMode.RequireCurrentAccess, authorized));
+            LocationRouteSearchResult unlockable = runtime.PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.guildmaster-office", RouteAccessEvaluationMode.PermitUnlockableConnections, authorized));
+            bool connectionUnchanged = ConnectionRuntime(context).TryGetConnection(PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, out LocationConnectionSnapshot connection) && connection.OpenState == LocationConnectionOpenState.Closed && connection.LockState == LocationConnectionLockState.Locked;
+            bool hasRequiredActions = unlockable.Plan?.Requirements.requiredActions.Any(action => action.StartsWith("open:", StringComparison.Ordinal) || action.StartsWith("unlock:", StringComparison.Ordinal)) == true;
+            bool valid = !denied.Succeeded && unlockable.Succeeded && hasRequiredActions && connectionUnchanged;
+            return TestLabAssertions.True("step14-route-access", "Connection access gates participate without mutating connection state", valid, $"Denied={denied.Status} Unlockable={unlockable.Status} Actions={string.Join(",", unlockable.Plan?.Requirements.requiredActions ?? Array.Empty<string>())} Unchanged={connectionUnchanged}");
+        }
+
+        private static TestLabAutomationStepResult RouteKnowledgeSafeHiddenRoutes(TestLabAutomationContext context)
+        {
+            LocationRouteRuntime runtime = RouteRuntime(context);
+            LocationRouteSearchResult hidden = runtime.PlanRoute(RouteRequest(context, "location.prototype.guildmaster-office", "location.prototype.basement-prison", accessMode: RouteAccessEvaluationMode.IgnoreTravelerAccessDevelopment, includeHidden: true));
+            LocationRouteSearchRequest safeRequest = RouteRequest(context, "location.prototype.guildmaster-office", "location.prototype.basement-prison", accessMode: RouteAccessEvaluationMode.KnowledgeSafeCurrentAccess);
+            safeRequest.knowledgeMode = RouteKnowledgeMode.PublicKnownOnly;
+            LocationRouteSearchResult filtered = runtime.PlanRoute(safeRequest);
+            safeRequest.knowledgeMode = RouteKnowledgeMode.KnownToTraveler;
+            safeRequest.knownEdgeIds = new[] { PrototypeLocationConnectionDefinitionFactory.HiddenPassageConnectionId };
+            safeRequest.includeHiddenDevelopmentRoutes = false;
+            safeRequest.accessContext = AccessContext(context, Person(PrototypeEntityLocationFactory.PlayerPersonId, context), privileged: true);
+            LocationRouteSearchResult known = runtime.PlanRoute(safeRequest);
+            bool valid = hidden.Succeeded && !filtered.Succeeded && filtered.Status == RoutePlanningStatus.UnknownUnderKnowledgeView && known.Succeeded;
+            return TestLabAssertions.True("step14-route-knowledge", "Knowledge-safe planning filters hidden routes without leaking counts", valid, $"Hidden={hidden.Status} Filtered={filtered.Status} Known={known.Status} FilterExpanded={filtered.ExpandedEdgeCount}");
+        }
+
+        private static TestLabAutomationStepResult RouteStalePlanRevalidation(TestLabAutomationContext context)
+        {
+            LocationRouteRuntime runtime = RouteRuntime(context);
+            LocationRouteSearchResult plan = runtime.PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess));
+            LocationRouteMutationResult mutate = runtime.MutateSegment(new LocationRouteSegmentMutationRequest
+            {
+                transactionId = Tx(context, "route-block-market"),
+                segmentId = PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId,
+                blockageState = RouteSegmentBlockageState.TemporarilyBlocked,
+                worldTime = 25d
+            });
+            LocationRouteRevalidationResult revalidate = runtime.RevalidatePlan(plan.Plan, RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess));
+            bool immutable = plan.Plan?.Steps.FirstOrDefault()?.EdgeId == PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId;
+            bool valid = plan.Succeeded && mutate.Succeeded && immutable && revalidate.Status == RoutePlanRevalidationStatus.ChangedAccess;
+            return TestLabAssertions.True("step14-route-revalidation", "Route plans are immutable and revalidate against graph revisions", valid, $"Plan={plan.Status} Mutate={mutate.Status} Revalidate={revalidate.Status} Immutable={immutable}");
+        }
+
+        private static TestLabAutomationStepResult RoutePersistenceValidation(TestLabAutomationContext context)
+        {
+            LocationRouteRuntime runtime = RouteRuntime(context);
+            LocationRoutePersistenceParticipant participant = new LocationRoutePersistenceParticipant(runtime, () => context.ScenarioContext.Runtimes.DefinitionRegistry, () => Runtime(context), () => ConnectionRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            PersistenceParticipantPrepareResult prepared = participant.PreparePayload(save.PayloadJson, LocationRoutePersistenceParticipant.CurrentParticipantSchemaVersion);
+            LocationRouteRuntime restored = new LocationRouteRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), ConnectionRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            LocationRouteMutationResult restore = restored.RestoreFromSaveData(JsonUtility.FromJson<LocationRouteRuntimeSaveData>(save.PayloadJson), Runtime(context), ConnectionRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            LocationRouteRuntimeSaveData before = runtime.CreateSaveData();
+            LocationRouteRuntimeSaveData corrupt = before.Clone();
+            corrupt.segments[0].destinationLocationId = "location.prototype.missing";
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), LocationRoutePersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool unchanged = runtime.CreateSaveData().segments.Select(item => item.destinationLocationId).SequenceEqual(before.segments.Select(item => item.destinationLocationId));
+            bool valid = save.Succeeded && prepared.Succeeded && restore.Succeeded && restored.SegmentCount == runtime.SegmentCount && !rejected.Succeeded && unchanged;
+            return TestLabAssertions.True("step14-route-persistence", "Route persistence round-trips and rejects corrupt graphs before commit", valid, $"Save={save.Succeeded}:{save.Message} Prepare={prepared.Succeeded}:{prepared.Message} Restore={restore.Status} Rejected={rejected.Succeeded}:{rejected.Message} Unchanged={unchanged} Count={restored.SegmentCount}/{runtime.SegmentCount}");
+        }
+
+        private static TestLabAutomationStepResult RouteFixtureSnapshot(TestLabAutomationContext context)
+        {
+            LocationRouteRuntime runtime = RouteRuntime(context);
+            TestLabRuntimeBundleSnapshot snapshot = context.ScenarioContext.Runtimes.CreateSnapshot();
+            int before = runtime.SegmentCount;
+            LocationRouteMutationResult created = CreateRouteSegment(context, "fixture", "location.prototype.market-district", "location.prototype.civic-office", 45d, 45d);
+            bool restored = context.ScenarioContext.Runtimes.RestoreSnapshot(snapshot, out string failure);
+            bool missing = !runtime.TryGetSegment(created.Segment?.SegmentId, out _);
+            bool valid = created.Succeeded && restored && missing && runtime.SegmentCount == before;
+            return TestLabAssertions.True("step14-route-fixture", "Fixture snapshot restores route mutations", valid, $"Created={created.Status} Restored={restored} Missing={missing} Count={runtime.SegmentCount}/{before} Failure={failure}");
+        }
+
         private static LocationRuntime Runtime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.Locations;
@@ -1123,6 +1258,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static LocationConnectionRuntime ConnectionRuntime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.LocationConnections;
+        }
+
+        private static LocationRouteRuntime RouteRuntime(TestLabAutomationContext context)
+        {
+            return context?.ScenarioContext?.Runtimes?.LocationRoutes;
         }
 
         private static EntityLocationReferenceData Person(string id, TestLabAutomationContext context)
@@ -1169,6 +1309,53 @@ namespace UnityIsekaiGame.Development.Automation
         private static string Tx(TestLabAutomationContext context, string suffix)
         {
             return context.ScenarioContext.ScopedId("location.tx", suffix);
+        }
+
+        private static LocationRouteSearchRequest RouteRequest(
+            TestLabAutomationContext context,
+            string origin,
+            string destination,
+            RouteAccessEvaluationMode accessMode = RouteAccessEvaluationMode.StructuralOnly,
+            LocationConnectionAccessContextData accessContext = null,
+            RoutePlanningObjective objective = RoutePlanningObjective.ShortestDistance,
+            bool includeHidden = false)
+        {
+            EntityLocationReferenceData actor = Person(PrototypeEntityLocationFactory.PlayerPersonId, context);
+            return new LocationRouteSearchRequest
+            {
+                requestId = Tx(context, $"route-request-{origin}-{destination}-{objective}-{accessMode}"),
+                traveler = actor,
+                originLocationId = origin,
+                destinationLocationId = destination,
+                travelModeDefinitionId = PrototypeLocationRouteDefinitionFactory.WalkingModeDefinitionId,
+                objective = objective,
+                accessMode = accessMode,
+                accessContext = accessContext ?? AccessContext(context, actor),
+                includeHiddenDevelopmentRoutes = includeHidden,
+                worldTime = 20d
+            };
+        }
+
+        private static LocationRouteMutationResult CreateRouteSegment(TestLabAutomationContext context, string suffix, string source, string destination, double distance, double cost)
+        {
+            string segmentId = context.ScenarioContext.ScopedId("route-segment.test", suffix);
+            return RouteRuntime(context).CreateSegment(new LocationRouteSegmentCreateRequest
+            {
+                transactionId = Tx(context, $"route-create-{suffix}"),
+                segmentId = segmentId,
+                segmentDefinitionId = PrototypeLocationRouteDefinitionFactory.StreetSegmentDefinitionId,
+                displayName = segmentId,
+                sourceLocationId = source,
+                destinationLocationId = destination,
+                directionality = LocationConnectionDirectionality.Bidirectional,
+                distanceMeters = distance,
+                baseCostUnits = cost,
+                supportedTravelModeDefinitionIds = new[] { PrototypeLocationRouteDefinitionFactory.WalkingModeDefinitionId },
+                visibility = RouteVisibility.Public,
+                worldTime = 20d,
+                sourceEventId = "testlab.feature.14.6",
+                provenanceId = "testlab.feature.14.6"
+            });
         }
 
         private static LocationConnectionOperationResult CreateConnection(TestLabAutomationContext context, string suffix, string source, string destination, bool preview = false, string transactionId = null)
