@@ -397,7 +397,7 @@ namespace UnityIsekaiGame.WorldLocations
         private readonly string[] nodes;
         private readonly RouteRequirementSummary requirements;
 
-        public LocationRoutePlan(string planId, string originLocationId, string destinationLocationId, EntityLocationReferenceData traveler, string travelModeDefinitionId, RoutePlanningObjective objective, IEnumerable<string> orderedNodes, IEnumerable<LocationRoutePlanStep> orderedSteps, TravelDistance totalDistance, TravelCost totalCost, RouteRequirementSummary requirementSummary, long routeRevision, long connectionRevision, bool knowledgeFiltered, string diagnostics)
+        public LocationRoutePlan(string planId, string originLocationId, string destinationLocationId, EntityLocationReferenceData traveler, string travelModeDefinitionId, RoutePlanningObjective objective, IEnumerable<string> orderedNodes, IEnumerable<LocationRoutePlanStep> orderedSteps, TravelDistance totalDistance, TravelCost totalCost, RouteRequirementSummary requirementSummary, long routeRevision, long connectionRevision, bool knowledgeFiltered, string diagnostics, long conditionRevision = 0L)
         {
             PlanId = planId ?? string.Empty;
             OriginLocationId = originLocationId ?? string.Empty;
@@ -412,6 +412,7 @@ namespace UnityIsekaiGame.WorldLocations
             requirements = requirementSummary?.Clone() ?? new RouteRequirementSummary();
             RouteRevision = routeRevision;
             ConnectionRevision = connectionRevision;
+            ConditionRevision = conditionRevision;
             KnowledgeFiltered = knowledgeFiltered;
             Diagnostics = diagnostics ?? string.Empty;
         }
@@ -430,6 +431,7 @@ namespace UnityIsekaiGame.WorldLocations
         public RouteRequirementSummary Requirements => requirements.Clone();
         public long RouteRevision { get; }
         public long ConnectionRevision { get; }
+        public long ConditionRevision { get; }
         public bool KnowledgeFiltered { get; }
         public string Diagnostics { get; }
     }
@@ -458,6 +460,11 @@ namespace UnityIsekaiGame.WorldLocations
         public string[] knownLocationIds = Array.Empty<string>();
         public string[] travelerCapabilityIds = Array.Empty<string>();
         public string[] travelerEquipmentDefinitionIds = Array.Empty<string>();
+        public TravelConditionEvaluationMode conditionEvaluationMode = TravelConditionEvaluationMode.IgnoreDynamicConditions;
+        public string[] knownConditionIds = Array.Empty<string>();
+        public string[] knownEncounterIds = Array.Empty<string>();
+        public string[] knownHazardExposureIds = Array.Empty<string>();
+        public bool includeHiddenDevelopmentConditions;
         public bool includeHiddenDevelopmentRoutes;
         public bool preview;
     }

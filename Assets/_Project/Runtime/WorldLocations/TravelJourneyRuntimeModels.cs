@@ -19,6 +19,7 @@ namespace UnityIsekaiGame.WorldLocations
         public double totalCostUnits;
         public long routeRevision;
         public long connectionRevision;
+        public long conditionRevision;
         public bool knowledgeFiltered;
         public string diagnostics;
 
@@ -37,6 +38,7 @@ namespace UnityIsekaiGame.WorldLocations
                 totalCostUnits = Math.Max(0d, totalCostUnits),
                 routeRevision = routeRevision,
                 connectionRevision = connectionRevision,
+                conditionRevision = conditionRevision,
                 knowledgeFiltered = knowledgeFiltered,
                 diagnostics = diagnostics ?? string.Empty
             };
@@ -58,6 +60,7 @@ namespace UnityIsekaiGame.WorldLocations
                 totalCostUnits = plan.TotalCost.units,
                 routeRevision = plan.RouteRevision,
                 connectionRevision = plan.ConnectionRevision,
+                conditionRevision = plan.ConditionRevision,
                 knowledgeFiltered = plan.KnowledgeFiltered,
                 diagnostics = plan.Diagnostics
             };
@@ -84,7 +87,8 @@ namespace UnityIsekaiGame.WorldLocations
                 routeRevision,
                 connectionRevision,
                 knowledgeFiltered,
-                diagnostics);
+                diagnostics,
+                conditionRevision);
         }
 
         private static string N(string value) => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
@@ -511,6 +515,11 @@ namespace UnityIsekaiGame.WorldLocations
         {
             return new TravelJourneyOperationResult(status, message, null, null, false, false, before, before);
         }
+
+        public static TravelJourneyOperationResult Failure(TravelJourneyMutationStatus status, string message, long before, TravelJourneySnapshot journey, TravelJourneyStepSnapshot step = null)
+        {
+            return new TravelJourneyOperationResult(status, message, journey, step, false, false, before, before);
+        }
     }
 
     public sealed class TravelJourneyCreateRequest
@@ -529,6 +538,11 @@ namespace UnityIsekaiGame.WorldLocations
         public LocationConnectionAccessContextData accessContext;
         public string[] travelerCapabilityIds = Array.Empty<string>();
         public string[] travelerEquipmentDefinitionIds = Array.Empty<string>();
+        public TravelConditionEvaluationMode conditionEvaluationMode = TravelConditionEvaluationMode.IgnoreDynamicConditions;
+        public string[] knownConditionIds = Array.Empty<string>();
+        public string[] knownEncounterIds = Array.Empty<string>();
+        public string[] knownHazardExposureIds = Array.Empty<string>();
+        public bool includeHiddenDevelopmentConditions;
         public TravelJourneyCategory category = TravelJourneyCategory.OrdinaryTravel;
         public TravelJourneyProgressionMode progressionMode = TravelJourneyProgressionMode.AutomaticLogical;
         public TravelJourneyVisibility visibility = TravelJourneyVisibility.Public;
@@ -549,6 +563,11 @@ namespace UnityIsekaiGame.WorldLocations
         public LocationConnectionAccessContextData accessContext;
         public string[] travelerCapabilityIds = Array.Empty<string>();
         public string[] travelerEquipmentDefinitionIds = Array.Empty<string>();
+        public TravelConditionEvaluationMode conditionEvaluationMode = TravelConditionEvaluationMode.IgnoreDynamicConditions;
+        public string[] knownConditionIds = Array.Empty<string>();
+        public string[] knownEncounterIds = Array.Empty<string>();
+        public string[] knownHazardExposureIds = Array.Empty<string>();
+        public bool includeHiddenDevelopmentConditions;
         public bool travelerCanMove = true;
         public double movementRateOverrideMetersPerSecond = -1d;
         public double worldTime;

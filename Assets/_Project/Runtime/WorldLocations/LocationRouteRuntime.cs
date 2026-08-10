@@ -23,6 +23,7 @@ namespace UnityIsekaiGame.WorldLocations
         private DefinitionRegistry registry;
         private LocationRuntime locations;
         private LocationConnectionRuntime connections;
+        private TravelConditionRuntime travelConditions;
         private string worldId = PersistenceService.LocalWorldId;
         private bool disposed;
 
@@ -36,11 +37,12 @@ namespace UnityIsekaiGame.WorldLocations
         public IReadOnlyList<LocationRouteSegmentHistoryData> History => historyById.Values.OrderBy(item => item.worldTime).ThenBy(item => item.historyId, StringComparer.Ordinal).Select(item => item.Clone()).ToArray();
         public long UnifiedGraphRevision => Revision + ((connections?.Revision ?? 0L) * 1000003L);
 
-        public void Configure(DefinitionRegistry definitionRegistry, LocationRuntime locationRuntime, LocationConnectionRuntime connectionRuntime, string runtimeWorldId = PersistenceService.LocalWorldId)
+        public void Configure(DefinitionRegistry definitionRegistry, LocationRuntime locationRuntime, LocationConnectionRuntime connectionRuntime, string runtimeWorldId = PersistenceService.LocalWorldId, TravelConditionRuntime conditionRuntime = null)
         {
             registry = definitionRegistry ?? registry;
             locations = locationRuntime ?? locations;
             connections = connectionRuntime ?? connections;
+            travelConditions = conditionRuntime ?? travelConditions;
             worldId = string.IsNullOrWhiteSpace(runtimeWorldId) ? PersistenceService.LocalWorldId : runtimeWorldId.Trim();
             disposed = false;
         }
@@ -260,7 +262,7 @@ namespace UnityIsekaiGame.WorldLocations
             if (!TravelerSupportsMode(request, mode)) return LocationRouteSearchResult.Failure(RoutePlanningStatus.ModeUnsupported, $"Traveler does not satisfy travel mode '{mode.Id}'.");
             if (string.Equals(origin, destination, StringComparison.Ordinal))
             {
-                LocationRoutePlan self = new LocationRoutePlan(PlanId(request, Array.Empty<LocationRoutePlanStep>()), origin, destination, request.traveler, mode.Id, request.objective, new[] { origin }, Array.Empty<LocationRoutePlanStep>(), TravelDistance.Zero, TravelCost.Zero, new RouteRequirementSummary(), graphRevision, connections?.Revision ?? 0L, IsKnowledgeFiltered(request), "Self route.");
+                LocationRoutePlan self = new LocationRoutePlan(PlanId(request, Array.Empty<LocationRoutePlanStep>()), origin, destination, request.traveler, mode.Id, request.objective, new[] { origin }, Array.Empty<LocationRoutePlanStep>(), TravelDistance.Zero, TravelCost.Zero, new RouteRequirementSummary(), graphRevision, connections?.Revision ?? 0L, IsKnowledgeFiltered(request), "Self route.", travelConditions?.Revision ?? 0L);
                 return LocationRouteSearchResult.Success(self, "Self route.", 1, 0, request.preview);
             }
 
@@ -370,7 +372,8 @@ namespace UnityIsekaiGame.WorldLocations
             request.destinationLocationId = plan.DestinationLocationId;
             request.travelModeDefinitionId = string.IsNullOrWhiteSpace(request.travelModeDefinitionId) ? plan.TravelModeDefinitionId : request.travelModeDefinitionId;
             request.objective = plan.Objective;
-            if (plan.RouteRevision != Revision || plan.ConnectionRevision != (connections?.Revision ?? 0L))
+            bool conditionAware = request.conditionEvaluationMode != TravelConditionEvaluationMode.IgnoreDynamicConditions;
+            if (plan.RouteRevision != Revision || plan.ConnectionRevision != (connections?.Revision ?? 0L) || (conditionAware && plan.ConditionRevision != (travelConditions?.Revision ?? 0L)))
             {
                 foreach (LocationRoutePlanStep step in plan.Steps)
                 {
@@ -621,7 +624,49 @@ namespace UnityIsekaiGame.WorldLocations
                 ? Math.Max(0.0001d, definition.CostMultiplier)
                 : 1d;
             double cost = Math.Max(0d, edge.BaseCost.units * Math.Max(0.0001d, mode.CostMultiplier) * definitionMultiplier * preferredMultiplier);
+            TravelConditionEvaluationResult conditions = EvaluateTravelConditions(edge, request);
+            if (conditions != null && !conditions.Succeeded) return EvaluatedEdge.Rejected(edge, "TravelConditionEvaluationFailed");
+            if (conditions?.HardBlocked == true)
+            {
+                Add(requiredActions, conditions.RequiredCapabilityIds.Select(id => $"capability:{id}"));
+                Add(requiredActions, conditions.RequiredEquipmentDefinitionIds.Select(id => $"equipment:{id}"));
+                return EvaluatedEdge.Rejected(edge, "TravelConditionBlocked");
+            }
+            if (conditions != null)
+            {
+                distance = Math.Max(0d, distance * (1d / Math.Max(0.0001d, conditions.MovementRateMultiplier)));
+                cost = Math.Max(0d, cost * Math.Max(0.0001d, conditions.RouteCostMultiplier));
+                Add(requiredActions, conditions.RequiredCapabilityIds.Select(id => $"capability:{id}"));
+                Add(requiredActions, conditions.RequiredEquipmentDefinitionIds.Select(id => $"equipment:{id}"));
+            }
             return new EvaluatedEdge(edge, true, distance, cost, accessState, requiredActions);
+        }
+
+        private TravelConditionEvaluationResult EvaluateTravelConditions(LocationRouteUnifiedEdgeSnapshot edge, LocationRouteSearchRequest request)
+        {
+            if (travelConditions == null || request.conditionEvaluationMode == TravelConditionEvaluationMode.IgnoreDynamicConditions) return null;
+            return travelConditions.Evaluate(new TravelConditionEvaluationRequest
+            {
+                evaluationMode = request.conditionEvaluationMode,
+                target = new TravelConditionTargetReferenceData
+                {
+                    scope = edge.EdgeKind == RouteEdgeKind.RouteSegment ? TravelConditionTargetScope.RouteSegment : TravelConditionTargetScope.Connection,
+                    targetId = edge.EdgeId,
+                    sourceLocationId = edge.SourceLocationId,
+                    destinationLocationId = edge.DestinationLocationId,
+                    edgeKind = edge.EdgeKind,
+                    traveler = request.traveler?.Clone()
+                },
+                traveler = request.traveler?.Clone(),
+                travelModeDefinitionId = request.travelModeDefinitionId,
+                travelerCapabilityIds = request.travelerCapabilityIds,
+                travelerEquipmentDefinitionIds = request.travelerEquipmentDefinitionIds,
+                knownConditionIds = request.knownConditionIds,
+                knownEncounterIds = request.knownEncounterIds,
+                knownHazardExposureIds = request.knownHazardExposureIds,
+                includeHiddenDevelopmentConditions = request.includeHiddenDevelopmentConditions,
+                worldTime = request.worldTime
+            });
         }
 
         private bool RoutePoliciesAllow(LocationRouteUnifiedEdgeSnapshot edge, LocationRouteSearchRequest request, ICollection<string> requirements, out string accessState)
@@ -665,7 +710,7 @@ namespace UnityIsekaiGame.WorldLocations
                 requiredActions = actions,
                 hiddenRouteEdges = state.Steps.Where(step => IsHiddenStep(step)).Select(step => step.EdgeId).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray()
             };
-            return new LocationRoutePlan(PlanId(request, state.Steps), request.originLocationId, request.destinationLocationId, request.traveler, request.travelModeDefinitionId, request.objective, state.Nodes, state.Steps, new TravelDistance(state.DistanceMeters), new TravelCost(state.CostUnits), requirements, routeRevision, connections?.Revision ?? 0L, IsKnowledgeFiltered(request), $"Visited={state.Nodes.Count} Edges={state.Steps.Count}");
+            return new LocationRoutePlan(PlanId(request, state.Steps), request.originLocationId, request.destinationLocationId, request.traveler, request.travelModeDefinitionId, request.objective, state.Nodes, state.Steps, new TravelDistance(state.DistanceMeters), new TravelCost(state.CostUnits), requirements, routeRevision, connections?.Revision ?? 0L, IsKnowledgeFiltered(request), $"Visited={state.Nodes.Count} Edges={state.Steps.Count}", travelConditions?.Revision ?? 0L);
         }
 
         private static int CompareSearchStates(SearchState left, SearchState right, RoutePlanningObjective objective)
