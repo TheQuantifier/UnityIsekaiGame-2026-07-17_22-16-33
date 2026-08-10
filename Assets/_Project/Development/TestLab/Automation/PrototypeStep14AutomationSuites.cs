@@ -89,6 +89,29 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("73.11-corrupt-restore-rejection", "Corrupt placement payloads reject before commit", 110, Step("step14-entity-location-corrupt", "Reject corrupt placement restore", EntityLocationCorruptRestore)),
                     Scenario("73.12-fixture-snapshot", "Fixture snapshots restore entity placement mutations", 120, Step("step14-entity-location-fixture", "Snapshot and restore placement state", EntityLocationFixtureSnapshot))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.4.interaction-points-functional-locations",
+                "Interaction Points and Functional Locations",
+                "14.4",
+                "Authoritative logical interaction points, service bindings, provider/presence eligibility, sessions, reservations, persistence, and scene-independent routing.",
+                14040,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "InteractionPointRuntime", "LocationRuntime", "EntityLocationRuntime", "InteractionPointPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("74.1-readiness-and-definitions", "Interaction point definitions and seeded points are available", 10, Step("step14-interaction-readiness", "Resolve seeded interaction points", InteractionReadiness)),
+                    Scenario("74.2-definition-vs-instance", "Point definitions remain separate from runtime records", 20, Step("step14-interaction-definition-separation", "Create multiple points from one definition", InteractionDefinitionVsInstance)),
+                    Scenario("74.3-host-validation-and-reassignment", "Hosts validate against location categories and history is preserved", 30, Step("step14-interaction-hosts", "Reject invalid host and reassign valid host", InteractionHostValidation)),
+                    Scenario("74.4-subject-provider-boundaries", "Subject links and providers remain references to owning systems", 40, Step("step14-interaction-subject-provider", "Add links and provider assignments", InteractionSubjectProviderBoundaries)),
+                    Scenario("74.5-presence-eligibility", "Consumer and provider presence uses entity location authority", 50, Step("step14-interaction-presence", "Evaluate presence-based eligibility", InteractionPresenceEligibility)),
+                    Scenario("74.6-capacity-reservation-session", "Capacity, reservations, and sessions are deterministic", 60, Step("step14-interaction-capacity", "Start exclusive use and reject overflow", InteractionCapacityReservationSession)),
+                    Scenario("74.7-visibility-and-scene-independence", "Hidden points and scene bindings do not leak or require GameObjects", 70, Step("step14-interaction-scene-independence", "Query visibility and binding keys", InteractionVisibilitySceneIndependence)),
+                    Scenario("74.8-destination-routing", "Invocation validates context without owning destination mutation", 80, Step("step14-interaction-routing", "Invoke validated service route", InteractionDestinationRouting)),
+                    Scenario("74.9-persistence-validation", "Interaction point persistence round-trips and rejects corrupt graphs", 90, Step("step14-interaction-persistence", "Save, restore, and reject corrupt payload", InteractionPersistenceValidation)),
+                    Scenario("74.10-fixture-snapshot", "Fixture snapshots restore interaction point mutations", 100, Step("step14-interaction-fixture", "Snapshot and restore interaction state", InteractionFixtureSnapshot))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -644,6 +667,243 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step14-entity-location-fixture", "Fixture snapshot restores entity placement mutations", valid, $"Restored={restored} Missing={missing} Active={runtime.ActivePlacementCount}/{before} Failure={failure}");
         }
 
+        private static TestLabAutomationStepResult InteractionReadiness(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool hasPointDefinition = registry.TryGet(PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterDefinitionId, out InteractionPointDefinition pointDefinition);
+            bool hasServiceDefinition = registry.TryGet(PrototypeInteractionPointDefinitionFactory.QuestBoardBrowseServiceId, out InteractionServiceDefinition serviceDefinition);
+            bool hasSeededCounter = runtime.TryGetPoint(PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId, out InteractionPointSnapshot counter);
+            bool hasSeededBoard = runtime.TryGetPoint(PrototypeInteractionPointDefinitionFactory.QuestBoardPointId, out InteractionPointSnapshot board);
+            bool validRuntime = runtime.ValidateCurrent(out string failure);
+            bool valid = runtime != null
+                && hasPointDefinition
+                && hasServiceDefinition
+                && hasSeededCounter
+                && hasSeededBoard
+                && validRuntime
+                && pointDefinition.Category == InteractionPointCategory.GuildCounter
+                && serviceDefinition.DestinationRuntime == InteractionDestinationRuntime.QuestPlaceholder
+                && counter.ActiveHostLocationId == "location.prototype.adventurers-guild"
+                && board.ServiceDefinitionIds.Contains(PrototypeInteractionPointDefinitionFactory.QuestBoardBrowseServiceId);
+            return TestLabAssertions.True("step14-interaction-readiness", "Seeded interaction points and definitions resolve", valid, $"Definitions={hasPointDefinition}/{hasServiceDefinition} Seeded={hasSeededCounter}/{hasSeededBoard} Points={runtime?.PointCount} Validation={validRuntime}:{failure}");
+        }
+
+        private static TestLabAutomationStepResult InteractionDefinitionVsInstance(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            InteractionPointOperationResult first = CreateInteractionPoint(context, "shop-a", PrototypeInteractionPointDefinitionFactory.MerchantStallCounterDefinitionId, "Shop Counter A", "location.prototype.merchant-counter", new[] { PrototypeInteractionPointDefinitionFactory.ShopSaleServiceId });
+            InteractionPointOperationResult second = CreateInteractionPoint(context, "shop-b", PrototypeInteractionPointDefinitionFactory.MerchantStallCounterDefinitionId, "Shop Counter B", "location.prototype.merchant-counter", new[] { PrototypeInteractionPointDefinitionFactory.ShopSaleServiceId });
+            bool valid = first.Succeeded
+                && second.Succeeded
+                && first.Point.InteractionPointId != second.Point.InteractionPointId
+                && first.Point.InteractionPointDefinitionId == second.Point.InteractionPointDefinitionId
+                && runtime.GetPointsByDefinition(PrototypeInteractionPointDefinitionFactory.MerchantStallCounterDefinitionId).Count >= 3;
+            return TestLabAssertions.True("step14-interaction-definition-separation", "One point definition can back distinct runtime points", valid, $"First={first.Status} Second={second.Status} Count={runtime.GetPointsByDefinition(PrototypeInteractionPointDefinitionFactory.MerchantStallCounterDefinitionId).Count}");
+        }
+
+        private static TestLabAutomationStepResult InteractionHostValidation(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            InteractionPointOperationResult invalid = CreateInteractionPoint(context, "invalid-host", PrototypeInteractionPointDefinitionFactory.WorkstationDefinitionId, "Invalid Wilderness Workstation", "location.prototype.wilderness-ring", new[] { PrototypeInteractionPointDefinitionFactory.WorkstationUseServiceId });
+            InteractionPointOperationResult point = CreateInteractionPoint(context, "valid-host", PrototypeInteractionPointDefinitionFactory.WorkstationDefinitionId, "Valid Workstation", "location.prototype.merchant-counter", new[] { PrototypeInteractionPointDefinitionFactory.WorkstationUseServiceId });
+            InteractionPointOperationResult reassign = runtime.ReassignHost(new InteractionPointHostReassignmentRequest
+            {
+                transactionId = Tx(context, "interaction-host-reassign"),
+                interactionPointId = point.Point?.InteractionPointId,
+                newHostAssignmentId = context.ScenarioContext.ScopedId("interaction-host.test", "reassign"),
+                newHostLocationId = "location.prototype.adventurers-guild",
+                worldTime = 80d
+            });
+            bool history = runtime.CreateSaveData().hostAssignments.Count(assignment => assignment.interactionPointId == point.Point?.InteractionPointId) == 2;
+            bool valid = invalid.Status == InteractionPointOperationStatus.InvalidHostLocation && point.Succeeded && reassign.Succeeded && reassign.Point.ActiveHostLocationId == "location.prototype.adventurers-guild" && history;
+            return TestLabAssertions.True("step14-interaction-hosts", "Invalid hosts reject and valid host reassignments preserve history", valid, $"Invalid={invalid.Status} Point={point.Status} Reassign={reassign.Status} History={history}");
+        }
+
+        private static TestLabAutomationStepResult InteractionSubjectProviderBoundaries(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            InteractionPointOperationResult link = runtime.AddSubjectLink(new InteractionSubjectLinkRequest
+            {
+                transactionId = Tx(context, "interaction-link"),
+                linkId = context.ScenarioContext.ScopedId("interaction-subject.test", "guild-counter"),
+                interactionPointId = PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId,
+                role = InteractionSubjectLinkRole.AssociatedRecordsCollection,
+                subject = Subject("KnowledgeRecordCollection", "records.prototype.guild-public", context),
+                worldTime = 90d
+            });
+            InteractionPointOperationResult provider = runtime.AssignProvider(new InteractionProviderAssignmentRequest
+            {
+                transactionId = Tx(context, "interaction-provider"),
+                assignmentId = context.ScenarioContext.ScopedId("interaction-provider.test", "guild-info"),
+                interactionPointId = PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId,
+                serviceDefinitionId = PrototypeInteractionPointDefinitionFactory.AdventurerInformationServiceId,
+                requirementKind = InteractionProviderRequirementKind.AssignedPerson,
+                providerEntity = Person(PrototypeEntityLocationFactory.GuildMasterPersonId, context),
+                providerOrganizationId = "organization.prototype.guild",
+                presencePolicy = InteractionPhysicalPresencePolicy.WithinHostLocation,
+                worldTime = 90d
+            });
+            bool linkFound = runtime.GetSubjectLinks(PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId).Any(item => item.Subject.subjectId == "records.prototype.guild-public");
+            bool providerFound = runtime.GetProviderAssignments(PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId).Any(item => item.ServiceDefinitionId == PrototypeInteractionPointDefinitionFactory.AdventurerInformationServiceId);
+            bool valid = link.Succeeded && provider.Succeeded && linkFound && providerFound && context.ScenarioContext.Runtimes.OrganizationMemberships != null && context.ScenarioContext.Runtimes.Records != null;
+            return TestLabAssertions.True("step14-interaction-subject-provider", "Subject links and provider assignments reference owning runtimes without owning them", valid, $"Link={link.Status} Provider={provider.Status} Links={runtime.GetSubjectLinks(PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId).Count} Providers={runtime.GetProviderAssignments(PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId).Count}");
+        }
+
+        private static TestLabAutomationStepResult InteractionPresenceEligibility(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            EntityLocationRuntime entityRuntime = EntityRuntime(context);
+            EntityLocationOperationResult movePlayer = entityRuntime.Relocate(new EntityRelocationRequest
+            {
+                transactionId = Tx(context, "interaction-player-guild"),
+                newPlacementId = context.ScenarioContext.ScopedId("placement.test", "interaction-player-guild"),
+                entity = Body(PrototypeEntityLocationFactory.PlayerBodyId, context),
+                expectedOriginLocationId = "location.prototype.village",
+                destinationLocationId = "location.prototype.adventurers-guild",
+                category = EntityPlacementCategory.Visiting,
+                worldTime = 100d
+            });
+            InteractionPointOperationResult provider = runtime.AssignProvider(new InteractionProviderAssignmentRequest
+            {
+                transactionId = Tx(context, "interaction-presence-provider"),
+                assignmentId = context.ScenarioContext.ScopedId("interaction-provider.test", "guild-info-presence"),
+                interactionPointId = PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId,
+                serviceDefinitionId = PrototypeInteractionPointDefinitionFactory.AdventurerInformationServiceId,
+                providerEntity = Person(PrototypeEntityLocationFactory.GuildMasterPersonId, context),
+                presencePolicy = InteractionPhysicalPresencePolicy.WithinHostLocation,
+                worldTime = 100d
+            });
+            InteractionEligibilityResult eligible = runtime.EvaluateEligibility(new InteractionEligibilityRequest
+            {
+                interactionPointId = PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId,
+                serviceDefinitionId = PrototypeInteractionPointDefinitionFactory.AdventurerInformationServiceId,
+                consumerEntity = Person(PrototypeEntityLocationFactory.PlayerPersonId, context)
+            });
+            InteractionEligibilityResult absent = runtime.EvaluateEligibility(new InteractionEligibilityRequest
+            {
+                interactionPointId = PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId,
+                serviceDefinitionId = PrototypeInteractionPointDefinitionFactory.AdventurerInformationServiceId,
+                consumerEntity = Person(PrototypeEntityLocationFactory.MerchantPersonId, context)
+            });
+            bool valid = movePlayer.Succeeded && provider.Succeeded && eligible.Eligible && absent.Status == InteractionPointOperationStatus.ConsumerAbsent;
+            return TestLabAssertions.True("step14-interaction-presence", "Interaction eligibility consults entity location presence", valid, $"Move={movePlayer.Status} Provider={provider.Status} Eligible={eligible.Status}:{eligible.Fingerprint} Absent={absent.Status}:{string.Join(",", absent.FailureReasons)}");
+        }
+
+        private static TestLabAutomationStepResult InteractionCapacityReservationSession(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            EntityLocationRuntime entityRuntime = EntityRuntime(context);
+            entityRuntime.Relocate(new EntityRelocationRequest
+            {
+                transactionId = Tx(context, "interaction-player-board"),
+                newPlacementId = context.ScenarioContext.ScopedId("placement.test", "interaction-player-board"),
+                entity = Body(PrototypeEntityLocationFactory.PlayerBodyId, context),
+                expectedOriginLocationId = "location.prototype.village",
+                destinationLocationId = "location.prototype.merchant-counter",
+                category = EntityPlacementCategory.Visiting,
+                worldTime = 110d
+            });
+            InteractionPointOperationResult point = CreateInteractionPoint(context, "capacity-workstation", PrototypeInteractionPointDefinitionFactory.WorkstationDefinitionId, "Capacity Workstation", "location.prototype.merchant-counter", new[] { PrototypeInteractionPointDefinitionFactory.WorkstationUseServiceId });
+            InteractionPointOperationResult reservation = runtime.Reserve(new InteractionReservationRequest
+            {
+                transactionId = Tx(context, "interaction-reserve"),
+                reservationId = context.ScenarioContext.ScopedId("interaction-reservation.test", "quest-board"),
+                interactionPointId = point.Point?.InteractionPointId,
+                serviceDefinitionId = PrototypeInteractionPointDefinitionFactory.WorkstationUseServiceId,
+                reservingSubject = Subject("Person", PrototypeEntityLocationFactory.PlayerPersonId, context),
+                startWorldTime = 111d,
+                endWorldTime = 120d
+            });
+            InteractionPointOperationResult session = runtime.StartSession(new InteractionSessionStartRequest
+            {
+                transactionId = Tx(context, "interaction-session"),
+                sessionId = context.ScenarioContext.ScopedId("interaction-session.test", "quest-board"),
+                interactionPointId = point.Point?.InteractionPointId,
+                serviceDefinitionId = PrototypeInteractionPointDefinitionFactory.WorkstationUseServiceId,
+                consumerEntity = Person(PrototypeEntityLocationFactory.PlayerPersonId, context),
+                reservationId = reservation.Reservation?.ReservationId,
+                startWorldTime = 112d
+            });
+            InteractionPointOperationResult duplicate = runtime.StartSession(new InteractionSessionStartRequest
+            {
+                transactionId = Tx(context, "interaction-session-second"),
+                sessionId = context.ScenarioContext.ScopedId("interaction-session.test", "quest-board-second"),
+                interactionPointId = point.Point?.InteractionPointId,
+                serviceDefinitionId = PrototypeInteractionPointDefinitionFactory.WorkstationUseServiceId,
+                consumerEntity = Person(PrototypeEntityLocationFactory.MerchantPersonId, context),
+                startWorldTime = 113d
+            });
+            bool valid = point.Succeeded && reservation.Succeeded && session.Succeeded && duplicate.Status == InteractionPointOperationStatus.CapacityFull && runtime.GetUseSessions(point.Point.InteractionPointId).Count == 1;
+            return TestLabAssertions.True("step14-interaction-capacity", "Capacity and reservation/session records are enforced deterministically", valid, $"Point={point.Status} Reservation={reservation.Status} Session={session.Status} Second={duplicate.Status} Sessions={runtime.GetUseSessions(point.Point?.InteractionPointId).Count}");
+        }
+
+        private static TestLabAutomationStepResult InteractionVisibilitySceneIndependence(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            InteractionPointOperationResult hidden = CreateInteractionPoint(context, "hidden", PrototypeInteractionPointDefinitionFactory.PrisonCellDefinitionId, "Hidden Cell Point", "location.prototype.basement-prison", new[] { PrototypeInteractionPointDefinitionFactory.PrisonCellInspectServiceId }, InteractionPointVisibility.Hidden, "prototype.scene.binding.hidden-cell");
+            IReadOnlyList<InteractionPointSnapshot> normal = runtime.GetPointsByHost("location.prototype.basement-prison");
+            IReadOnlyList<InteractionPointSnapshot> privileged = runtime.GetPointsByHost("location.prototype.basement-prison", includeHidden: true);
+            bool normalOmitted = normal.All(item => item.InteractionPointId != hidden.Point?.InteractionPointId);
+            bool privilegedFound = privileged.Any(item => item.InteractionPointId == hidden.Point?.InteractionPointId && item.SceneBindingKey == "prototype.scene.binding.hidden-cell");
+            bool valid = hidden.Succeeded && normalOmitted && privilegedFound;
+            return TestLabAssertions.True("step14-interaction-scene-independence", "Scene binding keys are persisted without requiring scene objects and hidden points can be omitted", valid, $"Hidden={hidden.Status} Normal={normal.Count} Privileged={privileged.Count} Binding={hidden.Point?.SceneBindingKey}");
+        }
+
+        private static TestLabAutomationStepResult InteractionDestinationRouting(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            EntityRuntime(context).Relocate(new EntityRelocationRequest
+            {
+                transactionId = Tx(context, "interaction-route-player"),
+                newPlacementId = context.ScenarioContext.ScopedId("placement.test", "interaction-route-player"),
+                entity = Body(PrototypeEntityLocationFactory.PlayerBodyId, context),
+                expectedOriginLocationId = "location.prototype.village",
+                destinationLocationId = "location.prototype.adventurers-guild",
+                category = EntityPlacementCategory.Visiting,
+                worldTime = 125d
+            });
+            long before = runtime.Revision;
+            InteractionInvocationResult result = runtime.Invoke(new InteractionRequest
+            {
+                transactionId = Tx(context, "interaction-route"),
+                interactionPointId = PrototypeInteractionPointDefinitionFactory.QuestBoardPointId,
+                serviceDefinitionId = PrototypeInteractionPointDefinitionFactory.QuestBoardBrowseServiceId,
+                consumerEntity = Person(PrototypeEntityLocationFactory.PlayerPersonId, context),
+                preview = false
+            });
+            bool valid = result.Success && result.DestinationRuntime == InteractionDestinationRuntime.QuestPlaceholder && runtime.Revision == before && result.RevisionBefore == result.RevisionAfter;
+            return TestLabAssertions.True("step14-interaction-routing", "Interaction invocation validates route and leaves destination mutation to owning runtime", valid, $"Success={result.Success} Destination={result.DestinationRuntime} Revision={before}->{runtime.Revision} Message={result.Message}");
+        }
+
+        private static TestLabAutomationStepResult InteractionPersistenceValidation(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            InteractionPointPersistenceParticipant participant = new InteractionPointPersistenceParticipant(runtime, () => context.ScenarioContext.Runtimes.DefinitionRegistry, () => Runtime(context), () => EntityRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            var save = participant.CapturePayload();
+            var prepared = participant.PreparePayload(save.PayloadJson, InteractionPointPersistenceParticipant.CurrentParticipantSchemaVersion);
+            InteractionPointRuntime restored = new InteractionPointRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), EntityRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            InteractionPointOperationResult restore = restored.RestoreFromSaveData(runtime.CreateSaveData(), Runtime(context), EntityRuntime(context), context.ScenarioContext.Runtimes.WorldId, restoring: true);
+            InteractionPointRuntimeSaveData corrupt = runtime.CreateSaveData();
+            corrupt.points[0].activeHostLocationId = "location.prototype.missing";
+            var rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), InteractionPointPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = save.Succeeded && prepared.Succeeded && restore.Succeeded && rejected != null && !rejected.Succeeded && restored.PointCount == runtime.PointCount;
+            return TestLabAssertions.True("step14-interaction-persistence", "Interaction point save data round-trips and corrupt graphs reject before commit", valid, $"Save={save.Succeeded} Prepare={prepared.Succeeded} Restore={restore.Status} Rejected={rejected?.Succeeded == false} Count={restored.PointCount}/{runtime.PointCount}");
+        }
+
+        private static TestLabAutomationStepResult InteractionFixtureSnapshot(TestLabAutomationContext context)
+        {
+            InteractionPointRuntime runtime = InteractionRuntime(context);
+            TestLabRuntimeBundleSnapshot snapshot = context.ScenarioContext.Runtimes.CreateSnapshot();
+            int before = runtime.PointCount;
+            InteractionPointOperationResult created = CreateInteractionPoint(context, "fixture", PrototypeInteractionPointDefinitionFactory.WorkstationDefinitionId, "Fixture Workstation", "location.prototype.merchant-counter", new[] { PrototypeInteractionPointDefinitionFactory.WorkstationUseServiceId });
+            bool restored = context.ScenarioContext.Runtimes.RestoreSnapshot(snapshot, out string failure);
+            bool missing = !runtime.TryGetPoint(created.Point?.InteractionPointId, out _);
+            bool valid = created.Succeeded && restored && missing && runtime.PointCount == before;
+            return TestLabAssertions.True("step14-interaction-fixture", "Fixture snapshot restores interaction point mutations", valid, $"Created={created.Status} Restored={restored} Missing={missing} Count={runtime.PointCount}/{before} Failure={failure}");
+        }
+
         private static LocationRuntime Runtime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.Locations;
@@ -652,6 +912,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static EntityLocationRuntime EntityRuntime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.EntityLocations;
+        }
+
+        private static InteractionPointRuntime InteractionRuntime(TestLabAutomationContext context)
+        {
+            return context?.ScenarioContext?.Runtimes?.InteractionPoints;
         }
 
         private static EntityLocationReferenceData Person(string id, TestLabAutomationContext context)
@@ -698,6 +963,46 @@ namespace UnityIsekaiGame.Development.Automation
         private static string Tx(TestLabAutomationContext context, string suffix)
         {
             return context.ScenarioContext.ScopedId("location.tx", suffix);
+        }
+
+        private static InteractionSubjectReferenceData Subject(string subjectType, string subjectId, TestLabAutomationContext context)
+        {
+            return new InteractionSubjectReferenceData
+            {
+                subjectType = subjectType,
+                subjectId = subjectId,
+                worldId = context.ScenarioContext.Runtimes.WorldId
+            };
+        }
+
+        private static InteractionPointOperationResult CreateInteractionPoint(
+            TestLabAutomationContext context,
+            string suffix,
+            string definitionId,
+            string displayName,
+            string hostLocationId,
+            IEnumerable<string> serviceIds,
+            InteractionPointVisibility visibility = InteractionPointVisibility.Public,
+            string sceneBindingKey = null,
+            bool preview = false)
+        {
+            return InteractionRuntime(context).CreatePoint(new InteractionPointCreateRequest
+            {
+                transactionId = Tx(context, $"interaction-{suffix}"),
+                interactionPointId = context.ScenarioContext.ScopedId("interaction-point.test", suffix),
+                interactionPointDefinitionId = definitionId,
+                displayName = displayName,
+                hostLocationId = hostLocationId,
+                hostAssignmentId = context.ScenarioContext.ScopedId("interaction-host.test", suffix),
+                serviceDefinitionIds = serviceIds ?? Array.Empty<string>(),
+                visibility = visibility,
+                sceneBindingKey = sceneBindingKey,
+                sceneBindingCategory = string.IsNullOrWhiteSpace(sceneBindingKey) ? InteractionSceneBindingCategory.None : InteractionSceneBindingCategory.PrototypeMarker,
+                worldTime = 70d,
+                sourceEventId = "testlab.feature.14.4",
+                provenanceId = "testlab.feature.14.4",
+                preview = preview
+            });
         }
     }
 }

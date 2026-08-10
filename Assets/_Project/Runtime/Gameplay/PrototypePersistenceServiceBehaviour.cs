@@ -67,6 +67,7 @@ using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Economy.InstitutionalRevenue;
 using UnityIsekaiGame.Economy.Trading;
 using UnityIsekaiGame.WorldEntities;
+using UnityIsekaiGame.WorldLocations;
 
 namespace UnityIsekaiGame.Gameplay
 {
@@ -4826,6 +4827,8 @@ namespace UnityIsekaiGame.Gameplay
             definitionRegistry = PrototypeLegalDefinitionFactory.AddMissingPrototypeLegalDefinitions(definitionRegistry);
             definitionRegistry = PrototypeCrimeDefinitionFactory.AddMissingPrototypeCrimeDefinitions(definitionRegistry);
             definitionRegistry = PrototypeJusticeDefinitionFactory.AddMissingPrototypeJusticeDefinitions(definitionRegistry);
+            definitionRegistry = PrototypeLocationDefinitionFactory.AddMissingPrototypeLocationDefinitions(definitionRegistry);
+            definitionRegistry = PrototypeInteractionPointDefinitionFactory.AddMissingPrototypeInteractionDefinitions(definitionRegistry);
             return definitionRegistry;
         }
 

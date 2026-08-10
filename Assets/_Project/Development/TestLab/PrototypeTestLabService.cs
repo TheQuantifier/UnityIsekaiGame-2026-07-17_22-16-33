@@ -14532,6 +14532,7 @@ namespace UnityIsekaiGame.Development
             registry = PrototypeCrimeDefinitionFactory.AddMissingPrototypeCrimeDefinitions(registry);
             registry = PrototypeJusticeDefinitionFactory.AddMissingPrototypeJusticeDefinitions(registry);
             registry = PrototypeLocationDefinitionFactory.AddMissingPrototypeLocationDefinitions(registry);
+            registry = PrototypeInteractionPointDefinitionFactory.AddMissingPrototypeInteractionDefinitions(registry);
             return registry;
         }
 
