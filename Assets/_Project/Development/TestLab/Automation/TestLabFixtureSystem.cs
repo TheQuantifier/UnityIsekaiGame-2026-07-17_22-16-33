@@ -474,6 +474,7 @@ namespace UnityIsekaiGame.Development.Automation
             LocationRouteRuntime locationRoutes,
             TravelJourneyRuntime travelJourneys,
             TravelConditionRuntime travelConditions,
+            PoliticalTravelRuntime politicalTravel,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -544,6 +545,7 @@ namespace UnityIsekaiGame.Development.Automation
             LocationRoutes = locationRoutes;
             TravelJourneys = travelJourneys;
             TravelConditions = travelConditions;
+            PoliticalTravel = politicalTravel;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -616,6 +618,7 @@ namespace UnityIsekaiGame.Development.Automation
         public LocationRouteRuntime LocationRoutes { get; }
         public TravelJourneyRuntime TravelJourneys { get; }
         public TravelConditionRuntime TravelConditions { get; }
+        public PoliticalTravelRuntime PoliticalTravel { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -686,7 +689,8 @@ namespace UnityIsekaiGame.Development.Automation
             LocationConnectionRuntime locationConnections = null,
             LocationRouteRuntime locationRoutes = null,
             TravelJourneyRuntime travelJourneys = null,
-            TravelConditionRuntime travelConditions = null)
+            TravelConditionRuntime travelConditions = null,
+            PoliticalTravelRuntime politicalTravel = null)
         {
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
@@ -833,7 +837,9 @@ namespace UnityIsekaiGame.Development.Automation
             crimeRuntime.Configure(definitionRegistry, governmentRuntime, legalRuntime, authorityRuntime, diplomacyRuntime, worldId, persons, Array.Empty<string>());
             JusticeRuntime justiceRuntime = justice ?? new JusticeRuntime();
             justiceRuntime.Configure(definitionRegistry, governmentRuntime, legalRuntime, organizationRuntime, authorityRuntime, crimeRuntime, worldId, persons, Array.Empty<string>());
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemRuntime, itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, factionRuntime, diplomacyRuntime, governmentRuntime, legalRuntime, crimeRuntime, justiceRuntime, locationRuntime, entityLocationRuntime, interactionPointRuntime, locationConnectionRuntime, locationRouteRuntime, travelJourneyRuntime, travelConditionRuntime, null);
+            PoliticalTravelRuntime politicalTravelRuntime = politicalTravel ?? new PoliticalTravelRuntime();
+            politicalTravelRuntime.Configure(definitionRegistry, governmentRuntime, legalRuntime, crimeRuntime, justiceRuntime, locationRuntime, locationRouteRuntime, worldId);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemRuntime, itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, factionRuntime, diplomacyRuntime, governmentRuntime, legalRuntime, crimeRuntime, justiceRuntime, locationRuntime, entityLocationRuntime, interactionPointRuntime, locationConnectionRuntime, locationRouteRuntime, travelJourneyRuntime, travelConditionRuntime, politicalTravelRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -909,6 +915,7 @@ namespace UnityIsekaiGame.Development.Automation
             LocationRouteRuntime locationRoutes = new LocationRouteRuntime();
             TravelJourneyRuntime travelJourneys = new TravelJourneyRuntime();
             TravelConditionRuntime travelConditions = new TravelConditionRuntime();
+            PoliticalTravelRuntime politicalTravel = new PoliticalTravelRuntime();
 
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -974,8 +981,9 @@ namespace UnityIsekaiGame.Development.Automation
             laws.Configure(definitionRegistry, governments, organizations, organizationAuthority, organizationDecisions, diplomacy, properties, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
             crimes.Configure(definitionRegistry, governments, laws, organizationAuthority, diplomacy, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
             justice.Configure(definitionRegistry, governments, laws, organizations, organizationAuthority, crimes, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
+            politicalTravel.Configure(definitionRegistry, governments, laws, crimes, justice, locations, locationRoutes, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, factions, diplomacy, governments, laws, crimes, justice, locations, entityLocations, interactionPoints, locationConnections, locationRoutes, travelJourneys, travelConditions, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, factions, diplomacy, governments, laws, crimes, justice, locations, entityLocations, interactionPoints, locationConnections, locationRoutes, travelJourneys, travelConditions, politicalTravel, knowledgeObject);
         }
 
         private static string[] ExpandKnownPersons(IReadOnlyList<string> knownPersonIds, string ownerPersonId)
@@ -1081,7 +1089,8 @@ namespace UnityIsekaiGame.Development.Automation
                 LocationConnections?.CreateSaveData(),
                 LocationRoutes?.CreateSaveData(),
                 TravelJourneys?.CreateSaveData(),
-                TravelConditions?.CreateSaveData());
+                TravelConditions?.CreateSaveData(),
+                PoliticalTravel?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -1150,7 +1159,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("LocationConnections", LocationConnections?.Revision ?? 0L, LocationConnections?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("LocationRoutes", LocationRoutes?.Revision ?? 0L, LocationRoutes?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("TravelJourneys", TravelJourneys?.Revision ?? 0L, TravelJourneys?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("TravelConditions", TravelConditions?.Revision ?? 0L, TravelConditions?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("TravelConditions", TravelConditions?.Revision ?? 0L, TravelConditions?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("PoliticalTravel", PoliticalTravel?.Revision ?? 0L, PoliticalTravel?.CreateSaveData())
             });
         }
 
@@ -1791,6 +1801,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (PoliticalTravel != null && snapshot.PoliticalTravel != null)
+            {
+                PoliticalTravelOperationResult result = PoliticalTravel.RestoreFromSaveData(snapshot.PoliticalTravel, Governments, Laws, Crimes, Locations, LocationRoutes, WorldId, restoring: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Political travel restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -1820,6 +1840,7 @@ namespace UnityIsekaiGame.Development.Automation
 
         public void Dispose()
         {
+            PoliticalTravel?.Dispose();
             TravelConditions?.Dispose();
             TravelJourneys?.Dispose();
             LocationRoutes?.Dispose();
@@ -1916,7 +1937,8 @@ namespace UnityIsekaiGame.Development.Automation
             LocationConnectionRuntimeSaveData locationConnections,
             LocationRouteRuntimeSaveData locationRoutes,
             TravelJourneyRuntimeSaveData travelJourneys,
-            TravelConditionRuntimeSaveData travelConditions)
+            TravelConditionRuntimeSaveData travelConditions,
+            PoliticalTravelRuntimeSaveData politicalTravel)
         {
             Knowledge = knowledge;
             History = history;
@@ -1981,6 +2003,7 @@ namespace UnityIsekaiGame.Development.Automation
             LocationRoutes = locationRoutes;
             TravelJourneys = travelJourneys;
             TravelConditions = travelConditions;
+            PoliticalTravel = politicalTravel;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -2046,6 +2069,7 @@ namespace UnityIsekaiGame.Development.Automation
         public LocationRouteRuntimeSaveData LocationRoutes { get; }
         public TravelJourneyRuntimeSaveData TravelJourneys { get; }
         public TravelConditionRuntimeSaveData TravelConditions { get; }
+        public PoliticalTravelRuntimeSaveData PoliticalTravel { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint

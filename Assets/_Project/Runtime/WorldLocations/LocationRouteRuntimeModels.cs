@@ -336,6 +336,9 @@ namespace UnityIsekaiGame.WorldLocations
         public string[] requiredAuthorities = Array.Empty<string>();
         public string[] requiredCustodyRoles = Array.Empty<string>();
         public string[] requiredActions = Array.Empty<string>();
+        public string[] requiredLegalTravelActions = Array.Empty<string>();
+        public string[] requiredCheckpointIds = Array.Empty<string>();
+        public string[] requiredPoliticalTerritoryIds = Array.Empty<string>();
         public string[] hiddenRouteEdges = Array.Empty<string>();
 
         public RouteRequirementSummary Clone()
@@ -349,6 +352,9 @@ namespace UnityIsekaiGame.WorldLocations
                 requiredAuthorities = C(requiredAuthorities),
                 requiredCustodyRoles = C(requiredCustodyRoles),
                 requiredActions = C(requiredActions),
+                requiredLegalTravelActions = C(requiredLegalTravelActions),
+                requiredCheckpointIds = C(requiredCheckpointIds),
+                requiredPoliticalTerritoryIds = C(requiredPoliticalTerritoryIds),
                 hiddenRouteEdges = C(hiddenRouteEdges)
             };
         }
@@ -461,6 +467,7 @@ namespace UnityIsekaiGame.WorldLocations
         public string[] travelerCapabilityIds = Array.Empty<string>();
         public string[] travelerEquipmentDefinitionIds = Array.Empty<string>();
         public TravelConditionEvaluationMode conditionEvaluationMode = TravelConditionEvaluationMode.IgnoreDynamicConditions;
+        public TravelLegalComplianceMode legalComplianceMode = TravelLegalComplianceMode.StructuralOnlyDevelopment;
         public string[] knownConditionIds = Array.Empty<string>();
         public string[] knownEncounterIds = Array.Empty<string>();
         public string[] knownHazardExposureIds = Array.Empty<string>();
