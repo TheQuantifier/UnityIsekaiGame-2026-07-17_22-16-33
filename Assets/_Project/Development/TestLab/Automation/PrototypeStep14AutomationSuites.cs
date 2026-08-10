@@ -7,9 +7,11 @@ using UnityEngine;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Governments;
+using UnityIsekaiGame.Interaction;
 using UnityIsekaiGame.Laws;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.WorldLocations;
+using UnityIsekaiGame.WorldLocations.SceneBinding;
 
 namespace UnityIsekaiGame.Development.Automation
 {
@@ -236,6 +238,23 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("80.3-path-occupancy-visits", "Historical containment, occupancy, visits, and distance are derived deterministically", 30, Step("step14-history-path-occupancy", "Query containment path, occupancy, visits, and distance", HistoricalPathOccupancyVisits)),
                     Scenario("80.4-timeline-visibility", "Movement timelines preserve source references without leaking hidden details", 40, Step("step14-history-timeline-visibility", "Evaluate visibility-safe timeline ranges", HistoricalTimelineVisibility)),
                     Scenario("80.5-validation-and-snapshot", "Movement history validates source graphs and remains immutable after runtime mutation", 50, Step("step14-history-validation-snapshot", "Validate and snapshot movement history projections", HistoricalValidationSnapshot))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.11.scene-binding-prototype-world-integration",
+                "Scene Binding and Prototype World Integration",
+                "14.11",
+                "Transient Unity scene bindings map prototype GameObjects to authoritative Step 14 locations, interaction points, connections, routes, checkpoints, and entity placements without making scene objects authoritative.",
+                14110,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "WorldSceneBindingRuntime", "LocationRuntime", "EntityLocationRuntime", "InteractionPointRuntime", "LocationConnectionRuntime", "LocationRouteRuntime", "PoliticalTravelRuntime" },
+                scenarios: new[]
+                {
+                    Scenario("81.1-binding-readiness", "Scene bindings resolve authoritative records and report duplicates deterministically", 10, Step("step14-scene-binding-readiness", "Register representative scene bindings", SceneBindingReadiness)),
+                    Scenario("81.2-interaction-and-connections", "Scene interaction and door bindings route through owning runtimes", 20, Step("step14-scene-binding-interaction-connection", "Use interaction and connection bindings", SceneBindingInteractionAndConnection)),
+                    Scenario("81.3-entity-materialization", "Scene entities materialize from authoritative placements without writing Transform drift", 30, Step("step14-scene-binding-entity-materialize", "Materialize entity from runtime placement", SceneBindingEntityMaterialization)),
+                    Scenario("81.4-route-checkpoint-transient", "Route and checkpoint scene markers stay transient presentation mappings", 40, Step("step14-scene-binding-route-checkpoint", "Bind route and checkpoint markers", SceneBindingRouteCheckpointTransient))
                 }), out _);
         }
 
@@ -1928,6 +1947,256 @@ namespace UnityIsekaiGame.Development.Automation
             int validErrors = validReport.Issues.Count(issue => issue.Severity == MovementHistoryIssueSeverity.Error);
             int corruptErrors = corruptReport.Issues.Count(issue => issue.Severity == MovementHistoryIssueSeverity.Error);
             return TestLabAssertions.True("step14-history-validation-snapshot", "Movement projections validate source graphs and remain immutable after runtime mutation", valid, $"Valid={validReport.Succeeded}:{validErrors} Immutable={immutable} Corrupt={corruptReport.Succeeded}:{corruptErrors}");
+        }
+
+        private static TestLabAutomationStepResult SceneBindingReadiness(TestLabAutomationContext context)
+        {
+            WorldSceneBindingRuntime.Default.ClearTransientBindings();
+            WorldSceneBindingRuntime runtime = SceneBindingRuntime(context);
+            LocationSceneBinding village = null;
+            LocationSceneBinding guild = null;
+            LocationSceneBinding duplicateGuild = null;
+            LocationSceneBinding missingOptional = null;
+            try
+            {
+                village = NewBinding<LocationSceneBinding>("scene-binding-village");
+                village.ConfigureLocation("location.prototype.village", "prototype.scene.location.village", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, PrototypeLocationDefinitionFactory.SettlementDefinitionId, requiredBinding: true);
+                guild = NewBinding<LocationSceneBinding>("scene-binding-guild");
+                guild.ConfigureLocation("location.prototype.adventurers-guild", "prototype.scene.location.guild", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, PrototypeLocationDefinitionFactory.GuildHallDefinitionId, requiredBinding: true);
+                duplicateGuild = NewBinding<LocationSceneBinding>("scene-binding-guild-duplicate");
+                duplicateGuild.ConfigureLocation("location.prototype.adventurers-guild", "prototype.scene.location.guild.duplicate", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, PrototypeLocationDefinitionFactory.GuildHallDefinitionId, requiredBinding: true);
+                missingOptional = NewBinding<LocationSceneBinding>("scene-binding-missing-optional");
+                string missingLocationId = context.ScenarioContext.ScopedId("location.prototype.missing", "scene-binding");
+                missingOptional.ConfigureLocation(missingLocationId, "prototype.scene.location.optional-missing", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, requiredBinding: false);
+
+                runtime.Register(village);
+                runtime.Register(guild);
+                runtime.Register(duplicateGuild);
+                runtime.Register(missingOptional);
+                WorldSceneBindingValidationReport report = runtime.Validate();
+                bool boundVillage = runtime.TryResolve(WorldSceneBindingCategory.Location, "location.prototype.village", out WorldSceneBindingComponent villageBinding) && villageBinding.Status == WorldSceneBindingStatus.Bound;
+                bool deterministicDuplicate = guild.Status == WorldSceneBindingStatus.Bound && duplicateGuild.Status == WorldSceneBindingStatus.Duplicate;
+                bool optionalWarning = missingOptional.Status == WorldSceneBindingStatus.WaitingForLogicalRecord && report.WarningCount == 1;
+                bool valid = boundVillage && deterministicDuplicate && optionalWarning && report.ErrorCount == 1 && report.DuplicateCount == 1 && !runtime.TryGetLocation(missingLocationId, out _);
+                return TestLabAssertions.True("step14-scene-binding-readiness", "Scene bindings resolve authoritative records and report duplicate scene owners", valid, $"Report={report.Summary} Village={village.Status} Guild={guild.Status} Duplicate={duplicateGuild.Status} Optional={missingOptional.Status}");
+            }
+            finally
+            {
+                DestroyBindings(village, guild, duplicateGuild, missingOptional);
+                runtime.ClearTransientBindings();
+                WorldSceneBindingRuntime.Default.ClearTransientBindings();
+            }
+        }
+
+        private static TestLabAutomationStepResult SceneBindingInteractionAndConnection(TestLabAutomationContext context)
+        {
+            WorldSceneBindingRuntime.Default.ClearTransientBindings();
+            WorldSceneBindingRuntime runtime = SceneBindingRuntime(context);
+            InteractionPointSceneBinding counter = null;
+            ConnectionSceneBinding entrance = null;
+            ConnectionSceneBinding officeDoor = null;
+            GameObject door = null;
+            GameObject officeDoorObject = null;
+            try
+            {
+                counter = NewBinding<InteractionPointSceneBinding>("scene-binding-counter");
+                counter.ConfigureBinding(PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId, "prototype.scene.interaction.adventurer-guild-counter", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, WorldSceneBindingRole.Primary, true);
+                door = new GameObject("scene-binding-door-collider");
+                BoxCollider collider = door.AddComponent<BoxCollider>();
+                entrance = door.AddComponent<ConnectionSceneBinding>();
+                entrance.ConfigureConnection(PrototypeLocationConnectionDefinitionFactory.VillageGuildEntranceConnectionId, "prototype.scene.connection.guild-entrance", "location.prototype.village", "location.prototype.adventurers-guild", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, collider, true);
+                officeDoorObject = new GameObject("scene-binding-office-door-collider");
+                BoxCollider officeCollider = officeDoorObject.AddComponent<BoxCollider>();
+                officeDoor = officeDoorObject.AddComponent<ConnectionSceneBinding>();
+                officeDoor.ConfigureConnection(PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, "prototype.scene.connection.guild-head-office", "location.prototype.adventurers-guild", "location.prototype.guildmaster-office", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, officeCollider, true);
+
+                runtime.Register(counter);
+                runtime.Register(entrance);
+                runtime.Register(officeDoor);
+                runtime.SyncAllFromAuthoritative(true);
+
+                InteractionContext interactionContext = default;
+                bool canInteract = counter.CanInteract(in interactionContext);
+                counter.Interact(in interactionContext);
+                bool routedInteraction = counter.LastPoint != null && counter.LastPoint.InteractionPointId == PrototypeInteractionPointDefinitionFactory.AdventurerGuildCounterPointId;
+
+                LocationConnectionOperationResult close = runtime.RequestConnectionOpenState(Tx(context, "scene-binding-close-door"), PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, LocationConnectionOpenState.Closed, null, null, 22d, false);
+                runtime.SyncAllFromAuthoritative(false);
+                bool closedBlocks = close.Succeeded && officeCollider.enabled;
+                LocationConnectionOperationResult open = runtime.RequestConnectionOpenState(Tx(context, "scene-binding-open-door"), PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, LocationConnectionOpenState.Open, null, null, 23d, false);
+                runtime.SyncAllFromAuthoritative(false);
+                bool openClears = open.Succeeded && !officeCollider.enabled;
+
+                EntityLocationReferenceData actor = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+                SceneBindingTransitionResult traversal = entrance.RequestTraversal(actor, AccessContext(context, actor), 24d);
+                bool placed = EntityRuntime(context).TryGetActivePlacement(actor, out EntityPlacementSnapshot placement);
+                SceneBindingTransitionResult denied = runtime.RequestTransition(new SceneBindingTransitionRequest
+                {
+                    transactionId = Tx(context, "scene-binding-denied-office"),
+                    actor = actor,
+                    connectionId = PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId,
+                    fromLocationId = "location.prototype.adventurers-guild",
+                    toLocationId = "location.prototype.guildmaster-office",
+                    accessContext = AccessContext(context, actor),
+                    worldTime = 25d
+                });
+                bool valid = canInteract && routedInteraction && closedBlocks && openClears && traversal.Succeeded && placed && placement.ExactLocationId == "location.prototype.adventurers-guild" && denied.Status == SceneBindingTransitionStatus.AccessDenied;
+                return TestLabAssertions.True("step14-scene-binding-interaction-connection", "Scene interaction and connection bindings delegate to authoritative runtimes", valid, $"CanInteract={canInteract} Routed={routedInteraction} Close={close.Status}:{closedBlocks} Open={open.Status}:{openClears} Traverse={traversal.Status} Placement={placement?.ExactLocationId} Denied={denied.Status}");
+            }
+            finally
+            {
+                DestroyBindings(counter, entrance, officeDoor);
+                if (door != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(door);
+                }
+                if (officeDoorObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(officeDoorObject);
+                }
+                runtime.ClearTransientBindings();
+                WorldSceneBindingRuntime.Default.ClearTransientBindings();
+            }
+        }
+
+        private static TestLabAutomationStepResult SceneBindingEntityMaterialization(TestLabAutomationContext context)
+        {
+            WorldSceneBindingRuntime.Default.ClearTransientBindings();
+            WorldSceneBindingRuntime runtime = SceneBindingRuntime(context);
+            LocationSceneBinding village = null;
+            LocationSceneBinding guild = null;
+            WorldEntitySceneBinding player = null;
+            try
+            {
+                village = NewBinding<LocationSceneBinding>("scene-binding-village-anchor");
+                village.transform.SetPositionAndRotation(new Vector3(-2f, 0f, -3f), Quaternion.Euler(0f, 20f, 0f));
+                village.ConfigureLocation("location.prototype.village", "prototype.scene.location.village.anchor", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, requiredBinding: true);
+                guild = NewBinding<LocationSceneBinding>("scene-binding-guild-anchor");
+                guild.transform.SetPositionAndRotation(new Vector3(7f, 0f, 4f), Quaternion.Euler(0f, 90f, 0f));
+                guild.ConfigureLocation("location.prototype.adventurers-guild", "prototype.scene.location.guild.anchor", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, requiredBinding: true);
+                player = NewBinding<WorldEntitySceneBinding>("scene-binding-player-body");
+                player.transform.position = new Vector3(100f, 10f, 100f);
+                player.ConfigureEntity(LocationOccupantEntityType.Body, PrototypeEntityLocationFactory.PlayerBodyId, "prototype.scene.entity.player-body", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, snapToGround: false);
+
+                runtime.Register(village);
+                runtime.Register(guild);
+                runtime.Register(player);
+                runtime.SyncAllFromAuthoritative(true);
+                Vector3 firstPosition = player.transform.position;
+                bool initialMaterialized = Vector3.Distance(firstPosition, village.transform.position) < 0.001f;
+
+                EntityLocationReferenceData actor = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+                EntityLocationOperationResult relocate = EntityRuntime(context).Relocate(new EntityRelocationRequest
+                {
+                    transactionId = Tx(context, "scene-binding-relocate-player"),
+                    newPlacementId = context.ScenarioContext.ScopedId("placement.scene-binding", "player-guild"),
+                    entity = actor,
+                    expectedOriginLocationId = "location.prototype.village",
+                    destinationLocationId = "location.prototype.adventurers-guild",
+                    worldTime = 30d,
+                    sourceEventId = "testlab.feature.14.11",
+                    provenanceId = "testlab.feature.14.11"
+                });
+                runtime.SyncAllFromAuthoritative(false);
+                bool relocatedMaterialized = relocate.Succeeded && Vector3.Distance(player.transform.position, guild.transform.position) < 0.001f;
+
+                player.transform.position = new Vector3(-50f, 3f, 12f);
+                bool authoritativeUnchanged = EntityRuntime(context).TryGetActivePlacement(actor, out EntityPlacementSnapshot placement) && placement.ExactLocationId == "location.prototype.adventurers-guild";
+                bool valid = initialMaterialized && relocatedMaterialized && authoritativeUnchanged;
+                return TestLabAssertions.True("step14-scene-binding-entity-materialize", "Entity scene binding follows authoritative placement and ignores Transform drift", valid, $"Initial={initialMaterialized}:{firstPosition} Relocate={relocate.Status}:{relocatedMaterialized} Authoritative={placement?.ExactLocationId}");
+            }
+            finally
+            {
+                DestroyBindings(village, guild, player);
+                runtime.ClearTransientBindings();
+                WorldSceneBindingRuntime.Default.ClearTransientBindings();
+            }
+        }
+
+        private static TestLabAutomationStepResult SceneBindingRouteCheckpointTransient(TestLabAutomationContext context)
+        {
+            WorldSceneBindingRuntime.Default.ClearTransientBindings();
+            WorldSceneBindingRuntime runtime = SceneBindingRuntime(context);
+            RouteSegmentSceneBinding route = null;
+            CheckpointSceneBinding checkpoint = null;
+            try
+            {
+                PoliticalTravelRuntime political = PoliticalRuntime(context);
+                PoliticalTravelOperationResult createCheckpoint = political.CreateCheckpoint(new BorderCheckpointCreateRequest
+                {
+                    transactionId = Tx(context, "scene-binding-checkpoint-create"),
+                    checkpointId = context.ScenarioContext.ScopedId("checkpoint.prototype.scene-binding", "village-gate"),
+                    displayName = "Scene Binding Village Gate",
+                    locationId = "location.prototype.village",
+                    routeSegmentId = PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId,
+                    policy = BorderCheckpointPolicy.RequireInspection,
+                    lifecycleState = BorderCheckpointLifecycleState.Active,
+                    visibility = PoliticalVisibility.Public,
+                    worldTime = 35d,
+                    sourceEventId = "testlab.feature.14.11",
+                    provenanceId = "testlab.feature.14.11"
+                });
+
+                route = NewBinding<RouteSegmentSceneBinding>("scene-binding-route-segment");
+                route.ConfigureBinding(PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId, "prototype.scene.route.village-market-street", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, WorldSceneBindingRole.Primary, true);
+                checkpoint = NewBinding<CheckpointSceneBinding>("scene-binding-checkpoint");
+                checkpoint.ConfigureBinding(createCheckpoint.Checkpoint?.CheckpointId, "prototype.scene.checkpoint.village-gate", "scene.prototype", context.ScenarioContext.Runtimes.WorldId, WorldSceneBindingRole.Primary, true);
+
+                long routeRevisionBefore = RouteRuntime(context).Revision;
+                long politicalRevisionBefore = political.Revision;
+                runtime.Register(route);
+                runtime.Register(checkpoint);
+                WorldSceneBindingValidationReport report = runtime.SyncAllFromAuthoritative(true);
+                long routeRevisionAfter = RouteRuntime(context).Revision;
+                long politicalRevisionAfter = political.Revision;
+                bool resolvedRoute = runtime.TryResolve(WorldSceneBindingCategory.RouteSegment, PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId, out WorldSceneBindingComponent routeBinding) && routeBinding.Status == WorldSceneBindingStatus.Bound;
+                WorldSceneBindingComponent checkpointBinding = null;
+                bool resolvedCheckpoint = createCheckpoint.Succeeded && runtime.TryResolve(WorldSceneBindingCategory.Checkpoint, createCheckpoint.Checkpoint.CheckpointId, out checkpointBinding) && checkpointBinding.Status == WorldSceneBindingStatus.Bound;
+                bool noMutation = routeRevisionBefore == routeRevisionAfter && politicalRevisionBefore == politicalRevisionAfter;
+                bool valid = report.Succeeded && resolvedRoute && resolvedCheckpoint && noMutation;
+                return TestLabAssertions.True("step14-scene-binding-route-checkpoint", "Route and checkpoint bindings are transient presentation mappings", valid, $"Checkpoint={createCheckpoint.Code} Report={report.Summary} Route={routeBinding?.Status} CheckpointBinding={checkpointBinding?.Status} Revisions={routeRevisionBefore}->{routeRevisionAfter}/{politicalRevisionBefore}->{politicalRevisionAfter}");
+            }
+            finally
+            {
+                DestroyBindings(route, checkpoint);
+                runtime.ClearTransientBindings();
+                WorldSceneBindingRuntime.Default.ClearTransientBindings();
+            }
+        }
+
+        private static WorldSceneBindingRuntime SceneBindingRuntime(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            WorldSceneBindingRuntime runtime = new WorldSceneBindingRuntime();
+            runtime.Configure(
+                Runtime(context),
+                EntityRuntime(context),
+                InteractionRuntime(context),
+                ConnectionRuntime(context),
+                RouteRuntime(context),
+                JourneyRuntime(context),
+                PoliticalRuntime(context),
+                runtimes?.WorldId ?? PersistenceService.LocalWorldId);
+            return runtime;
+        }
+
+        private static T NewBinding<T>(string name) where T : Component
+        {
+            GameObject obj = new GameObject(name);
+            return obj.AddComponent<T>();
+        }
+
+        private static void DestroyBindings(params Component[] bindings)
+        {
+            foreach (Component binding in bindings)
+            {
+                if (binding == null)
+                {
+                    continue;
+                }
+
+                UnityEngine.Object.DestroyImmediate(binding.gameObject);
+            }
         }
 
         private static LocationRuntime Runtime(TestLabAutomationContext context)
