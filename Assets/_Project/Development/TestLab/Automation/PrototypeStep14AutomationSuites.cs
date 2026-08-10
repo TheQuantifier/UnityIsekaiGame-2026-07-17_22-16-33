@@ -153,6 +153,28 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("76.7-persistence-validation", "Route persistence round-trips and rejects corrupt route graphs", 70, Step("step14-route-persistence", "Save, restore, and reject corrupt route payload", RoutePersistenceValidation)),
                     Scenario("76.8-fixture-snapshot", "Fixture snapshots restore route mutations", 80, Step("step14-route-fixture", "Snapshot and restore route state", RouteFixtureSnapshot))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.7.travel-planning-journey-state",
+                "Travel Planning and Journey State",
+                "14.7",
+                "Authoritative journey records created from accepted route plans, deterministic world-time progress, local connection traversal, lifecycle controls, replanning, persistence validation, and fixture ownership.",
+                14070,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "TravelJourneyRuntime", "LocationRouteRuntime", "EntityLocationRuntime", "TravelJourneyPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("77.1-readiness-and-create", "Journey runtime creates ready journeys from accepted route plans", 10, Step("step14-journey-create", "Create journey from accepted route plan", JourneyReadinessAndCreate)),
+                    Scenario("77.2-start-no-teleport", "Starting a journey does not mutate exact placement", 20, Step("step14-journey-start", "Start journey while remaining at origin", JourneyStartDoesNotTeleport)),
+                    Scenario("77.3-deterministic-progress", "Route-segment progress is deterministic by world time", 30, Step("step14-journey-progress", "Advance route segment and arrive deterministically", JourneyDeterministicProgress)),
+                    Scenario("77.4-local-connection-step", "Local connection steps use connection traversal authority", 40, Step("step14-journey-connection", "Advance through route and local connection", JourneyLocalConnectionStep)),
+                    Scenario("77.5-pause-resume-cancel", "Pause, resume, and cancel preserve placement and lifecycle history", 50, Step("step14-journey-lifecycle", "Exercise pause, resume, and cancel", JourneyPauseResumeCancel)),
+                    Scenario("77.6-block-and-replan", "Stale blocked routes block travel and can replan from current placement", 60, Step("step14-journey-replan", "Block stale route and replan", JourneyBlockAndReplan)),
+                    Scenario("77.7-projection-boundaries", "Journey projections expose in-transit context without leaking hidden details", 70, Step("step14-journey-projection", "Evaluate physical and redacted projections", JourneyProjectionBoundaries)),
+                    Scenario("77.8-persistence-validation", "Journey persistence round-trips and rejects corrupt graphs before commit", 80, Step("step14-journey-persistence", "Save, restore, and reject corrupt journey payload", JourneyPersistenceValidation)),
+                    Scenario("77.9-fixture-snapshot", "Fixture snapshots restore journey mutations", 90, Step("step14-journey-fixture", "Snapshot and restore journey state", JourneyFixtureSnapshot))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -1240,6 +1262,194 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step14-route-fixture", "Fixture snapshot restores route mutations", valid, $"Created={created.Status} Restored={restored} Missing={missing} Count={runtime.SegmentCount}/{before} Failure={failure}");
         }
 
+        private static TestLabAutomationStepResult JourneyReadinessAndCreate(TestLabAutomationContext context)
+        {
+            TravelJourneyRuntime runtime = JourneyRuntime(context);
+            EntityLocationReferenceData traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            LocationRouteSearchResult plan = RouteRuntime(context).PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess, traveler: traveler));
+            TravelJourneyOperationResult created = CreateJourney(context, "create", "location.prototype.market-district", acceptedRoutePlan: plan.Plan);
+            bool exactStillOrigin = EntityRuntime(context).TryGetActivePlacement(Body(PrototypeEntityLocationFactory.PlayerBodyId, context), out EntityPlacementSnapshot placement)
+                && placement.ExactLocationId == "location.prototype.village";
+            string validationFailure = string.Empty;
+            bool valid = runtime != null
+                && plan.Succeeded
+                && created.Succeeded
+                && created.Journey?.LifecycleState == TravelJourneyLifecycleState.Ready
+                && created.Journey.Steps.Count == plan.Plan.EdgeCount
+                && exactStillOrigin
+                && runtime.ValidateCurrent(out validationFailure);
+            return TestLabAssertions.True("step14-journey-create", "Journey runtime creates ready journeys from accepted route plans", valid, $"Plan={plan.Status} Create={created.Status} Steps={created.Journey?.Steps.Count ?? 0}/{plan.Plan?.EdgeCount ?? 0} ExactOrigin={exactStillOrigin} Validation={validationFailure}");
+        }
+
+        private static TestLabAutomationStepResult JourneyStartDoesNotTeleport(TestLabAutomationContext context)
+        {
+            TravelJourneyOperationResult created = CreateJourney(context, "start", "location.prototype.market-district");
+            TravelJourneyOperationResult started = JourneyRuntime(context).StartJourney(Lifecycle(context, created.Journey?.JourneyId, "start", worldTime: 22d));
+            bool exactOrigin = EntityRuntime(context).TryGetActivePlacement(Body(PrototypeEntityLocationFactory.PlayerBodyId, context), out EntityPlacementSnapshot placement)
+                && placement.ExactLocationId == "location.prototype.village";
+            bool valid = created.Succeeded && started.Succeeded && started.Journey?.LifecycleState == TravelJourneyLifecycleState.Active && exactOrigin;
+            return TestLabAssertions.True("step14-journey-start", "Starting a journey does not mutate exact placement", valid, $"Create={created.Status} Start={started.Status} State={started.Journey?.LifecycleState} Exact={placement?.ExactLocationId}");
+        }
+
+        private static TestLabAutomationStepResult JourneyDeterministicProgress(TestLabAutomationContext context)
+        {
+            TravelJourneyRuntime runtime = JourneyRuntime(context);
+            TravelJourneyOperationResult created = CreateJourney(context, "progress", "location.prototype.market-district", rate: 500d);
+            TravelJourneyOperationResult started = runtime.StartJourney(Lifecycle(context, created.Journey?.JourneyId, "progress-start", worldTime: 10d, rate: 500d));
+            TravelJourneyOperationResult preview = runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "progress-preview", worldTime: 10.1d, rate: 500d, preview: true));
+            TravelJourneyOperationResult arrived = runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "progress-arrive", worldTime: 11d, rate: 500d));
+            TravelJourneyOperationResult duplicateBoundary = runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "progress-duplicate", worldTime: 11d, rate: 500d));
+            bool exactDestination = EntityRuntime(context).TryGetActivePlacement(Body(PrototypeEntityLocationFactory.PlayerBodyId, context), out EntityPlacementSnapshot placement)
+                && placement.ExactLocationId == "location.prototype.market-district";
+            bool valid = created.Succeeded
+                && started.Succeeded
+                && preview.Preview
+                && arrived.Succeeded
+                && arrived.Journey?.LifecycleState == TravelJourneyLifecycleState.Completed
+                && !duplicateBoundary.Succeeded
+                && duplicateBoundary.Status == TravelJourneyMutationStatus.InvalidLifecycle
+                && exactDestination;
+            return TestLabAssertions.True("step14-journey-progress", "Route-segment progress is deterministic by world time", valid, $"Create={created.Status} Start={started.Status} Preview={preview.Status} Arrive={arrived.Status}:{arrived.Journey?.LifecycleState} Repeat={duplicateBoundary.Status} Exact={placement?.ExactLocationId}");
+        }
+
+        private static TestLabAutomationStepResult JourneyLocalConnectionStep(TestLabAutomationContext context)
+        {
+            TravelJourneyRuntime runtime = JourneyRuntime(context);
+            TravelJourneyOperationResult created = CreateJourney(context, "connection", "location.prototype.merchant-counter", rate: 500d);
+            TravelJourneyOperationResult started = runtime.StartJourney(Lifecycle(context, created.Journey?.JourneyId, "connection-start", worldTime: 10d, rate: 500d));
+            long connectionRevisionBefore = ConnectionRuntime(context).Revision;
+            TravelJourneyOperationResult advanced = runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "connection-arrive", worldTime: 11d, rate: 500d));
+            bool exactDestination = EntityRuntime(context).TryGetActivePlacement(Body(PrototypeEntityLocationFactory.PlayerBodyId, context), out EntityPlacementSnapshot placement)
+                && placement.ExactLocationId == "location.prototype.merchant-counter";
+            bool hasConnection = advanced.Journey?.Steps.Any(step => step.EdgeKind == RouteEdgeKind.LocalConnection && step.LifecycleState == TravelJourneyStepLifecycleState.Completed) == true;
+            bool connectionUsed = ConnectionRuntime(context).Revision > connectionRevisionBefore;
+            bool valid = created.Succeeded && started.Succeeded && advanced.Succeeded && advanced.Journey?.LifecycleState == TravelJourneyLifecycleState.Completed && exactDestination && hasConnection && connectionUsed;
+            return TestLabAssertions.True("step14-journey-connection", "Local connection steps use connection traversal authority", valid, $"Create={created.Status} Start={started.Status} Advance={advanced.Status}:{advanced.Journey?.LifecycleState} Exact={placement?.ExactLocationId} Local={hasConnection} ConnectionRevision={connectionRevisionBefore}->{ConnectionRuntime(context).Revision}");
+        }
+
+        private static TestLabAutomationStepResult JourneyPauseResumeCancel(TestLabAutomationContext context)
+        {
+            TravelJourneyRuntime runtime = JourneyRuntime(context);
+            TravelJourneyOperationResult created = CreateJourney(context, "lifecycle", "location.prototype.market-district", rate: 5d);
+            TravelJourneyOperationResult started = runtime.StartJourney(Lifecycle(context, created.Journey?.JourneyId, "lifecycle-start", worldTime: 10d, rate: 5d));
+            TravelJourneyOperationResult partial = runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "lifecycle-partial", worldTime: 11d, rate: 5d));
+            TravelJourneyOperationResult paused = runtime.PauseJourney(Lifecycle(context, created.Journey?.JourneyId, "lifecycle-pause", worldTime: 12d));
+            TravelJourneyOperationResult blockedAdvance = runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "lifecycle-paused-advance", worldTime: 13d, rate: 5d));
+            TravelJourneyOperationResult resumed = runtime.ResumeJourney(Lifecycle(context, created.Journey?.JourneyId, "lifecycle-resume", worldTime: 14d, rate: 5d));
+            TravelJourneyOperationResult cancelled = runtime.CancelJourney(Lifecycle(context, created.Journey?.JourneyId, "lifecycle-cancel", worldTime: 15d));
+            bool exactOrigin = EntityRuntime(context).TryGetActivePlacement(Body(PrototypeEntityLocationFactory.PlayerBodyId, context), out EntityPlacementSnapshot placement)
+                && placement.ExactLocationId == "location.prototype.village";
+            bool valid = created.Succeeded
+                && started.Succeeded
+                && partial.Succeeded
+                && partial.Journey?.LifecycleState == TravelJourneyLifecycleState.Active
+                && paused.Succeeded
+                && paused.Journey?.LifecycleState == TravelJourneyLifecycleState.Paused
+                && !blockedAdvance.Succeeded
+                && resumed.Succeeded
+                && cancelled.Succeeded
+                && cancelled.Journey?.LifecycleState == TravelJourneyLifecycleState.Cancelled
+                && exactOrigin;
+            return TestLabAssertions.True("step14-journey-lifecycle", "Pause, resume, and cancel preserve placement and lifecycle history", valid, $"Create={created.Status} Start={started.Status} Partial={partial.Status} Pause={paused.Status} AdvancePaused={blockedAdvance.Status} Resume={resumed.Status} Cancel={cancelled.Status}:{cancelled.Journey?.LifecycleState} Exact={placement?.ExactLocationId}");
+        }
+
+        private static TestLabAutomationStepResult JourneyBlockAndReplan(TestLabAutomationContext context)
+        {
+            TravelJourneyRuntime runtime = JourneyRuntime(context);
+            TravelJourneyOperationResult created = CreateJourney(context, "replan", "location.prototype.market-district", rate: 5d);
+            TravelJourneyOperationResult started = runtime.StartJourney(Lifecycle(context, created.Journey?.JourneyId, "replan-start", worldTime: 10d, rate: 5d));
+            LocationRouteMutationResult blockedSegment = RouteRuntime(context).MutateSegment(new LocationRouteSegmentMutationRequest
+            {
+                transactionId = Tx(context, "journey-block-market-segment"),
+                segmentId = PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId,
+                blockageState = RouteSegmentBlockageState.TemporarilyBlocked,
+                worldTime = 11d
+            });
+            TravelJourneyOperationResult blocked = runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "replan-blocked-advance", worldTime: 12d, rate: 5d));
+            LocationRouteMutationResult replacement = CreateRouteSegment(context, "journey-alt-market", "location.prototype.village", "location.prototype.market-district", 95d, 30d);
+            TravelJourneyOperationResult replanned = runtime.ReplanJourney(new TravelJourneyReplanRequest
+            {
+                transactionId = Tx(context, "journey-replan"),
+                journeyId = created.Journey?.JourneyId,
+                destinationLocationId = "location.prototype.market-district",
+                accessContext = AccessContext(context, Body(PrototypeEntityLocationFactory.PlayerBodyId, context)),
+                worldTime = 13d,
+                movementRateOverrideMetersPerSecond = 5d
+            });
+            bool exactOrigin = EntityRuntime(context).TryGetActivePlacement(Body(PrototypeEntityLocationFactory.PlayerBodyId, context), out EntityPlacementSnapshot placement)
+                && placement.ExactLocationId == "location.prototype.village";
+            bool valid = created.Succeeded
+                && started.Succeeded
+                && blockedSegment.Succeeded
+                && !blocked.Succeeded
+                && blocked.Status == TravelJourneyMutationStatus.Blocked
+                && replacement.Succeeded
+                && replanned.Succeeded
+                && replanned.Journey?.LifecycleState == TravelJourneyLifecycleState.Active
+                && replanned.Journey.ReplanCount == 1
+                && exactOrigin;
+            return TestLabAssertions.True("step14-journey-replan", "Stale blocked routes block travel and can replan from current placement", valid, $"Create={created.Status} Start={started.Status} BlockSegment={blockedSegment.Status} Block={blocked.Status} Replacement={replacement.Status} Replan={replanned.Status}:{replanned.Journey?.LifecycleState} Count={replanned.Journey?.ReplanCount ?? 0} Exact={placement?.ExactLocationId}");
+        }
+
+        private static TestLabAutomationStepResult JourneyProjectionBoundaries(TestLabAutomationContext context)
+        {
+            TravelJourneyRuntime runtime = JourneyRuntime(context);
+            TravelJourneyOperationResult created = CreateJourney(context, "projection", "location.prototype.market-district", rate: 5d, visibility: TravelJourneyVisibility.Hidden);
+            TravelJourneyOperationResult started = runtime.StartJourney(Lifecycle(context, created.Journey?.JourneyId, "projection-start", worldTime: 10d, rate: 5d));
+            TravelJourneyOperationResult partial = runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "projection-partial", worldTime: 11d, rate: 5d));
+            TravelJourneyPhysicalContextResult physical = runtime.GetPhysicalContext(created.Journey?.JourneyId, 11d);
+            TravelJourneySnapshot denied = runtime.GetProjection(new TravelJourneyProjectionRequest { journeyId = created.Journey?.JourneyId, requester = Person(PrototypeEntityLocationFactory.PlayerPersonId, context) });
+            TravelJourneySnapshot redacted = runtime.GetProjection(new TravelJourneyProjectionRequest { journeyId = created.Journey?.JourneyId, requester = Person(PrototypeEntityLocationFactory.PlayerPersonId, context), includeHidden = true });
+            TravelJourneySnapshot privileged = runtime.GetProjection(new TravelJourneyProjectionRequest { journeyId = created.Journey?.JourneyId, requester = Person(PrototypeEntityLocationFactory.PlayerPersonId, context), privileged = true });
+            bool exactOrigin = physical?.ExactPlacement?.ExactLocationId == "location.prototype.village";
+            bool valid = created.Succeeded
+                && started.Succeeded
+                && partial.Succeeded
+                && physical != null
+                && physical.InTransit
+                && physical.NextLocationId == "location.prototype.market-district"
+                && exactOrigin
+                && denied == null
+                && redacted != null
+                && string.IsNullOrWhiteSpace(redacted.DestinationLocationId)
+                && redacted.Steps.Count == 0
+                && privileged?.DestinationLocationId == "location.prototype.market-district";
+            return TestLabAssertions.True("step14-journey-projection", "Journey projections expose in-transit context without leaking hidden details", valid, $"Create={created.Status} Start={started.Status} Partial={partial.Status} InTransit={physical?.InTransit} Exact={physical?.ExactPlacement?.ExactLocationId} Denied={denied == null} RedactedSteps={redacted?.Steps.Count ?? -1} Privileged={privileged?.DestinationLocationId}");
+        }
+
+        private static TestLabAutomationStepResult JourneyPersistenceValidation(TestLabAutomationContext context)
+        {
+            TravelJourneyRuntime runtime = JourneyRuntime(context);
+            TravelJourneyOperationResult created = CreateJourney(context, "persistence", "location.prototype.market-district", rate: 5d);
+            runtime.StartJourney(Lifecycle(context, created.Journey?.JourneyId, "persistence-start", worldTime: 10d, rate: 5d));
+            runtime.AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "persistence-partial", worldTime: 11d, rate: 5d));
+            TravelJourneyPersistenceParticipant participant = new TravelJourneyPersistenceParticipant(runtime, () => context.ScenarioContext.Runtimes.DefinitionRegistry, () => Runtime(context), () => EntityRuntime(context), () => ConnectionRuntime(context), () => RouteRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            PersistenceParticipantPrepareResult prepared = participant.PreparePayload(save.PayloadJson, TravelJourneyPersistenceParticipant.CurrentParticipantSchemaVersion);
+            TravelJourneyRuntime restored = new TravelJourneyRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), EntityRuntime(context), ConnectionRuntime(context), RouteRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            TravelJourneyOperationResult restore = restored.RestoreFromSaveData(JsonUtility.FromJson<TravelJourneyRuntimeSaveData>(save.PayloadJson), context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), EntityRuntime(context), ConnectionRuntime(context), RouteRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            TravelJourneyRuntimeSaveData before = runtime.CreateSaveData();
+            TravelJourneyRuntimeSaveData corrupt = before.Clone();
+            corrupt.journeys[0].destinationLocationId = "location.prototype.missing";
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), TravelJourneyPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool unchanged = runtime.CreateSaveData().journeys.Select(item => item.destinationLocationId).SequenceEqual(before.journeys.Select(item => item.destinationLocationId));
+            bool valid = created.Succeeded && save.Succeeded && prepared.Succeeded && restore.Succeeded && restored.JourneyCount == runtime.JourneyCount && !rejected.Succeeded && unchanged;
+            return TestLabAssertions.True("step14-journey-persistence", "Journey persistence round-trips and rejects corrupt graphs before commit", valid, $"Create={created.Status} Save={save.Succeeded}:{save.Message} Prepare={prepared.Succeeded}:{prepared.Message} Restore={restore.Status} Rejected={rejected.Succeeded}:{rejected.Message} Unchanged={unchanged} Count={restored.JourneyCount}/{runtime.JourneyCount}");
+        }
+
+        private static TestLabAutomationStepResult JourneyFixtureSnapshot(TestLabAutomationContext context)
+        {
+            TravelJourneyRuntime runtime = JourneyRuntime(context);
+            TestLabRuntimeBundleSnapshot snapshot = context.ScenarioContext.Runtimes.CreateSnapshot();
+            int before = runtime.JourneyCount;
+            TravelJourneyOperationResult created = CreateJourney(context, "fixture", "location.prototype.market-district");
+            bool restored = context.ScenarioContext.Runtimes.RestoreSnapshot(snapshot, out string failure);
+            bool missing = !runtime.TryGetJourney(created.Journey?.JourneyId, out _);
+            bool valid = created.Succeeded && restored && missing && runtime.JourneyCount == before;
+            return TestLabAssertions.True("step14-journey-fixture", "Fixture snapshots restore journey mutations", valid, $"Created={created.Status} Restored={restored} Missing={missing} Count={runtime.JourneyCount}/{before} Failure={failure}");
+        }
+
         private static LocationRuntime Runtime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.Locations;
@@ -1263,6 +1473,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static LocationRouteRuntime RouteRuntime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.LocationRoutes;
+        }
+
+        private static TravelJourneyRuntime JourneyRuntime(TestLabAutomationContext context)
+        {
+            return context?.ScenarioContext?.Runtimes?.TravelJourneys;
         }
 
         private static EntityLocationReferenceData Person(string id, TestLabAutomationContext context)
@@ -1311,6 +1526,53 @@ namespace UnityIsekaiGame.Development.Automation
             return context.ScenarioContext.ScopedId("location.tx", suffix);
         }
 
+        private static TravelJourneyOperationResult CreateJourney(
+            TestLabAutomationContext context,
+            string suffix,
+            string destination,
+            LocationRoutePlan acceptedRoutePlan = null,
+            double rate = -1d,
+            TravelJourneyVisibility visibility = TravelJourneyVisibility.Public)
+        {
+            EntityLocationReferenceData traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            return JourneyRuntime(context).CreateJourney(new TravelJourneyCreateRequest
+            {
+                transactionId = Tx(context, $"journey-create-{suffix}"),
+                journeyId = context.ScenarioContext.ScopedId("travel-journey.prototype.test", suffix),
+                traveler = traveler,
+                controller = Person(PrototypeEntityLocationFactory.PlayerPersonId, context),
+                originLocationId = "location.prototype.village",
+                destinationLocationId = destination,
+                acceptedRoutePlan = acceptedRoutePlan,
+                travelModeDefinitionId = PrototypeLocationRouteDefinitionFactory.WalkingModeDefinitionId,
+                objective = RoutePlanningObjective.ShortestDistance,
+                accessMode = RouteAccessEvaluationMode.RequireCurrentAccess,
+                accessContext = AccessContext(context, traveler),
+                movementRateOverrideMetersPerSecond = rate,
+                visibility = visibility,
+                worldTime = 10d,
+                sourceEventId = "testlab.feature.14.7",
+                provenanceId = "testlab.feature.14.7"
+            });
+        }
+
+        private static TravelJourneyLifecycleRequest Lifecycle(TestLabAutomationContext context, string journeyId, string suffix, double worldTime, double rate = -1d, bool preview = false)
+        {
+            EntityLocationReferenceData traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            return new TravelJourneyLifecycleRequest
+            {
+                transactionId = Tx(context, $"journey-{suffix}"),
+                journeyId = journeyId,
+                actor = Person(PrototypeEntityLocationFactory.PlayerPersonId, context),
+                accessContext = AccessContext(context, traveler),
+                movementRateOverrideMetersPerSecond = rate,
+                worldTime = worldTime,
+                sourceEventId = "testlab.feature.14.7",
+                provenanceId = "testlab.feature.14.7",
+                preview = preview
+            };
+        }
+
         private static LocationRouteSearchRequest RouteRequest(
             TestLabAutomationContext context,
             string origin,
@@ -1318,9 +1580,10 @@ namespace UnityIsekaiGame.Development.Automation
             RouteAccessEvaluationMode accessMode = RouteAccessEvaluationMode.StructuralOnly,
             LocationConnectionAccessContextData accessContext = null,
             RoutePlanningObjective objective = RoutePlanningObjective.ShortestDistance,
-            bool includeHidden = false)
+            bool includeHidden = false,
+            EntityLocationReferenceData traveler = null)
         {
-            EntityLocationReferenceData actor = Person(PrototypeEntityLocationFactory.PlayerPersonId, context);
+            EntityLocationReferenceData actor = traveler ?? Person(PrototypeEntityLocationFactory.PlayerPersonId, context);
             return new LocationRouteSearchRequest
             {
                 requestId = Tx(context, $"route-request-{origin}-{destination}-{objective}-{accessMode}"),
