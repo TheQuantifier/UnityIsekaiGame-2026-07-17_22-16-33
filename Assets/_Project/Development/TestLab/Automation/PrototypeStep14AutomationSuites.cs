@@ -64,6 +64,31 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("72.11-visibility-projections", "Hidden hierarchy links can be omitted from normal projections", 110, Step("step14-location-hierarchy-visibility", "Evaluate visibility-safe graph queries", VisibilityProjections)),
                     Scenario("72.12-fixture-snapshot", "Fixture snapshots restore location graph mutations", 120, Step("step14-location-hierarchy-fixture", "Snapshot and restore containment/spatial state", HierarchyFixtureSnapshot))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.3.entity-location-occupancy",
+                "Entity Location and Occupancy",
+                "14.3",
+                "Authoritative exact entity placements, derived occupancy, Person/body physical resolution, relocation history, persistence validation, and inventory/world-placement boundaries.",
+                14030,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "EntityLocationRuntime", "LocationRuntime", "LocationContainmentLink", "EntityLocationPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("73.1-readiness-and-seeded-placements", "Entity placement runtime is seeded and valid", 10, Step("step14-entity-location-readiness", "Resolve seeded entities and placements", EntityLocationReadiness)),
+                    Scenario("73.2-single-active-exact-placement", "One entity cannot have two active exact placements", 20, Step("step14-entity-location-single-active", "Reject conflicting active placement", SingleActiveExactPlacement)),
+                    Scenario("73.3-person-resolves-through-body", "Person physical location resolves through active body", 30, Step("step14-entity-location-person-body", "Resolve Person through body placement", PersonResolvesThroughBody)),
+                    Scenario("73.4-direct-and-recursive-occupancy", "Direct occupancy is stored while recursive occupancy is derived", 40, Step("step14-entity-location-occupancy", "Query direct and recursive occupancy", DirectAndRecursiveOccupancy)),
+                    Scenario("73.5-relocation-history-and-diff", "Relocation ends prior placement and reports hierarchy diff", 50, Step("step14-entity-location-relocate", "Relocate entity atomically", RelocationHistoryAndDiff)),
+                    Scenario("73.6-unplacement-last-known", "Unplacement is explicit and last-known remains queryable", 60, Step("step14-entity-location-unplace", "End active placement", UnplacementLastKnown)),
+                    Scenario("73.7-location-lifecycle-rejection", "Unavailable locations reject new ordinary placement", 70, Step("step14-entity-location-lifecycle", "Reject placement into closed location", LocationLifecycleRejection)),
+                    Scenario("73.8-capacity-and-type-rules", "Capacity and occupant-type rules reject without mutation", 80, Step("step14-entity-location-capacity", "Evaluate capacity rules", CapacityAndTypeRules)),
+                    Scenario("73.9-inventory-world-exclusion", "Inventory-held items cannot also occupy world locations", 90, Step("step14-entity-location-inventory", "Reject inventory/world overlap", InventoryWorldExclusion)),
+                    Scenario("73.10-persistence-round-trip", "Entity placements persist and restore deterministically", 100, Step("step14-entity-location-persistence", "Save and restore placements", EntityLocationPersistenceRoundTrip)),
+                    Scenario("73.11-corrupt-restore-rejection", "Corrupt placement payloads reject before commit", 110, Step("step14-entity-location-corrupt", "Reject corrupt placement restore", EntityLocationCorruptRestore)),
+                    Scenario("73.12-fixture-snapshot", "Fixture snapshots restore entity placement mutations", 120, Step("step14-entity-location-fixture", "Snapshot and restore placement state", EntityLocationFixtureSnapshot))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -443,9 +468,205 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step14-location-hierarchy-fixture", "Fixture snapshot restores graph mutations", valid, $"Restored={restored} Links={runtime.ContainmentLinkCount}/{beforeLinks} Failure={failure}");
         }
 
+        private static TestLabAutomationStepResult EntityLocationReadiness(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            bool validRuntime = runtime.ValidateRuntime(out string failure);
+            bool hasBody = runtime.TryGetActivePlacement(Body(PrototypeEntityLocationFactory.PlayerBodyId, context), out EntityPlacementSnapshot playerBody);
+            EntityLocationResolutionResult player = runtime.ResolvePhysicalLocation(Person(PrototypeEntityLocationFactory.PlayerPersonId, context));
+            bool valid = runtime != null && validRuntime && hasBody && player.Succeeded && player.LocationId == "location.prototype.village" && runtime.ActivePlacementCount >= 8 && runtime.KnownEntityCount >= 12;
+            return TestLabAssertions.True("step14-entity-location-readiness", "Seeded entity placements validate", valid, $"Valid={validRuntime} Failure={failure} Active={runtime?.ActivePlacementCount} Known={runtime?.KnownEntityCount} Player={player.Status}:{player.LocationId} Body={playerBody?.ExactLocationId}");
+        }
+
+        private static TestLabAutomationStepResult SingleActiveExactPlacement(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            EntityLocationReferenceData entity = Body(PrototypeEntityLocationFactory.GuildMasterBodyId, context);
+            long before = runtime.Revision;
+            EntityLocationOperationResult rejected = runtime.Place(new EntityPlacementRequest
+            {
+                transactionId = Tx(context, "entity-single-active"),
+                placementId = context.ScenarioContext.ScopedId("placement.test", "single-active"),
+                entity = entity,
+                exactLocationId = "location.prototype.market-district",
+                worldTime = 50d
+            });
+            bool valid = rejected.Status == EntityLocationOperationStatus.ConflictingActivePlacement && runtime.Revision == before && runtime.ResolvePhysicalLocation(entity).LocationId == "location.prototype.guildmaster-office";
+            return TestLabAssertions.True("step14-entity-location-single-active", "Conflicting active placement rejects without mutation", valid, $"Status={rejected.Status} Revision={before}->{runtime.Revision} Location={runtime.ResolvePhysicalLocation(entity).LocationId}");
+        }
+
+        private static TestLabAutomationStepResult PersonResolvesThroughBody(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            EntityLocationResolutionResult person = runtime.ResolvePhysicalLocation(Person(PrototypeEntityLocationFactory.PrisonerPersonId, context));
+            bool directPerson = runtime.TryGetActivePlacement(Person(PrototypeEntityLocationFactory.PrisonerPersonId, context), out _);
+            bool valid = person.Status == EntityPhysicalLocationResolutionStatus.ResolvedThroughBody && person.LocationId == "location.prototype.basement-prison" && !directPerson;
+            return TestLabAssertions.True("step14-entity-location-person-body", "Person resolves through active body without duplicate Person placement", valid, $"Status={person.Status} Location={person.LocationId} DirectPerson={directPerson}");
+        }
+
+        private static TestLabAutomationStepResult DirectAndRecursiveOccupancy(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            LocationOccupancySnapshot direct = runtime.GetDirectOccupancy("location.prototype.adventurers-guild");
+            LocationOccupancySnapshot recursive = runtime.GetRecursiveOccupancy("location.prototype.adventurers-guild");
+            bool directHasChest = direct.Placements.Any(item => item.EntityId == PrototypeEntityLocationFactory.GuildChestEntityId);
+            bool recursiveHasGuildmaster = recursive.Placements.Any(item => item.EntityId == PrototypeEntityLocationFactory.GuildMasterBodyId);
+            bool deterministic = recursive.Placements.Select(item => item.EntityKey).SequenceEqual(recursive.Placements.Select(item => item.EntityKey).OrderBy(id => id, StringComparer.Ordinal));
+            bool valid = directHasChest && recursiveHasGuildmaster && recursive.Count > direct.Count && deterministic;
+            return TestLabAssertions.True("step14-entity-location-occupancy", "Recursive occupancy is derived through location descendants", valid, $"Direct={direct.Count} Recursive={recursive.Count} Chest={directHasChest} Guildmaster={recursiveHasGuildmaster} Deterministic={deterministic}");
+        }
+
+        private static TestLabAutomationStepResult RelocationHistoryAndDiff(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            EntityLocationReferenceData entity = Body(PrototypeEntityLocationFactory.MerchantBodyId, context);
+            EntityLocationOperationResult move = runtime.Relocate(new EntityRelocationRequest
+            {
+                transactionId = Tx(context, "entity-relocate"),
+                newPlacementId = context.ScenarioContext.ScopedId("placement.test", "merchant-civic"),
+                entity = entity,
+                expectedOriginLocationId = "location.prototype.merchant-counter",
+                destinationLocationId = "location.prototype.civic-office",
+                category = EntityPlacementCategory.Visiting,
+                worldTime = 100d
+            });
+            bool oldAtTime = runtime.GetPlacementAtTime(entity, 50d)?.ExactLocationId == "location.prototype.merchant-counter";
+            bool now = runtime.ResolvePhysicalLocation(entity).LocationId == "location.prototype.civic-office";
+            bool diff = move.TransitionDiff.EnteredLocationIds.Contains("location.prototype.civic-office") && move.TransitionDiff.ExitedLocationIds.Contains("location.prototype.merchant-counter");
+            bool valid = move.Succeeded && oldAtTime && now && diff;
+            return TestLabAssertions.True("step14-entity-location-relocate", "Relocation preserves history and hierarchy transition diff", valid, $"Move={move.Status} OldAt50={oldAtTime} Now={now} Entered={string.Join(",", move.TransitionDiff.EnteredLocationIds)} Exited={string.Join(",", move.TransitionDiff.ExitedLocationIds)}");
+        }
+
+        private static TestLabAutomationStepResult UnplacementLastKnown(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            EntityLocationReferenceData entity = Item(PrototypeEntityLocationFactory.ArrowItemInstanceId, context);
+            EntityLocationOperationResult unplace = runtime.Unplace(new EntityUnplacementRequest
+            {
+                transactionId = Tx(context, "entity-unplace"),
+                entity = entity,
+                worldTime = 120d,
+                sourceEventId = "testlab.entity-location.unplace"
+            });
+            EntityLocationResolutionResult active = runtime.ResolvePhysicalLocation(entity);
+            EntityPlacementSnapshot lastKnown = runtime.GetLastKnownPlacement(entity);
+            bool valid = unplace.Succeeded && active.Status == EntityPhysicalLocationResolutionStatus.Unplaced && lastKnown != null && lastKnown.ExactLocationId == "location.prototype.market-district" && lastKnown.LifecycleState == EntityPlacementLifecycleState.Ended;
+            return TestLabAssertions.True("step14-entity-location-unplace", "Unplacement ends active occupancy but preserves last-known location", valid, $"Unplace={unplace.Status} Active={active.Status} Last={lastKnown?.ExactLocationId}:{lastKnown?.LifecycleState}");
+        }
+
+        private static TestLabAutomationStepResult LocationLifecycleRejection(TestLabAutomationContext context)
+        {
+            LocationRuntime locations = Runtime(context);
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            LocationOperationResult room = Create(context, "closed-occupancy", PrototypeLocationDefinitionFactory.RoomDefinitionId, "Closed Occupancy Room", tags: new[] { "room", "interior" });
+            LocationOperationResult close = locations.TransitionLifecycle(new LocationLifecycleTransitionRequest { transactionId = Tx(context, "closed-occupancy-location"), locationId = room.Snapshot?.LocationId, targetState = LocationLifecycleState.Closed, worldTime = 130d });
+            long before = runtime.Revision;
+            EntityLocationOperationResult place = runtime.Place(new EntityPlacementRequest
+            {
+                transactionId = Tx(context, "entity-closed-place"),
+                entity = Item(PrototypeEntityLocationFactory.ArrowItemInstanceId, context),
+                exactLocationId = room.Snapshot?.LocationId,
+                category = EntityPlacementCategory.Dropped,
+                worldTime = 131d
+            });
+            bool valid = room.Succeeded && close.Succeeded && place.Status == EntityLocationOperationStatus.InactiveLocation && runtime.Revision == before;
+            return TestLabAssertions.True("step14-entity-location-lifecycle", "Closed locations reject new ordinary placement without evicting elsewhere", valid, $"Room={room.Status} Close={close.Status} Place={place.Status} Revision={before}->{runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult CapacityAndTypeRules(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            LocationOperationResult room = Create(context, "capacity", PrototypeLocationDefinitionFactory.RoomDefinitionId, "Capacity Room", tags: new[] { "room", "interior" });
+            runtime.ConfigureCapacity(new EntityLocationCapacityRuleData
+            {
+                locationId = room.Snapshot?.LocationId,
+                maxDirectOccupants = 1,
+                allowedEntityTypes = new[] { LocationOccupantEntityType.Body }
+            });
+            EntityLocationReferenceData body = new EntityLocationReferenceData { entityType = LocationOccupantEntityType.Body, entityId = context.ScenarioContext.ScopedId("body.prototype.test", "capacity"), worldId = context.ScenarioContext.Runtimes.WorldId };
+            EntityLocationReferenceData itemEntity = new EntityLocationReferenceData { entityType = LocationOccupantEntityType.ItemInstance, entityId = context.ScenarioContext.ScopedId("item-instance.test", "capacity"), worldId = context.ScenarioContext.Runtimes.WorldId };
+            runtime.RegisterKnownEntity(body);
+            runtime.RegisterKnownEntity(itemEntity);
+            EntityLocationOperationResult first = runtime.Place(new EntityPlacementRequest { transactionId = Tx(context, "capacity-first"), entity = body, exactLocationId = room.Snapshot?.LocationId, category = EntityPlacementCategory.Present, worldTime = 140d });
+            EntityLocationOperationResult item = runtime.Place(new EntityPlacementRequest { transactionId = Tx(context, "capacity-item"), entity = itemEntity, exactLocationId = room.Snapshot?.LocationId, category = EntityPlacementCategory.Dropped, worldTime = 141d });
+            bool valid = room.Succeeded && first.Succeeded && item.Status == EntityLocationOperationStatus.OccupantTypeNotAllowed && runtime.GetDirectOccupancy(room.Snapshot.LocationId).Count == 1;
+            return TestLabAssertions.True("step14-entity-location-capacity", "Capacity/type rules reject disallowed occupants without mutation", valid, $"Room={room.Status} First={first.Status} Item={item.Status} Count={runtime.GetDirectOccupancy(room.Snapshot?.LocationId).Count}");
+        }
+
+        private static TestLabAutomationStepResult InventoryWorldExclusion(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            EntityLocationReferenceData held = new EntityLocationReferenceData { entityType = LocationOccupantEntityType.ItemInstance, entityId = context.ScenarioContext.ScopedId("item-instance.test", "held"), worldId = context.ScenarioContext.Runtimes.WorldId };
+            runtime.RegisterKnownEntity(held);
+            runtime.MarkInventoryHeld(held, true);
+            long before = runtime.Revision;
+            EntityLocationOperationResult place = runtime.Place(new EntityPlacementRequest { transactionId = Tx(context, "inventory-held"), entity = held, exactLocationId = "location.prototype.market-district", category = EntityPlacementCategory.Dropped, worldTime = 150d });
+            bool valid = place.Status == EntityLocationOperationStatus.InventoryConflict && runtime.Revision == before && !runtime.TryGetActivePlacement(held, out _);
+            return TestLabAssertions.True("step14-entity-location-inventory", "Inventory-held item rejects world placement", valid, $"Status={place.Status} Revision={before}->{runtime.Revision}");
+        }
+
+        private static TestLabAutomationStepResult EntityLocationPersistenceRoundTrip(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            EntityLocationRuntimeSaveData save = runtime.CreateSaveData();
+            EntityLocationRuntime restored = new EntityLocationRuntime();
+            EntityLocationOperationResult restore = restored.RestoreFromSaveData(save, Runtime(context), context.ScenarioContext.Runtimes.WorldId, restoring: true);
+            EntityLocationResolutionResult player = restored.ResolvePhysicalLocation(Person(PrototypeEntityLocationFactory.PlayerPersonId, context));
+            bool valid = restore.Succeeded
+                && player.LocationId == "location.prototype.village"
+                && restored.CreateSaveData().placements.Select(item => item.placementId).SequenceEqual(save.placements.Select(item => item.placementId));
+            return TestLabAssertions.True("step14-entity-location-persistence", "Entity locations save and restore deterministically", valid, $"Restore={restore.Status} Player={player.Status}:{player.LocationId} Count={restored.PlacementCount}/{runtime.PlacementCount}");
+        }
+
+        private static TestLabAutomationStepResult EntityLocationCorruptRestore(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            EntityLocationRuntimeSaveData before = runtime.CreateSaveData();
+            EntityLocationRuntimeSaveData corrupt = before.Clone();
+            corrupt.placements[0].exactLocationId = "location.prototype.missing";
+            EntityLocationOperationResult rejected = runtime.RestoreFromSaveData(corrupt, Runtime(context), context.ScenarioContext.Runtimes.WorldId, restoring: true);
+            bool unchanged = runtime.CreateSaveData().placements.Select(item => item.exactLocationId).SequenceEqual(before.placements.Select(item => item.exactLocationId));
+            bool valid = rejected.Status == EntityLocationOperationStatus.PersistenceInvalid && unchanged;
+            return TestLabAssertions.True("step14-entity-location-corrupt", "Corrupt entity placement restore rejects before commit", valid, $"Rejected={rejected.Status} Unchanged={unchanged} Message={rejected.Message}");
+        }
+
+        private static TestLabAutomationStepResult EntityLocationFixtureSnapshot(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime runtime = EntityRuntime(context);
+            TestLabRuntimeBundleSnapshot snapshot = context.ScenarioContext.Runtimes.CreateSnapshot();
+            int before = runtime.ActivePlacementCount;
+            EntityLocationReferenceData entity = new EntityLocationReferenceData { entityType = LocationOccupantEntityType.WorldEntity, entityId = context.ScenarioContext.ScopedId("world-entity.test", "fixture"), worldId = context.ScenarioContext.Runtimes.WorldId };
+            runtime.RegisterKnownEntity(entity);
+            runtime.Place(new EntityPlacementRequest { transactionId = Tx(context, "entity-fixture"), entity = entity, exactLocationId = "location.prototype.village", category = EntityPlacementCategory.Present, worldTime = 160d });
+            bool restored = context.ScenarioContext.Runtimes.RestoreSnapshot(snapshot, out string failure);
+            bool missing = !runtime.TryGetActivePlacement(entity, out _);
+            bool valid = restored && missing && runtime.ActivePlacementCount == before;
+            return TestLabAssertions.True("step14-entity-location-fixture", "Fixture snapshot restores entity placement mutations", valid, $"Restored={restored} Missing={missing} Active={runtime.ActivePlacementCount}/{before} Failure={failure}");
+        }
+
         private static LocationRuntime Runtime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.Locations;
+        }
+
+        private static EntityLocationRuntime EntityRuntime(TestLabAutomationContext context)
+        {
+            return context?.ScenarioContext?.Runtimes?.EntityLocations;
+        }
+
+        private static EntityLocationReferenceData Person(string id, TestLabAutomationContext context)
+        {
+            return PrototypeEntityLocationFactory.Person(id, context.ScenarioContext.Runtimes.WorldId);
+        }
+
+        private static EntityLocationReferenceData Body(string id, TestLabAutomationContext context)
+        {
+            return PrototypeEntityLocationFactory.Body(id, context.ScenarioContext.Runtimes.WorldId);
+        }
+
+        private static EntityLocationReferenceData Item(string id, TestLabAutomationContext context)
+        {
+            return PrototypeEntityLocationFactory.Item(id, context.ScenarioContext.Runtimes.WorldId);
         }
 
         private static LocationOperationResult Create(TestLabAutomationContext context, string suffix, string definitionId, string officialName, IEnumerable<string> tags = null, string organizationId = null, LocationVisibility visibility = LocationVisibility.Public, string binding = null, bool preview = false)
