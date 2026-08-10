@@ -4829,6 +4829,7 @@ namespace UnityIsekaiGame.Gameplay
             definitionRegistry = PrototypeJusticeDefinitionFactory.AddMissingPrototypeJusticeDefinitions(definitionRegistry);
             definitionRegistry = PrototypeLocationDefinitionFactory.AddMissingPrototypeLocationDefinitions(definitionRegistry);
             definitionRegistry = PrototypeInteractionPointDefinitionFactory.AddMissingPrototypeInteractionDefinitions(definitionRegistry);
+            definitionRegistry = PrototypeLocationConnectionDefinitionFactory.AddMissingPrototypeConnectionDefinitions(definitionRegistry);
             return definitionRegistry;
         }
 

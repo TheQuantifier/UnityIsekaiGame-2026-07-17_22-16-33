@@ -470,6 +470,7 @@ namespace UnityIsekaiGame.Development.Automation
             LocationRuntime locations,
             EntityLocationRuntime entityLocations,
             InteractionPointRuntime interactionPoints,
+            LocationConnectionRuntime locationConnections,
             GameObject ownedKnowledgeObject)
         {
             DefinitionRegistry = definitionRegistry;
@@ -536,6 +537,7 @@ namespace UnityIsekaiGame.Development.Automation
             Locations = locations;
             EntityLocations = entityLocations;
             InteractionPoints = interactionPoints;
+            LocationConnections = locationConnections;
             this.ownedKnowledgeObject = ownedKnowledgeObject;
             Facade = new KnowledgeHistoryFacade(CreateRuntimeSet());
         }
@@ -604,6 +606,7 @@ namespace UnityIsekaiGame.Development.Automation
         public LocationRuntime Locations { get; }
         public EntityLocationRuntime EntityLocations { get; }
         public InteractionPointRuntime InteractionPoints { get; }
+        public LocationConnectionRuntime LocationConnections { get; }
         public KnowledgeHistoryFacade Facade { get; }
 
         public static TestLabRuntimeBundle FromExisting(
@@ -670,7 +673,8 @@ namespace UnityIsekaiGame.Development.Automation
             JusticeRuntime justice = null,
             LocationRuntime locations = null,
             EntityLocationRuntime entityLocations = null,
-            InteractionPointRuntime interactionPoints = null)
+            InteractionPointRuntime interactionPoints = null,
+            LocationConnectionRuntime locationConnections = null)
         {
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             PersonProfessionRuntime professionRuntime = professions ?? new PersonProfessionRuntime();
@@ -736,6 +740,16 @@ namespace UnityIsekaiGame.Development.Automation
                 interactionPointRuntime.Configure(definitionRegistry, locationRuntime, entityLocationRuntime, worldId);
             }
 
+            LocationConnectionRuntime locationConnectionRuntime = locationConnections ?? new LocationConnectionRuntime();
+            if (locationConnections == null)
+            {
+                PrototypeLocationConnectionDefinitionFactory.SeedPrototypeConnections(locationConnectionRuntime, definitionRegistry, locationRuntime, entityLocationRuntime, interactionPointRuntime, worldId);
+            }
+            else
+            {
+                locationConnectionRuntime.Configure(definitionRegistry, locationRuntime, entityLocationRuntime, interactionPointRuntime, worldId);
+            }
+
             RelationshipRuntime relationshipRuntime = relationships ?? new RelationshipRuntime();
             relationshipRuntime.Configure(definitionRegistry, persons);
             InterpersonalAttitudeRuntime attitudeRuntime = attitudes ?? new InterpersonalAttitudeRuntime();
@@ -790,7 +804,7 @@ namespace UnityIsekaiGame.Development.Automation
             crimeRuntime.Configure(definitionRegistry, governmentRuntime, legalRuntime, authorityRuntime, diplomacyRuntime, worldId, persons, Array.Empty<string>());
             JusticeRuntime justiceRuntime = justice ?? new JusticeRuntime();
             justiceRuntime.Configure(definitionRegistry, governmentRuntime, legalRuntime, organizationRuntime, authorityRuntime, crimeRuntime, worldId, persons, Array.Empty<string>());
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemRuntime, itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, factionRuntime, diplomacyRuntime, governmentRuntime, legalRuntime, crimeRuntime, justiceRuntime, locationRuntime, entityLocationRuntime, interactionPointRuntime, null);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, knownBodyIds, knowledge, history, memory, sources, transfers, access, records, itemRuntime, itemCompositions ?? new ItemCompositionRuntime(), itemQualityAffixes ?? new ItemQualityAffixRuntime(), itemDurability ?? new ItemDurabilityRuntime(), productionRequirements ?? new ProductionRequirementRuntime(), recipeKnowledge ?? new RecipeKnowledgeRuntime(), craftingExecution ?? new CraftingExecutionRuntime(), productionWorkflow ?? new ProductionWorkflowRuntime(), experimentation ?? new ExperimentationRuntime(), professionRuntime, entryRuntime, trainingRuntime, professionalActivityRuntime, credentialRuntime, rankRuntime, positionRuntime, careerRuntime, lifePathRuntime, economyRuntime, marketRuntime, tradeRuntime, payrollRuntime, businessRuntime, propertyRuntime, contractRuntime, institutionalRevenueRuntime, regionalFlowRuntime, relationshipRuntime, attitudeRuntime, reputationRuntime, rumorRuntime, interactionRuntime, normRuntime, networkRuntime, decisionRuntime, influenceRuntime, emotionRuntime, familyRuntime, organizationRuntime, membershipRuntime, authorityRuntime, resourceRuntime, organizationDecisionRuntime, factionRuntime, diplomacyRuntime, governmentRuntime, legalRuntime, crimeRuntime, justiceRuntime, locationRuntime, entityLocationRuntime, interactionPointRuntime, locationConnectionRuntime, null);
         }
 
         public static TestLabRuntimeBundle CreateFresh(
@@ -862,6 +876,7 @@ namespace UnityIsekaiGame.Development.Automation
             LocationRuntime locations = new LocationRuntime();
             EntityLocationRuntime entityLocations = new EntityLocationRuntime();
             InteractionPointRuntime interactionPoints = new InteractionPointRuntime();
+            LocationConnectionRuntime locationConnections = new LocationConnectionRuntime();
 
             string[] persons = ExpandKnownPersons(knownPersonIds, personId);
             string[] bodies = (knownBodyIds ?? Array.Empty<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray();
@@ -894,6 +909,7 @@ namespace UnityIsekaiGame.Development.Automation
             locations.Configure(definitionRegistry, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             PrototypeEntityLocationFactory.SeedPrototypePlacements(entityLocations, locations, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             PrototypeInteractionPointDefinitionFactory.SeedPrototypeInteractionPoints(interactionPoints, definitionRegistry, locations, entityLocations, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
+            PrototypeLocationConnectionDefinitionFactory.SeedPrototypeConnections(locationConnections, definitionRegistry, locations, entityLocations, interactionPoints, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId);
             relationships.Configure(definitionRegistry, persons);
             attitudes.Configure(definitionRegistry, persons);
             reputation.Configure(definitionRegistry, persons);
@@ -922,7 +938,7 @@ namespace UnityIsekaiGame.Development.Automation
             crimes.Configure(definitionRegistry, governments, laws, organizationAuthority, diplomacy, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
             justice.Configure(definitionRegistry, governments, laws, organizations, organizationAuthority, crimes, string.IsNullOrWhiteSpace(worldId) ? PersistenceService.LocalWorldId : worldId, persons, Array.Empty<string>());
 
-            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, factions, diplomacy, governments, laws, crimes, justice, locations, entityLocations, interactionPoints, knowledgeObject);
+            return new TestLabRuntimeBundle(definitionRegistry, personId, worldId, persons, bodies, knowledge, history, memory, sources, transfers, access, records, itemInstances, itemCompositions, itemQualityAffixes, itemDurability, productionRequirements, recipeKnowledge, craftingExecution, productionWorkflow, experimentation, professions, professionEntries, training, professionalActivities, credentials, professionalRanks, positionEmployment, careerHistory, lifePaths, economy, markets, trades, payroll, businesses, properties, contracts, institutionalRevenue, regionalFlow, relationships, attitudes, reputation, rumors, socialInteractions, socialNorms, socialNetworks, socialDecisions, socialInfluence, socialEmotions, familyRelationships, organizations, organizationMemberships, organizationAuthority, organizationResources, organizationDecisions, factions, diplomacy, governments, laws, crimes, justice, locations, entityLocations, interactionPoints, locationConnections, knowledgeObject);
         }
 
         private static string[] ExpandKnownPersons(IReadOnlyList<string> knownPersonIds, string ownerPersonId)
@@ -1024,7 +1040,8 @@ namespace UnityIsekaiGame.Development.Automation
                 Justice?.CreateSaveData(),
                 Locations?.CreateSaveData(),
                 EntityLocations?.CreateSaveData(),
-                InteractionPoints?.CreateSaveData());
+                InteractionPoints?.CreateSaveData(),
+                LocationConnections?.CreateSaveData());
         }
 
         public TestLabRuntimeBundleFingerprint CreateFingerprint()
@@ -1089,7 +1106,8 @@ namespace UnityIsekaiGame.Development.Automation
                 TestLabRuntimeFingerprintSection.FromObject("Justice", Justice?.Revision ?? 0L, Justice?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("Locations", Locations?.Revision ?? 0L, Locations?.CreateSaveData()),
                 TestLabRuntimeFingerprintSection.FromObject("EntityLocations", EntityLocations?.Revision ?? 0L, EntityLocations?.CreateSaveData()),
-                TestLabRuntimeFingerprintSection.FromObject("InteractionPoints", InteractionPoints?.Revision ?? 0L, InteractionPoints?.CreateSaveData())
+                TestLabRuntimeFingerprintSection.FromObject("InteractionPoints", InteractionPoints?.Revision ?? 0L, InteractionPoints?.CreateSaveData()),
+                TestLabRuntimeFingerprintSection.FromObject("LocationConnections", LocationConnections?.Revision ?? 0L, LocationConnections?.CreateSaveData())
             });
         }
 
@@ -1470,6 +1488,16 @@ namespace UnityIsekaiGame.Development.Automation
                 }
             }
 
+            if (LocationConnections != null && snapshot.LocationConnections != null)
+            {
+                LocationConnectionOperationResult result = LocationConnections.RestoreFromSaveData(snapshot.LocationConnections, Locations, EntityLocations, InteractionPoints, WorldId, restoring: true);
+                if (!result.Succeeded)
+                {
+                    failure = $"Location connection restore failed: {result.Message}";
+                    return false;
+                }
+            }
+
             if (Relationships != null && snapshot.Relationships != null)
             {
                 RelationshipOperationResult result = Relationships.RestoreFromSaveData(snapshot.Relationships, DefinitionRegistry, KnownPersonIds, restoring: true);
@@ -1719,6 +1747,7 @@ namespace UnityIsekaiGame.Development.Automation
 
         public void Dispose()
         {
+            LocationConnections?.Dispose();
             InteractionPoints?.Dispose();
             EntityLocations?.Dispose();
             Locations?.Dispose();
@@ -1807,7 +1836,8 @@ namespace UnityIsekaiGame.Development.Automation
             JusticeRuntimeSaveData justice,
             LocationRuntimeSaveData locations,
             EntityLocationRuntimeSaveData entityLocations,
-            InteractionPointRuntimeSaveData interactionPoints)
+            InteractionPointRuntimeSaveData interactionPoints,
+            LocationConnectionRuntimeSaveData locationConnections)
         {
             Knowledge = knowledge;
             History = history;
@@ -1868,6 +1898,7 @@ namespace UnityIsekaiGame.Development.Automation
             Locations = locations;
             EntityLocations = entityLocations;
             InteractionPoints = interactionPoints;
+            LocationConnections = locationConnections;
         }
 
         public PersonKnowledgeSaveData Knowledge { get; }
@@ -1929,6 +1960,7 @@ namespace UnityIsekaiGame.Development.Automation
         public LocationRuntimeSaveData Locations { get; }
         public EntityLocationRuntimeSaveData EntityLocations { get; }
         public InteractionPointRuntimeSaveData InteractionPoints { get; }
+        public LocationConnectionRuntimeSaveData LocationConnections { get; }
     }
 
     public sealed class TestLabRuntimeBundleFingerprint

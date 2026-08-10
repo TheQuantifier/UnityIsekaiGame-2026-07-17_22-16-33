@@ -112,6 +112,26 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("74.9-persistence-validation", "Interaction point persistence round-trips and rejects corrupt graphs", 90, Step("step14-interaction-persistence", "Save, restore, and reject corrupt payload", InteractionPersistenceValidation)),
                     Scenario("74.10-fixture-snapshot", "Fixture snapshots restore interaction point mutations", 100, Step("step14-interaction-fixture", "Snapshot and restore interaction state", InteractionFixtureSnapshot))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.5.entrances-exits-connections-access",
+                "Entrances, Exits, Connections, and Access",
+                "14.5",
+                "Scene-independent traversable location connections, endpoints, state gates, access policies, grants, traversal, persistence validation, and visibility-safe projections.",
+                14050,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "LocationConnectionRuntime", "LocationRuntime", "EntityLocationRuntime", "LocationConnectionPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("75.1-readiness-and-seeded-connections", "Connection definitions and seeded prototype graph are available", 10, Step("step14-connection-readiness", "Resolve seeded connections and access policies", ConnectionReadiness)),
+                    Scenario("75.2-definition-and-adjacency-boundaries", "Connection records stay separate from definitions and spatial adjacency", 20, Step("step14-connection-boundaries", "Verify definition/runtime and adjacency boundaries", ConnectionDefinitionAdjacencyBoundaries)),
+                    Scenario("75.3-state-gated-traversal", "Open, lock, blockage, and lifecycle states gate traversal atomically", 30, Step("step14-connection-state-gates", "Evaluate state gates before traversal", ConnectionStateGates)),
+                    Scenario("75.4-access-policy-matrix", "Access policies consume external authority references without owning them", 40, Step("step14-connection-access-matrix", "Evaluate representative access inputs", ConnectionAccessPolicyMatrix)),
+                    Scenario("75.5-hidden-one-way-and-grants", "Hidden, one-way, and explicit grants are authoritative but projection-safe", 50, Step("step14-connection-visibility-grants", "Evaluate visibility, directionality, and grants", ConnectionVisibilityOneWayGrants)),
+                    Scenario("75.6-persistence-validation", "Connection persistence round-trips and rejects corrupt graphs", 60, Step("step14-connection-persistence", "Save, restore, and reject corrupt connection payload", ConnectionPersistenceValidation)),
+                    Scenario("75.7-fixture-snapshot", "Fixture snapshots restore connection mutations", 70, Step("step14-connection-fixture", "Snapshot and restore connection state", ConnectionFixtureSnapshot))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -904,6 +924,187 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step14-interaction-fixture", "Fixture snapshot restores interaction point mutations", valid, $"Created={created.Status} Restored={restored} Missing={missing} Count={runtime.PointCount}/{before} Failure={failure}");
         }
 
+        private static TestLabAutomationStepResult ConnectionReadiness(TestLabAutomationContext context)
+        {
+            LocationConnectionRuntime runtime = ConnectionRuntime(context);
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool hasDoor = registry.TryGet(PrototypeLocationConnectionDefinitionFactory.LockableDoorDefinitionId, out LocationConnectionDefinition door);
+            bool hasPolicy = registry.TryGet(PrototypeLocationConnectionDefinitionFactory.GuildMemberAccessPolicyId, out LocationAccessPolicyDefinition policy);
+            bool hasVillage = runtime.TryGetConnection(PrototypeLocationConnectionDefinitionFactory.VillageGuildEntranceConnectionId, out LocationConnectionSnapshot village);
+            bool hasHidden = runtime.GetOutgoingConnections("location.prototype.guildmaster-office", includeHidden: true).Any(item => item.ConnectionId == PrototypeLocationConnectionDefinitionFactory.HiddenPassageConnectionId);
+            bool validation = runtime.ValidateCurrent(out string failure);
+            bool valid = hasDoor && hasPolicy && hasVillage && hasHidden && validation && door.SupportsLockState && policy.Category == LocationAccessPolicyCategory.OrganizationMembers && village.SceneBindingCategory == LocationConnectionSceneBindingCategory.PrototypeMarker;
+            return TestLabAssertions.True("step14-connection-readiness", "Connection definitions and seeded records resolve", valid, $"Door={hasDoor} Policy={hasPolicy} Village={hasVillage} Hidden={hasHidden} Count={runtime.ConnectionCount} Validation={validation} Failure={failure}");
+        }
+
+        private static TestLabAutomationStepResult ConnectionDefinitionAdjacencyBoundaries(TestLabAutomationContext context)
+        {
+            LocationConnectionRuntime runtime = ConnectionRuntime(context);
+            LocationConnectionOperationResult preview = CreateConnection(context, "preview", "location.prototype.adventurers-guild", "location.prototype.merchant-counter", preview: true);
+            LocationConnectionOperationResult first = CreateConnection(context, "runtime-a", "location.prototype.adventurers-guild", "location.prototype.merchant-counter");
+            LocationConnectionOperationResult second = CreateConnection(context, "runtime-b", "location.prototype.adventurers-guild", "location.prototype.merchant-counter");
+            LocationConnectionOperationResult duplicate = CreateConnection(context, "runtime-a", "location.prototype.adventurers-guild", "location.prototype.merchant-counter");
+            bool adjacencyDoesNotConnectGuild = Runtime(context).GetSpatialRelationships("location.prototype.market-district").Any()
+                && !runtime.GetOutgoingConnections("location.prototype.market-district").Any(item => item.DestinationLocationId == "location.prototype.adventurers-guild");
+            bool valid = preview.Status == LocationConnectionOperationStatus.Preview
+                && !runtime.TryGetConnection(preview.Connection?.ConnectionId, out _)
+                && first.Succeeded
+                && second.Succeeded
+                && first.Connection.ConnectionDefinitionId == second.Connection.ConnectionDefinitionId
+                && first.Connection.ConnectionId != second.Connection.ConnectionId
+                && duplicate.Status == LocationConnectionOperationStatus.Duplicate
+                && adjacencyDoesNotConnectGuild;
+            return TestLabAssertions.True("step14-connection-boundaries", "Connections are runtime records and do not derive from spatial adjacency", valid, $"Preview={preview.Status} First={first.Status} Second={second.Status} Duplicate={duplicate.Status} AdjacencySeparated={adjacencyDoesNotConnectGuild}");
+        }
+
+        private static TestLabAutomationStepResult ConnectionStateGates(TestLabAutomationContext context)
+        {
+            LocationConnectionRuntime runtime = ConnectionRuntime(context);
+            EntityLocationRuntime entities = EntityRuntime(context);
+            EntityLocationReferenceData actor = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            EntityLocationOperationResult moveToGuild = entities.Relocate(new EntityRelocationRequest
+            {
+                transactionId = Tx(context, "connection-move-guild"),
+                newPlacementId = context.ScenarioContext.ScopedId("placement.test", "connection-move-guild"),
+                entity = actor,
+                destinationLocationId = "location.prototype.adventurers-guild",
+                worldTime = 19d
+            });
+            long entityBefore = entities.Revision;
+            LocationConnectionOperationResult locked = runtime.Traverse(Traversal(context, PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, actor, "location.prototype.adventurers-guild", "location.prototype.guildmaster-office", AccessContext(context, actor, organizations: new[] { "organization.prototype.guild" })));
+            long entityAfterLocked = entities.Revision;
+            LocationConnectionOperationResult unlock = UnlockConnection(context, PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId);
+            LocationConnectionOperationResult block = runtime.MutateState(new LocationConnectionStateMutationRequest
+            {
+                transactionId = Tx(context, "connection-block"),
+                connectionId = PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId,
+                blockageState = LocationConnectionBlockageState.TemporarilyBlocked,
+                worldTime = 20d
+            });
+            LocationConnectionOperationResult blocked = runtime.Traverse(Traversal(context, PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, actor, "location.prototype.adventurers-guild", "location.prototype.guildmaster-office", AccessContext(context, actor, offices: new[] { "office.prototype.guild-head" }, authorities: new[] { "permission.prototype.guild.rank-admin" })));
+            LocationConnectionOperationResult clear = runtime.MutateState(new LocationConnectionStateMutationRequest
+            {
+                transactionId = Tx(context, "connection-clear"),
+                connectionId = PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId,
+                blockageState = LocationConnectionBlockageState.Clear,
+                worldTime = 21d
+            });
+            LocationConnectionOperationResult traversed = runtime.Traverse(Traversal(context, PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, actor, "location.prototype.adventurers-guild", "location.prototype.guildmaster-office", AccessContext(context, actor, offices: new[] { "office.prototype.guild-head" }, authorities: new[] { "permission.prototype.guild.rank-admin" })));
+            bool placed = entities.TryGetActivePlacement(actor, out EntityPlacementSnapshot placement);
+            bool valid = moveToGuild.Succeeded
+                && locked.Status == LocationConnectionOperationStatus.MissingKey
+                && entityBefore == entityAfterLocked
+                && unlock.Succeeded
+                && block.Succeeded
+                && blocked.Status == LocationConnectionOperationStatus.DeniedByBlockage
+                && clear.Succeeded
+                && traversed.Succeeded
+                && traversed.PlacementResult?.Succeeded == true
+                && placed
+                && placement.ExactLocationId == "location.prototype.guildmaster-office";
+            return TestLabAssertions.True("step14-connection-state-gates", "Connection states gate traversal without partial movement", valid, $"Move={moveToGuild.Status} Locked={locked.Status} Unlock={unlock.Status} Block={block.Status} Blocked={blocked.Status} Clear={clear.Status} Traversed={traversed.Status} Placement={placement?.ExactLocationId}");
+        }
+
+        private static TestLabAutomationStepResult ConnectionAccessPolicyMatrix(TestLabAutomationContext context)
+        {
+            LocationConnectionRuntime runtime = ConnectionRuntime(context);
+            EntityLocationReferenceData actor = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            UnlockConnection(context, PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId);
+            UnlockConnection(context, PrototypeLocationConnectionDefinitionFactory.MayorOfficeConnectionId);
+            UnlockConnection(context, PrototypeLocationConnectionDefinitionFactory.RecordsOfficeConnectionId);
+            UnlockConnection(context, PrototypeLocationConnectionDefinitionFactory.GuildStorageConnectionId);
+            UnlockConnection(context, PrototypeLocationConnectionDefinitionFactory.PrisonCellConnectionId);
+
+            LocationConnectionAccessResult guildDenied = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, actor, "location.prototype.adventurers-guild", "location.prototype.guildmaster-office", AccessContext(context, actor)));
+            LocationConnectionAccessResult guildOffice = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.GuildHeadOfficeConnectionId, actor, "location.prototype.adventurers-guild", "location.prototype.guildmaster-office", AccessContext(context, actor, offices: new[] { "office.prototype.guild-head" }, authorities: new[] { "permission.prototype.guild.rank-admin" })));
+            LocationConnectionAccessResult mayor = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.MayorOfficeConnectionId, actor, "location.prototype.civic-office", "location.prototype.mayor-office", AccessContext(context, actor, offices: new[] { "office.prototype.mayor" }, authorities: new[] { "authority.government.prototype" })));
+            LocationConnectionAccessResult recordsEmployment = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.RecordsOfficeConnectionId, actor, "location.prototype.civic-office", "location.prototype.mayor-office", AccessContext(context, actor, employments: new[] { "employment.prototype.records-clerk" })));
+            LocationConnectionAccessResult recordsPermit = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.RecordsOfficeConnectionId, actor, "location.prototype.civic-office", "location.prototype.mayor-office", AccessContext(context, actor, permits: new[] { "legal-right.prototype.records.restricted-read" })));
+            LocationConnectionAccessResult recordsWarrant = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.RecordsOfficeConnectionId, actor, "location.prototype.civic-office", "location.prototype.mayor-office", AccessContext(context, actor, warrants: new[] { "warrant.prototype.search" })));
+            LocationConnectionAccessResult storageOwner = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.GuildStorageConnectionId, actor, "location.prototype.adventurers-guild", "location.prototype.merchant-counter", AccessContext(context, actor, properties: new[] { "property.prototype.guild-storage" })));
+            LocationConnectionAccessResult storageKey = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.GuildStorageConnectionId, actor, "location.prototype.adventurers-guild", "location.prototype.merchant-counter", AccessContext(context, actor, keyDefinitions: new[] { "item.prototype-storage-key" })));
+            LocationConnectionAccessResult custody = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.PrisonCellConnectionId, actor, "location.prototype.civic-office", "location.prototype.basement-prison", AccessContext(context, actor, custodyRoles: new[] { "custody-role.prototype.guard" })));
+
+            bool valid = guildDenied.accessState == LocationConnectionAccessState.MissingAuthority
+                && guildOffice.Allowed
+                && mayor.Allowed
+                && recordsEmployment.Allowed
+                && recordsPermit.Allowed
+                && recordsWarrant.Allowed
+                && storageOwner.Allowed
+                && storageKey.Allowed
+                && custody.Allowed;
+            return TestLabAssertions.True("step14-connection-access-matrix", "Access policies consume external references without owning external records", valid, $"GuildDenied={guildDenied.accessState} GuildOffice={guildOffice.accessState} Mayor={mayor.accessState} Employment={recordsEmployment.accessState} Permit={recordsPermit.accessState} Warrant={recordsWarrant.accessState} Owner={storageOwner.accessState} Key={storageKey.accessState} Custody={custody.accessState}");
+        }
+
+        private static TestLabAutomationStepResult ConnectionVisibilityOneWayGrants(TestLabAutomationContext context)
+        {
+            LocationConnectionRuntime runtime = ConnectionRuntime(context);
+            EntityLocationRuntime entities = EntityRuntime(context);
+            EntityLocationReferenceData actor = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            bool hiddenOmitted = !runtime.GetOutgoingConnections("location.prototype.guildmaster-office").Any(item => item.ConnectionId == PrototypeLocationConnectionDefinitionFactory.HiddenPassageConnectionId);
+            bool hiddenIncluded = runtime.GetOutgoingConnections("location.prototype.guildmaster-office", includeHidden: true).Any(item => item.ConnectionId == PrototypeLocationConnectionDefinitionFactory.HiddenPassageConnectionId);
+            LocationConnectionAccessResult forward = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.DungeonOneWayDropConnectionId, actor, "location.prototype.wilderness-ring", "location.prototype.dungeon-entry", AccessContext(context, actor, privileged: true)));
+            LocationConnectionAccessResult reverse = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.DungeonOneWayDropConnectionId, actor, "location.prototype.dungeon-entry", "location.prototype.wilderness-ring", AccessContext(context, actor, privileged: true)));
+            EntityLocationOperationResult move = entities.Relocate(new EntityRelocationRequest
+            {
+                transactionId = Tx(context, "connection-hidden-move"),
+                entity = actor,
+                destinationLocationId = "location.prototype.guildmaster-office",
+                worldTime = 30d
+            });
+            LocationConnectionAccessResult denied = runtime.EvaluateAccess(Traversal(context, PrototypeLocationConnectionDefinitionFactory.HiddenPassageConnectionId, actor, "location.prototype.guildmaster-office", "location.prototype.basement-prison", AccessContext(context, actor)));
+            LocationConnectionOperationResult grant = runtime.GrantAccess(new LocationAccessGrantRequest
+            {
+                transactionId = Tx(context, "connection-hidden-grant"),
+                grantId = context.ScenarioContext.ScopedId("location-access-grant.test", "hidden"),
+                connectionId = PrototypeLocationConnectionDefinitionFactory.HiddenPassageConnectionId,
+                grantee = actor,
+                startWorldTime = 30d,
+                endWorldTime = 40d
+            });
+            LocationConnectionOperationResult traverse = runtime.Traverse(Traversal(context, PrototypeLocationConnectionDefinitionFactory.HiddenPassageConnectionId, actor, "location.prototype.guildmaster-office", "location.prototype.basement-prison", AccessContext(context, actor), worldTime: 35d));
+            bool valid = hiddenOmitted
+                && hiddenIncluded
+                && forward.Allowed
+                && reverse.accessState == LocationConnectionAccessState.DeniedByDirection
+                && move.Succeeded
+                && !denied.Allowed
+                && grant.Succeeded
+                && traverse.Succeeded;
+            return TestLabAssertions.True("step14-connection-visibility-grants", "Hidden, one-way, and explicit grant rules are authoritative", valid, $"Hidden={hiddenOmitted}/{hiddenIncluded} OneWay={forward.accessState}/{reverse.accessState} Move={move.Status} Denied={denied.accessState} Grant={grant.Status} Traverse={traverse.Status}");
+        }
+
+        private static TestLabAutomationStepResult ConnectionPersistenceValidation(TestLabAutomationContext context)
+        {
+            LocationConnectionRuntime runtime = ConnectionRuntime(context);
+            LocationConnectionPersistenceParticipant participant = new LocationConnectionPersistenceParticipant(runtime, () => context.ScenarioContext.Runtimes.DefinitionRegistry, () => Runtime(context), () => EntityRuntime(context), () => InteractionRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            var prepared = participant.PreparePayload(save.PayloadJson, LocationConnectionPersistenceParticipant.CurrentParticipantSchemaVersion);
+            LocationConnectionRuntime restored = new LocationConnectionRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), EntityRuntime(context), InteractionRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            LocationConnectionOperationResult restore = restored.RestoreFromSaveData(JsonUtility.FromJson<LocationConnectionRuntimeSaveData>(save.PayloadJson), Runtime(context), EntityRuntime(context), InteractionRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            LocationConnectionRuntimeSaveData before = runtime.CreateSaveData();
+            LocationConnectionRuntimeSaveData corrupt = before.Clone();
+            corrupt.connections[0].destinationLocationId = "location.prototype.missing";
+            var rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), LocationConnectionPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool unchanged = runtime.CreateSaveData().connections.Select(item => item.destinationLocationId).SequenceEqual(before.connections.Select(item => item.destinationLocationId));
+            bool valid = save.Succeeded && prepared.Succeeded && restore.Succeeded && restored.ConnectionCount == runtime.ConnectionCount && !rejected.Succeeded && unchanged;
+            return TestLabAssertions.True("step14-connection-persistence", "Persistence round-trips and rejects corrupt graphs before commit", valid, $"Save={save.Succeeded}:{save.Message} Prepare={prepared.Succeeded}:{prepared.Message} Restore={restore.Status} Rejected={rejected.Succeeded}:{rejected.Message} Unchanged={unchanged} Count={restored.ConnectionCount}/{runtime.ConnectionCount}");
+        }
+
+        private static TestLabAutomationStepResult ConnectionFixtureSnapshot(TestLabAutomationContext context)
+        {
+            LocationConnectionRuntime runtime = ConnectionRuntime(context);
+            TestLabRuntimeBundleSnapshot snapshot = context.ScenarioContext.Runtimes.CreateSnapshot();
+            int before = runtime.ConnectionCount;
+            LocationConnectionOperationResult created = CreateConnection(context, "fixture", "location.prototype.adventurers-guild", "location.prototype.merchant-counter");
+            bool restored = context.ScenarioContext.Runtimes.RestoreSnapshot(snapshot, out string failure);
+            bool missing = !runtime.TryGetConnection(created.Connection?.ConnectionId, out _);
+            bool valid = created.Succeeded && restored && missing && runtime.ConnectionCount == before;
+            return TestLabAssertions.True("step14-connection-fixture", "Fixture snapshot restores connection mutations", valid, $"Created={created.Status} Restored={restored} Missing={missing} Count={runtime.ConnectionCount}/{before} Failure={failure}");
+        }
+
         private static LocationRuntime Runtime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.Locations;
@@ -917,6 +1118,11 @@ namespace UnityIsekaiGame.Development.Automation
         private static InteractionPointRuntime InteractionRuntime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.InteractionPoints;
+        }
+
+        private static LocationConnectionRuntime ConnectionRuntime(TestLabAutomationContext context)
+        {
+            return context?.ScenarioContext?.Runtimes?.LocationConnections;
         }
 
         private static EntityLocationReferenceData Person(string id, TestLabAutomationContext context)
@@ -963,6 +1169,89 @@ namespace UnityIsekaiGame.Development.Automation
         private static string Tx(TestLabAutomationContext context, string suffix)
         {
             return context.ScenarioContext.ScopedId("location.tx", suffix);
+        }
+
+        private static LocationConnectionOperationResult CreateConnection(TestLabAutomationContext context, string suffix, string source, string destination, bool preview = false, string transactionId = null)
+        {
+            string connectionId = context.ScenarioContext.ScopedId("location-connection.test", suffix);
+            return ConnectionRuntime(context).CreateConnection(new LocationConnectionCreateRequest
+            {
+                transactionId = transactionId ?? Tx(context, $"connection-{suffix}"),
+                connectionId = connectionId,
+                connectionDefinitionId = PrototypeLocationConnectionDefinitionFactory.PublicDoorwayDefinitionId,
+                displayName = connectionId,
+                sourceLocationId = source,
+                destinationLocationId = destination,
+                accessPolicyDefinitionIds = new[] { PrototypeLocationConnectionDefinitionFactory.PublicAccessPolicyId },
+                sceneBindingKey = $"prototype.connection.{suffix}",
+                sceneBindingCategory = LocationConnectionSceneBindingCategory.PrototypeMarker,
+                worldTime = 10d,
+                sourceEventId = "testlab.feature.14.5",
+                provenanceId = "testlab.feature.14.5",
+                preview = preview
+            });
+        }
+
+        private static LocationConnectionOperationResult UnlockConnection(TestLabAutomationContext context, string connectionId)
+        {
+            return ConnectionRuntime(context).MutateState(new LocationConnectionStateMutationRequest
+            {
+                transactionId = Tx(context, $"connection-unlock-{connectionId}"),
+                connectionId = connectionId,
+                openState = LocationConnectionOpenState.Open,
+                lockState = LocationConnectionLockState.Unlocked,
+                blockageState = LocationConnectionBlockageState.Clear,
+                worldTime = 15d
+            });
+        }
+
+        private static LocationConnectionTraversalRequest Traversal(TestLabAutomationContext context, string connectionId, EntityLocationReferenceData actor, string from, string to, LocationConnectionAccessContextData accessContext, double worldTime = 20d)
+        {
+            return new LocationConnectionTraversalRequest
+            {
+                transactionId = Tx(context, $"connection-traverse-{connectionId}-{worldTime}"),
+                connectionId = connectionId,
+                actor = actor,
+                fromLocationId = from,
+                toLocationId = to,
+                accessContext = accessContext,
+                worldTime = worldTime,
+                sourceEventId = "testlab.feature.14.5",
+                provenanceId = "testlab.feature.14.5"
+            };
+        }
+
+        private static LocationConnectionAccessContextData AccessContext(
+            TestLabAutomationContext context,
+            EntityLocationReferenceData actor,
+            bool privileged = false,
+            string[] organizations = null,
+            string[] ranks = null,
+            string[] offices = null,
+            string[] authorities = null,
+            string[] employments = null,
+            string[] properties = null,
+            string[] permits = null,
+            string[] warrants = null,
+            string[] custodyRoles = null,
+            string[] keyDefinitions = null)
+        {
+            return new LocationConnectionAccessContextData
+            {
+                actor = actor,
+                personId = PrototypeEntityLocationFactory.PlayerPersonId,
+                organizationIds = organizations ?? Array.Empty<string>(),
+                rankIds = ranks ?? Array.Empty<string>(),
+                officeIds = offices ?? Array.Empty<string>(),
+                authorityIds = authorities ?? Array.Empty<string>(),
+                employmentIds = employments ?? Array.Empty<string>(),
+                propertyIds = properties ?? Array.Empty<string>(),
+                permitIds = permits ?? Array.Empty<string>(),
+                warrantIds = warrants ?? Array.Empty<string>(),
+                custodyRoleIds = custodyRoles ?? Array.Empty<string>(),
+                keyDefinitionIds = keyDefinitions ?? Array.Empty<string>(),
+                privileged = privileged
+            };
         }
 
         private static InteractionSubjectReferenceData Subject(string subjectType, string subjectId, TestLabAutomationContext context)

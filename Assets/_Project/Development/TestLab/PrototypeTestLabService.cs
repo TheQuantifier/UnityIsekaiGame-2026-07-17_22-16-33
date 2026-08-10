@@ -14533,6 +14533,7 @@ namespace UnityIsekaiGame.Development
             registry = PrototypeJusticeDefinitionFactory.AddMissingPrototypeJusticeDefinitions(registry);
             registry = PrototypeLocationDefinitionFactory.AddMissingPrototypeLocationDefinitions(registry);
             registry = PrototypeInteractionPointDefinitionFactory.AddMissingPrototypeInteractionDefinitions(registry);
+            registry = PrototypeLocationConnectionDefinitionFactory.AddMissingPrototypeConnectionDefinitions(registry);
             return registry;
         }
 
