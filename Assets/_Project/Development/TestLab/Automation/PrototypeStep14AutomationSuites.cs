@@ -11,6 +11,7 @@ using UnityIsekaiGame.Interaction;
 using UnityIsekaiGame.Laws;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.WorldLocations;
+using UnityIsekaiGame.WorldLocations.Integration;
 using UnityIsekaiGame.WorldLocations.SceneBinding;
 
 namespace UnityIsekaiGame.Development.Automation
@@ -255,6 +256,24 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("81.2-interaction-and-connections", "Scene interaction and door bindings route through owning runtimes", 20, Step("step14-scene-binding-interaction-connection", "Use interaction and connection bindings", SceneBindingInteractionAndConnection)),
                     Scenario("81.3-entity-materialization", "Scene entities materialize from authoritative placements without writing Transform drift", 30, Step("step14-scene-binding-entity-materialize", "Materialize entity from runtime placement", SceneBindingEntityMaterialization)),
                     Scenario("81.4-route-checkpoint-transient", "Route and checkpoint scene markers stay transient presentation mappings", 40, Step("step14-scene-binding-route-checkpoint", "Bind route and checkpoint markers", SceneBindingRouteCheckpointTransient))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                Step14WorldIntegrationValidator.SuiteId,
+                "Step 14 World, Location, and Travel Integration Finalization",
+                "14.12",
+                "Aggregate Step 14 readiness, ownership, persistence, scene binding boundaries, deterministic fingerprints, and Step 15 handoff contracts without introducing a second world-state owner.",
+                14120,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "Step14WorldIntegrationValidator", "Step14PersistenceManifest", "MovementHistoryService", "WorldSceneBindingRuntime" },
+                scenarios: new[]
+                {
+                    Scenario("82.1-readiness-and-ownership", "Integrated Step 14 readiness and authority ownership are clean", 10, Step("step14-integration-readiness", "Validate aggregate readiness and authority map", IntegrationReadinessAndOwnership)),
+                    Scenario("82.2-concept-separation", "Logical world state remains separate from scene, visibility, and external legal authority", 20, Step("step14-integration-concept-separation", "Validate ownership boundaries", IntegrationConceptSeparation)),
+                    Scenario("82.3-deterministic-fingerprint", "Integrated save graph fingerprint is deterministic and non-mutating", 30, Step("step14-integration-fingerprint", "Compare deterministic integration fingerprints", IntegrationDeterministicFingerprint)),
+                    Scenario("82.4-step15-contract", "Step 15 receives explicit read and command contracts", 40, Step("step14-integration-step15", "Validate Step 15 handoff contract", IntegrationStep15Contract)),
+                    Scenario("82.5-corrupt-graph-rejection", "Aggregate validation rejects corrupt cross-runtime state before consumers use it", 50, Step("step14-integration-corrupt", "Reject corrupted world-scope and placement graph", IntegrationCorruptGraphRejection))
                 }), out _);
         }
 
@@ -2162,6 +2181,74 @@ namespace UnityIsekaiGame.Development.Automation
                 runtime.ClearTransientBindings();
                 WorldSceneBindingRuntime.Default.ClearTransientBindings();
             }
+        }
+
+        private static TestLabAutomationStepResult IntegrationReadinessAndOwnership(TestLabAutomationContext context)
+        {
+            Step14IntegrationValidationReport report = Step14WorldIntegrationValidator.Validate(new Step14IntegrationSnapshot(Source(context)));
+            bool hasLocationOwner = report.AuthorityMap.Any(item => item.Domain == "location records" && item.AuthoritativeRuntime == "LocationRuntime" && item.Authoritative);
+            bool hasPlacementOwner = report.AuthorityMap.Any(item => item.Domain == "entity placements" && item.AuthoritativeRuntime == "EntityLocationRuntime" && item.Authoritative);
+            bool sceneIsDerived = report.AuthorityMap.Any(item => item.Domain == "scene bindings" && item.Derived && !item.Authoritative);
+            bool valid = report.Succeeded && report.Readiness == Step14IntegrationReadinessState.Ready && hasLocationOwner && hasPlacementOwner && sceneIsDerived;
+            return TestLabAssertions.True("step14-integration-readiness", "Integrated Step 14 readiness and authority ownership are clean", valid, $"Readiness={report.Readiness} Success={report.Succeeded} Failures={report.Failures.Count} Fingerprint={report.Fingerprint}");
+        }
+
+        private static TestLabAutomationStepResult IntegrationConceptSeparation(TestLabAutomationContext context)
+        {
+            Step14IntegrationValidationReport report = Step14WorldIntegrationValidator.Validate(new Step14IntegrationSnapshot(Source(context)));
+            bool physical = report.AuthorityMap.Any(item => item.Domain == "Unity transforms" && item.External)
+                && report.AuthorityMap.Any(item => item.Domain == "entity placements" && item.Authoritative);
+            bool legal = report.AuthorityMap.Any(item => item.Domain == "political travel overlays" && item.Authoritative)
+                && report.AuthorityMap.Any(item => item.Domain == "law and government authority" && item.External);
+            bool routeJourney = report.AuthorityMap.Any(item => item.Domain == "route graph" && item.Authoritative)
+                && report.AuthorityMap.Any(item => item.Domain == "journey records" && item.Authoritative);
+            bool visibility = report.AuthorityMap.Any(item => item.Domain == "visibility and redaction" && item.External);
+            bool valid = report.Succeeded && physical && legal && routeJourney && visibility;
+            return TestLabAssertions.True("step14-integration-concept-separation", "Logical, scene, legal, route, journey, and visibility responsibilities stay separated", valid, $"Success={report.Succeeded} Physical={physical} Legal={legal} RouteJourney={routeJourney} Visibility={visibility}");
+        }
+
+        private static TestLabAutomationStepResult IntegrationDeterministicFingerprint(TestLabAutomationContext context)
+        {
+            Step14PersistenceSnapshotSource source = Source(context);
+            long locationRevision = Runtime(context)?.Revision ?? -1L;
+            long entityRevision = EntityRuntime(context)?.Revision ?? -1L;
+            long routeRevision = RouteRuntime(context)?.Revision ?? -1L;
+            string first = Step14WorldIntegrationValidator.CreateCanonicalFingerprint(new Step14IntegrationSnapshot(source));
+            string second = Step14WorldIntegrationValidator.CreateCanonicalFingerprint(new Step14IntegrationSnapshot(source.Clone()));
+            bool noMutation = locationRevision == (Runtime(context)?.Revision ?? -2L)
+                && entityRevision == (EntityRuntime(context)?.Revision ?? -2L)
+                && routeRevision == (RouteRuntime(context)?.Revision ?? -2L);
+            bool valid = !string.IsNullOrWhiteSpace(first) && first == second && noMutation;
+            return TestLabAssertions.True("step14-integration-fingerprint", "Integrated save graph fingerprint is deterministic and non-mutating", valid, $"First={first} Second={second} NoMutation={noMutation}");
+        }
+
+        private static TestLabAutomationStepResult IntegrationStep15Contract(TestLabAutomationContext context)
+        {
+            Step14Step15HandoffContract contract = Step14WorldIntegrationValidator.CreateStep15Contract();
+            bool queries = contract.QueryCapabilities.Contains("get-current-location") && contract.QueryCapabilities.Contains("plan-route") && contract.QueryCapabilities.Contains("evaluate-political-travel-requirements");
+            bool commands = contract.CommandCapabilities.Contains("relocate-entity") && contract.CommandCapabilities.Contains("start-journey") && contract.CommandCapabilities.Contains("record-border-crossing");
+            bool deferred = contract.DeferredBoundaries.Contains("autonomous-npc-decision-making") && contract.DeferredBoundaries.Contains("multiplayer-authority");
+            bool valid = contract.Succeeded && queries && commands && deferred;
+            return TestLabAssertions.True("step14-integration-step15", "Step 15 receives explicit read and command contracts", valid, $"References={contract.StableReferenceTypes.Count} Queries={contract.QueryCapabilities.Count} Commands={contract.CommandCapabilities.Count} Deferred={contract.DeferredBoundaries.Count}");
+        }
+
+        private static TestLabAutomationStepResult IntegrationCorruptGraphRejection(TestLabAutomationContext context)
+        {
+            Step14PersistenceSnapshotSource corrupt = Source(context).Clone();
+            corrupt.entityLocations.worldId = "world.corrupt";
+            corrupt.entityLocations.placements.Add(new EntityPlacementRecordData
+            {
+                placementId = context.ScenarioContext.ScopedId("placement.corrupt", "missing-location"),
+                worldId = corrupt.worldId,
+                exactLocationId = "location.prototype.missing",
+                entity = Body(context.ScenarioContext.ScopedId("body.prototype.corrupt", "traveler"), context),
+                lifecycleState = EntityPlacementLifecycleState.Active
+            });
+            Step14IntegrationValidationReport report = Step14WorldIntegrationValidator.Validate(new Step14IntegrationSnapshot(corrupt));
+            bool rejectedWorld = report.Failures.Any(item => item.Domain == Step14IntegrationDiagnosticDomain.WorldScope);
+            bool rejectedPlacement = report.Failures.Any(item => item.Domain == Step14IntegrationDiagnosticDomain.EntityPlacement || item.Domain == Step14IntegrationDiagnosticDomain.Persistence);
+            bool valid = !report.Succeeded && rejectedWorld && rejectedPlacement;
+            return TestLabAssertions.True("step14-integration-corrupt", "Aggregate validation rejects corrupt cross-runtime state before consumers use it", valid, $"Success={report.Succeeded} Readiness={report.Readiness} World={rejectedWorld} Placement={rejectedPlacement} Failures={report.Failures.Count}");
         }
 
         private static WorldSceneBindingRuntime SceneBindingRuntime(TestLabAutomationContext context)
