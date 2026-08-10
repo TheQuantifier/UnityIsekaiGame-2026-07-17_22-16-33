@@ -23,6 +23,7 @@ namespace UnityIsekaiGame.WorldLocations
         private EntityLocationRuntime entityLocations;
         private LocationConnectionRuntime connections;
         private LocationRouteRuntime routes;
+        private TravelConditionRuntime travelConditions;
         private string worldId = PersistenceService.LocalWorldId;
         private bool disposed;
 
@@ -34,13 +35,14 @@ namespace UnityIsekaiGame.WorldLocations
         public IReadOnlyList<TravelJourneySnapshot> Journeys => journeysById.Values.OrderBy(item => item.journeyId, StringComparer.Ordinal).Select(BuildSnapshot).ToArray();
         public IReadOnlyList<TravelJourneyHistoryRecordData> History => historyById.Values.OrderBy(item => item.worldTime).ThenBy(item => item.historyId, StringComparer.Ordinal).Select(item => item.Clone()).ToArray();
 
-        public void Configure(DefinitionRegistry definitionRegistry, LocationRuntime locationRuntime, EntityLocationRuntime entityLocationRuntime, LocationConnectionRuntime connectionRuntime, LocationRouteRuntime routeRuntime, string runtimeWorldId = PersistenceService.LocalWorldId)
+        public void Configure(DefinitionRegistry definitionRegistry, LocationRuntime locationRuntime, EntityLocationRuntime entityLocationRuntime, LocationConnectionRuntime connectionRuntime, LocationRouteRuntime routeRuntime, string runtimeWorldId = PersistenceService.LocalWorldId, TravelConditionRuntime conditionRuntime = null)
         {
             registry = definitionRegistry ?? registry;
             locations = locationRuntime ?? locations;
             entityLocations = entityLocationRuntime ?? entityLocations;
             connections = connectionRuntime ?? connections;
             routes = routeRuntime ?? routes;
+            travelConditions = conditionRuntime ?? travelConditions;
             worldId = string.IsNullOrWhiteSpace(runtimeWorldId) ? PersistenceService.LocalWorldId : runtimeWorldId.Trim();
             disposed = false;
             RebuildIndexes();
@@ -136,6 +138,9 @@ namespace UnityIsekaiGame.WorldLocations
             if (!revalidation.Valid) return BlockJourney(journey, request, TravelJourneyBlockReason.RouteStale, revalidation.Message, before);
             TravelMovementRateResult movementRate = EvaluateMovementRate(journey.travelModeDefinitionId, request.movementRateOverrideMetersPerSecond);
             if (!movementRate.Succeeded) return Fail(TravelJourneyMutationStatus.InvalidRequest, movementRate.Diagnostics, before);
+            TravelConditionOperationResult conditionCheck = EvaluateCurrentStepConditions(journey, request, movementRate, out movementRate);
+            if (conditionCheck?.Evaluation?.HardBlocked == true) return BlockJourney(journey, request, TravelJourneyBlockReason.TravelConditionBlocked, conditionCheck.Evaluation.Diagnostics, before);
+            if (conditionCheck?.Encounter != null) return BlockJourney(journey, request, TravelJourneyBlockReason.EncounterInterrupted, $"Travel encounter '{conditionCheck.Encounter.EncounterDefinitionId}' interrupted the journey.", before);
             if (!request.travelerCanMove) return BlockJourney(journey, request, TravelJourneyBlockReason.CapabilityUnavailable, "Traveler cannot move.", before);
             if (request.preview) return TravelJourneyOperationResult.Success(BuildSnapshot(journey), "Journey start preview.", before, before, preview: true, movementRate: movementRate);
 
@@ -169,6 +174,9 @@ namespace UnityIsekaiGame.WorldLocations
             if (!revalidation.Valid) return BlockJourney(journey, request, RevalidationBlockReason(revalidation), revalidation.Message, before);
             TravelMovementRateResult movementRate = EvaluateMovementRate(journey.travelModeDefinitionId, request.movementRateOverrideMetersPerSecond);
             if (!movementRate.Succeeded) return BlockJourney(journey, request, TravelJourneyBlockReason.MovementRateInvalid, movementRate.Diagnostics, before);
+            TravelConditionOperationResult conditionCheck = EvaluateCurrentStepConditions(journey, request, movementRate, out movementRate);
+            if (conditionCheck?.Evaluation?.HardBlocked == true) return BlockJourney(journey, request, TravelJourneyBlockReason.TravelConditionBlocked, conditionCheck.Evaluation.Diagnostics, before);
+            if (conditionCheck?.Encounter != null) return BlockJourney(journey, request, TravelJourneyBlockReason.EncounterInterrupted, $"Travel encounter '{conditionCheck.Encounter.EncounterDefinitionId}' interrupted the journey.", before);
             if (request.worldTime <= journey.lastProgressWorldTime)
             {
                 return TravelJourneyOperationResult.Success(BuildSnapshot(journey), "No authoritative time elapsed.", before, before, duplicate: true, movementRate: movementRate);
@@ -317,6 +325,10 @@ namespace UnityIsekaiGame.WorldLocations
             if (!request.travelerCanMove) return BlockJourney(journey, request, TravelJourneyBlockReason.CapabilityUnavailable, "Traveler cannot move.", before);
             LocationRouteRevalidationResult revalidation = RevalidateJourney(journey, request);
             if (!revalidation.Valid) return BlockJourney(journey, request, RevalidationBlockReason(revalidation), revalidation.Message, before);
+            TravelMovementRateResult movementRate = EvaluateMovementRate(journey.travelModeDefinitionId, request.movementRateOverrideMetersPerSecond);
+            TravelConditionOperationResult conditionCheck = EvaluateCurrentStepConditions(journey, request, movementRate, out movementRate);
+            if (conditionCheck?.Evaluation?.HardBlocked == true) return BlockJourney(journey, request, TravelJourneyBlockReason.TravelConditionBlocked, conditionCheck.Evaluation.Diagnostics, before);
+            if (conditionCheck?.Encounter != null) return BlockJourney(journey, request, TravelJourneyBlockReason.EncounterInterrupted, $"Travel encounter '{conditionCheck.Encounter.EncounterDefinitionId}' interrupted the journey.", before);
             if (request.preview) return TravelJourneyOperationResult.Success(BuildSnapshot(journey), "Journey resume preview.", before, before, preview: true);
             journey.lifecycleState = TravelJourneyLifecycleState.Active;
             journey.pausedWorldTime = -1d;
@@ -658,7 +670,7 @@ namespace UnityIsekaiGame.WorldLocations
             AddHistory(journey, "block", request.worldTime, request.actor ?? journey.controller ?? journey.traveler, message);
             Touch();
             RebuildIndexes();
-            return TravelJourneyOperationResult.Failure(TravelJourneyMutationStatus.Blocked, message, before);
+            return TravelJourneyOperationResult.Failure(TravelJourneyMutationStatus.Blocked, message, before, BuildSnapshot(journey), BuildStepSnapshot(journey.currentStepIndex, journey.journeyId));
         }
 
         private void SetBlocked(TravelJourneyRecordData journey, TravelJourneyStepRecordData step, TravelJourneyBlockReason reason, string message, double worldTime)
@@ -739,6 +751,51 @@ namespace UnityIsekaiGame.WorldLocations
             return routes.RevalidatePlan(plan, BuildSearchRequest(journey, request, journey.routePlan?.originLocationId, journey.routePlan?.destinationLocationId));
         }
 
+        private TravelConditionOperationResult EvaluateCurrentStepConditions(TravelJourneyRecordData journey, TravelJourneyLifecycleRequest request, TravelMovementRateResult baseMovementRate, out TravelMovementRateResult adjustedMovementRate)
+        {
+            adjustedMovementRate = baseMovementRate;
+            if (travelConditions == null || request.conditionEvaluationMode == TravelConditionEvaluationMode.IgnoreDynamicConditions) return null;
+            TravelJourneyStepRecordData step = CurrentStep(journey);
+            if (step == null) return null;
+            TravelConditionTargetReferenceData target = new TravelConditionTargetReferenceData
+            {
+                scope = step.edgeKind == RouteEdgeKind.RouteSegment ? TravelConditionTargetScope.RouteSegment : TravelConditionTargetScope.Connection,
+                targetId = step.edgeId,
+                sourceLocationId = step.sourceLocationId,
+                destinationLocationId = step.destinationLocationId,
+                edgeKind = step.edgeKind,
+                journeyId = journey.journeyId,
+                traveler = journey.traveler?.Clone()
+            };
+            TravelConditionOperationResult checkpoint = travelConditions.EvaluateJourneyCheckpoint(journey.journeyId, target, journey.traveler, journey.travelModeDefinitionId, request.travelerCapabilityIds, request.travelerEquipmentDefinitionIds, request.worldTime);
+            TravelConditionEvaluationResult evaluation = checkpoint?.Evaluation ?? travelConditions.Evaluate(new TravelConditionEvaluationRequest
+            {
+                evaluationMode = request.conditionEvaluationMode,
+                target = target,
+                traveler = journey.traveler?.Clone(),
+                travelModeDefinitionId = journey.travelModeDefinitionId,
+                travelerCapabilityIds = Clean(request.travelerCapabilityIds),
+                travelerEquipmentDefinitionIds = Clean(request.travelerEquipmentDefinitionIds),
+                knownConditionIds = Clean(request.knownConditionIds),
+                knownEncounterIds = Clean(request.knownEncounterIds),
+                knownHazardExposureIds = Clean(request.knownHazardExposureIds),
+                includeHiddenDevelopmentConditions = request.includeHiddenDevelopmentConditions,
+                worldTime = request.worldTime
+            });
+            if (evaluation != null && baseMovementRate != null && evaluation.Succeeded)
+            {
+                adjustedMovementRate = new TravelMovementRateResult(
+                    baseMovementRate.TravelModeDefinitionId,
+                    baseMovementRate.Category,
+                    baseMovementRate.BaseRateMetersPerSecond,
+                    baseMovementRate.OverrideRateMetersPerSecond,
+                    Math.Max(0.0001d, baseMovementRate.FinalRateMetersPerSecond * evaluation.MovementRateMultiplier),
+                    $"{baseMovementRate.Diagnostics} Conditions={evaluation.Diagnostics}");
+            }
+
+            return checkpoint ?? TravelConditionOperationResult.EvaluationSuccess(evaluation, evaluation?.Diagnostics ?? "Travel conditions evaluated.", travelConditions.Revision);
+        }
+
         private LocationRouteSearchRequest BuildSearchRequest(TravelJourneyCreateRequest request, EntityLocationReferenceData traveler, string origin, string destination)
         {
             return new LocationRouteSearchRequest
@@ -754,6 +811,11 @@ namespace UnityIsekaiGame.WorldLocations
                 accessContext = request.accessContext?.Clone(),
                 travelerCapabilityIds = Clean(request.travelerCapabilityIds),
                 travelerEquipmentDefinitionIds = Clean(request.travelerEquipmentDefinitionIds),
+                conditionEvaluationMode = request.conditionEvaluationMode,
+                knownConditionIds = Clean(request.knownConditionIds),
+                knownEncounterIds = Clean(request.knownEncounterIds),
+                knownHazardExposureIds = Clean(request.knownHazardExposureIds),
+                includeHiddenDevelopmentConditions = request.includeHiddenDevelopmentConditions,
                 worldTime = request.worldTime
             };
         }
@@ -773,6 +835,11 @@ namespace UnityIsekaiGame.WorldLocations
                 accessContext = request.accessContext?.Clone(),
                 travelerCapabilityIds = Clean(request.travelerCapabilityIds),
                 travelerEquipmentDefinitionIds = Clean(request.travelerEquipmentDefinitionIds),
+                conditionEvaluationMode = request.conditionEvaluationMode,
+                knownConditionIds = Clean(request.knownConditionIds),
+                knownEncounterIds = Clean(request.knownEncounterIds),
+                knownHazardExposureIds = Clean(request.knownHazardExposureIds),
+                includeHiddenDevelopmentConditions = request.includeHiddenDevelopmentConditions,
                 worldTime = request.worldTime
             };
         }
@@ -792,6 +859,11 @@ namespace UnityIsekaiGame.WorldLocations
                 accessContext = request.accessContext?.Clone(),
                 travelerCapabilityIds = Clean(request.travelerCapabilityIds),
                 travelerEquipmentDefinitionIds = Clean(request.travelerEquipmentDefinitionIds),
+                conditionEvaluationMode = request.conditionEvaluationMode,
+                knownConditionIds = Clean(request.knownConditionIds),
+                knownEncounterIds = Clean(request.knownEncounterIds),
+                knownHazardExposureIds = Clean(request.knownHazardExposureIds),
+                includeHiddenDevelopmentConditions = request.includeHiddenDevelopmentConditions,
                 worldTime = request.worldTime
             };
         }

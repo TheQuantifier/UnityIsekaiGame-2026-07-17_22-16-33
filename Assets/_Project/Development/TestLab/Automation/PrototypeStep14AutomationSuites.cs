@@ -175,6 +175,27 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("77.8-persistence-validation", "Journey persistence round-trips and rejects corrupt graphs before commit", 80, Step("step14-journey-persistence", "Save, restore, and reject corrupt journey payload", JourneyPersistenceValidation)),
                     Scenario("77.9-fixture-snapshot", "Fixture snapshots restore journey mutations", 90, Step("step14-journey-fixture", "Snapshot and restore journey state", JourneyFixtureSnapshot))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.8.travel-conditions-restrictions-encounters",
+                "Travel Conditions, Restrictions, and Encounters",
+                "14.8",
+                "Definition-backed travel conditions, hard blockers, requirements, hidden risks, explicit hazards, encounter interruption, persistence, and route/journey integration.",
+                14080,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "TravelConditionRuntime", "LocationRouteRuntime", "TravelJourneyRuntime", "TravelConditionPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("78.1-readiness-and-definitions", "Condition, hazard, and encounter definitions are available", 10, Step("step14-travel-condition-readiness", "Resolve prototype travel condition definitions", TravelConditionReadiness)),
+                    Scenario("78.2-route-condition-modifiers", "Route planning applies movement and cost modifiers", 20, Step("step14-travel-condition-route-modifier", "Plan route with muddy-road modifier", TravelConditionRouteModifier)),
+                    Scenario("78.3-hard-block-and-revalidation", "Hard travel blockers invalidate accepted route plans", 30, Step("step14-travel-condition-hard-block", "Block route and revalidate plan", TravelConditionHardBlockRevalidation)),
+                    Scenario("78.4-requirements-without-mutation", "Missing capability and equipment requirements block without mutation", 40, Step("step14-travel-condition-requirements", "Evaluate requirement condition", TravelConditionRequirements)),
+                    Scenario("78.5-hidden-risk-knowledge-safety", "Hidden condition and encounter risk do not leak under knowledge-safe queries", 50, Step("step14-travel-condition-hidden", "Evaluate hidden ambush safely", TravelConditionHiddenKnowledgeSafety)),
+                    Scenario("78.6-journey-slowdown", "Journey progress uses condition-adjusted movement rate", 60, Step("step14-travel-condition-journey-slowdown", "Advance journey through slowdown", TravelConditionJourneySlowdown)),
+                    Scenario("78.7-encounter-interruption", "Checkpoint encounters interrupt journeys without creating combat state", 70, Step("step14-travel-condition-encounter", "Trigger encounter at checkpoint", TravelConditionEncounterInterruption)),
+                    Scenario("78.8-hazard-and-persistence", "Explicit hazards and persistence preserve state without retriggering", 80, Step("step14-travel-condition-persistence", "Trigger hazard, save, restore, reject corrupt payload", TravelConditionHazardPersistence))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -1450,6 +1471,138 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step14-journey-fixture", "Fixture snapshots restore journey mutations", valid, $"Created={created.Status} Restored={restored} Missing={missing} Count={runtime.JourneyCount}/{before} Failure={failure}");
         }
 
+        private static TestLabAutomationStepResult TravelConditionReadiness(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = context.ScenarioContext.Runtimes.DefinitionRegistry;
+            bool condition = registry.TryGet(PrototypeTravelConditionDefinitionFactory.MuddyRoadConditionId, out TravelConditionDefinition muddy);
+            bool hazard = registry.TryGet(PrototypeTravelConditionDefinitionFactory.HeatExposureHazardId, out TravelHazardDefinition heat);
+            bool encounter = registry.TryGet(PrototypeTravelConditionDefinitionFactory.HiddenAmbushEncounterId, out TravelEncounterDefinition ambush);
+            TravelConditionRuntime runtime = ConditionRuntime(context);
+            string failure = runtime == null ? "Missing TravelConditionRuntime." : string.Empty;
+            bool validRuntime = runtime != null && runtime.ValidateCurrent(out failure);
+            bool valid = condition && hazard && encounter && muddy.MovementRateMultiplier < 1d && heat.TriggerPolicy == TravelHazardTriggerPolicy.ExplicitOnly && ambush.InterruptionPolicy == TravelEncounterInterruptionPolicy.BlockJourney && validRuntime;
+            return TestLabAssertions.True("step14-travel-condition-readiness", "Travel condition definitions and runtime resolve", valid, $"Condition={condition} Hazard={hazard} Encounter={encounter} Runtime={validRuntime}:{failure}");
+        }
+
+        private static TestLabAutomationStepResult TravelConditionRouteModifier(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime conditions = ConditionRuntime(context);
+            LocationRouteSearchResult baseline = RouteRuntime(context).PlanRoute(RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess));
+            TravelConditionOperationResult created = CreateRouteCondition(context, conditions, "muddy-route", PrototypeTravelConditionDefinitionFactory.MuddyRoadConditionId, PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId);
+            LocationRouteSearchRequest request = RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess);
+            request.conditionEvaluationMode = TravelConditionEvaluationMode.CurrentConditions;
+            LocationRouteSearchResult modified = RouteRuntime(context).PlanRoute(request);
+            bool valid = baseline.Succeeded && created.Succeeded && modified.Succeeded && modified.Plan.TotalCost.units > baseline.Plan.TotalCost.units && modified.Plan.TotalDistance.meters > baseline.Plan.TotalDistance.meters;
+            return TestLabAssertions.True("step14-travel-condition-route-modifier", "Route planning applies condition movement and cost modifiers", valid, $"Baseline={baseline.Plan?.TotalCost.units:0.###}/{baseline.Plan?.TotalDistance.meters:0.###} Modified={modified.Plan?.TotalCost.units:0.###}/{modified.Plan?.TotalDistance.meters:0.###} Create={created.Status}");
+        }
+
+        private static TestLabAutomationStepResult TravelConditionHardBlockRevalidation(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime conditions = ConditionRuntime(context);
+            LocationRouteSearchRequest request = RouteRequest(context, "location.prototype.village", "location.prototype.market-district", accessMode: RouteAccessEvaluationMode.RequireCurrentAccess);
+            request.conditionEvaluationMode = TravelConditionEvaluationMode.CurrentConditions;
+            LocationRouteSearchResult before = RouteRuntime(context).PlanRoute(request);
+            TravelConditionOperationResult block = CreateRouteCondition(context, conditions, "collapsed", PrototypeTravelConditionDefinitionFactory.CollapsedPassConditionId, PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId);
+            LocationRouteSearchResult after = RouteRuntime(context).PlanRoute(request);
+            LocationRouteRevalidationResult revalidate = RouteRuntime(context).RevalidatePlan(before.Plan, request);
+            bool valid = before.Succeeded && block.Succeeded && !after.Succeeded && after.Status == RoutePlanningStatus.NoRoute && revalidate.Status == RoutePlanRevalidationStatus.ChangedAccess;
+            return TestLabAssertions.True("step14-travel-condition-hard-block", "Hard blockers invalidate condition-aware routes", valid, $"Before={before.Status} Block={block.Status} After={after.Status} Revalidate={revalidate.Status}:{revalidate.Message}");
+        }
+
+        private static TestLabAutomationStepResult TravelConditionRequirements(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime conditions = ConditionRuntime(context);
+            TravelConditionOperationResult created = CreateRouteCondition(context, conditions, "climb-required", PrototypeTravelConditionDefinitionFactory.ClimbingRequiredConditionId, PrototypeLocationRouteDefinitionFactory.VillageWildernessTrailSegmentId);
+            TravelConditionEvaluationResult missing = conditions.Evaluate(new TravelConditionEvaluationRequest { evaluationMode = TravelConditionEvaluationMode.CurrentConditions, target = RouteTarget(PrototypeLocationRouteDefinitionFactory.VillageWildernessTrailSegmentId, context), traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context), travelModeDefinitionId = PrototypeLocationRouteDefinitionFactory.WalkingModeDefinitionId, worldTime = 12d });
+            TravelConditionEvaluationResult allowed = conditions.Evaluate(new TravelConditionEvaluationRequest { evaluationMode = TravelConditionEvaluationMode.CurrentConditions, target = RouteTarget(PrototypeLocationRouteDefinitionFactory.VillageWildernessTrailSegmentId, context), traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context), travelModeDefinitionId = PrototypeLocationRouteDefinitionFactory.WalkingModeDefinitionId, travelerCapabilityIds = new[] { PrototypeTravelConditionDefinitionFactory.ClimbCapabilityId }, worldTime = 12d });
+            bool noMutation = conditions.Revision == created.RevisionAfter;
+            bool valid = created.Succeeded && missing.HardBlocked && missing.MissingCapabilityIds.Contains(PrototypeTravelConditionDefinitionFactory.ClimbCapabilityId) && !allowed.HardBlocked && noMutation;
+            return TestLabAssertions.True("step14-travel-condition-requirements", "Requirements block without mutating condition state", valid, $"Create={created.Status} Missing={missing.HardBlocked}:{string.Join(",", missing.MissingCapabilityIds)} Allowed={allowed.HardBlocked} Revision={conditions.Revision}/{created.RevisionAfter}");
+        }
+
+        private static TestLabAutomationStepResult TravelConditionHiddenKnowledgeSafety(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime conditions = ConditionRuntime(context);
+            TravelConditionOperationResult created = CreateRouteCondition(context, conditions, "hidden-ambush", PrototypeTravelConditionDefinitionFactory.HiddenAmbushRiskConditionId, PrototypeLocationRouteDefinitionFactory.VillageWildernessTrailSegmentId);
+            TravelConditionEvaluationResult safe = conditions.Evaluate(new TravelConditionEvaluationRequest { evaluationMode = TravelConditionEvaluationMode.KnowledgeSafeCurrentConditions, target = RouteTarget(PrototypeLocationRouteDefinitionFactory.VillageWildernessTrailSegmentId, context), travelModeDefinitionId = PrototypeLocationRouteDefinitionFactory.WalkingModeDefinitionId, worldTime = 10d });
+            TravelConditionEvaluationResult known = conditions.Evaluate(new TravelConditionEvaluationRequest { evaluationMode = TravelConditionEvaluationMode.KnowledgeSafeCurrentConditions, target = RouteTarget(PrototypeLocationRouteDefinitionFactory.VillageWildernessTrailSegmentId, context), travelModeDefinitionId = PrototypeLocationRouteDefinitionFactory.WalkingModeDefinitionId, knownConditionIds = new[] { created.Condition.ConditionId }, knownEncounterIds = new[] { PrototypeTravelConditionDefinitionFactory.HiddenAmbushEncounterId }, worldTime = 10d });
+            bool valid = created.Succeeded && safe.ApplicableConditions.Count == 0 && !safe.EncounterRisk.HasVisibleRisk && known.ApplicableConditions.Count == 1 && known.EncounterRisk.HiddenKnownEncounterDefinitionIds.Contains(PrototypeTravelConditionDefinitionFactory.HiddenAmbushEncounterId);
+            return TestLabAssertions.True("step14-travel-condition-hidden", "Hidden travel risk does not leak under knowledge-safe evaluation", valid, $"Create={created.Status} Safe={safe.ApplicableConditions.Count}/{safe.EncounterRisk.VisibleEncounterCount} Known={known.ApplicableConditions.Count}/{string.Join(",", known.EncounterRisk.HiddenKnownEncounterDefinitionIds)}");
+        }
+
+        private static TestLabAutomationStepResult TravelConditionJourneySlowdown(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime conditions = ConditionRuntime(context);
+            TravelConditionOperationResult condition = CreateRouteCondition(context, conditions, "journey-muddy", PrototypeTravelConditionDefinitionFactory.MuddyRoadConditionId, PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId);
+            TravelJourneyOperationResult created = CreateJourney(context, "condition-slowdown", "location.prototype.market-district", rate: 100d, conditionMode: TravelConditionEvaluationMode.CurrentConditions);
+            TravelJourneyOperationResult started = JourneyRuntime(context).StartJourney(Lifecycle(context, created.Journey?.JourneyId, "condition-slowdown-start", worldTime: 10d, rate: 100d, conditionMode: TravelConditionEvaluationMode.CurrentConditions));
+            TravelJourneyOperationResult advanced = JourneyRuntime(context).AdvanceJourney(Lifecycle(context, created.Journey?.JourneyId, "condition-slowdown-advance", worldTime: 10.5d, rate: 100d, conditionMode: TravelConditionEvaluationMode.CurrentConditions));
+            bool slower = advanced.MovementRate != null && advanced.MovementRate.FinalRateMetersPerSecond < 100d;
+            bool notArrived = advanced.Journey?.LifecycleState == TravelJourneyLifecycleState.Active;
+            bool valid = condition.Succeeded && created.Succeeded && started.Succeeded && advanced.Succeeded && slower && notArrived;
+            return TestLabAssertions.True("step14-travel-condition-journey-slowdown", "Journey progress uses condition-adjusted movement", valid, $"Condition={condition.Status} Create={created.Status} Start={started.Status} Advance={advanced.Status}:{advanced.Journey?.LifecycleState} Rate={advanced.MovementRate?.FinalRateMetersPerSecond:0.###}");
+        }
+
+        private static TestLabAutomationStepResult TravelConditionEncounterInterruption(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime conditions = ConditionRuntime(context);
+            TravelConditionOperationResult condition = CreateRouteCondition(context, conditions, "checkpoint-ambush", PrototypeTravelConditionDefinitionFactory.HiddenAmbushRiskConditionId, PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId);
+            TravelJourneyOperationResult created = CreateJourney(context, "condition-encounter", "location.prototype.market-district", rate: 100d, conditionMode: TravelConditionEvaluationMode.CurrentConditions);
+            TravelJourneyOperationResult started = JourneyRuntime(context).StartJourney(Lifecycle(context, created.Journey?.JourneyId, "condition-encounter-start", worldTime: 10d, rate: 100d, conditionMode: TravelConditionEvaluationMode.CurrentConditions));
+            bool interrupted = !started.Succeeded && started.Status == TravelJourneyMutationStatus.Blocked && started.Journey?.BlockReason == TravelJourneyBlockReason.EncounterInterrupted;
+            bool encounterCreated = conditions.EncounterCount == 1 && conditions.Encounters.First().EncounterDefinitionId == PrototypeTravelConditionDefinitionFactory.HiddenAmbushEncounterId;
+            bool valid = condition.Succeeded && created.Succeeded && interrupted && encounterCreated;
+            return TestLabAssertions.True("step14-travel-condition-encounter", "Checkpoint encounter interrupts journey without owning combat state", valid, $"Condition={condition.Status} Create={created.Status} Start={started.Status}:{started.Journey?.BlockReason} Encounters={conditions.EncounterCount}");
+        }
+
+        private static TestLabAutomationStepResult TravelConditionHazardPersistence(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime conditions = ConditionRuntime(context);
+            TravelConditionOperationResult condition = conditions.CreateCondition(new TravelConditionCreateRequest
+            {
+                transactionId = Tx(context, "travel-condition-heat"),
+                conditionId = context.ScenarioContext.ScopedId("travel-condition", "heat"),
+                conditionDefinitionId = PrototypeTravelConditionDefinitionFactory.HeatConditionId,
+                target = new TravelConditionTargetReferenceData
+                {
+                    scope = TravelConditionTargetScope.RouteNetwork,
+                    targetId = PrototypeLocationRouteDefinitionFactory.RegionalTrailNetworkId,
+                    sourceLocationId = "location.prototype.village",
+                    destinationLocationId = "location.prototype.wilderness-ring",
+                    traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context)
+                },
+                lifecycleState = TravelConditionLifecycleState.Active,
+                startsWorldTime = 0d,
+                sourceEventId = "testlab.feature.14.8",
+                provenanceId = "testlab.feature.14.8"
+            });
+            TravelConditionOperationResult hazard = conditions.TriggerHazard(new TravelHazardTriggerRequest
+            {
+                transactionId = Tx(context, "travel-condition-heat-hazard"),
+                hazardDefinitionId = PrototypeTravelConditionDefinitionFactory.HeatExposureHazardId,
+                sourceConditionId = condition.Condition?.ConditionId,
+                target = RouteTarget(PrototypeLocationRouteDefinitionFactory.VillageWildernessTrailSegmentId, context),
+                traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context),
+                worldTime = 20d,
+                provenanceId = "automation.14.8"
+            });
+            TravelConditionPersistenceParticipant participant = new TravelConditionPersistenceParticipant(conditions, () => context.ScenarioContext.Runtimes.DefinitionRegistry, () => RouteRuntime(context), () => JourneyRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            PersistenceParticipantPrepareResult prepared = participant.PreparePayload(save.PayloadJson, TravelConditionPersistenceParticipant.CurrentParticipantSchemaVersion);
+            TravelConditionRuntime restored = new TravelConditionRuntime();
+            restored.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, RouteRuntime(context), JourneyRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            TravelConditionOperationResult restore = restored.RestoreFromSaveData(JsonUtility.FromJson<TravelConditionRuntimeSaveData>(save.PayloadJson), context.ScenarioContext.Runtimes.DefinitionRegistry, RouteRuntime(context), JourneyRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            TravelConditionRuntimeSaveData corrupt = conditions.CreateSaveData();
+            if (corrupt.conditions.Length > 0)
+            {
+                corrupt.conditions[0].conditionDefinitionId = "travel-condition-definition.missing";
+            }
+
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), TravelConditionPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = condition.Succeeded && hazard.Succeeded && save.Succeeded && prepared.Succeeded && restore.Succeeded && restored.ConditionCount == conditions.ConditionCount && restored.HazardExposureCount == conditions.HazardExposureCount && !rejected.Succeeded;
+            return TestLabAssertions.True("step14-travel-condition-persistence", "Hazards and travel conditions persist without retriggering", valid, $"Condition={condition.Status} Hazard={hazard.Status} Save={save.Succeeded} Prepare={prepared.Succeeded} Restore={restore.Status} Count={restored.ConditionCount}/{conditions.ConditionCount} Hazards={restored.HazardExposureCount}/{conditions.HazardExposureCount} Rejected={rejected.Succeeded}:{rejected.Message}");
+        }
+
         private static LocationRuntime Runtime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.Locations;
@@ -1478,6 +1631,48 @@ namespace UnityIsekaiGame.Development.Automation
         private static TravelJourneyRuntime JourneyRuntime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.TravelJourneys;
+        }
+
+        private static TravelConditionRuntime ConditionRuntime(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime runtime = context?.ScenarioContext?.Runtimes?.TravelConditions;
+            if (runtime == null)
+            {
+                return null;
+            }
+
+            runtime.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, RouteRuntime(context), JourneyRuntime(context), context.ScenarioContext.Runtimes.WorldId);
+            RouteRuntime(context)?.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), ConnectionRuntime(context), context.ScenarioContext.Runtimes.WorldId, runtime);
+            JourneyRuntime(context)?.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), EntityRuntime(context), ConnectionRuntime(context), RouteRuntime(context), context.ScenarioContext.Runtimes.WorldId, runtime);
+            return runtime;
+        }
+
+        private static TravelConditionTargetReferenceData RouteTarget(string routeSegmentId, TestLabAutomationContext context)
+        {
+            return new TravelConditionTargetReferenceData
+            {
+                scope = TravelConditionTargetScope.RouteSegment,
+                targetId = routeSegmentId,
+                sourceLocationId = "location.prototype.village",
+                destinationLocationId = routeSegmentId == PrototypeLocationRouteDefinitionFactory.VillageWildernessTrailSegmentId ? "location.prototype.wilderness-ring" : "location.prototype.market-district",
+                edgeKind = RouteEdgeKind.RouteSegment,
+                traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context)
+            };
+        }
+
+        private static TravelConditionOperationResult CreateRouteCondition(TestLabAutomationContext context, TravelConditionRuntime runtime, string suffix, string definitionId, string routeSegmentId)
+        {
+            return runtime.CreateCondition(new TravelConditionCreateRequest
+            {
+                transactionId = Tx(context, $"travel-condition-{suffix}"),
+                conditionId = context.ScenarioContext.ScopedId("travel-condition.prototype.test", suffix),
+                conditionDefinitionId = definitionId,
+                target = RouteTarget(routeSegmentId, context),
+                lifecycleState = TravelConditionLifecycleState.Active,
+                startsWorldTime = 0d,
+                sourceEventId = "testlab.feature.14.8",
+                provenanceId = "testlab.feature.14.8"
+            });
         }
 
         private static EntityLocationReferenceData Person(string id, TestLabAutomationContext context)
@@ -1532,7 +1727,8 @@ namespace UnityIsekaiGame.Development.Automation
             string destination,
             LocationRoutePlan acceptedRoutePlan = null,
             double rate = -1d,
-            TravelJourneyVisibility visibility = TravelJourneyVisibility.Public)
+            TravelJourneyVisibility visibility = TravelJourneyVisibility.Public,
+            TravelConditionEvaluationMode conditionMode = TravelConditionEvaluationMode.IgnoreDynamicConditions)
         {
             EntityLocationReferenceData traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
             return JourneyRuntime(context).CreateJourney(new TravelJourneyCreateRequest
@@ -1556,7 +1752,7 @@ namespace UnityIsekaiGame.Development.Automation
             });
         }
 
-        private static TravelJourneyLifecycleRequest Lifecycle(TestLabAutomationContext context, string journeyId, string suffix, double worldTime, double rate = -1d, bool preview = false)
+        private static TravelJourneyLifecycleRequest Lifecycle(TestLabAutomationContext context, string journeyId, string suffix, double worldTime, double rate = -1d, bool preview = false, TravelConditionEvaluationMode conditionMode = TravelConditionEvaluationMode.IgnoreDynamicConditions)
         {
             EntityLocationReferenceData traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
             return new TravelJourneyLifecycleRequest
@@ -1565,6 +1761,7 @@ namespace UnityIsekaiGame.Development.Automation
                 journeyId = journeyId,
                 actor = Person(PrototypeEntityLocationFactory.PlayerPersonId, context),
                 accessContext = AccessContext(context, traveler),
+                conditionEvaluationMode = conditionMode,
                 movementRateOverrideMetersPerSecond = rate,
                 worldTime = worldTime,
                 sourceEventId = "testlab.feature.14.7",

@@ -4831,6 +4831,7 @@ namespace UnityIsekaiGame.Gameplay
             definitionRegistry = PrototypeInteractionPointDefinitionFactory.AddMissingPrototypeInteractionDefinitions(definitionRegistry);
             definitionRegistry = PrototypeLocationConnectionDefinitionFactory.AddMissingPrototypeConnectionDefinitions(definitionRegistry);
             definitionRegistry = PrototypeLocationRouteDefinitionFactory.AddMissingPrototypeRouteDefinitions(definitionRegistry);
+            definitionRegistry = PrototypeTravelConditionDefinitionFactory.AddMissingPrototypeTravelConditionDefinitions(definitionRegistry);
             return definitionRegistry;
         }
 

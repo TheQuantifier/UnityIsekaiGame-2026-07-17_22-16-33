@@ -96,6 +96,9 @@ namespace UnityIsekaiGame.WorldLocations
         MovementRateInvalid,
         NoReplacementRoute,
         ExternalControlRequired,
+        TravelConditionBlocked,
+        EncounterInterrupted,
+        HazardTriggered,
         PersistenceInvalid,
         Unknown
     }
