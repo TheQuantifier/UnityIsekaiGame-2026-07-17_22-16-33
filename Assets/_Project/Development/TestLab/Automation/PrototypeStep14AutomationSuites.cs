@@ -219,6 +219,24 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("79.6-route-requirements", "Route planning exposes political requirements without owning government state", 60, Step("step14-political-travel-route-requirements", "Build route requirement summary", PoliticalTravelRouteRequirements)),
                     Scenario("79.7-persistence-and-fixture", "Political travel persistence validates graph references and fixture snapshots restore state", 70, Step("step14-political-travel-persistence", "Save, restore, reject corrupt payload, and restore fixture", PoliticalTravelPersistenceFixture))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.10.world-location-persistence-historical-movement",
+                "World/Location Persistence and Historical Movement",
+                "14.10",
+                "Step 14 persistence ownership, historical movement projections, temporal queries, visibility boundaries, and reconstruction validation are consolidated without introducing a second movement owner.",
+                14100,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "Step14PersistenceManifest", "MovementHistoryService", "LocationRuntime", "EntityLocationRuntime", "LocationRouteRuntime", "TravelJourneyRuntime", "TravelConditionRuntime", "PoliticalTravelRuntime" },
+                scenarios: new[]
+                {
+                    Scenario("80.1-ownership-manifest", "Persistence manifest declares one authoritative owner per state category", 10, Step("step14-persistence-manifest", "Build and validate Step 14 persistence manifest", PersistenceManifestOwnership)),
+                    Scenario("80.2-exact-location-at-time", "Historical exact-location queries separate placement from in-transit state", 20, Step("step14-history-exact-location", "Resolve exact location and active journey context", HistoricalExactLocation)),
+                    Scenario("80.3-path-occupancy-visits", "Historical containment, occupancy, visits, and distance are derived deterministically", 30, Step("step14-history-path-occupancy", "Query containment path, occupancy, visits, and distance", HistoricalPathOccupancyVisits)),
+                    Scenario("80.4-timeline-visibility", "Movement timelines preserve source references without leaking hidden details", 40, Step("step14-history-timeline-visibility", "Evaluate visibility-safe timeline ranges", HistoricalTimelineVisibility)),
+                    Scenario("80.5-validation-and-snapshot", "Movement history validates source graphs and remains immutable after runtime mutation", 50, Step("step14-history-validation-snapshot", "Validate and snapshot movement history projections", HistoricalValidationSnapshot))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -1773,6 +1791,145 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step14-political-travel-persistence", "Political travel persistence and fixture restore are graph-safe", valid, $"Checkpoint={checkpoint.Code} Save={save.Succeeded} Prepare={prepared.Succeeded} Restore={restore.Code} Count={restored.CheckpointCount}/{fixture.PoliticalTravel.CheckpointCount} Rejected={rejected.Succeeded}:{rejected.Message} Extra={extra.Code} Snapshot={snapshotRestored}:{restoreFailure}");
         }
 
+        private static TestLabAutomationStepResult PersistenceManifestOwnership(TestLabAutomationContext context)
+        {
+            Step14PersistenceSnapshotSource source = Source(context);
+            Step14PersistenceManifest manifest = Step14PersistenceManifestBuilder.Build(source);
+            Step14PersistenceOwnerRecord currentPlacement = manifest.Ownership.FirstOrDefault(item => item.Category == "entity placement");
+            Step14PersistenceOwnerRecord movementProjection = manifest.Ownership.FirstOrDefault(item => item.Category == "movement historical projections");
+            bool currentPlacementOwner = currentPlacement != null
+                && currentPlacement.OwnerKind == Step14PersistenceOwnerKind.Authoritative
+                && currentPlacement.OwnerParticipantId == Step14PersistenceManifestBuilder.EntityLocationParticipantId;
+            bool movementProjectionOwner = movementProjection != null
+                && movementProjection.OwnerKind == Step14PersistenceOwnerKind.Derived;
+            bool travelDependencies = manifest.Participants.Any(participant => participant.ParticipantId == Step14PersistenceManifestBuilder.JourneyParticipantId
+                && participant.RequiredDependencies.Contains(Step14PersistenceManifestBuilder.RouteParticipantId)
+                && participant.RequiredDependencies.Contains(Step14PersistenceManifestBuilder.EntityLocationParticipantId));
+            bool valid = manifest.Succeeded && currentPlacementOwner && movementProjectionOwner && travelDependencies;
+            return TestLabAssertions.True("step14-persistence-manifest", "Step 14 persistence ownership is explicit and non-duplicated", valid, $"Succeeded={manifest.Succeeded} Participants={manifest.Participants.Count} Owners={manifest.Ownership.Count} Errors={manifest.ValidationReport.Errors.Count} PlacementOwner={currentPlacement?.OwnerParticipantId} Movement={movementProjection?.OwnerKind}");
+        }
+
+        private static TestLabAutomationStepResult HistoricalExactLocation(TestLabAutomationContext context)
+        {
+            TravelJourneyOperationResult created = CreateJourney(context, "history-exact", "location.prototype.market-district", rate: 5d);
+            TravelJourneyOperationResult started = JourneyRuntime(context).StartJourney(Lifecycle(context, created.Journey?.JourneyId, "history-exact-start", worldTime: 20d, rate: 5d));
+            MovementHistoryService history = History(context);
+            EntityLocationReferenceData traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            HistoricalExactLocationResult before = history.ResolveExactLocationAt(traveler, 5d, MovementHistoryVisibilityMode.DevelopmentAuthoritative);
+            HistoricalExactLocationResult during = history.ResolveExactLocationAt(traveler, 21d, MovementHistoryVisibilityMode.DevelopmentAuthoritative);
+            bool livePlacementUnchanged = EntityRuntime(context).TryGetActivePlacement(traveler, out EntityPlacementSnapshot placement) && placement.ExactLocationId == "location.prototype.village";
+            bool valid = created.Succeeded
+                && started.Succeeded
+                && before.Status == HistoricalExactLocationStatus.ExactLocationFound
+                && before.ExactLocationId == "location.prototype.village"
+                && during.Status == HistoricalExactLocationStatus.InTransit
+                && during.InTransit != null
+                && during.InTransit.PreviousLocationId == "location.prototype.village"
+                && during.InTransit.NextLocationId == "location.prototype.market-district"
+                && livePlacementUnchanged;
+            return TestLabAssertions.True("step14-history-exact-location", "Historical exact-location projection separates placement from travel state", valid, $"Create={created.Status} Start={started.Status} Before={before.Status}:{before.ExactLocationId} During={during.Status}:{during.InTransit?.JourneyId} Live={placement?.ExactLocationId}");
+        }
+
+        private static TestLabAutomationStepResult HistoricalPathOccupancyVisits(TestLabAutomationContext context)
+        {
+            EntityLocationRuntime entities = EntityRuntime(context);
+            EntityLocationReferenceData merchant = Body(PrototypeEntityLocationFactory.MerchantBodyId, context);
+            EntityLocationOperationResult moved = entities.Relocate(new EntityRelocationRequest
+            {
+                transactionId = Tx(context, "history-path-relocate"),
+                newPlacementId = context.ScenarioContext.ScopedId("placement.test", "history-path-merchant"),
+                entity = merchant,
+                expectedOriginLocationId = "location.prototype.merchant-counter",
+                destinationLocationId = "location.prototype.civic-office",
+                category = EntityPlacementCategory.Visiting,
+                worldTime = 110d,
+                sourceEventId = "testlab.feature.14.10.history-path",
+                provenanceId = "testlab.feature.14.10"
+            });
+            MovementHistoryService history = History(context);
+            HistoricalLocationPathResult path = history.ResolveHistoricalLocationPath("location.prototype.civic-office", 111d);
+            HistoricalOccupancyResult occupancy = history.GetHistoricalOccupancy("location.prototype.village", 111d, recursive: true, visibilityMode: MovementHistoryVisibilityMode.DevelopmentAuthoritative);
+            VisitedLocationSummary visits = history.GetVisitSummary(merchant, "location.prototype.village", 0d, 200d, exactOnly: false, MovementHistoryVisibilityMode.DevelopmentAuthoritative);
+            MovementDistanceSummary distance = history.GetMovementDistance(merchant, 0d, 200d, MovementHistoryVisibilityMode.DevelopmentAuthoritative);
+            bool deterministicOccupancy = occupancy.Placements.Select(item => item.entity?.StableKey ?? string.Empty).SequenceEqual(occupancy.Placements.Select(item => item.entity?.StableKey ?? string.Empty).OrderBy(id => id, StringComparer.Ordinal));
+            bool valid = moved.Succeeded
+                && path.Succeeded
+                && path.LocationPathIds.Contains("location.prototype.village")
+                && occupancy.Placements.Any(item => item.entity?.entityId == PrototypeEntityLocationFactory.MerchantBodyId)
+                && deterministicOccupancy
+                && visits.VisitCount >= 1
+                && distance.TotalCompletedDistanceMeters >= 0d;
+            return TestLabAssertions.True("step14-history-path-occupancy", "Historical path, occupancy, visits, and distance remain derived and deterministic", valid, $"Move={moved.Status} Path={string.Join("/", path.LocationPathIds)} Occupancy={occupancy.Placements.Count} Visits={visits.VisitCount} Distance={distance.TotalCompletedDistanceMeters} Deterministic={deterministicOccupancy}");
+        }
+
+        private static TestLabAutomationStepResult HistoricalTimelineVisibility(TestLabAutomationContext context)
+        {
+            TravelConditionRuntime conditions = ConditionRuntime(context);
+            LocationRouteMutationResult segment = CreateRouteSegment(context, "history-hidden", "location.prototype.village", "location.prototype.wilderness-ring", 35d, 35d);
+            TravelConditionOperationResult hidden = CreateRouteCondition(context, conditions, "history-hidden", PrototypeTravelConditionDefinitionFactory.HiddenAmbushRiskConditionId, segment.Segment?.SegmentId);
+            MovementHistoryService history = History(context);
+            EntityLocationReferenceData traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            MovementTimelineResult development = history.BuildTimeline(new MovementHistoryQuery
+            {
+                routeSegmentId = segment.Segment?.SegmentId,
+                startWorldTime = 0d,
+                endWorldTime = 1000d,
+                visibilityMode = MovementHistoryVisibilityMode.DevelopmentAuthoritative
+            });
+            MovementTimelineResult publicView = history.BuildTimeline(new MovementHistoryQuery
+            {
+                routeSegmentId = segment.Segment?.SegmentId,
+                startWorldTime = 0d,
+                endWorldTime = 1000d,
+                visibilityMode = MovementHistoryVisibilityMode.Public
+            });
+            bool deterministic = development.Entries.Select(TimelineKey).SequenceEqual(development.Entries.Select(TimelineKey).OrderBy(id => id, StringComparer.Ordinal));
+            bool hiddenVisibleToDevelopment = development.Entries.Any(item => item.SourceRecordId == hidden.Condition?.ConditionId);
+            bool hiddenOmittedPublic = !publicView.Entries.Any(item => item.SourceRecordId == hidden.Condition?.ConditionId);
+            bool sourceRefs = development.Entries.All(item => !string.IsNullOrWhiteSpace(item.SourceParticipantId) && !string.IsNullOrWhiteSpace(item.SourceRecordId));
+            bool valid = segment.Succeeded && hidden.Succeeded && deterministic && sourceRefs && hiddenVisibleToDevelopment && hiddenOmittedPublic;
+            return TestLabAssertions.True("step14-history-timeline-visibility", "Timeline projections are deterministic and visibility-safe", valid, $"Segment={segment.Status} Hidden={hidden.Status} Dev={development.Entries.Count} Public={publicView.Entries.Count} Deterministic={deterministic} SourceRefs={sourceRefs} HiddenPublic={hiddenOmittedPublic}");
+        }
+
+        private static TestLabAutomationStepResult HistoricalValidationSnapshot(TestLabAutomationContext context)
+        {
+            Step14PersistenceSnapshotSource source = Source(context);
+            MovementHistoryService history = new MovementHistoryService(source);
+            MovementHistoryValidationReport validReport = history.ValidateHistory();
+            EntityLocationReferenceData traveler = Body(PrototypeEntityLocationFactory.PlayerBodyId, context);
+            MovementTimelineResult before = history.BuildTimeline(new MovementHistoryQuery
+            {
+                entity = traveler,
+                startWorldTime = 0d,
+                endWorldTime = 500d
+            });
+            Create(context, "history-snapshot-extra", PrototypeLocationDefinitionFactory.RoomDefinitionId, "Historical Snapshot Extra");
+            MovementTimelineResult after = history.BuildTimeline(new MovementHistoryQuery
+            {
+                entity = traveler,
+                startWorldTime = 0d,
+                endWorldTime = 500d
+            });
+            Step14PersistenceSnapshotSource corrupt = Source(context);
+            corrupt.entityLocations.placements.Add(new EntityPlacementRecordData
+            {
+                placementId = context.ScenarioContext.ScopedId("placement.corrupt", "missing-location"),
+                entity = Body(context.ScenarioContext.ScopedId("body.corrupt", "missing-location"), context),
+                exactLocationId = "location.prototype.missing",
+                startWorldTime = 1000d,
+                lifecycleState = EntityPlacementLifecycleState.Active
+            });
+            MovementHistoryValidationReport corruptReport = new MovementHistoryService(corrupt).ValidateHistory();
+            bool immutable = before.Entries.Select(TimelineKey).SequenceEqual(after.Entries.Select(TimelineKey));
+            bool corruptCaught = !corruptReport.Succeeded && corruptReport.Issues.Any(issue => issue.Severity == MovementHistoryIssueSeverity.Error
+                && issue.Message.IndexOf("missing", StringComparison.OrdinalIgnoreCase) >= 0
+                && issue.Message.IndexOf("location", StringComparison.OrdinalIgnoreCase) >= 0);
+            bool valid = validReport.Succeeded && immutable && corruptCaught;
+            int validErrors = validReport.Issues.Count(issue => issue.Severity == MovementHistoryIssueSeverity.Error);
+            int corruptErrors = corruptReport.Issues.Count(issue => issue.Severity == MovementHistoryIssueSeverity.Error);
+            return TestLabAssertions.True("step14-history-validation-snapshot", "Movement projections validate source graphs and remain immutable after runtime mutation", valid, $"Valid={validReport.Succeeded}:{validErrors} Immutable={immutable} Corrupt={corruptReport.Succeeded}:{corruptErrors}");
+        }
+
         private static LocationRuntime Runtime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.Locations;
@@ -1823,6 +1980,46 @@ namespace UnityIsekaiGame.Development.Automation
             RouteRuntime(context)?.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), ConnectionRuntime(context), context.ScenarioContext.Runtimes.WorldId, runtime);
             JourneyRuntime(context)?.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), EntityRuntime(context), ConnectionRuntime(context), RouteRuntime(context), context.ScenarioContext.Runtimes.WorldId, runtime);
             return runtime;
+        }
+
+        private static Step14PersistenceSnapshotSource Source(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            return Step14PersistenceSnapshotSource.FromRuntimes(
+                Runtime(context),
+                EntityRuntime(context),
+                InteractionRuntime(context),
+                ConnectionRuntime(context),
+                RouteRuntime(context),
+                JourneyRuntime(context),
+                ConditionRuntime(context),
+                PoliticalRuntime(context),
+                runtimes?.WorldId ?? PersistenceService.LocalWorldId,
+                context?.RunId ?? string.Empty,
+                0d);
+        }
+
+        private static MovementHistoryService History(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            return MovementHistoryService.FromRuntimes(
+                Runtime(context),
+                EntityRuntime(context),
+                InteractionRuntime(context),
+                ConnectionRuntime(context),
+                RouteRuntime(context),
+                JourneyRuntime(context),
+                ConditionRuntime(context),
+                PoliticalRuntime(context),
+                runtimes?.WorldId ?? PersistenceService.LocalWorldId,
+                context?.RunId ?? string.Empty,
+                0d);
+        }
+
+        private static string TimelineKey(MovementTimelineEntry entry)
+        {
+            if (entry == null) return string.Empty;
+            return $"{entry.WorldTime:000000000000.000000}:{(int)entry.Kind:000}:{entry.Priority:000}:{entry.SourceParticipantId}:{entry.SourceRecordId}:{entry.JourneyStepId}";
         }
 
         private static bool TryPreparePoliticalTravelFixture(TestLabAutomationContext context, string suffix, out PoliticalTravelAutomationFixture fixture, out string failure)
