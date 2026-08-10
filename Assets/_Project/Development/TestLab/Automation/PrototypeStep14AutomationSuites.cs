@@ -2,9 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityIsekaiGame.Crimes;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
+using UnityIsekaiGame.Governments;
+using UnityIsekaiGame.Laws;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.WorldLocations;
 
@@ -195,6 +198,26 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("78.6-journey-slowdown", "Journey progress uses condition-adjusted movement rate", 60, Step("step14-travel-condition-journey-slowdown", "Advance journey through slowdown", TravelConditionJourneySlowdown)),
                     Scenario("78.7-encounter-interruption", "Checkpoint encounters interrupt journeys without creating combat state", 70, Step("step14-travel-condition-encounter", "Trigger encounter at checkpoint", TravelConditionEncounterInterruption)),
                     Scenario("78.8-hazard-and-persistence", "Explicit hazards and persistence preserve state without retriggering", 80, Step("step14-travel-condition-persistence", "Trigger hazard, save, restore, reject corrupt payload", TravelConditionHazardPersistence))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.14.9.territory-jurisdiction-borders-world-state-travel",
+                "Territory, Jurisdiction, Borders, and World-State Travel Integration",
+                "14.9",
+                "Political travel evaluation integrates Step 14 routes with Step 13 territory, jurisdiction, law, crime, warrants, checkpoint authorization, persistence, and fixture ownership.",
+                14090,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "PoliticalTravelRuntime", "GovernmentRuntime", "LegalRuntime", "CrimeRuntime", "JusticeRuntime", "PoliticalTravelPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("79.1-readiness-and-ownership", "Political travel runtime is fixture-owned and delegates to Step 13 authorities", 10, Step("step14-political-travel-readiness", "Resolve political travel runtime and owner revisions", PoliticalTravelReadinessOwnership)),
+                    Scenario("79.2-territory-jurisdiction-evaluation", "Territory and jurisdiction resolve from authoritative government records", 20, Step("step14-political-travel-territory", "Evaluate a cross-territory route", PoliticalTravelTerritoryJurisdictionEvaluation)),
+                    Scenario("79.3-legal-compliance-modes", "Legal compliance modes do not replace physical traversability", 30, Step("step14-political-travel-compliance", "Compare legal block, illegal crossing, and physical block", PoliticalTravelLegalComplianceModes)),
+                    Scenario("79.4-checkpoint-authorization", "Checkpoint authorization gates border crossing without mutating routes or laws", 40, Step("step14-political-travel-checkpoint", "Require and grant checkpoint authorization", PoliticalTravelCheckpointAuthorization)),
+                    Scenario("79.5-wanted-warrant-visibility", "Wanted and warrant summaries respect political visibility", 50, Step("step14-political-travel-wanted", "Evaluate restricted enforcement visibility", PoliticalTravelWantedVisibility)),
+                    Scenario("79.6-route-requirements", "Route planning exposes political requirements without owning government state", 60, Step("step14-political-travel-route-requirements", "Build route requirement summary", PoliticalTravelRouteRequirements)),
+                    Scenario("79.7-persistence-and-fixture", "Political travel persistence validates graph references and fixture snapshots restore state", 70, Step("step14-political-travel-persistence", "Save, restore, reject corrupt payload, and restore fixture", PoliticalTravelPersistenceFixture))
                 }), out _);
         }
 
@@ -1603,9 +1626,164 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step14-travel-condition-persistence", "Hazards and travel conditions persist without retriggering", valid, $"Condition={condition.Status} Hazard={hazard.Status} Save={save.Succeeded} Prepare={prepared.Succeeded} Restore={restore.Status} Count={restored.ConditionCount}/{conditions.ConditionCount} Hazards={restored.HazardExposureCount}/{conditions.HazardExposureCount} Rejected={rejected.Succeeded}:{rejected.Message}");
         }
 
+        private static TestLabAutomationStepResult PoliticalTravelReadinessOwnership(TestLabAutomationContext context)
+        {
+            if (!TryPreparePoliticalTravelFixture(context, "readiness", out PoliticalTravelAutomationFixture fixture, out string failure)) return PoliticalTravelFail("step14-political-travel-readiness", failure);
+            long governmentRevision = fixture.Runtimes.Governments.Revision;
+            long legalRevision = fixture.Runtimes.Laws.Revision;
+            long crimeRevision = fixture.Runtimes.Crimes.Revision;
+            PoliticalTravelEvaluationResult evaluation = fixture.PoliticalTravel.EvaluateCrossing(fixture.Evaluation(TravelLegalComplianceMode.RequireLegalTravel));
+
+            bool valid = fixture.PoliticalTravel != null
+                && evaluation.Succeeded
+                && evaluation.Classification == PoliticalTravelCrossingClassification.BorderCrossing
+                && fixture.Runtimes.Governments.Revision == governmentRevision
+                && fixture.Runtimes.Laws.Revision == legalRevision
+                && fixture.Runtimes.Crimes.Revision == crimeRevision;
+            return TestLabAssertions.True("step14-political-travel-readiness", "Political travel runtime delegates ownership to Step 13 systems", valid, $"Runtime={fixture.PoliticalTravel != null} Evaluation={evaluation.Code} Class={evaluation.Classification} Gov={governmentRevision}->{fixture.Runtimes.Governments.Revision} Law={legalRevision}->{fixture.Runtimes.Laws.Revision} Crime={crimeRevision}->{fixture.Runtimes.Crimes.Revision}");
+        }
+
+        private static TestLabAutomationStepResult PoliticalTravelTerritoryJurisdictionEvaluation(TestLabAutomationContext context)
+        {
+            if (!TryPreparePoliticalTravelFixture(context, "jurisdiction", out PoliticalTravelAutomationFixture fixture, out string failure)) return PoliticalTravelFail("step14-political-travel-territory", failure);
+            PoliticalTravelEvaluationResult evaluation = fixture.PoliticalTravel.EvaluateCrossing(fixture.Evaluation(TravelLegalComplianceMode.RequireLegalTravel));
+            bool valid = evaluation.Succeeded
+                && evaluation.OriginTerritory?.TerritoryId == fixture.OriginTerritoryId
+                && evaluation.DestinationTerritory?.TerritoryId == fixture.DestinationTerritoryId
+                && evaluation.DestinationJurisdiction?.SelectedJurisdiction?.jurisdictionId == fixture.DestinationJurisdictionId
+                && evaluation.CombinedState == PhysicalLegalTravelState.TravelableAndLegal;
+            return TestLabAssertions.True("step14-political-travel-territory", "Territory and jurisdiction resolve from government authority", valid, $"Status={evaluation.Code} Origin={evaluation.OriginTerritory?.TerritoryId} Destination={evaluation.DestinationTerritory?.TerritoryId} Jurisdiction={evaluation.DestinationJurisdiction?.SelectedJurisdiction?.jurisdictionId} Combined={evaluation.CombinedState}");
+        }
+
+        private static TestLabAutomationStepResult PoliticalTravelLegalComplianceModes(TestLabAutomationContext context)
+        {
+            if (!TryPreparePoliticalTravelFixture(context, "compliance", out PoliticalTravelAutomationFixture fixture, out string failure)) return PoliticalTravelFail("step14-political-travel-compliance", failure);
+            LegalOperationResult law = fixture.EnactTravelLaw("ban", PoliticalTravelRuntime.CrossBorderActionId, LegalEffectCategory.Prohibition);
+            PoliticalTravelOperationResult blocked = fixture.PoliticalTravel.RecordCrossing(fixture.Crossing("blocked", TravelLegalComplianceMode.RequireLegalTravel));
+            int afterBlocked = fixture.PoliticalTravel.CrossingCount;
+            PoliticalTravelOperationResult illegal = fixture.PoliticalTravel.RecordCrossing(fixture.Crossing("illegal", TravelLegalComplianceMode.AllowIllegalTravel));
+            PoliticalTravelEvaluationResult physical = fixture.PoliticalTravel.EvaluateCrossing(fixture.Evaluation(TravelLegalComplianceMode.AllowIllegalTravel, physicalTravelPossible: false));
+
+            bool valid = law.Succeeded
+                && blocked.Code == PoliticalTravelOperationCode.LegalBlocked
+                && afterBlocked == 0
+                && illegal.Succeeded
+                && illegal.Crossing?.illegalCrossing == true
+                && illegal.Crossing.combinedState == PhysicalLegalTravelState.IllegalButPhysicallyPossible
+                && physical.Code == PoliticalTravelOperationCode.PhysicalBlocked
+                && physical.CombinedState == PhysicalLegalTravelState.PhysicallyBlocked;
+            return TestLabAssertions.True("step14-political-travel-compliance", "Legal modes keep physical and political travel distinct", valid, $"Law={law.Code} Blocked={blocked.Code} AfterBlocked={afterBlocked} Illegal={illegal.Code}:{illegal.Crossing?.combinedState} Physical={physical.Code}:{physical.CombinedState}");
+        }
+
+        private static TestLabAutomationStepResult PoliticalTravelCheckpointAuthorization(TestLabAutomationContext context)
+        {
+            if (!TryPreparePoliticalTravelFixture(context, "checkpoint", out PoliticalTravelAutomationFixture fixture, out string failure)) return PoliticalTravelFail("step14-political-travel-checkpoint", failure);
+            long routeRevision = fixture.Runtimes.LocationRoutes.Revision;
+            long legalRevision = fixture.Runtimes.Laws.Revision;
+            PoliticalTravelOperationResult checkpoint = fixture.PoliticalTravel.CreateCheckpoint(fixture.Checkpoint(BorderCheckpointPolicy.RequireAuthorization));
+            PoliticalTravelOperationResult denied = fixture.PoliticalTravel.RecordCrossing(fixture.Crossing("no-permit", TravelLegalComplianceMode.RequireLegalTravel));
+            PoliticalTravelOperationResult grant = fixture.PoliticalTravel.GrantAuthorization(fixture.Authorization(checkpoint.Checkpoint?.CheckpointId));
+            PoliticalTravelOperationResult allowed = fixture.PoliticalTravel.RecordCrossing(fixture.Crossing("permit", TravelLegalComplianceMode.RequireLegalTravel));
+
+            bool valid = checkpoint.Succeeded
+                && denied.Code == PoliticalTravelOperationCode.LegalBlocked
+                && grant.Succeeded
+                && allowed.Succeeded
+                && allowed.Crossing?.authorizationId == grant.Authorization?.authorizationId
+                && fixture.Runtimes.LocationRoutes.Revision == routeRevision
+                && fixture.Runtimes.Laws.Revision == legalRevision;
+            return TestLabAssertions.True("step14-political-travel-checkpoint", "Checkpoint authorization gates border crossing without route or law mutation", valid, $"Checkpoint={checkpoint.Code} Denied={denied.Code} Grant={grant.Code} Allowed={allowed.Code} Auth={allowed.Crossing?.authorizationId} Route={routeRevision}->{fixture.Runtimes.LocationRoutes.Revision} Law={legalRevision}->{fixture.Runtimes.Laws.Revision}");
+        }
+
+        private static TestLabAutomationStepResult PoliticalTravelWantedVisibility(TestLabAutomationContext context)
+        {
+            if (!TryPreparePoliticalTravelFixture(context, "wanted", out PoliticalTravelAutomationFixture fixture, out string failure)) return PoliticalTravelFail("step14-political-travel-wanted", failure);
+            CrimeOperationResult wanted = fixture.Runtimes.Crimes.CreateWantedStatus(new WantedStatusRequest
+            {
+                transactionId = Tx(context, "political-travel-wanted"),
+                wantedStatusId = context.ScenarioContext.ScopedId("wanted-status.political-travel", "hidden"),
+                wantedDefinitionId = PrototypeCrimeDefinitionFactory.WantedForArrestDefinitionId,
+                subjectId = fixture.TravelerPersonId,
+                territoryId = fixture.DestinationTerritoryId,
+                jurisdictionId = fixture.DestinationJurisdictionId,
+                activeWorldTime = 0d,
+                visibility = PoliticalVisibility.Hidden
+            });
+            PoliticalTravelEvaluationResult safe = fixture.PoliticalTravel.EvaluateCrossing(fixture.Evaluation(TravelLegalComplianceMode.RequireLegalTravel, PoliticalTravelVisibilityMode.TravelerSafe));
+            PoliticalTravelEvaluationResult privileged = fixture.PoliticalTravel.EvaluateCrossing(fixture.Evaluation(TravelLegalComplianceMode.RequireLegalTravel, PoliticalTravelVisibilityMode.Privileged));
+
+            bool valid = wanted.Succeeded
+                && safe.Wanted.VisibleWantedStatusIds.Count == 0
+                && safe.Wanted.HiddenRestrictedInformation
+                && privileged.Wanted.VisibleWantedStatusIds.Contains(wanted.SubjectId)
+                && privileged.EnforcementOpportunity;
+            return TestLabAssertions.True("step14-political-travel-wanted", "Wanted and warrant summaries respect political visibility", valid, $"Wanted={wanted.Code}:{wanted.SubjectId} Safe={safe.Wanted.VisibleWantedStatusIds.Count}/{safe.Wanted.HiddenRestrictedInformation} Privileged={string.Join(",", privileged.Wanted.VisibleWantedStatusIds)} Enforcement={privileged.EnforcementOpportunity}");
+        }
+
+        private static TestLabAutomationStepResult PoliticalTravelRouteRequirements(TestLabAutomationContext context)
+        {
+            if (!TryPreparePoliticalTravelFixture(context, "requirements", out PoliticalTravelAutomationFixture fixture, out string failure)) return PoliticalTravelFail("step14-political-travel-route-requirements", failure);
+            PoliticalTravelOperationResult checkpoint = fixture.PoliticalTravel.CreateCheckpoint(fixture.Checkpoint(BorderCheckpointPolicy.RequireInspection));
+            LocationRouteSearchResult plan = fixture.Runtimes.LocationRoutes.PlanRoute(RouteRequest(context, PoliticalTravelAutomationFixture.OriginLocationId, PoliticalTravelAutomationFixture.DestinationLocationId, traveler: Body(PrototypeEntityLocationFactory.PlayerBodyId, context)));
+            RouteRequirementSummary requirements = fixture.PoliticalTravel.BuildPoliticalRouteRequirements(plan.Plan, fixture.Evaluation(TravelLegalComplianceMode.RequireLegalTravel));
+
+            bool valid = checkpoint.Succeeded
+                && plan.Succeeded
+                && requirements.requiredLegalTravelActions.Contains(PoliticalTravelRuntime.CrossBorderActionId)
+                && requirements.requiredCheckpointIds.Contains(checkpoint.Checkpoint.CheckpointId)
+                && requirements.requiredPoliticalTerritoryIds.Contains(fixture.OriginTerritoryId)
+                && requirements.requiredPoliticalTerritoryIds.Contains(fixture.DestinationTerritoryId);
+            return TestLabAssertions.True("step14-political-travel-route-requirements", "Route requirements include political actions, checkpoints, and territories", valid, $"Checkpoint={checkpoint.Code} Plan={plan.Status} Actions={string.Join(",", requirements.requiredLegalTravelActions)} Checkpoints={string.Join(",", requirements.requiredCheckpointIds)} Territories={string.Join(",", requirements.requiredPoliticalTerritoryIds)}");
+        }
+
+        private static TestLabAutomationStepResult PoliticalTravelPersistenceFixture(TestLabAutomationContext context)
+        {
+            if (!TryPreparePoliticalTravelFixture(context, "persistence", out PoliticalTravelAutomationFixture fixture, out string failure)) return PoliticalTravelFail("step14-political-travel-persistence", failure);
+            PoliticalTravelOperationResult checkpoint = fixture.PoliticalTravel.CreateCheckpoint(fixture.Checkpoint(BorderCheckpointPolicy.ObserveOnly));
+            PoliticalTravelPersistenceParticipant participant = new PoliticalTravelPersistenceParticipant(fixture.PoliticalTravel, () => fixture.Runtimes.Governments, () => fixture.Runtimes.Laws, () => fixture.Runtimes.Crimes, () => fixture.Runtimes.Locations, () => fixture.Runtimes.LocationRoutes, fixture.Runtimes.WorldId);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            PersistenceParticipantPrepareResult prepared = participant.PreparePayload(save.PayloadJson, PoliticalTravelPersistenceParticipant.CurrentParticipantSchemaVersion);
+            PoliticalTravelRuntime restored = new PoliticalTravelRuntime();
+            restored.Configure(fixture.Runtimes.DefinitionRegistry, fixture.Runtimes.Governments, fixture.Runtimes.Laws, fixture.Runtimes.Crimes, fixture.Runtimes.Justice, fixture.Runtimes.Locations, fixture.Runtimes.LocationRoutes, fixture.Runtimes.WorldId);
+            PoliticalTravelOperationResult restore = restored.RestoreFromSaveData(JsonUtility.FromJson<PoliticalTravelRuntimeSaveData>(save.PayloadJson), fixture.Runtimes.Governments, fixture.Runtimes.Laws, fixture.Runtimes.Crimes, fixture.Runtimes.Locations, fixture.Runtimes.LocationRoutes, fixture.Runtimes.WorldId);
+            PoliticalTravelRuntimeSaveData corrupt = fixture.PoliticalTravel.CreateSaveData();
+            if (corrupt.checkpoints.Length > 0)
+            {
+                corrupt.checkpoints[0].destinationTerritoryId = "political-territory.missing";
+            }
+
+            long beforeRejected = fixture.PoliticalTravel.Revision;
+            PersistenceParticipantPrepareResult rejected = participant.PreparePayload(JsonUtility.ToJson(corrupt), PoliticalTravelPersistenceParticipant.CurrentParticipantSchemaVersion);
+            TestLabRuntimeBundleSnapshot snapshot = fixture.Runtimes.CreateSnapshot();
+            int beforeExtraCount = fixture.PoliticalTravel.CheckpointCount;
+            PoliticalTravelOperationResult extra = fixture.PoliticalTravel.CreateCheckpoint(fixture.Checkpoint(BorderCheckpointPolicy.RequireInspection, "extra"));
+            bool mutated = extra.Succeeded && fixture.PoliticalTravel.CheckpointCount == beforeExtraCount + 1;
+            bool snapshotRestored = fixture.Runtimes.RestoreSnapshot(snapshot, out string restoreFailure);
+
+            bool valid = checkpoint.Succeeded
+                && save.Succeeded
+                && prepared.Succeeded
+                && restore.Succeeded
+                && restored.CheckpointCount == fixture.PoliticalTravel.CheckpointCount
+                && !rejected.Succeeded
+                && fixture.PoliticalTravel.Revision == beforeRejected
+                && mutated
+                && snapshotRestored
+                && fixture.PoliticalTravel.CheckpointCount == 1;
+            return TestLabAssertions.True("step14-political-travel-persistence", "Political travel persistence and fixture restore are graph-safe", valid, $"Checkpoint={checkpoint.Code} Save={save.Succeeded} Prepare={prepared.Succeeded} Restore={restore.Code} Count={restored.CheckpointCount}/{fixture.PoliticalTravel.CheckpointCount} Rejected={rejected.Succeeded}:{rejected.Message} Extra={extra.Code} Snapshot={snapshotRestored}:{restoreFailure}");
+        }
+
         private static LocationRuntime Runtime(TestLabAutomationContext context)
         {
             return context?.ScenarioContext?.Runtimes?.Locations;
+        }
+
+        private static PoliticalTravelRuntime PoliticalRuntime(TestLabAutomationContext context)
+        {
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            PoliticalTravelRuntime runtime = runtimes?.PoliticalTravel;
+            runtime?.Configure(runtimes.DefinitionRegistry, runtimes.Governments, runtimes.Laws, runtimes.Crimes, runtimes.Justice, runtimes.Locations, runtimes.LocationRoutes, runtimes.WorldId);
+            return runtime;
         }
 
         private static EntityLocationRuntime EntityRuntime(TestLabAutomationContext context)
@@ -1645,6 +1823,206 @@ namespace UnityIsekaiGame.Development.Automation
             RouteRuntime(context)?.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), ConnectionRuntime(context), context.ScenarioContext.Runtimes.WorldId, runtime);
             JourneyRuntime(context)?.Configure(context.ScenarioContext.Runtimes.DefinitionRegistry, Runtime(context), EntityRuntime(context), ConnectionRuntime(context), RouteRuntime(context), context.ScenarioContext.Runtimes.WorldId, runtime);
             return runtime;
+        }
+
+        private static bool TryPreparePoliticalTravelFixture(TestLabAutomationContext context, string suffix, out PoliticalTravelAutomationFixture fixture, out string failure)
+        {
+            fixture = null;
+            failure = string.Empty;
+            TestLabRuntimeBundle runtimes = context?.ScenarioContext?.Runtimes;
+            if (runtimes == null) { failure = "Test Lab runtime bundle is missing."; return false; }
+            PoliticalTravelRuntime runtime = PoliticalRuntime(context);
+            if (runtime == null) { failure = "PoliticalTravelRuntime is missing from the Test Lab runtime bundle."; return false; }
+            if (runtimes.Governments == null || runtimes.Laws == null || runtimes.Crimes == null || runtimes.Locations == null || runtimes.LocationRoutes == null)
+            {
+                failure = "Required Step 13 or Step 14 owner runtime is missing.";
+                return false;
+            }
+
+            string scope = string.IsNullOrWhiteSpace(suffix) ? "default" : suffix.Trim();
+            fixture = new PoliticalTravelAutomationFixture(context, runtimes, runtime, scope);
+            if (!fixture.SeedGovernmentGraph(out failure))
+            {
+                return false;
+            }
+
+            runtime.Configure(runtimes.DefinitionRegistry, runtimes.Governments, runtimes.Laws, runtimes.Crimes, runtimes.Justice, runtimes.Locations, runtimes.LocationRoutes, runtimes.WorldId);
+            return true;
+        }
+
+        private static TestLabAutomationStepResult PoliticalTravelFail(string stepId, string failure)
+        {
+            return TestLabAssertions.Fail(stepId, "Prepare political travel fixture", "PoliticalTravelFixture", "Present", "Missing", failure);
+        }
+
+        private sealed class PoliticalTravelAutomationFixture
+        {
+            public const string OriginLocationId = "location.prototype.village";
+            public const string DestinationLocationId = "location.prototype.market-district";
+
+            private readonly TestLabAutomationContext context;
+            private readonly string scope;
+
+            public PoliticalTravelAutomationFixture(TestLabAutomationContext context, TestLabRuntimeBundle runtimes, PoliticalTravelRuntime politicalTravel, string scope)
+            {
+                this.context = context;
+                Runtimes = runtimes;
+                PoliticalTravel = politicalTravel;
+                this.scope = scope ?? "default";
+                TravelerPersonId = PrototypeEntityLocationFactory.PlayerPersonId;
+                OriginPolityId = Id("polity", "origin");
+                DestinationPolityId = Id("polity", "destination");
+                OriginGovernmentId = Id("government", "origin");
+                DestinationGovernmentId = Id("government", "destination");
+                OriginTerritoryId = Id("political-territory", "origin");
+                DestinationTerritoryId = Id("political-territory", "destination");
+                OriginJurisdictionId = Id("jurisdiction", "origin-border");
+                DestinationJurisdictionId = Id("jurisdiction", "destination-border");
+            }
+
+            public TestLabRuntimeBundle Runtimes { get; }
+            public PoliticalTravelRuntime PoliticalTravel { get; }
+            public string TravelerPersonId { get; }
+            public string OriginPolityId { get; }
+            public string DestinationPolityId { get; }
+            public string OriginGovernmentId { get; }
+            public string DestinationGovernmentId { get; }
+            public string OriginTerritoryId { get; }
+            public string DestinationTerritoryId { get; }
+            public string OriginJurisdictionId { get; }
+            public string DestinationJurisdictionId { get; }
+
+            public bool SeedGovernmentGraph(out string failure)
+            {
+                failure = string.Empty;
+                PoliticalOperationResult originPolity = Runtimes.Governments.CreatePolity(new PolityCreateRequest { transactionId = Tx("polity-origin"), polityId = OriginPolityId, polityDefinitionId = PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId, officialName = "Origin Realm", worldTime = 0d });
+                PoliticalOperationResult destinationPolity = Runtimes.Governments.CreatePolity(new PolityCreateRequest { transactionId = Tx("polity-destination"), polityId = DestinationPolityId, polityDefinitionId = PrototypeGovernmentDefinitionFactory.KingdomPolityDefinitionId, officialName = "Destination Realm", worldTime = 0d });
+                PoliticalOperationResult originGovernment = Runtimes.Governments.RegisterGovernment(new GovernmentRegisterRequest { transactionId = Tx("government-origin"), governmentId = OriginGovernmentId, governmentDefinitionId = PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId, polityId = OriginPolityId, officialName = "Origin Government", primaryGoverningOrganizationId = "organization.prototype.guild", governingOrganizationIds = new[] { "organization.prototype.guild" }, level = GovernmentLevel.Central, worldTime = 0d });
+                PoliticalOperationResult destinationGovernment = Runtimes.Governments.RegisterGovernment(new GovernmentRegisterRequest { transactionId = Tx("government-destination"), governmentId = DestinationGovernmentId, governmentDefinitionId = PrototypeGovernmentDefinitionFactory.RoyalGovernmentDefinitionId, polityId = DestinationPolityId, officialName = "Destination Government", primaryGoverningOrganizationId = "organization.prototype.guild", governingOrganizationIds = new[] { "organization.prototype.guild" }, level = GovernmentLevel.Central, worldTime = 0d });
+                PoliticalOperationResult originTerritory = Runtimes.Governments.CreateTerritory(new TerritoryCreateRequest { transactionId = Tx("territory-origin"), territoryId = OriginTerritoryId, territoryDefinitionId = PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId, displayName = "Origin Territory", polityId = OriginPolityId, primaryGovernmentId = OriginGovernmentId, placeIds = new[] { OriginLocationId }, worldTime = 0d });
+                PoliticalOperationResult destinationTerritory = Runtimes.Governments.CreateTerritory(new TerritoryCreateRequest { transactionId = Tx("territory-destination"), territoryId = DestinationTerritoryId, territoryDefinitionId = PrototypeGovernmentDefinitionFactory.RealmTerritoryDefinitionId, displayName = "Destination Territory", polityId = DestinationPolityId, primaryGovernmentId = DestinationGovernmentId, placeIds = new[] { DestinationLocationId }, worldTime = 0d });
+                PoliticalOperationResult originJurisdiction = Runtimes.Governments.CreateJurisdiction(new JurisdictionCreateRequest { transactionId = Tx("jurisdiction-origin"), jurisdictionId = OriginJurisdictionId, jurisdictionDefinitionId = PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId, governmentId = OriginGovernmentId, category = JurisdictionCategory.GeneralGovernment, scopeDimensions = JurisdictionScopeDimension.Territory | JurisdictionScopeDimension.SubjectMatter, subjectMatters = new[] { JurisdictionSubjectMatter.BorderAdministrationPlaceholder }, territoryIds = new[] { OriginTerritoryId }, priority = 100, worldTime = 0d });
+                PoliticalOperationResult destinationJurisdiction = Runtimes.Governments.CreateJurisdiction(new JurisdictionCreateRequest { transactionId = Tx("jurisdiction-destination"), jurisdictionId = DestinationJurisdictionId, jurisdictionDefinitionId = PrototypeGovernmentDefinitionFactory.GeneralJurisdictionDefinitionId, governmentId = DestinationGovernmentId, category = JurisdictionCategory.GeneralGovernment, scopeDimensions = JurisdictionScopeDimension.Territory | JurisdictionScopeDimension.SubjectMatter, subjectMatters = new[] { JurisdictionSubjectMatter.BorderAdministrationPlaceholder }, territoryIds = new[] { DestinationTerritoryId }, priority = 100, worldTime = 0d });
+
+                PoliticalOperationResult[] results = { originPolity, destinationPolity, originGovernment, destinationGovernment, originTerritory, destinationTerritory, originJurisdiction, destinationJurisdiction };
+                if (results.All(result => result.Succeeded)) return true;
+                failure = string.Join(" | ", results.Where(result => !result.Succeeded).Select(result => $"{result.Code}: {result.Message}"));
+                return false;
+            }
+
+            public PoliticalTravelEvaluationRequest Evaluation(TravelLegalComplianceMode mode, PoliticalTravelVisibilityMode visibility = PoliticalTravelVisibilityMode.Privileged, bool physicalTravelPossible = true)
+            {
+                return new PoliticalTravelEvaluationRequest
+                {
+                    travelerPersonId = TravelerPersonId,
+                    originLocationId = OriginLocationId,
+                    destinationLocationId = DestinationLocationId,
+                    routeSegmentId = PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId,
+                    physicalTravelPossible = physicalTravelPossible,
+                    legalComplianceMode = mode,
+                    visibilityMode = visibility,
+                    worldTime = 20d
+                };
+            }
+
+            public PoliticalTravelCrossingRequest Crossing(string localSuffix, TravelLegalComplianceMode mode)
+            {
+                return new PoliticalTravelCrossingRequest
+                {
+                    transactionId = Tx($"crossing-{localSuffix}"),
+                    crossingId = Id("political-travel-crossing", localSuffix),
+                    travelerPersonId = TravelerPersonId,
+                    originLocationId = OriginLocationId,
+                    destinationLocationId = DestinationLocationId,
+                    routeSegmentId = PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId,
+                    physicalTravelPossible = true,
+                    legalComplianceMode = mode,
+                    visibilityMode = PoliticalTravelVisibilityMode.Privileged,
+                    worldTime = 20d
+                };
+            }
+
+            public BorderCheckpointCreateRequest Checkpoint(BorderCheckpointPolicy policy, string localSuffix = "market-gate")
+            {
+                return new BorderCheckpointCreateRequest
+                {
+                    transactionId = Tx($"checkpoint-{localSuffix}"),
+                    checkpointId = Id("border-checkpoint", localSuffix),
+                    displayName = "Market Gate",
+                    routeSegmentId = PrototypeLocationRouteDefinitionFactory.VillageMarketStreetSegmentId,
+                    sourceTerritoryId = OriginTerritoryId,
+                    destinationTerritoryId = DestinationTerritoryId,
+                    governingGovernmentId = DestinationGovernmentId,
+                    jurisdictionId = DestinationJurisdictionId,
+                    policy = policy,
+                    lifecycleState = BorderCheckpointLifecycleState.Active,
+                    worldTime = 0d,
+                    sourceEventId = "testlab.feature.14.9",
+                    provenanceId = "testlab.feature.14.9"
+                };
+            }
+
+            public TravelCrossingAuthorizationRequest Authorization(string checkpointId)
+            {
+                return new TravelCrossingAuthorizationRequest
+                {
+                    transactionId = Tx("authorization"),
+                    authorizationId = Id("travel-authorization", "destination"),
+                    travelerPersonId = TravelerPersonId,
+                    checkpointId = checkpointId,
+                    territoryId = DestinationTerritoryId,
+                    jurisdictionId = DestinationJurisdictionId,
+                    issuingGovernmentId = DestinationGovernmentId,
+                    authorizedActionIds = new[] { PoliticalTravelRuntime.PassCheckpointActionId },
+                    effectiveWorldTime = 0d
+                };
+            }
+
+            public LegalOperationResult EnactTravelLaw(string localSuffix, string actionId, LegalEffectCategory effect)
+            {
+                string provisionDefinitionId = effect == LegalEffectCategory.Prohibition ? PrototypeLegalDefinitionFactory.ProhibitionProvisionId : PrototypeLegalDefinitionFactory.PermissionProvisionId;
+                return Runtimes.Laws.Enact(new EnactLegalInstrumentRequest
+                {
+                    transactionId = Tx($"law-{localSuffix}"),
+                    instrumentId = Id("legal-instrument", localSuffix),
+                    instrumentDefinitionId = PrototypeLegalDefinitionFactory.CentralStatuteId,
+                    authorityDefinitionId = PrototypeLegalDefinitionFactory.SovereignAuthorityId,
+                    title = "Political Travel Law",
+                    governmentId = DestinationGovernmentId,
+                    organizationId = "organization.prototype.guild",
+                    jurisdictionIds = new[] { DestinationJurisdictionId },
+                    enactmentWorldTime = 1d,
+                    publicationWorldTime = 1d,
+                    effectiveWorldTime = 1d,
+                    published = true,
+                    trustedSystemOperation = true,
+                    provisions = new[]
+                    {
+                        new LegalProvisionCreateRequest
+                        {
+                            provisionId = Id("legal-provision", localSuffix),
+                            provisionDefinitionId = provisionDefinitionId,
+                            version = new LegalProvisionVersionData
+                            {
+                                effect = effect,
+                                actionId = actionId,
+                                territoryIds = new[] { DestinationTerritoryId },
+                                effectiveWorldTime = 1d
+                            }
+                        }
+                    }
+                });
+            }
+
+            private string Id(string prefix, string localSuffix)
+            {
+                return context.ScenarioContext.ScopedId($"{prefix}.testlab.political-travel", $"{scope}.{localSuffix}");
+            }
+
+            private string Tx(string localSuffix)
+            {
+                return context.ScenarioContext.ScopedId("political-travel.tx", $"{scope}.{localSuffix}");
+            }
         }
 
         private static TravelConditionTargetReferenceData RouteTarget(string routeSegmentId, TestLabAutomationContext context)

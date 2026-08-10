@@ -539,6 +539,7 @@ namespace UnityIsekaiGame.WorldLocations
         public string[] travelerCapabilityIds = Array.Empty<string>();
         public string[] travelerEquipmentDefinitionIds = Array.Empty<string>();
         public TravelConditionEvaluationMode conditionEvaluationMode = TravelConditionEvaluationMode.IgnoreDynamicConditions;
+        public TravelLegalComplianceMode legalComplianceMode = TravelLegalComplianceMode.StructuralOnlyDevelopment;
         public string[] knownConditionIds = Array.Empty<string>();
         public string[] knownEncounterIds = Array.Empty<string>();
         public string[] knownHazardExposureIds = Array.Empty<string>();
@@ -564,6 +565,7 @@ namespace UnityIsekaiGame.WorldLocations
         public string[] travelerCapabilityIds = Array.Empty<string>();
         public string[] travelerEquipmentDefinitionIds = Array.Empty<string>();
         public TravelConditionEvaluationMode conditionEvaluationMode = TravelConditionEvaluationMode.IgnoreDynamicConditions;
+        public TravelLegalComplianceMode legalComplianceMode = TravelLegalComplianceMode.StructuralOnlyDevelopment;
         public string[] knownConditionIds = Array.Empty<string>();
         public string[] knownEncounterIds = Array.Empty<string>();
         public string[] knownHazardExposureIds = Array.Empty<string>();
