@@ -7,6 +7,7 @@ using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
 using UnityIsekaiGame.Dialogue;
 using UnityIsekaiGame.Knowledge.Access;
+using UnityIsekaiGame.Narrative;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Quests;
 
@@ -19,6 +20,7 @@ namespace UnityIsekaiGame.Development.Automation
             .Concat(PrototypeQuestSourceDefinitionFactory.PrototypeDefinitionIds)
             .Concat(PrototypeConversationDefinitionFactory.PrototypeDefinitionIds)
             .Concat(PrototypeDialogueGraphDefinitionFactory.PrototypeDefinitionIds)
+            .Concat(PrototypeNarrativeEventDefinitionFactory.PrototypeDefinitionIds)
             .ToArray();
 
         public static void RegisterDefaults(TestLabAutomationRegistry registry)
@@ -152,6 +154,25 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("96.4-choice-history-and-idempotence", "Choice selection records history and idempotence without owner mutation", 40, Step("step15-dialogue-flow-choice", "Select a dialogue choice", DialogueFlowChoiceHistory)),
                     Scenario("96.5-required-effect-failure", "Required owner-runtime effects fail atomically when no executor is available", 50, Step("step15-dialogue-flow-effect-failure", "Reject required dialogue effect without executor", DialogueFlowRequiredEffectFailure)),
                     Scenario("96.6-persistence", "Dialogue flow save and restore preserve current node without replay", 60, Step("step15-dialogue-flow-persistence", "Save, restore, and reject corrupt flow payload", DialogueFlowPersistence))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.8.narrative-world-events-triggers-conditions-actions",
+                "Narrative and World Events, Triggers, Conditions, and Actions",
+                "15.8",
+                "Runtime-owned narrative event orchestration with stable authored triggers, condition gates, typed owner-runtime actions, cascade limits, redacted projections, and persistence-safe restore.",
+                15080,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "NarrativeEventRuntime", "NarrativeEventDefinition", "NarrativeEventPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("97.1-readiness-and-validation", "Narrative event definitions register and validate", 10, Step("step15-narrative-readiness", "Resolve prototype narrative event definitions", NarrativeReadiness)),
+                    Scenario("97.2-location-trigger-quest-action", "Location triggers create delegated quest actions once per scoped actor", 20, Step("step15-narrative-location", "Trigger dungeon entry narrative event", NarrativeLocationQuestAction)),
+                    Scenario("97.3-cross-runtime-signals", "Dialogue and knowledge signals route through explicit narrative signals", 30, Step("step15-narrative-signals", "Route dialogue and knowledge narrative signals", NarrativeCrossRuntimeSignals)),
+                    Scenario("97.4-hidden-projection-boundaries", "Hidden narrative events redact ordinary projections", 40, Step("step15-narrative-hidden", "Query hidden narrative projections", NarrativeHiddenProjectionBoundaries)),
+                    Scenario("97.5-required-action-failure", "Required owner action failures stop execution without fake owner mutation", 50, Step("step15-narrative-required-action", "Reject missing required owner runtime action", NarrativeRequiredActionFailure)),
+                    Scenario("97.6-cascade-and-persistence", "Cascades and persistence remain deterministic and restore-safe", 60, Step("step15-narrative-persistence", "Cascade, save, restore, and reject corrupt narrative payload", NarrativeCascadePersistence))
                 }), out _);
         }
 
@@ -1223,10 +1244,168 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step15-dialogue-flow-persistence", "Dialogue flow persistence restores current state and rejects corrupt graph references safely", valid, $"Conversation={conversation.Status} Start={start.Status} Select={select.Status} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Restored={restored.Count} Events={restored.Events.Count}");
         }
 
+        private static TestLabAutomationStepResult NarrativeReadiness(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            bool hasAll = PrototypeNarrativeEventDefinitionFactory.PrototypeDefinitionIds.All(id => registry.TryGet(id, out NarrativeEventDefinition _));
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (NarrativeEventDefinition definition in PrototypeNarrativeEventDefinitionFactory.CreateMissingNarrativeEventDefinitions(Array.Empty<string>()))
+            {
+                definition.ValidateCatalogDefinition(registry.DefinitionsById, report);
+            }
+
+            NarrativeEventRuntime runtime = NarrativeRuntime(registry);
+            bool valid = hasAll && report.HasErrors == false && report.WarningCount == 0 && runtime.Count == 0;
+            return TestLabAssertions.True("step15-narrative-readiness", "Narrative event definitions register and validate without runtime mutation", valid, $"Definitions={hasAll} Errors={report.ErrorCount} Warnings={report.WarningCount} Runtime={runtime.Count}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeLocationQuestAction(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestSourceRuntime sources = Sources(quests, participation, registry);
+            CreateGuildBoard(sources, "quest-source.prototype.guild-board");
+            NarrativeEventRuntime runtime = NarrativeRuntime(registry, quests, sources, Conversations(registry));
+
+            NarrativeTriggerRequest request = new NarrativeTriggerRequest
+            {
+                transactionId = Tx(context, "narrative-dungeon-entry"),
+                source = Source(NarrativeTriggerCategory.LocationEntered, PrototypeNarrativeEventDefinitionFactory.DungeonEntrySignalId, "location.prototype.dungeon-entry", "person.prototype.player", 10d),
+                conditionContext = NarrativeContext("person.prototype.player", locationId: "location.prototype.dungeon-entry", organizationIds: new[] { "organization.prototype.adventurers-guild" })
+            };
+
+            NarrativeEventOperationResult preview = runtime.RouteTrigger(new NarrativeTriggerRequest { transactionId = request.transactionId + ".preview", source = request.source.Clone(), conditionContext = request.conditionContext.Clone(), preview = true });
+            NarrativeEventOperationResult execute = runtime.RouteTrigger(request);
+            NarrativeEventOperationResult duplicate = runtime.RouteTrigger(new NarrativeTriggerRequest { transactionId = request.transactionId + ".duplicate", source = request.source.Clone(), conditionContext = request.conditionContext.Clone() });
+            NarrativeEventSnapshot snapshot = execute.Snapshots.FirstOrDefault();
+
+            bool valid = preview.Preview
+                && execute.Succeeded
+                && duplicate.Succeeded
+                && runtime.Count == 1
+                && quests.Count == 1
+                && snapshot != null
+                && snapshot.Lifecycle == NarrativeEventLifecycle.Resolved
+                && snapshot.ActionExecutions.Any(action => action.category == NarrativeActionCategory.InstantiateQuest && action.lifecycle == NarrativeActionLifecycle.Committed)
+                && snapshot.ActionExecutions.Any(action => action.category == NarrativeActionCategory.PublishQuestListing);
+            return TestLabAssertions.True("step15-narrative-location", "Committed location trigger creates one scoped narrative event and delegates quest creation once", valid, $"Preview={preview.Status} Execute={execute.Status} Duplicate={duplicate.Status} Events={runtime.Count} Quests={quests.Count} Actions={snapshot?.ActionExecutions.Count ?? 0}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeCrossRuntimeSignals(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            NarrativeEventRuntime runtime = NarrativeRuntime(registry, Runtime(context), null, conversations);
+
+            NarrativeEventOperationResult dialogue = runtime.RouteTrigger(new NarrativeTriggerRequest
+            {
+                transactionId = Tx(context, "narrative-dialogue-choice"),
+                source = Source(NarrativeTriggerCategory.DialogueChoice, PrototypeNarrativeEventDefinitionFactory.DialogueChoiceSignalId, "guild.choice.ask-work", "person.prototype.player", 11d),
+                conditionContext = NarrativeContext("person.prototype.player", conversationId: "conversation.prototype.guild.counter", dialogueIds: new[] { "dialogue-choice.guild.choice.ask-work" })
+            });
+            NarrativeEventOperationResult knowledge = runtime.EmitSignal(new NarrativeSignalRequest
+            {
+                transactionId = Tx(context, "narrative-knowledge"),
+                signalDefinitionId = PrototypeNarrativeEventDefinitionFactory.KnowledgeLearnedSignalId,
+                actorPersonId = "person.prototype.player",
+                subjectIds = new[] { "subject.prototype.hidden-dungeon" },
+                conditionContext = NarrativeContext("person.prototype.player", locationId: "location.prototype.dungeon-entry", knownIds: new[] { "subject.prototype.hidden-dungeon" }),
+                worldTime = 12d
+            });
+
+            bool dialogueSignal = runtime.Signals.Any(signal => signal.signalDefinitionId == PrototypeNarrativeEventDefinitionFactory.CascadeStartSignalId);
+            bool valid = dialogue.Succeeded
+                && knowledge.Succeeded
+                && dialogueSignal
+                && conversations.Count == 1
+                && runtime.Query(new NarrativeEventQuery { definitionId = PrototypeNarrativeEventDefinitionFactory.DialogueChoiceWorldEventDefinitionId }).Count == 1
+                && runtime.Query(new NarrativeEventQuery { definitionId = PrototypeNarrativeEventDefinitionFactory.KnowledgeUnlockConversationDefinitionId }).Count == 1;
+            return TestLabAssertions.True("step15-narrative-signals", "Dialogue choices and knowledge signals route through typed narrative definitions", valid, $"Dialogue={dialogue.Status} Knowledge={knowledge.Status} Events={runtime.Count} Signals={runtime.Signals.Count} Conversations={conversations.Count}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeHiddenProjectionBoundaries(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeEventRuntime runtime = NarrativeRuntime(registry, Runtime(context));
+            NarrativeEventOperationResult result = runtime.RouteTrigger(new NarrativeTriggerRequest
+            {
+                transactionId = Tx(context, "narrative-hidden"),
+                source = Source(NarrativeTriggerCategory.SocialState, PrototypeNarrativeEventDefinitionFactory.HiddenFactionSignalId, "faction.prototype.hidden", "person.prototype.player", 13d),
+                conditionContext = NarrativeContext("person.prototype.player", socialIds: new[] { "faction.prototype.hidden" })
+            });
+
+            NarrativeEventSnapshot development = runtime.Query(new NarrativeEventQuery { definitionId = PrototypeNarrativeEventDefinitionFactory.HiddenFactionOfferDefinitionId, developmentView = true }).FirstOrDefault();
+            NarrativeEventSnapshot redacted = runtime.Query(new NarrativeEventQuery { definitionId = PrototypeNarrativeEventDefinitionFactory.HiddenFactionOfferDefinitionId, developmentView = false }).FirstOrDefault();
+            bool valid = result.Succeeded
+                && development != null
+                && redacted != null
+                && development.IsHidden
+                && development.ActionExecutions.Count > 0
+                && redacted.ActionExecutions.Count == 0
+                && redacted.MatchedConditions.Count == 0;
+            return TestLabAssertions.True("step15-narrative-hidden", "Hidden narrative event projections redact action and condition details outside development views", valid, $"Result={result.Status} Hidden={development?.IsHidden ?? false} DevActions={development?.ActionExecutions.Count ?? 0} PublicActions={redacted?.ActionExecutions.Count ?? 0}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeRequiredActionFailure(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeEventRuntime runtime = NarrativeRuntime(registry);
+            NarrativeEventOperationResult result = runtime.RouteTrigger(new NarrativeTriggerRequest
+            {
+                transactionId = Tx(context, "narrative-required-failure"),
+                source = Source(NarrativeTriggerCategory.LocationEntered, PrototypeNarrativeEventDefinitionFactory.DungeonEntrySignalId, "location.prototype.dungeon-entry", "person.prototype.player", 14d),
+                conditionContext = NarrativeContext("person.prototype.player", locationId: "location.prototype.dungeon-entry", organizationIds: new[] { "organization.prototype.adventurers-guild" })
+            });
+
+            NarrativeEventSnapshot failed = runtime.Query(new NarrativeEventQuery { definitionId = PrototypeNarrativeEventDefinitionFactory.DungeonEntryQuestDefinitionId }).FirstOrDefault();
+            bool valid = result.Status == NarrativeOperationStatus.ActionFailed
+                && failed != null
+                && failed.Lifecycle == NarrativeEventLifecycle.Failed
+                && failed.ActionExecutions.Any(action => action.category == NarrativeActionCategory.InstantiateQuest && action.lifecycle == NarrativeActionLifecycle.Failed);
+            return TestLabAssertions.True("step15-narrative-required-action", "Missing required owner runtime integration fails the narrative event without faking owner mutation", valid, $"Result={result.Status} Lifecycle={failed?.Lifecycle.ToString() ?? "None"} Actions={failed?.ActionExecutions.Count ?? 0}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeCascadePersistence(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeEventRuntime runtime = NarrativeRuntime(registry);
+            NarrativeEventOperationResult cascade = runtime.EmitSignal(new NarrativeSignalRequest
+            {
+                transactionId = Tx(context, "narrative-cascade"),
+                signalDefinitionId = PrototypeNarrativeEventDefinitionFactory.CascadeStartSignalId,
+                actorPersonId = "person.prototype.player",
+                subjectIds = new[] { "subject.prototype.cascade" },
+                conditionContext = NarrativeContext("person.prototype.player", subjectId: "subject.prototype.cascade"),
+                worldTime = 20d
+            });
+
+            NarrativeEventPersistenceParticipant participant = new NarrativeEventPersistenceParticipant(runtime, () => registry, () => NarrativeIntegrations());
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            NarrativeEventRuntime restored = NarrativeRuntime(registry);
+            NarrativeEventPersistenceParticipant restoredParticipant = new NarrativeEventPersistenceParticipant(restored, () => registry, () => NarrativeIntegrations());
+            PersistenceParticipantPrepareResult prepare = restoredParticipant.PreparePayload(save.PayloadJson, NarrativeEventPersistenceParticipant.CurrentParticipantSchemaVersion);
+            PersistenceParticipantCommitResult commit = restoredParticipant.CommitPreparedPayload(prepare.PreparedPayload);
+            NarrativeEventRuntimeSaveData corrupt = restored.CreateSaveData();
+            if (corrupt.events.Count > 0) corrupt.events[0].eventDefinitionId = "narrative-event-definition.prototype.missing";
+            int beforeReject = restored.Count;
+            PersistenceParticipantPrepareResult rejected = restoredParticipant.PreparePayload(JsonUtility.ToJson(corrupt), NarrativeEventPersistenceParticipant.CurrentParticipantSchemaVersion);
+
+            bool valid = cascade.Succeeded
+                && runtime.Signals.Count >= 2
+                && save.Succeeded
+                && prepare.Succeeded
+                && commit.Succeeded
+                && restored.Count == runtime.Count
+                && rejected.Succeeded == false
+                && restored.Count == beforeReject;
+            return TestLabAssertions.True("step15-narrative-persistence", "Narrative cascades persist and corrupt restore payloads are rejected before live mutation", valid, $"Cascade={cascade.Status} Signals={runtime.Signals.Count} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Restored={restored.Count}");
+        }
+
         private static DefinitionRegistry Registry(TestLabAutomationContext context)
         {
             DefinitionRegistry baseRegistry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
-            return PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry)));
+            return PrototypeNarrativeEventDefinitionFactory.AddMissingPrototypeNarrativeEventDefinitions(PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestSourceDefinitionFactory.AddMissingPrototypeQuestSourceDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry)))));
         }
 
         private static QuestRuntime Runtime(TestLabAutomationContext context)
@@ -1257,6 +1436,73 @@ namespace UnityIsekaiGame.Development.Automation
         private static ConversationRuntime Conversations(DefinitionRegistry registry)
         {
             return new ConversationRuntime(registry, PersistenceService.LocalWorldId);
+        }
+
+        private static NarrativeEventRuntime NarrativeRuntime(DefinitionRegistry registry, QuestRuntime quests = null, QuestSourceRuntime sources = null, ConversationRuntime conversations = null, NarrativeEventRuntimeIntegrations integrations = null)
+        {
+            return new NarrativeEventRuntime(registry, integrations ?? NarrativeIntegrations(quests, sources, conversations), PersistenceService.LocalWorldId);
+        }
+
+        private static NarrativeEventRuntimeIntegrations NarrativeIntegrations(QuestRuntime quests = null, QuestSourceRuntime sources = null, ConversationRuntime conversations = null)
+        {
+            return new NarrativeEventRuntimeIntegrations
+            {
+                QuestRuntime = quests,
+                QuestSourceRuntime = sources,
+                ConversationRuntime = conversations,
+                InformationGrantExecutor = target => !string.IsNullOrWhiteSpace(target),
+                TravelConditionExecutor = target => !string.IsNullOrWhiteSpace(target),
+                ConnectionChangeExecutor = target => !string.IsNullOrWhiteSpace(target),
+                SocialActionExecutor = target => !string.IsNullOrWhiteSpace(target),
+                OrganizationActionExecutor = target => !string.IsNullOrWhiteSpace(target),
+                LegalActionExecutor = target => !string.IsNullOrWhiteSpace(target)
+            };
+        }
+
+        private static NarrativeTriggerSourceData Source(NarrativeTriggerCategory category, string sourceId, string subjectId, string actorId, double worldTime)
+        {
+            return new NarrativeTriggerSourceData
+            {
+                category = category,
+                sourceId = sourceId,
+                sourceTransactionId = $"source.{NarrativeModelUtility.SanitizeForId(sourceId)}.{worldTime:0}",
+                actorPersonId = actorId,
+                targetId = subjectId,
+                subjectId = subjectId,
+                ownerRuntime = "TestLabAutomation",
+                worldTime = worldTime,
+                committed = true
+            };
+        }
+
+        private static NarrativeConditionContextData NarrativeContext(
+            string actorId,
+            string locationId = "",
+            string conversationId = "",
+            string subjectId = "",
+            string[] knownIds = null,
+            string[] dialogueIds = null,
+            string[] organizationIds = null,
+            string[] socialIds = null)
+        {
+            return new NarrativeConditionContextData
+            {
+                actorPersonId = actorId,
+                locationId = locationId,
+                conversationId = conversationId,
+                subjectId = subjectId,
+                worldTime = 10d,
+                knownSubjectIds = knownIds ?? Array.Empty<string>(),
+                dialogueStateIds = dialogueIds ?? Array.Empty<string>(),
+                organizationStateIds = organizationIds ?? Array.Empty<string>(),
+                socialStateIds = socialIds ?? Array.Empty<string>()
+            };
+        }
+
+        private static string Tx(TestLabAutomationContext context, string operation)
+        {
+            return context?.TransactionIds?.Create(context.CurrentSuiteId, context.CurrentScenarioId, context.RunId, context.CurrentStepIndex, operation)
+                ?? $"testlab.step15.{operation}";
         }
 
         private static ConversationOperationResult StartGuildConversation(ConversationRuntime conversations, string key)
@@ -1394,6 +1640,21 @@ namespace UnityIsekaiGame.Development.Automation
                 interactionPointId = "interaction-point.prototype.guild-counter",
                 operatingOrganizationId = "organization.prototype.guild",
                 sceneBindingKey = "scene.prototype.guild.counter",
+                worldTime = 1d
+            });
+        }
+
+        private static QuestSourceOperationResult CreateGuildBoard(QuestSourceRuntime sources, string sourceId)
+        {
+            return sources.CreateSource(new QuestSourceCreateRequest
+            {
+                transactionId = $"tx.{sourceId}.create",
+                questSourceId = sourceId,
+                questSourceDefinitionId = PrototypeQuestSourceDefinitionFactory.AdventurerGuildBoardDefinitionId,
+                hostLocationId = "location.prototype.adventurers-guild",
+                interactionPointId = "interaction-point.prototype.guild-board",
+                operatingOrganizationId = "organization.prototype.guild",
+                sceneBindingKey = "scene.prototype.guild.board",
                 worldTime = 1d
             });
         }
