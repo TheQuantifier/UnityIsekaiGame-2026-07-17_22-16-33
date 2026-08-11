@@ -214,6 +214,23 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("99.5-event-state-hooks", "Narrative events can request arc progression through explicit hooks", 50, Step("step15-narrative-arc-event-hooks", "Route event action into arc runtime", NarrativeArcEventStateHooks)),
                     Scenario("99.6-persistence-no-replay", "Narrative arcs persist without replaying delegated side effects", 60, Step("step15-narrative-arc-persistence", "Save, restore, redact, and reject corrupt arc payload", NarrativeArcPersistenceNoReplay))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.11.narrative-persistence-history-recovery-scene-integration",
+                "Narrative Persistence, Historical Reconstruction, Recovery, and Scene Integration",
+                "15.11",
+                "Step 15-wide persistence ownership, restore phases, historical reconstruction, recovery diagnostics, visibility-safe timeline queries, and scene-binding readiness contracts.",
+                15110,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "Step15NarrativeHistoricalService", "QuestRuntimePersistenceParticipant", "ConversationPersistenceParticipant", "NarrativeArcPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("100.1-manifest-ownership", "Step 15 persistence manifest declares ownership and restore phases", 10, Step("step15-narrative-persistence-manifest", "Build Step 15 persistence ownership manifest", Step15NarrativePersistenceManifestScenario)),
+                    Scenario("100.2-historical-reconstruction", "Historical quest, conversation, state, and arc reconstruction is deterministic", 20, Step("step15-narrative-history-query", "Query historical Step 15 state", Step15NarrativeHistoricalReconstruction)),
+                    Scenario("100.3-timeline-visibility-pagination", "Unified narrative timeline redacts hidden entries and pages deterministically", 30, Step("step15-narrative-timeline", "Query Step 15 historical timeline", Step15NarrativeTimelineVisibility)),
+                    Scenario("100.4-recovery-diagnostics", "Validation separates recoverable derived gaps from authoritative corruption", 40, Step("step15-narrative-recovery", "Validate Step 15 recovery diagnostics", Step15NarrativeRecoveryDiagnostics))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -235,6 +252,84 @@ namespace UnityIsekaiGame.Development.Automation
         private static ITestLabScenarioStep Step(string id, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
         {
             return new TestLabScenarioStep(id, displayName, action);
+        }
+
+        private static TestLabAutomationStepResult Step15NarrativePersistenceManifestScenario(TestLabAutomationContext context)
+        {
+            Step15NarrativeHistoricalService service = new Step15NarrativeHistoricalService();
+            Step15NarrativePersistenceSnapshot snapshot = Step15NarrativeAutomationSnapshot();
+            Step15NarrativePersistenceManifest manifest = service.BuildManifest(snapshot, Step15NarrativeReadinessState.Ready);
+            Step15NarrativePersistenceManifest repeat = service.BuildManifest(snapshot.Clone(), Step15NarrativeReadinessState.Ready);
+            Step15NarrativeValidationReport validation = service.Validate(snapshot);
+
+            bool ownership = manifest.Ownership.Where(entry => !entry.Derived).All(entry => !string.IsNullOrWhiteSpace(entry.ParticipantKey))
+                && manifest.Ownership.Any(entry => entry.Category == "Scene bindings" && entry.Derived);
+            bool phases = manifest.RestorePhases.SequenceEqual(Enum.GetValues(typeof(Step15NarrativeRestorePhase)).Cast<Step15NarrativeRestorePhase>());
+            bool counts = manifest.RecordCounts.TryGetValue("quests", out int quests) && quests == 1
+                && manifest.RecordCounts.TryGetValue("narrativeArcs", out int arcs) && arcs == 1;
+            bool valid = ownership && phases && counts && validation.Succeeded && manifest.DeterministicFingerprint == repeat.DeterministicFingerprint;
+
+            return TestLabAssertions.True("step15-narrative-persistence-manifest", "Step 15 manifest owns authoritative categories and restore phases", valid, $"Ownership={ownership} Phases={phases} Counts={counts} Validation={validation.Succeeded} Fingerprint={manifest.DeterministicFingerprint}");
+        }
+
+        private static TestLabAutomationStepResult Step15NarrativeHistoricalReconstruction(TestLabAutomationContext context)
+        {
+            Step15NarrativeHistoricalService service = new Step15NarrativeHistoricalService();
+            Step15NarrativePersistenceSnapshot snapshot = Step15NarrativeAutomationSnapshot();
+            HistoricalQuestSnapshot quest = service.GetQuestAt(snapshot, "quest.prototype.automation", 12d);
+            HistoricalConversationSnapshot conversation = service.GetConversationAt(snapshot, "conversation.prototype.automation", 8d);
+            HistoricalNarrativeStateSnapshot state = service.GetNarrativeStateAt(snapshot, snapshot.NarrativeStates.states[0].narrativeStateId, 9d);
+            HistoricalNarrativeArcSnapshot arc = service.GetNarrativeArcAt(snapshot, "narrative-arc.prototype.automation", 12d);
+            state.VariableValues.TryGetValue(PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyVariableId, out string stage);
+
+            bool valid = quest.Existed
+                && quest.Outcome == QuestTerminalOutcomeKind.Completed
+                && quest.Objectives.Any(objective => objective.Satisfied)
+                && conversation.ActiveDialogueNodeId == "node.report"
+                && conversation.LatestChoiceId == "choice.accept"
+                && stage == PrototypeNarrativeStateDefinitionFactory.GuildLoyalValueId
+                && arc.Lifecycle == NarrativeArcLifecycle.Completed
+                && arc.BoundQuestIds.SequenceEqual(new[] { snapshot.Quests.quests[0].questId });
+
+            return TestLabAssertions.True("step15-narrative-history-query", "Step 15 historical reconstruction reads owner histories without replay", valid, $"Quest={quest.Existed}/{quest.Outcome} Objective={quest.Objectives.Count} Conversation={conversation.ActiveDialogueNodeId}/{conversation.LatestChoiceId} State={stage} Arc={arc.Lifecycle}/{string.Join(",", arc.BoundQuestIds)}");
+        }
+
+        private static TestLabAutomationStepResult Step15NarrativeTimelineVisibility(TestLabAutomationContext context)
+        {
+            Step15NarrativeHistoricalService service = new Step15NarrativeHistoricalService();
+            Step15NarrativePersistenceSnapshot snapshot = Step15NarrativeAutomationSnapshot();
+            NarrativeTimelinePage publicPage = service.QueryTimeline(snapshot, new NarrativeTimelineQuery
+            {
+                AccessMode = NarrativeHistoricalAccessMode.PersonSafe,
+                RequesterPersonId = "person.prototype.hero",
+                Limit = 500
+            });
+            NarrativeTimelinePage first = service.QueryTimeline(snapshot, new NarrativeTimelineQuery { AccessMode = NarrativeHistoricalAccessMode.Development, Limit = 2 });
+            NarrativeTimelinePage second = service.QueryTimeline(snapshot, new NarrativeTimelineQuery { AccessMode = NarrativeHistoricalAccessMode.Development, Limit = 2, AfterCursor = first.NextCursor });
+            string hiddenNarrativeEventId = snapshot.NarrativeEvents?.events?.FirstOrDefault(value => value.visibility == NarrativeEventVisibility.Hidden)?.narrativeEventId ?? string.Empty;
+
+            bool hiddenRedacted = publicPage.Entries.All(entry => !entry.Hidden && !string.Equals(entry.NarrativeEventId, hiddenNarrativeEventId, StringComparison.Ordinal));
+            bool paged = first.HasMore && first.Entries.Count == 2 && second.Entries.Count > 0 && string.CompareOrdinal(second.Entries[0].Cursor, first.NextCursor) > 0;
+            bool deterministic = service.QueryTimeline(snapshot.Clone(), new NarrativeTimelineQuery { AccessMode = NarrativeHistoricalAccessMode.Development, Limit = 500 }).Entries.Select(entry => entry.Cursor)
+                .SequenceEqual(service.QueryTimeline(snapshot, new NarrativeTimelineQuery { AccessMode = NarrativeHistoricalAccessMode.Development, Limit = 500 }).Entries.Select(entry => entry.Cursor));
+            bool valid = hiddenRedacted && paged && deterministic;
+
+            return TestLabAssertions.True("step15-narrative-timeline", "Step 15 unified timeline is visibility-safe and deterministic", valid, $"Public={publicPage.Entries.Count} HiddenRedacted={hiddenRedacted} Paged={paged} Deterministic={deterministic}");
+        }
+
+        private static TestLabAutomationStepResult Step15NarrativeRecoveryDiagnostics(TestLabAutomationContext context)
+        {
+            Step15NarrativeHistoricalService service = new Step15NarrativeHistoricalService();
+            Step15NarrativePersistenceSnapshot snapshot = Step15NarrativeAutomationSnapshot();
+            snapshot.DialogueFlows.flows[0].currentNodeId = "node.missing-visit";
+            snapshot.NarrativeArcs.arcs.Add(snapshot.NarrativeArcs.arcs[0].Clone());
+
+            Step15NarrativeValidationReport report = service.Validate(snapshot);
+            bool recoverable = report.RecoveryIssues.Any(issue => issue.Kind == NarrativeRecoveryIssueKind.StaleDerivedIndex && issue.Recoverable);
+            bool hardFailure = report.RecoveryIssues.Any(issue => issue.Kind == NarrativeRecoveryIssueKind.AuthoritativeCorruption && !issue.Recoverable);
+            bool valid = !report.Succeeded && recoverable && hardFailure;
+
+            return TestLabAssertions.True("step15-narrative-recovery", "Step 15 validation distinguishes repairable projections from authoritative corruption", valid, $"Succeeded={report.Succeeded} Errors={report.Errors.Count} Recoverable={recoverable} Hard={hardFailure} Issues={report.RecoveryIssues.Count}");
         }
 
         private static TestLabAutomationStepResult ReadinessAndDefinitions(TestLabAutomationContext context)
@@ -2480,6 +2575,144 @@ namespace UnityIsekaiGame.Development.Automation
                 subject = new InformationSubjectReferenceData { subjectType = type, subjectId = id, tags = new[] { role.ToString().ToLowerInvariant() } },
                 provenanceId = "prototype.quest.automation"
             };
+        }
+
+        private static Step15NarrativePersistenceSnapshot Step15NarrativeAutomationSnapshot()
+        {
+            const string World = PersistenceService.LocalWorldId;
+            const string QuestId = "quest.prototype.automation";
+            const string OfferId = "offer.prototype.automation";
+            const string AssignmentId = "assignment.prototype.automation";
+            const string ObjectiveId = "objective.prototype.automation";
+            const string PersonId = "person.prototype.hero";
+            const string SourceId = "quest-source.prototype.automation";
+            const string ListingId = "quest-listing.prototype.automation";
+            const string ConversationId = "conversation.prototype.automation";
+            const string ArcId = "narrative-arc.prototype.automation";
+            const string NarrativeEventId = "narrative-event.testlab.automation";
+            const string HiddenNarrativeEventId = "narrative-event.testlab.hidden";
+            const string NarrativeStateId = "narrative-state.testlab.automation";
+
+            return new Step15NarrativePersistenceSnapshot
+            {
+                WorldId = World,
+                SaveSlotId = "slot.prototype.automation",
+                SaveWorldTime = 20d,
+                Quests = new QuestRuntimeSaveData
+                {
+                    schemaVersion = QuestRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 2,
+                    quests = new List<QuestRecordData>
+                    {
+                        new QuestRecordData { questId = QuestId, questDefinitionId = PrototypeQuestDefinitionFactory.GuildPostingDefinitionId, worldId = World, lifecycleState = QuestRuntimeLifecycleState.Available, issuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Organization, issuerId = "organization.prototype.guild" }, intendedRecipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Person, recipientId = PersonId }, origin = new QuestOriginReferenceData { sourceChannel = QuestSourceChannel.QuestBoard, locationId = "location.prototype.guild", interactionPointId = "interaction-point.prototype.guild-board" }, visibility = QuestVisibility.Public, createdWorldTime = 1d }
+                    },
+                    events = new List<QuestRuntimeEventData>
+                    {
+                        new QuestRuntimeEventData { eventId = "quest-event.automation.001", questId = QuestId, eventKind = QuestRuntimeEventKind.Instantiated, afterState = QuestRuntimeLifecycleState.Available, worldTime = 1d, runtimeRevision = 1 },
+                        new QuestRuntimeEventData { eventId = "quest-event.automation.002", questId = QuestId, eventKind = QuestRuntimeEventKind.LifecycleChanged, beforeState = QuestRuntimeLifecycleState.Available, afterState = QuestRuntimeLifecycleState.Retired, worldTime = 10d, runtimeRevision = 2 }
+                    }
+                },
+                Participation = new QuestParticipationRuntimeSaveData
+                {
+                    schemaVersion = QuestParticipationRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 2,
+                    offers = new List<QuestOfferRecordData> { new QuestOfferRecordData { offerId = OfferId, questId = QuestId, worldId = World, recipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Person, recipientId = PersonId }, lifecycleState = QuestOfferLifecycleState.Active, createdWorldTime = 2d, visibility = QuestVisibility.Public } },
+                    assignments = new List<QuestAssignmentRecordData> { new QuestAssignmentRecordData { assignmentId = AssignmentId, offerId = OfferId, questId = QuestId, worldId = World, assigneePersonId = PersonId, lifecycleState = QuestAssignmentLifecycleState.Active, assignedWorldTime = 3d, visibility = QuestVisibility.Public } },
+                    events = new List<QuestParticipationEventData>
+                    {
+                        new QuestParticipationEventData { eventId = "participation-event.automation.001", eventKind = QuestParticipationEventKind.OfferCreated, offerId = OfferId, questId = QuestId, personId = PersonId, worldTime = 2d, runtimeRevision = 1 },
+                        new QuestParticipationEventData { eventId = "participation-event.automation.002", eventKind = QuestParticipationEventKind.OfferAccepted, offerId = OfferId, assignmentId = AssignmentId, questId = QuestId, personId = PersonId, worldTime = 3d, runtimeRevision = 2 },
+                        new QuestParticipationEventData { eventId = "participation-event.automation.003", eventKind = QuestParticipationEventKind.AssignmentCreated, assignmentId = AssignmentId, questId = QuestId, personId = PersonId, worldTime = 3d, runtimeRevision = 2 }
+                    }
+                },
+                Objectives = new QuestObjectiveProgressRuntimeSaveData
+                {
+                    schemaVersion = QuestObjectiveProgressRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 2,
+                    objectives = new List<QuestObjectiveRecordData> { new QuestObjectiveRecordData { objectiveId = ObjectiveId, objectiveDefinitionId = "objective.prototype.report", questId = QuestId, assignmentId = AssignmentId, assigneePersonId = PersonId, worldId = World, lifecycleState = QuestObjectiveLifecycleState.Active, visibility = QuestObjectiveVisibility.Public, currentValue = 1, targetValue = 1, satisfied = false, activatedWorldTime = 4d, satisfiedWorldTime = -1d } },
+                    events = new List<QuestObjectiveRuntimeEventData>
+                    {
+                        new QuestObjectiveRuntimeEventData { eventId = "objective-event.automation.001", objectiveId = ObjectiveId, questId = QuestId, assignmentId = AssignmentId, eventKind = QuestObjectiveEventKind.ObjectiveActivated, beforeState = QuestObjectiveLifecycleState.Locked, afterState = QuestObjectiveLifecycleState.Active, worldTime = 4d, runtimeRevision = 1 },
+                        new QuestObjectiveRuntimeEventData { eventId = "objective-event.automation.002", objectiveId = ObjectiveId, questId = QuestId, assignmentId = AssignmentId, eventKind = QuestObjectiveEventKind.ObjectiveSatisfied, beforeValue = 0, afterValue = 1, beforeState = QuestObjectiveLifecycleState.Active, afterState = QuestObjectiveLifecycleState.Satisfied, worldTime = 9d, runtimeRevision = 2 }
+                    }
+                },
+                Outcomes = new QuestOutcomeRuntimeSaveData
+                {
+                    schemaVersion = QuestOutcomeRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 2,
+                    terminalOutcomes = new List<QuestTerminalOutcomeRecordData> { new QuestTerminalOutcomeRecordData { outcomeId = "outcome.prototype.automation", terminalOutcomeId = "terminal-outcome.prototype.automation", questId = QuestId, assignmentId = AssignmentId, worldId = World, outcomeKind = QuestTerminalOutcomeKind.Completed, actorPersonId = PersonId, worldTime = 10d } },
+                    rewardEntitlements = new List<QuestRewardEntitlementRecordData> { new QuestRewardEntitlementRecordData { entitlementId = "reward.prototype.automation", terminalOutcomeId = "terminal-outcome.prototype.automation", questId = QuestId, assignmentId = AssignmentId, recipientPersonId = PersonId, worldId = World, category = QuestRewardCategory.Currency, targetDefinitionId = "currency.prototype.coin", quantity = 25, state = QuestRewardEntitlementState.Claimable, createdWorldTime = 10d } },
+                    events = new List<QuestOutcomeEventData>
+                    {
+                        new QuestOutcomeEventData { eventId = "outcome-event.automation.001", eventKind = QuestOutcomeEventKind.TerminalOutcomeRecorded, questId = QuestId, assignmentId = AssignmentId, terminalOutcomeId = "terminal-outcome.prototype.automation", worldTime = 10d, runtimeRevision = 1 },
+                        new QuestOutcomeEventData { eventId = "outcome-event.automation.002", eventKind = QuestOutcomeEventKind.RewardEntitlementCreated, questId = QuestId, assignmentId = AssignmentId, rewardEntitlementId = "reward.prototype.automation", worldTime = 10d, runtimeRevision = 2 }
+                    }
+                },
+                Sources = new QuestSourceRuntimeSaveData
+                {
+                    schemaVersion = QuestSourceRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 1,
+                    sources = new List<QuestSourceRecordData> { new QuestSourceRecordData { questSourceId = SourceId, questSourceDefinitionId = PrototypeQuestSourceDefinitionFactory.AdventurerGuildBoardDefinitionId, worldId = World, visibility = QuestSourceVisibility.Public, createdWorldTime = 1d } },
+                    listings = new List<QuestListingRecordData> { new QuestListingRecordData { questListingId = ListingId, questId = QuestId, questSourceId = SourceId, worldId = World, visibility = QuestSourceVisibility.Public, lifecycleState = QuestListingLifecycleState.Claimed, publishedWorldTime = 2d, endedWorldTime = 3d } },
+                    events = new List<QuestSourceEventData> { new QuestSourceEventData { eventId = "source-event.automation.001", questSourceId = SourceId, questListingId = ListingId, questId = QuestId, eventKind = QuestSourceEventKind.ListingPublished, worldTime = 2d, runtimeRevision = 1 } }
+                },
+                Conversations = new ConversationRuntimeSaveData
+                {
+                    schemaVersion = ConversationRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 1,
+                    conversations = new List<ConversationRecordData>
+                    {
+                        new ConversationRecordData { conversationId = ConversationId, conversationDefinitionId = PrototypeConversationDefinitionFactory.AdventurerGuildCounterDefinitionId, worldId = World, lifecycleState = ConversationLifecycleState.Active, visibility = ConversationVisibility.Public, participants = new[] { new ConversationParticipantRecordData { participantId = "participant.hero", personId = PersonId, role = ConversationParticipantRole.Initiator }, new ConversationParticipantRecordData { participantId = "participant.clerk", personId = "person.prototype.guild-clerk", role = ConversationParticipantRole.Provider } }, questId = QuestId, questSourceId = SourceId, questListingId = ListingId, startedWorldTime = 5d }
+                    },
+                    events = new List<ConversationEventData> { new ConversationEventData { eventId = "conversation-event.automation.001", conversationId = ConversationId, personId = PersonId, eventKind = ConversationEventKind.ConversationStarted, afterState = ConversationLifecycleState.Active, worldTime = 5d, runtimeRevision = 1 } }
+                },
+                DialogueFlows = new DialogueFlowRuntimeSaveData
+                {
+                    schemaVersion = DialogueFlowRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 2,
+                    flows = new List<DialogueFlowRecordData>
+                    {
+                        new DialogueFlowRecordData { flowId = "dialogue-flow.prototype.automation", conversationId = ConversationId, graphId = PrototypeDialogueGraphDefinitionFactory.AdventurerGuildCounterGraphId, worldId = World, state = DialogueFlowState.AwaitingChoice, currentNodeId = "node.report", currentVisitId = "visit.automation.002", visits = new[] { new DialogueNodeVisitRecordData { visitId = "visit.automation.001", conversationId = ConversationId, graphId = PrototypeDialogueGraphDefinitionFactory.AdventurerGuildCounterGraphId, nodeId = "node.start", speakerPersonId = "person.prototype.guild-clerk", enteredWorldTime = 5d, exitedWorldTime = 7d, selectedChoiceId = "choice.accept", sequence = 1 }, new DialogueNodeVisitRecordData { visitId = "visit.automation.002", conversationId = ConversationId, graphId = PrototypeDialogueGraphDefinitionFactory.AdventurerGuildCounterGraphId, nodeId = "node.report", speakerPersonId = PersonId, enteredWorldTime = 7d, exitedWorldTime = -1d, sequence = 2 } }, selections = new[] { new DialogueChoiceSelectionRecordData { selectionId = "selection.automation.001", conversationId = ConversationId, graphId = PrototypeDialogueGraphDefinitionFactory.AdventurerGuildCounterGraphId, nodeId = "node.start", choiceId = "choice.accept", actorPersonId = PersonId, targetNodeId = "node.report", worldTime = 7d, runtimeRevision = 2 } } }
+                    }
+                },
+                NarrativeEvents = new NarrativeEventRuntimeSaveData
+                {
+                    schemaVersion = NarrativeEventRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 2,
+                    events = new List<NarrativeEventRecordData>
+                    {
+                        new NarrativeEventRecordData { narrativeEventId = NarrativeEventId, eventDefinitionId = PrototypeNarrativeEventDefinitionFactory.DungeonEntryQuestDefinitionId, worldId = World, lifecycle = NarrativeEventLifecycle.Resolved, actorPersonId = PersonId, questId = QuestId, conversationId = ConversationId, triggerTime = 8d, visibility = NarrativeEventVisibility.Public, actionExecutions = new[] { new NarrativeActionExecutionRecordData { actionExecutionId = "action.automation.001", narrativeEventId = NarrativeEventId, actionDefinitionId = "action-definition.prototype.state", category = NarrativeActionCategory.RequestNarrativeStateTransition, lifecycle = NarrativeActionLifecycle.Committed, worldTime = 8d } } },
+                        new NarrativeEventRecordData { narrativeEventId = HiddenNarrativeEventId, eventDefinitionId = PrototypeNarrativeEventDefinitionFactory.HiddenFactionOfferDefinitionId, worldId = World, lifecycle = NarrativeEventLifecycle.Resolved, actorPersonId = "person.prototype.hidden", triggerTime = 8.5d, visibility = NarrativeEventVisibility.Hidden }
+                    },
+                    signals = new List<NarrativeSignalRecordData> { new NarrativeSignalRecordData { narrativeSignalId = "signal.prototype.automation", signalDefinitionId = "signal-definition.prototype.automation", actorPersonId = PersonId, sourceId = QuestId, worldTime = 8d, runtimeRevision = 1 } }
+                },
+                NarrativeStates = new NarrativeStateRuntimeSaveData
+                {
+                    schemaVersion = 1,
+                    worldId = World,
+                    revision = 2,
+                    states = new[] { new NarrativeStateRecordData { narrativeStateId = NarrativeStateId, stateDefinitionId = PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyDefinitionId, worldId = World, variables = new[] { new NarrativeStateVariableRecordData { variableDefinitionId = PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyVariableId, value = NarrativeVariableValueData.Token(PrototypeNarrativeStateDefinitionFactory.GuildLoyalValueId), changedWorldTime = 8d } }, createdWorldTime = 1d, updatedWorldTime = 8d, revision = 2 } },
+                    transitions = new[] { new NarrativeStateTransitionRecordData { transitionId = "state-transition.automation.001", narrativeStateId = NarrativeStateId, stateDefinitionId = PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyDefinitionId, variableDefinitionId = PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyVariableId, worldId = World, actorPersonId = PersonId, questId = QuestId, conversationId = ConversationId, narrativeEventId = NarrativeEventId, oldValue = NarrativeVariableValueData.Token(PrototypeNarrativeStateDefinitionFactory.GuildUncommittedValueId), newValue = NarrativeVariableValueData.Token(PrototypeNarrativeStateDefinitionFactory.GuildLoyalValueId), worldTime = 8d, revisionBefore = 1, revisionAfter = 2, sequence = 1, visibility = NarrativeStateVisibility.Public } }
+                },
+                NarrativeArcs = new NarrativeArcRuntimeSaveData
+                {
+                    schemaVersion = NarrativeArcRuntimeSaveData.CurrentSchemaVersion,
+                    worldId = World,
+                    revision = 2,
+                    arcs = new List<NarrativeArcRecordData>
+                    {
+                        new NarrativeArcRecordData { narrativeArcId = ArcId, arcDefinitionId = PrototypeNarrativeArcDefinitionFactory.GuildIntroArcDefinitionId, worldId = World, lifecycle = NarrativeArcLifecycle.Completed, actorPersonId = PersonId, startedWorldTime = 1d, resolvedWorldTime = 12d, stages = new[] { new NarrativeArcStageRecordData { stageRuntimeId = "arc-stage.automation.001", stageDefinitionId = PrototypeNarrativeArcDefinitionFactory.GuildIntroJoinStageId, lifecycle = NarrativeArcStageLifecycle.Completed, activatedWorldTime = 2d, resolvedWorldTime = 3d, boundQuests = new[] { new NarrativeArcBoundQuestRecordData { bindingDefinitionId = "binding.automation", questId = QuestId, questDefinitionId = PrototypeQuestDefinitionFactory.GuildPostingDefinitionId, mode = NarrativeArcQuestBindingMode.ReferenceExistingQuest, worldTime = 2d } } }, new NarrativeArcStageRecordData { stageRuntimeId = "arc-stage.automation.002", stageDefinitionId = PrototypeNarrativeArcDefinitionFactory.GuildIntroPostingStageId, lifecycle = NarrativeArcStageLifecycle.Completed, activatedWorldTime = 7d, resolvedWorldTime = 12d } } }
+                    }
+                }
+            }.Clone();
         }
 
         private sealed class AutomationRewardExecutor : IQuestRewardEffectExecutor
