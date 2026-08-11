@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
+using UnityIsekaiGame.Knowledge.Access;
 
 namespace UnityIsekaiGame.Quests
 {
@@ -79,6 +80,7 @@ namespace UnityIsekaiGame.Quests
             definition.name = title;
             definition.DevelopmentConfigureIdentity(id, title, category, importance, repeatability, visibility, source, issuerTypes, recipientScopes, tags, dynamic, multiple, perWorldUnique, perRecipientUnique);
             ConfigureParticipation(definition, id);
+            ConfigureObjectives(definition, id);
             definitions.Add(definition);
             existingIds.Add(id);
         }
@@ -148,6 +150,65 @@ namespace UnityIsekaiGame.Quests
             }
         }
 
+        private static void ConfigureObjectives(QuestDefinition definition, string id)
+        {
+            switch (id)
+            {
+                case GuildPostingDefinitionId:
+                    definition.DevelopmentConfigureObjectives(
+                        new[]
+                        {
+                            Objective("quest-objective-definition.prototype.guild.use-counter", "Use Adventurer Guild Counter", QuestObjectiveCategory.UseInteractionPoint, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Custom, "interaction-point.prototype.guild-counter"), tags: new[] { "required", "guild", "interaction" }, order: 10),
+                            Objective("quest-objective-definition.prototype.guild.enter-dungeon", "Enter the Dungeon", QuestObjectiveCategory.VisitLocation, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Location, "location.prototype.dungeon-entry"), prerequisites: new[] { "quest-objective-definition.prototype.guild.use-counter" }, tags: new[] { "required", "exploration" }, order: 20),
+                            Objective("quest-objective-definition.prototype.guild.defeat-monsters", "Defeat Three Monsters", QuestObjectiveCategory.DefeatCount, QuestObjectiveProgressModel.Counter, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Custom, "enemy-family.prototype.monster"), amount: 3, prerequisites: new[] { "quest-objective-definition.prototype.guild.enter-dungeon" }, tags: new[] { "required", "combat" }, order: 30),
+                            Objective("quest-objective-definition.prototype.guild.report-return", "Report Back to the Guild", QuestObjectiveCategory.UseInteractionPoint, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Custom, "interaction-point.prototype.guild-counter"), prerequisites: new[] { "quest-objective-definition.prototype.guild.defeat-monsters" }, tags: new[] { "required", "guild" }, order: 40)
+                        },
+                        new[] { Group("quest-objective-group.prototype.guild.required", QuestObjectiveGroupPolicy.OrderedAll, 4, "quest-objective-definition.prototype.guild.use-counter", "quest-objective-definition.prototype.guild.enter-dungeon", "quest-objective-definition.prototype.guild.defeat-monsters", "quest-objective-definition.prototype.guild.report-return") });
+                    break;
+                case MerchantDeliveryDefinitionId:
+                    definition.DevelopmentConfigureObjectives(
+                        new[]
+                        {
+                            Objective("quest-objective-definition.prototype.delivery.collect-parcel", "Collect Merchant Parcel", QuestObjectiveCategory.ObtainItem, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Custom, "item.prototype.merchant-parcel"), tags: new[] { "required", "delivery", "item" }, order: 10),
+                            Objective("quest-objective-definition.prototype.delivery.possess-parcel", "Possess Merchant Parcel", QuestObjectiveCategory.PossessItem, QuestObjectiveProgressModel.QuantityCurrent, QuestObjectiveProgressSource.CurrentStateQuery, Target(InformationSubjectType.Custom, "item.prototype.merchant-parcel"), amount: 1, tags: new[] { "required", "delivery", "item" }, order: 20),
+                            Objective("quest-objective-definition.prototype.delivery.deliver-parcel", "Deliver Parcel to Merchant Counter", QuestObjectiveCategory.DeliverItem, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Custom, "interaction-point.prototype.merchant-counter"), secondaryTarget: Target(InformationSubjectType.Custom, "item.prototype.merchant-parcel"), prerequisites: new[] { "quest-objective-definition.prototype.delivery.collect-parcel" }, tags: new[] { "required", "delivery" }, order: 30)
+                        },
+                        new[] { Group("quest-objective-group.prototype.delivery.required", QuestObjectiveGroupPolicy.All, 3, "quest-objective-definition.prototype.delivery.collect-parcel", "quest-objective-definition.prototype.delivery.possess-parcel", "quest-objective-definition.prototype.delivery.deliver-parcel") });
+                    break;
+                case CivicInvestigationDefinitionId:
+                    definition.DevelopmentConfigureObjectives(
+                        new[]
+                        {
+                            Objective("quest-objective-definition.prototype.investigation.visit-office", "Visit Mayor's Office", QuestObjectiveCategory.VisitLocation, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Location, "location.prototype.mayor-office"), tags: new[] { "required", "civic" }, order: 10),
+                            Objective("quest-objective-definition.prototype.investigation.learn-fact", "Learn Incident Fact", QuestObjectiveCategory.LearnFact, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.KnowledgeRecord, "fact.prototype.civic-incident"), prerequisites: new[] { "quest-objective-definition.prototype.investigation.visit-office" }, tags: new[] { "required", "knowledge" }, order: 20),
+                            Objective("quest-objective-definition.prototype.investigation.report-incident", "Report Incident", QuestObjectiveCategory.ReportIncident, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Custom, "incident.prototype.civic"), prerequisites: new[] { "quest-objective-definition.prototype.investigation.learn-fact" }, tags: new[] { "required", "legal" }, order: 30)
+                        },
+                        new[] { Group("quest-objective-group.prototype.investigation.required", QuestObjectiveGroupPolicy.OrderedAll, 3, "quest-objective-definition.prototype.investigation.visit-office", "quest-objective-definition.prototype.investigation.learn-fact", "quest-objective-definition.prototype.investigation.report-incident") });
+                    break;
+                case HiddenDungeonRumorDefinitionId:
+                    definition.DevelopmentConfigureObjectives(
+                        new[]
+                        {
+                            Objective("quest-objective-definition.prototype.hidden.discover-dungeon", "Discover Hidden Dungeon", QuestObjectiveCategory.DiscoverLocation, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Location, "location.prototype.secret-dungeon-entry"), classification: QuestObjectiveRequirementClassification.HiddenRequired, visibility: QuestObjectiveVisibility.Hidden, tags: new[] { "hidden", "discovery" }, order: 10),
+                            Objective("quest-objective-definition.prototype.hidden.reach-shrine", "Reach Forgotten Shrine", QuestObjectiveCategory.VisitLocation, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Location, "location.prototype.forgotten-shrine"), classification: QuestObjectiveRequirementClassification.Optional, visibility: QuestObjectiveVisibility.Hidden, prerequisites: new[] { "quest-objective-definition.prototype.hidden.discover-dungeon" }, tags: new[] { "optional", "hidden" }, order: 20)
+                        },
+                        new[] { Group("quest-objective-group.prototype.hidden.required", QuestObjectiveGroupPolicy.All, 1, "quest-objective-definition.prototype.hidden.discover-dungeon") });
+                    break;
+                case DynamicBountyDefinitionId:
+                    definition.DevelopmentConfigureObjectives(
+                        new[]
+                        {
+                            Objective("quest-objective-definition.prototype.bounty.defeat-target", "Defeat Bounty Target", QuestObjectiveCategory.DefeatTarget, QuestObjectiveProgressModel.UniqueTargetCount, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Custom, "encounter.prototype.dynamic-bounty-target"), amount: 1, tags: new[] { "required", "bounty", "combat" }, order: 10),
+                            Objective("quest-objective-definition.prototype.bounty.survive-combat", "Survive the Encounter", QuestObjectiveCategory.SurviveCombat, QuestObjectiveProgressModel.BooleanEvent, QuestObjectiveProgressSource.DomainEvent, Target(InformationSubjectType.Custom, "encounter.prototype.dynamic-bounty-target"), classification: QuestObjectiveRequirementClassification.Optional, tags: new[] { "optional", "combat" }, order: 20)
+                        },
+                        new[] { Group("quest-objective-group.prototype.bounty.required", QuestObjectiveGroupPolicy.All, 1, "quest-objective-definition.prototype.bounty.defeat-target") });
+                    break;
+                default:
+                    definition.DevelopmentConfigureObjectives(Array.Empty<QuestObjectiveDefinitionData>());
+                    break;
+            }
+        }
+
         private static QuestEligibilityRequirementGroupData All(string id, params QuestEligibilityRequirementData[] requirements)
         {
             return Group(id, QuestEligibilityGroupPolicy.All, requirements);
@@ -183,6 +244,72 @@ namespace UnityIsekaiGame.Quests
                 kind = kind,
                 requiredId = id,
                 comparison = QuestRequirementComparison.Exists
+            };
+        }
+
+        private static QuestObjectiveDefinitionData Objective(
+            string id,
+            string label,
+            QuestObjectiveCategory category,
+            QuestObjectiveProgressModel progressModel,
+            QuestObjectiveProgressSource source,
+            InformationSubjectReferenceData target,
+            InformationSubjectReferenceData secondaryTarget = null,
+            int amount = 1,
+            IEnumerable<string> prerequisites = null,
+            IEnumerable<string> tags = null,
+            QuestObjectiveRequirementClassification classification = QuestObjectiveRequirementClassification.Required,
+            QuestObjectiveVisibility visibility = QuestObjectiveVisibility.Public,
+            QuestObjectiveSatisfactionPolicy satisfactionPolicy = QuestObjectiveSatisfactionPolicy.StickyOnceSatisfied,
+            int order = 0)
+        {
+            return new QuestObjectiveDefinitionData
+            {
+                objectiveDefinitionId = id,
+                label = label,
+                description = label,
+                category = category,
+                progressModel = progressModel,
+                progressSource = source,
+                classification = classification,
+                visibility = visibility,
+                satisfactionPolicy = satisfactionPolicy,
+                repetitionPolicy = progressModel == QuestObjectiveProgressModel.UniqueTargetCount ? QuestObjectiveRepetitionPolicy.CountUniqueTargetOnce : QuestObjectiveRepetitionPolicy.CountSourceEventOnce,
+                beforeActivationPolicy = progressModel == QuestObjectiveProgressModel.QuantityCurrent || progressModel == QuestObjectiveProgressModel.BooleanState || progressModel == QuestObjectiveProgressModel.Threshold
+                    ? QuestObjectiveProgressBeforeActivationPolicy.EvaluateCurrentStateOnActivation
+                    : QuestObjectiveProgressBeforeActivationPolicy.Ignore,
+                ownershipScope = QuestObjectiveOwnershipScope.PerAssignment,
+                target = target,
+                secondaryTarget = secondaryTarget ?? new InformationSubjectReferenceData(),
+                targetAmount = Math.Max(1, amount),
+                thresholdValue = Math.Max(1, amount),
+                prerequisiteObjectiveDefinitionIds = QuestRuntimeModelUtility.Clean(prerequisites),
+                tagIds = QuestRuntimeModelUtility.Clean(tags),
+                requiredForCompletion = classification == QuestObjectiveRequirementClassification.Required || classification == QuestObjectiveRequirementClassification.HiddenRequired,
+                sequenceOrder = order
+            };
+        }
+
+        private static QuestObjectiveGroupDefinitionData Group(string id, QuestObjectiveGroupPolicy policy, int threshold, params string[] objectiveIds)
+        {
+            return new QuestObjectiveGroupDefinitionData
+            {
+                groupDefinitionId = id,
+                label = id,
+                policy = policy,
+                thresholdCount = threshold,
+                objectiveDefinitionIds = QuestRuntimeModelUtility.Clean(objectiveIds),
+                requiredForCompletion = true
+            };
+        }
+
+        private static InformationSubjectReferenceData Target(InformationSubjectType type, string id)
+        {
+            return new InformationSubjectReferenceData
+            {
+                subjectType = type,
+                subjectId = id,
+                tags = Array.Empty<string>()
             };
         }
     }
