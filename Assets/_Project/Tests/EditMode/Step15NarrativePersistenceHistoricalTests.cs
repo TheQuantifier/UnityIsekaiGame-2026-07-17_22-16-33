@@ -140,7 +140,7 @@ namespace UnityIsekaiGame.Tests
             Assert.That(report.RecoveryIssues.Any(issue => issue.Kind == NarrativeRecoveryIssueKind.AuthoritativeCorruption && !issue.Recoverable), Is.True);
         }
 
-        private static Step15NarrativePersistenceSnapshot SampleSnapshot()
+        internal static Step15NarrativePersistenceSnapshot SampleSnapshot()
         {
             const string World = PersistenceService.LocalWorldId;
             const string QuestId = "quest.prototype.guild-posting";
