@@ -76,7 +76,8 @@ namespace UnityIsekaiGame.Development.Automation
         Laws = 1 << 17,
         Crimes = 1 << 18,
         Justice = 1 << 19,
-        WorldLocations = 1 << 20
+        WorldLocations = 1 << 20,
+        Quests = 1 << 21
     }
 
     [Flags]

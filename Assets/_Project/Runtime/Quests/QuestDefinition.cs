@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Factions;
@@ -26,6 +27,20 @@ namespace UnityIsekaiGame.Quests
         [SerializeField] private QuestStageDefinition[] stages;
         [SerializeField] private ContractRewardDefinition reward;
         [SerializeField] private string[] prerequisiteQuestIds;
+        [Header("Identity Metadata")]
+        [SerializeField] private QuestDefinitionImportance importance = QuestDefinitionImportance.Standard;
+        [SerializeField] private QuestDefinitionRepeatabilityPolicy repeatabilityPolicy = QuestDefinitionRepeatabilityPolicy.Unique;
+        [SerializeField] private QuestVisibility defaultVisibility = QuestVisibility.Public;
+        [SerializeField] private QuestSourceChannel defaultSourceChannel = QuestSourceChannel.Manual;
+        [SerializeField] private QuestIssuerType[] supportedIssuerTypes = Array.Empty<QuestIssuerType>();
+        [SerializeField] private QuestRecipientScope[] supportedRecipientScopes = Array.Empty<QuestRecipientScope>();
+        [SerializeField] private string[] defaultTagIds = Array.Empty<string>();
+        [SerializeField] private string[] supportedSubjectRoleIds = Array.Empty<string>();
+        [SerializeField] private bool allowDynamicInstances;
+        [SerializeField] private bool allowMultipleSimultaneousInstances;
+        [SerializeField] private bool uniquePerWorld = true;
+        [SerializeField] private bool uniquePerRecipient;
+        [SerializeField] private string identityNotes;
         [SerializeField] private bool repeatable;
         [SerializeField] private bool hiddenUntilDiscovered;
         [SerializeField] private bool canAbandon = true;
@@ -50,6 +65,19 @@ namespace UnityIsekaiGame.Quests
         public IReadOnlyList<QuestStageDefinition> Stages => stages ?? Array.Empty<QuestStageDefinition>();
         public ContractRewardDefinition Reward => reward;
         public IReadOnlyList<string> PrerequisiteQuestIds => prerequisiteQuestIds ?? Array.Empty<string>();
+        public QuestDefinitionImportance Importance => importance;
+        public QuestDefinitionRepeatabilityPolicy RepeatabilityPolicy => repeatabilityPolicy == QuestDefinitionRepeatabilityPolicy.Unknown && repeatable ? QuestDefinitionRepeatabilityPolicy.Reusable : repeatabilityPolicy;
+        public QuestVisibility DefaultVisibility => hiddenUntilDiscovered && defaultVisibility == QuestVisibility.Public ? QuestVisibility.Hidden : defaultVisibility;
+        public QuestSourceChannel DefaultSourceChannel => defaultSourceChannel;
+        public IReadOnlyList<QuestIssuerType> SupportedIssuerTypes => supportedIssuerTypes ?? Array.Empty<QuestIssuerType>();
+        public IReadOnlyList<QuestRecipientScope> SupportedRecipientScopes => supportedRecipientScopes ?? Array.Empty<QuestRecipientScope>();
+        public IReadOnlyList<string> DefaultTagIds => defaultTagIds ?? Array.Empty<string>();
+        public IReadOnlyList<string> SupportedSubjectRoleIds => supportedSubjectRoleIds ?? Array.Empty<string>();
+        public bool AllowDynamicInstances => allowDynamicInstances || RepeatabilityPolicy == QuestDefinitionRepeatabilityPolicy.DynamicTemplate;
+        public bool AllowMultipleSimultaneousInstances => allowMultipleSimultaneousInstances || repeatable || RepeatabilityPolicy == QuestDefinitionRepeatabilityPolicy.Reusable || RepeatabilityPolicy == QuestDefinitionRepeatabilityPolicy.DynamicTemplate;
+        public bool UniquePerWorld => uniquePerWorld && !AllowMultipleSimultaneousInstances;
+        public bool UniquePerRecipient => uniquePerRecipient;
+        public string IdentityNotes => identityNotes ?? string.Empty;
         public bool Repeatable => repeatable;
         public bool HiddenUntilDiscovered => hiddenUntilDiscovered;
         public bool CanAbandon => canAbandon;
@@ -62,9 +90,44 @@ namespace UnityIsekaiGame.Quests
             }
 
             ValidateStageAndObjectiveIds(report);
+            ValidateIdentityMetadata(report);
             ValidatePersonReference(questGiver, nameof(QuestGiver), definitionsById, report);
             ValidateFactionReference(questSourceFaction, nameof(QuestSourceFaction), definitionsById, report);
             ValidateFactionReference(relatedFaction, nameof(RelatedFaction), definitionsById, report);
+        }
+
+        public void DevelopmentConfigureIdentity(
+            string id,
+            string displayTitle,
+            QuestCategory questCategory,
+            QuestDefinitionImportance questImportance = QuestDefinitionImportance.Standard,
+            QuestDefinitionRepeatabilityPolicy repeatPolicy = QuestDefinitionRepeatabilityPolicy.Unique,
+            QuestVisibility visibility = QuestVisibility.Public,
+            QuestSourceChannel sourceChannel = QuestSourceChannel.Manual,
+            IEnumerable<QuestIssuerType> issuerTypes = null,
+            IEnumerable<QuestRecipientScope> recipientScopes = null,
+            IEnumerable<string> tags = null,
+            bool dynamicInstances = false,
+            bool multipleSimultaneousInstances = false,
+            bool perWorldUnique = true,
+            bool perRecipientUnique = false)
+        {
+            questId = id ?? string.Empty;
+            title = string.IsNullOrWhiteSpace(displayTitle) ? id : displayTitle;
+            category = questCategory;
+            importance = questImportance;
+            repeatabilityPolicy = repeatPolicy;
+            defaultVisibility = visibility;
+            defaultSourceChannel = sourceChannel;
+            supportedIssuerTypes = DistinctEnums(issuerTypes);
+            supportedRecipientScopes = DistinctEnums(recipientScopes);
+            defaultTagIds = Clean(tags);
+            allowDynamicInstances = dynamicInstances;
+            allowMultipleSimultaneousInstances = multipleSimultaneousInstances;
+            uniquePerWorld = perWorldUnique;
+            uniquePerRecipient = perRecipientUnique;
+            repeatable = repeatPolicy == QuestDefinitionRepeatabilityPolicy.Reusable || repeatPolicy == QuestDefinitionRepeatabilityPolicy.RepeatablePerIssuer || repeatPolicy == QuestDefinitionRepeatabilityPolicy.RepeatablePerRecipient || repeatPolicy == QuestDefinitionRepeatabilityPolicy.DynamicTemplate;
+            hiddenUntilDiscovered = visibility == QuestVisibility.Hidden || visibility == QuestVisibility.Secret;
         }
 
         private void ValidateStageAndObjectiveIds(DefinitionValidationReport report)
@@ -110,6 +173,34 @@ namespace UnityIsekaiGame.Quests
             }
         }
 
+        private void ValidateIdentityMetadata(DefinitionValidationReport report)
+        {
+            if (string.IsNullOrWhiteSpace(questId))
+            {
+                report.AddError($"QuestDefinition '{Title}' is missing a stable quest definition ID.");
+            }
+
+            if (category == QuestCategory.Unknown)
+            {
+                report.AddError($"QuestDefinition '{Title}' must declare a concrete quest category.");
+            }
+
+            if (RepeatabilityPolicy == QuestDefinitionRepeatabilityPolicy.Unknown)
+            {
+                report.AddError($"QuestDefinition '{Title}' must declare a concrete repeatability policy.");
+            }
+
+            if (DefaultVisibility == QuestVisibility.Unknown)
+            {
+                report.AddError($"QuestDefinition '{Title}' must declare a concrete default visibility.");
+            }
+
+            if (defaultSourceChannel == QuestSourceChannel.Unknown)
+            {
+                report.AddError($"QuestDefinition '{Title}' must declare a concrete source channel.");
+            }
+        }
+
         private void ValidatePersonReference(
             PersonDefinition person,
             string label,
@@ -142,6 +233,34 @@ namespace UnityIsekaiGame.Quests
             {
                 report.AddError($"QuestDefinition '{Title}' references {label} '{faction.Id}', which is not in the configured catalog.");
             }
+        }
+
+        private static QuestIssuerType[] DistinctEnums(IEnumerable<QuestIssuerType> values)
+        {
+            return (values ?? Array.Empty<QuestIssuerType>())
+                .Where(value => value != QuestIssuerType.Unknown)
+                .Distinct()
+                .OrderBy(value => value)
+                .ToArray();
+        }
+
+        private static QuestRecipientScope[] DistinctEnums(IEnumerable<QuestRecipientScope> values)
+        {
+            return (values ?? Array.Empty<QuestRecipientScope>())
+                .Where(value => value != QuestRecipientScope.Unknown)
+                .Distinct()
+                .OrderBy(value => value)
+                .ToArray();
+        }
+
+        private static string[] Clean(IEnumerable<string> values)
+        {
+            return (values ?? Array.Empty<string>())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray();
         }
     }
 }

@@ -2,10 +2,31 @@ namespace UnityIsekaiGame.Quests
 {
     public enum QuestCategory
     {
+        Unknown,
         MainStory,
         SideQuest,
+        GuildQuest,
+        OrganizationQuest,
+        GovernmentQuest,
+        MerchantQuest,
+        ProfessionQuest,
+        PersonalQuest,
+        SpecialAssignment,
+        BountyPlaceholder,
+        Investigation,
+        Delivery,
         Character,
         Exploration,
-        WorldEvent
+        Combat,
+        Crafting,
+        Social,
+        Political,
+        Legal,
+        Travel,
+        Discovery,
+        Tutorial,
+        Dynamic,
+        WorldEvent,
+        Custom
     }
 }
