@@ -623,6 +623,31 @@ namespace UnityIsekaiGame.Narrative
                     externalId = transition.Transition?.TransitionId ?? target;
                     message = transition.Message;
                     return transition.Succeeded;
+                case NarrativeActionCategory.RequestNarrativeArcProgression:
+                    if (integrations?.NarrativeArcSignalExecutor == null)
+                    {
+                        message = "NarrativeArcRuntime integration is missing.";
+                        return false;
+                    }
+
+                    NarrativeArcOperationResult arc = integrations.NarrativeArcSignalExecutor(new NarrativeArcSignalRequest
+                    {
+                        transactionId = $"{transactionId}.{action.actionDefinitionId}.narrative-arc",
+                        arcDefinitionId = action.secondaryTargetId,
+                        stageDefinitionId = target,
+                        category = NarrativeArcSignalCategory.NarrativeEvent,
+                        signalId = record.narrativeEventId,
+                        sourceId = record.eventDefinitionId,
+                        actorPersonId = record.actorPersonId,
+                        subjectId = record.subjectId,
+                        scopeKey = record.scopeKey,
+                        conditionContext = context?.Clone(),
+                        worldTime = record.triggerTime,
+                        cascadeDepth = cascadeDepth + 1
+                    });
+                    externalId = arc.Snapshot?.NarrativeArcId ?? target;
+                    message = arc.Message;
+                    return arc.Succeeded;
                 case NarrativeActionCategory.ArmNarrativeEvent:
                 case NarrativeActionCategory.DisarmNarrativeEvent:
                     externalId = target;
@@ -678,6 +703,7 @@ namespace UnityIsekaiGame.Narrative
                 NarrativeConditionCategory.LegalState => Contains(context.legalStateIds, condition.requiredId),
                 NarrativeConditionCategory.HistoricalState => Contains(context.historicalStateIds, condition.requiredId),
                 NarrativeConditionCategory.NarrativeState => Contains(context.narrativeStateIds, condition.requiredId) || (integrations?.NarrativeStateConditionEvaluator?.Invoke(condition.Clone(), context.Clone()) ?? false),
+                NarrativeConditionCategory.NarrativeArc => (integrations?.NarrativeArcConditionEvaluator?.Invoke(condition.Clone(), context.Clone()) ?? false),
                 NarrativeConditionCategory.TimeState => context.worldTime >= condition.minimumValue,
                 NarrativeConditionCategory.Custom => Contains(context.customStateIds, condition.requiredId),
                 _ => false

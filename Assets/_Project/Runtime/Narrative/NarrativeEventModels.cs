@@ -589,6 +589,8 @@ namespace UnityIsekaiGame.Narrative
         public Func<string, bool> LegalActionExecutor { get; set; }
         public Func<NarrativeStateTransitionRequest, NarrativeStateTransitionResult> NarrativeStateTransitionExecutor { get; set; }
         public Func<NarrativeConditionDefinitionData, NarrativeConditionContextData, bool> NarrativeStateConditionEvaluator { get; set; }
+        public Func<NarrativeArcSignalRequest, NarrativeArcOperationResult> NarrativeArcSignalExecutor { get; set; }
+        public Func<NarrativeConditionDefinitionData, NarrativeConditionContextData, bool> NarrativeArcConditionEvaluator { get; set; }
     }
 
     public static class NarrativeModelUtility

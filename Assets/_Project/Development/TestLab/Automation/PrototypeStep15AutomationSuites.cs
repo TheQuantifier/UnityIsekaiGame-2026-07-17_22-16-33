@@ -22,6 +22,7 @@ namespace UnityIsekaiGame.Development.Automation
             .Concat(PrototypeDialogueGraphDefinitionFactory.PrototypeDefinitionIds)
             .Concat(PrototypeNarrativeEventDefinitionFactory.PrototypeDefinitionIds)
             .Concat(PrototypeNarrativeStateDefinitionFactory.PrototypeDefinitionIds)
+            .Concat(PrototypeNarrativeArcDefinitionFactory.PrototypeDefinitionIds)
             .ToArray();
 
         public static void RegisterDefaults(TestLabAutomationRegistry registry)
@@ -193,6 +194,25 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("98.4-access-dialogue-quest-adapters", "Hidden projections and adapter conditions do not leak state", 40, Step("step15-narrative-state-adapters", "Evaluate hidden state, dialogue, and quest adapters", NarrativeStateAccessAndAdapters)),
                     Scenario("98.5-narrative-event-transition-cascade", "Narrative events request state transitions through the owner runtime", 50, Step("step15-narrative-state-event", "Execute event-driven state transition", NarrativeStateEventTransitionCascade)),
                     Scenario("98.6-persistence-no-replay", "Narrative state persists without replaying consequences", 60, Step("step15-narrative-state-persistence", "Save, restore, and reject corrupt state payload", NarrativeStatePersistenceNoReplay))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.10.quest-chains-narrative-arcs-dependencies-reactive-orchestration",
+                "Quest Chains, Narrative Arcs, Dependencies, and Reactive Orchestration",
+                "15.10",
+                "Runtime-owned narrative arcs coordinate quest chains, branching dependencies, narrative state, narrative events, and persistence-safe orchestration without owning quest, event, or state records.",
+                15100,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "NarrativeArcRuntime", "NarrativeArcDefinition", "NarrativeArcPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("99.1-readiness-and-validation", "Narrative arc definitions register and validate", 10, Step("step15-narrative-arc-readiness", "Resolve prototype narrative arc definitions and graph", NarrativeArcReadiness)),
+                    Scenario("99.2-state-driven-quest-binding", "State progression activates a chained quest through QuestRuntime", 20, Step("step15-narrative-arc-state-quest", "Complete state-gated stage and bind quest", NarrativeArcStateDrivenQuestBinding)),
+                    Scenario("99.3-quest-outcome-branching", "Quest outcomes branch arc stages without owning quest state", 30, Step("step15-narrative-arc-quest-outcome", "Apply completed and failed quest outcome signals", NarrativeArcQuestOutcomeBranching)),
+                    Scenario("99.4-parallel-convergence", "Parallel stages converge deterministically", 40, Step("step15-narrative-arc-parallel", "Resolve two of three parallel branches", NarrativeArcParallelConvergence)),
+                    Scenario("99.5-event-state-hooks", "Narrative events can request arc progression through explicit hooks", 50, Step("step15-narrative-arc-event-hooks", "Route event action into arc runtime", NarrativeArcEventStateHooks)),
+                    Scenario("99.6-persistence-no-replay", "Narrative arcs persist without replaying delegated side effects", 60, Step("step15-narrative-arc-persistence", "Save, restore, redact, and reject corrupt arc payload", NarrativeArcPersistenceNoReplay))
                 }), out _);
         }
 
@@ -1597,10 +1617,146 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step15-narrative-state-persistence", "Narrative state restore preserves state and history without replaying consequences, and corrupt payloads fail before mutation", valid, $"Transition={transition.Status} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Restored={restoredState} ReplayEvents={restoredEvents.Count} Reject={rejected.Succeeded} States={restored.MaterializedStateCount}");
         }
 
+        private static TestLabAutomationStepResult NarrativeArcReadiness(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            bool hasAll = PrototypeNarrativeArcDefinitionFactory.PrototypeDefinitionIds.All(id => registry.TryGet(id, out NarrativeArcDefinition _));
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (NarrativeArcDefinition definition in PrototypeNarrativeArcDefinitionFactory.CreateMissingNarrativeArcDefinitions(Array.Empty<string>()))
+            {
+                definition.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                UnityEngine.Object.DestroyImmediate(definition);
+            }
+
+            NarrativeArcValidationReport graph = NarrativeArcDefinitionValidator.ValidateGraph(registry.DefinitionsById.Values.OfType<NarrativeArcDefinition>().Select(definition => definition.ToRecordData()));
+            NarrativeArcRuntime runtime = ArcRuntime(registry, out _, out _);
+            bool valid = hasAll && report.ErrorCount == 0 && report.WarningCount == 0 && graph.Succeeded && runtime.Count == 0 && runtime.TransactionCount == 0;
+            return TestLabAssertions.True("step15-narrative-arc-readiness", "Narrative arc definitions register, validate, and remain inactive until explicitly started", valid, $"Definitions={hasAll} Errors={report.ErrorCount} Warnings={report.WarningCount} Graph={graph.Succeeded} Arcs={runtime.Count} Transactions={runtime.TransactionCount}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeArcStateDrivenQuestBinding(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeArcRuntime arcs = ArcRuntime(registry, out NarrativeStateRuntime states, out QuestRuntime quests);
+            NarrativeArcOperationResult start = arcs.StartArc(ArcStart(context, PrototypeNarrativeArcDefinitionFactory.GuildIntroArcDefinitionId, "person.prototype.player", "arc-guild-start"));
+            NarrativeStateTransitionResult state = states.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.ChooseGuildTransitionId, Tx(context, "arc-guild-state"), "person.prototype.player"));
+            NarrativeArcOperationResult signal = arcs.ApplySignal(ArcSignal(context, "arc-guild-state-signal", PrototypeNarrativeArcDefinitionFactory.GuildIntroArcDefinitionId, NarrativeArcSignalCategory.NarrativeState, actor: "person.prototype.player", sourceId: PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyDefinitionId));
+
+            NarrativeArcSnapshot snapshot = arcs.Query(new NarrativeArcQuery { arcDefinitionId = PrototypeNarrativeArcDefinitionFactory.GuildIntroArcDefinitionId }).SingleOrDefault();
+            NarrativeArcStageLifecycle join = snapshot?.Stages.Single(stage => stage.StageDefinitionId == PrototypeNarrativeArcDefinitionFactory.GuildIntroJoinStageId).Lifecycle ?? NarrativeArcStageLifecycle.Unknown;
+            NarrativeArcStageLifecycle posting = snapshot?.Stages.Single(stage => stage.StageDefinitionId == PrototypeNarrativeArcDefinitionFactory.GuildIntroPostingStageId).Lifecycle ?? NarrativeArcStageLifecycle.Unknown;
+            int questsCreated = quests.Query(new QuestQuery { definitionId = PrototypeQuestDefinitionFactory.GuildPostingDefinitionId, access = QuestVisibilityAccess.PrivilegedDiagnostic }).Count;
+
+            bool valid = start.Succeeded && state.Succeeded && signal.Succeeded && join == NarrativeArcStageLifecycle.Completed && posting == NarrativeArcStageLifecycle.Active && questsCreated == 1;
+            return TestLabAssertions.True("step15-narrative-arc-state-quest", "Narrative state progression completes a chain stage and delegates quest binding to QuestRuntime", valid, $"Start={start.Status} State={state.Status} Signal={signal.Status} Join={join} Posting={posting} Quests={questsCreated}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeArcQuestOutcomeBranching(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeArcRuntime completedArcs = ArcRuntime(registry, out _, out QuestRuntime completedQuests);
+            NarrativeArcOperationResult completedStart = completedArcs.StartArc(ArcStart(context, PrototypeNarrativeArcDefinitionFactory.MerchantGuildArcDefinitionId, "person.prototype.player", "arc-merchant-complete-start"));
+            QuestSnapshot completedQuest = completedQuests.Query(new QuestQuery { definitionId = PrototypeQuestDefinitionFactory.MerchantDeliveryDefinitionId, access = QuestVisibilityAccess.PrivilegedDiagnostic }).SingleOrDefault();
+            NarrativeArcOperationResult completed = completedArcs.ApplySignal(ArcSignal(context, "arc-merchant-completed", PrototypeNarrativeArcDefinitionFactory.MerchantGuildArcDefinitionId, NarrativeArcSignalCategory.QuestOutcome, actor: "person.prototype.player", questId: completedQuest?.QuestId, questDefinitionId: completedQuest?.QuestDefinitionId, outcome: QuestTerminalOutcomeKind.Completed));
+
+            NarrativeArcRuntime failedArcs = ArcRuntime(registry, out _, out QuestRuntime failedQuests);
+            NarrativeArcOperationResult failedStart = failedArcs.StartArc(ArcStart(context, PrototypeNarrativeArcDefinitionFactory.MerchantGuildArcDefinitionId, "person.prototype.player", "arc-merchant-fail-start"));
+            QuestSnapshot failedQuest = failedQuests.Query(new QuestQuery { definitionId = PrototypeQuestDefinitionFactory.MerchantDeliveryDefinitionId, access = QuestVisibilityAccess.PrivilegedDiagnostic }).SingleOrDefault();
+            NarrativeArcOperationResult failed = failedArcs.ApplySignal(ArcSignal(context, "arc-merchant-failed", PrototypeNarrativeArcDefinitionFactory.MerchantGuildArcDefinitionId, NarrativeArcSignalCategory.QuestOutcome, actor: "person.prototype.player", questId: failedQuest?.QuestId, questDefinitionId: failedQuest?.QuestDefinitionId, outcome: QuestTerminalOutcomeKind.Failed));
+
+            NarrativeArcStageLifecycle completedStage = completedArcs.Query(new NarrativeArcQuery { arcDefinitionId = PrototypeNarrativeArcDefinitionFactory.MerchantGuildArcDefinitionId }).SingleOrDefault()?.Stages.Single().Lifecycle ?? NarrativeArcStageLifecycle.Unknown;
+            NarrativeArcStageLifecycle failedStage = failedArcs.Query(new NarrativeArcQuery { arcDefinitionId = PrototypeNarrativeArcDefinitionFactory.MerchantGuildArcDefinitionId }).SingleOrDefault()?.Stages.Single().Lifecycle ?? NarrativeArcStageLifecycle.Unknown;
+            bool questOwned = completedQuest?.LifecycleState == QuestRuntimeLifecycleState.Available && failedQuest?.LifecycleState == QuestRuntimeLifecycleState.Available;
+
+            bool valid = completedStart.Succeeded && failedStart.Succeeded && completed.Succeeded && failed.Succeeded && completedStage == NarrativeArcStageLifecycle.Completed && failedStage == NarrativeArcStageLifecycle.Skipped && questOwned;
+            return TestLabAssertions.True("step15-narrative-arc-quest-outcome", "Quest outcome signals complete or skip arc stages without mutating the owning quest records", valid, $"Complete={completed.Status}/{completedStage} Failed={failed.Status}/{failedStage} QuestOwned={questOwned}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeArcParallelConvergence(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeArcRuntime arcs = ArcRuntime(registry, out _, out _);
+            NarrativeArcOperationResult start = arcs.StartArc(ArcStart(context, PrototypeNarrativeArcDefinitionFactory.ParallelSupportArcDefinitionId, "person.prototype.player", "arc-parallel-start"));
+            NarrativeArcOperationResult first = arcs.ApplySignal(ArcSignal(context, "arc-parallel-a", PrototypeNarrativeArcDefinitionFactory.ParallelSupportArcDefinitionId, NarrativeArcSignalCategory.Custom, actor: "person.prototype.player", value: "signal.parallel.a"));
+            NarrativeArcSnapshot afterOne = arcs.Query(new NarrativeArcQuery { arcDefinitionId = PrototypeNarrativeArcDefinitionFactory.ParallelSupportArcDefinitionId }).SingleOrDefault();
+            NarrativeArcOperationResult second = arcs.ApplySignal(ArcSignal(context, "arc-parallel-b", PrototypeNarrativeArcDefinitionFactory.ParallelSupportArcDefinitionId, NarrativeArcSignalCategory.Custom, actor: "person.prototype.player", value: "signal.parallel.b"));
+            NarrativeArcSnapshot afterTwo = arcs.Query(new NarrativeArcQuery { arcDefinitionId = PrototypeNarrativeArcDefinitionFactory.ParallelSupportArcDefinitionId }).SingleOrDefault();
+            NarrativeArcOperationResult duplicate = arcs.ApplySignal(ArcSignal(context, "arc-parallel-b", PrototypeNarrativeArcDefinitionFactory.ParallelSupportArcDefinitionId, NarrativeArcSignalCategory.Custom, actor: "person.prototype.player", value: "signal.parallel.b"));
+
+            NarrativeArcStageLifecycle joinAfterOne = afterOne?.Stages.Single(stage => stage.StageDefinitionId == PrototypeNarrativeArcDefinitionFactory.ParallelJoinStageId).Lifecycle ?? NarrativeArcStageLifecycle.Unknown;
+            NarrativeArcStageLifecycle joinAfterTwo = afterTwo?.Stages.Single(stage => stage.StageDefinitionId == PrototypeNarrativeArcDefinitionFactory.ParallelJoinStageId).Lifecycle ?? NarrativeArcStageLifecycle.Unknown;
+            bool valid = start.Succeeded && first.Succeeded && second.Succeeded && duplicate.Duplicate && joinAfterOne == NarrativeArcStageLifecycle.Locked && joinAfterTwo == NarrativeArcStageLifecycle.Active;
+            return TestLabAssertions.True("step15-narrative-arc-parallel", "Parallel arc branches converge only after the authored two-of-three dependency is satisfied", valid, $"Start={start.Status} First={first.Status} Second={second.Status} Duplicate={duplicate.Status}/{duplicate.Duplicate} Join={joinAfterOne}->{joinAfterTwo}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeArcEventStateHooks(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = RegistryWithNarrativeArcActionProbe(context);
+            NarrativeArcRuntime arcs = ArcRuntime(registry, out _, out QuestRuntime quests);
+            NarrativeEventRuntime events = NarrativeRuntime(registry, quests: quests, integrations: NarrativeIntegrations(quests));
+            events.Configure(registry, NarrativeIntegrations(quests));
+            events.Configure(registry, new NarrativeEventRuntimeIntegrations
+            {
+                QuestRuntime = quests,
+                NarrativeArcSignalExecutor = arcs.ApplySignal,
+                NarrativeArcConditionEvaluator = arcs.EvaluateCondition
+            });
+
+            const string probeArcId = "narrative-arc-definition.prototype.15-10.event-hook";
+            const string probeStageId = "narrative-arc-stage-definition.prototype.15-10.event-hook.stage";
+            NarrativeArcOperationResult start = arcs.StartArc(ArcStart(context, probeArcId, "person.prototype.player", "arc-event-hook-start"));
+            NarrativeEventOperationResult emitted = events.EmitSignal(new NarrativeSignalRequest
+            {
+                transactionId = Tx(context, "arc-event-hook-signal"),
+                signalDefinitionId = "narrative-signal-definition.prototype.15-10.arc-progress",
+                actorPersonId = "person.prototype.player",
+                subjectIds = new[] { "person.prototype.player" },
+                conditionContext = NarrativeContext("person.prototype.player", subjectId: "person.prototype.player"),
+                worldTime = 4d
+            });
+
+            NarrativeArcSnapshot snapshot = arcs.Query(new NarrativeArcQuery { arcDefinitionId = probeArcId }).SingleOrDefault();
+            NarrativeArcStageLifecycle stage = snapshot?.Stages.Single(value => value.StageDefinitionId == probeStageId).Lifecycle ?? NarrativeArcStageLifecycle.Unknown;
+            bool actionCommitted = events.Query(new NarrativeEventQuery { definitionId = "narrative-event-definition.prototype.15-10.arc-progress", developmentView = true })
+                .SelectMany(item => item.ActionExecutions)
+                .Any(action => action.category == NarrativeActionCategory.RequestNarrativeArcProgression && action.lifecycle == NarrativeActionLifecycle.Committed);
+            bool valid = start.Succeeded && emitted.Succeeded && stage == NarrativeArcStageLifecycle.Completed && actionCommitted && arcs.Count == 1 && events.Count == 1;
+            return TestLabAssertions.True("step15-narrative-arc-event-hooks", "Narrative events request arc progression through the arc runtime integration hook", valid, $"Start={start.Status} Event={emitted.Status} Stage={stage} Action={actionCommitted} Arcs={arcs.Count} Events={events.Count}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeArcPersistenceNoReplay(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            int actions = 0;
+            NarrativeArcRuntime runtime = new NarrativeArcRuntime(registry, new NarrativeArcRuntimeIntegrations
+            {
+                QuestRuntime = new QuestRuntime(registry, PersistenceService.LocalWorldId),
+                ActionExecutor = (_, _) => ++actions >= 0
+            }, PersistenceService.LocalWorldId);
+            NarrativeArcOperationResult start = runtime.StartArc(ArcStart(context, PrototypeNarrativeArcDefinitionFactory.MayorInvestigationArcDefinitionId, string.Empty, "arc-persist-start", NarrativeArcScope.World));
+            NarrativeArcSnapshot publicView = runtime.Query(new NarrativeArcQuery { arcDefinitionId = PrototypeNarrativeArcDefinitionFactory.MayorInvestigationArcDefinitionId, developmentView = false }).SingleOrDefault();
+            NarrativeArcPersistenceParticipant participant = new NarrativeArcPersistenceParticipant(runtime, () => registry, () => new NarrativeArcRuntimeIntegrations { QuestRuntime = new QuestRuntime(registry, PersistenceService.LocalWorldId), ActionExecutor = (_, _) => ++actions >= 0 });
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+
+            NarrativeArcRuntime restored = new NarrativeArcRuntime(registry, new NarrativeArcRuntimeIntegrations { QuestRuntime = new QuestRuntime(registry, PersistenceService.LocalWorldId), ActionExecutor = (_, _) => ++actions >= 0 }, PersistenceService.LocalWorldId);
+            NarrativeArcPersistenceParticipant restoredParticipant = new NarrativeArcPersistenceParticipant(restored, () => registry, () => new NarrativeArcRuntimeIntegrations { QuestRuntime = new QuestRuntime(registry, PersistenceService.LocalWorldId), ActionExecutor = (_, _) => ++actions >= 0 });
+            PersistenceParticipantPrepareResult prepare = restoredParticipant.PreparePayload(save.PayloadJson, NarrativeArcPersistenceParticipant.CurrentParticipantSchemaVersion);
+            PersistenceParticipantCommitResult commit = restoredParticipant.CommitPreparedPayload(prepare.PreparedPayload);
+            NarrativeArcRuntimeSaveData corrupt = restored.CreateSaveData();
+            if (corrupt.arcs.Count > 0 && corrupt.arcs[0].stages.Length > 0) corrupt.arcs[0].stages[0].stageRuntimeId = "narrative-arc-stage-runtime.corrupt";
+            int beforeReject = restored.Count;
+            PersistenceParticipantPrepareResult rejected = restoredParticipant.PreparePayload(JsonUtility.ToJson(corrupt), NarrativeArcPersistenceParticipant.CurrentParticipantSchemaVersion);
+
+            bool restoredArc = restored.Query(new NarrativeArcQuery { arcDefinitionId = PrototypeNarrativeArcDefinitionFactory.MayorInvestigationArcDefinitionId, developmentView = true }).Count == 1;
+            bool redacted = publicView != null && publicView.IsHidden && publicView.Stages.Count == 0;
+            bool valid = start.Succeeded && redacted && save.Succeeded && prepare.Succeeded && commit.Succeeded && restoredArc && actions == 0 && rejected.Succeeded == false && restored.Count == beforeReject;
+            return TestLabAssertions.True("step15-narrative-arc-persistence", "Narrative arc restore preserves state without replaying delegated actions, redacts hidden stages, and rejects corrupt payloads before mutation", valid, $"Start={start.Status} Redacted={redacted} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Restored={restoredArc} Actions={actions} Reject={rejected.Succeeded} Arcs={restored.Count}");
+        }
+
         private static DefinitionRegistry Registry(TestLabAutomationContext context)
         {
             DefinitionRegistry baseRegistry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
-            return PrototypeNarrativeStateDefinitionFactory.AddMissingPrototypeNarrativeStateDefinitions(PrototypeNarrativeEventDefinitionFactory.AddMissingPrototypeNarrativeEventDefinitions(PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestSourceDefinitionFactory.AddMissingPrototypeQuestSourceDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry))))));
+            return PrototypeNarrativeArcDefinitionFactory.AddMissingPrototypeNarrativeArcDefinitions(PrototypeNarrativeStateDefinitionFactory.AddMissingPrototypeNarrativeStateDefinitions(PrototypeNarrativeEventDefinitionFactory.AddMissingPrototypeNarrativeEventDefinitions(PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestSourceDefinitionFactory.AddMissingPrototypeQuestSourceDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry)))))));
         }
 
         private static QuestRuntime Runtime(TestLabAutomationContext context)
@@ -1686,6 +1842,72 @@ namespace UnityIsekaiGame.Development.Automation
             };
         }
 
+        private static NarrativeArcRuntime ArcRuntime(DefinitionRegistry registry, out NarrativeStateRuntime states, out QuestRuntime quests, NarrativeEventRuntime events = null, QuestOutcomeRuntime outcomes = null)
+        {
+            states = StateRuntime(registry, events);
+            quests = new QuestRuntime(registry, PersistenceService.LocalWorldId);
+            return new NarrativeArcRuntime(registry, ArcIntegrations(quests, states, events, outcomes), PersistenceService.LocalWorldId);
+        }
+
+        private static NarrativeArcRuntimeIntegrations ArcIntegrations(QuestRuntime quests, NarrativeStateRuntime states, NarrativeEventRuntime events = null, QuestOutcomeRuntime outcomes = null)
+        {
+            return new NarrativeArcRuntimeIntegrations
+            {
+                QuestRuntime = quests,
+                QuestOutcomeRuntime = outcomes,
+                NarrativeEventRuntime = events,
+                NarrativeStateRuntime = states
+            };
+        }
+
+        private static NarrativeArcStartRequest ArcStart(TestLabAutomationContext context, string arcDefinitionId, string actorPersonId, string operation, NarrativeArcScope scope = NarrativeArcScope.Person, bool preview = false, double worldTime = 1d)
+        {
+            return new NarrativeArcStartRequest
+            {
+                transactionId = Tx(context, operation),
+                arcDefinitionId = arcDefinitionId,
+                actorPersonId = actorPersonId,
+                scopeKey = scope == NarrativeArcScope.World ? PersistenceService.LocalWorldId : actorPersonId,
+                subjectId = actorPersonId,
+                conditionContext = NarrativeContext(actorPersonId, subjectId: actorPersonId),
+                worldTime = worldTime,
+                preview = preview
+            };
+        }
+
+        private static NarrativeArcSignalRequest ArcSignal(
+            TestLabAutomationContext context,
+            string operation,
+            string arcDefinitionId,
+            NarrativeArcSignalCategory category,
+            string actor = "person.prototype.player",
+            string sourceId = "",
+            string value = "",
+            string questId = "",
+            string questDefinitionId = "",
+            QuestTerminalOutcomeKind outcome = QuestTerminalOutcomeKind.Unknown,
+            double worldTime = 2d)
+        {
+            string actualSource = string.IsNullOrWhiteSpace(sourceId) ? value : sourceId;
+            return new NarrativeArcSignalRequest
+            {
+                transactionId = Tx(context, operation),
+                arcDefinitionId = arcDefinitionId,
+                category = category,
+                signalId = Tx(context, $"{operation}-signal"),
+                sourceId = actualSource,
+                value = value,
+                questId = questId,
+                questDefinitionId = questDefinitionId,
+                questOutcomeKind = outcome,
+                actorPersonId = actor,
+                subjectId = actor,
+                scopeKey = string.IsNullOrWhiteSpace(actor) ? PersistenceService.LocalWorldId : actor,
+                conditionContext = NarrativeContext(actor, subjectId: actor, narrativeStateIds: string.IsNullOrWhiteSpace(sourceId) ? Array.Empty<string>() : new[] { sourceId }, customStateIds: string.IsNullOrWhiteSpace(value) ? Array.Empty<string>() : new[] { value }),
+                worldTime = worldTime
+            };
+        }
+
         private static bool EvaluateNarrativeStateCondition(NarrativeStateRuntime runtime, NarrativeConditionDefinitionData condition, NarrativeConditionContextData context)
         {
             if (runtime == null || condition == null) return false;
@@ -1731,7 +1953,8 @@ namespace UnityIsekaiGame.Development.Automation
             string[] dialogueIds = null,
             string[] narrativeStateIds = null,
             string[] organizationIds = null,
-            string[] socialIds = null)
+            string[] socialIds = null,
+            string[] customStateIds = null)
         {
             return new NarrativeConditionContextData
             {
@@ -1744,8 +1967,89 @@ namespace UnityIsekaiGame.Development.Automation
                 dialogueStateIds = dialogueIds ?? Array.Empty<string>(),
                 narrativeStateIds = narrativeStateIds ?? Array.Empty<string>(),
                 organizationStateIds = organizationIds ?? Array.Empty<string>(),
-                socialStateIds = socialIds ?? Array.Empty<string>()
+                socialStateIds = socialIds ?? Array.Empty<string>(),
+                customStateIds = customStateIds ?? Array.Empty<string>()
             };
+        }
+
+        private static DefinitionRegistry RegistryWithNarrativeArcActionProbe(TestLabAutomationContext context)
+        {
+            const string eventDefinitionId = "narrative-event-definition.prototype.15-10.arc-progress";
+            const string signalDefinitionId = "narrative-signal-definition.prototype.15-10.arc-progress";
+            const string arcDefinitionId = "narrative-arc-definition.prototype.15-10.event-hook";
+            const string stageDefinitionId = "narrative-arc-stage-definition.prototype.15-10.event-hook.stage";
+
+            DefinitionRegistry registry = Registry(context);
+            List<IGameDefinition> definitions = registry.DefinitionsById.Values.Where(definition => definition != null).ToList();
+
+            NarrativeEventDefinition eventDefinition = ScriptableObject.CreateInstance<NarrativeEventDefinition>();
+            eventDefinition.name = "Narrative Arc Progression Probe";
+            eventDefinition.DevelopmentConfigure(new NarrativeEventDefinitionData
+            {
+                eventDefinitionId = eventDefinitionId,
+                displayName = "Narrative Arc Progression Probe",
+                category = NarrativeEventCategory.Scripted,
+                scope = NarrativeEventScope.OncePerPerson,
+                repeatPolicy = NarrativeRepeatPolicy.OncePerScope,
+                armingPolicy = NarrativeArmingPolicy.OnWorldInitialization,
+                triggerMode = NarrativeTriggerMode.TriggerImmediatelyWhenMatched,
+                scopeSelectorId = "actor",
+                triggers = new[]
+                {
+                    new NarrativeTriggerDefinitionData
+                    {
+                        triggerDefinitionId = "narrative-trigger-definition.prototype.15-10.arc-progress",
+                        category = NarrativeTriggerCategory.ExplicitSignal,
+                        requiredSourceId = signalDefinitionId
+                    }
+                },
+                actions = new[]
+                {
+                    new NarrativeActionDefinitionData
+                    {
+                        actionDefinitionId = "narrative-action-definition.prototype.15-10.request-arc-progress",
+                        category = NarrativeActionCategory.RequestNarrativeArcProgression,
+                        requirement = NarrativeActionRequirement.Required,
+                        targetId = stageDefinitionId,
+                        secondaryTargetId = arcDefinitionId
+                    }
+                },
+                tagIds = new[] { "prototype", "testlab", "narrative-arc" }
+            });
+            definitions.Add(eventDefinition);
+
+            NarrativeArcDefinition arcDefinition = ScriptableObject.CreateInstance<NarrativeArcDefinition>();
+            arcDefinition.name = "Narrative Arc Event Hook Probe";
+            arcDefinition.DevelopmentConfigure(new NarrativeArcDefinitionData
+            {
+                arcDefinitionId = arcDefinitionId,
+                displayName = "Narrative Arc Event Hook Probe",
+                scope = NarrativeArcScope.Person,
+                visibility = NarrativeEventVisibility.ParticipantKnown,
+                stages = new[]
+                {
+                    new NarrativeArcStageDefinitionData
+                    {
+                        stageDefinitionId = stageDefinitionId,
+                        displayName = "Event hook stage",
+                        initial = true,
+                        terminalOnCompletion = true,
+                        completionDependencies = new[]
+                        {
+                            new NarrativeArcDependencyDefinitionData
+                            {
+                                dependencyDefinitionId = "dependency.15-10.event-hook",
+                                kind = NarrativeArcDependencyKind.NarrativeEvent,
+                                requiredId = eventDefinitionId
+                            }
+                        }
+                    }
+                },
+                tagIds = new[] { "prototype", "testlab", "narrative-arc" }
+            });
+            definitions.Add(arcDefinition);
+
+            return new DefinitionRegistry(definitions);
         }
 
         private static DefinitionRegistry RegistryWithNarrativeStateActionProbe(TestLabAutomationContext context)
