@@ -57,6 +57,12 @@ namespace UnityIsekaiGame.Quests
         [Header("Objective Progress")]
         [SerializeField] private QuestObjectiveDefinitionData[] objectiveDefinitions = Array.Empty<QuestObjectiveDefinitionData>();
         [SerializeField] private QuestObjectiveGroupDefinitionData[] objectiveGroups = Array.Empty<QuestObjectiveGroupDefinitionData>();
+        [Header("Terminal Outcomes")]
+        [SerializeField] private QuestCompletionPolicyData completionPolicy = new QuestCompletionPolicyData();
+        [SerializeField] private QuestDeadlineDefinitionData[] deadlineDefinitions = Array.Empty<QuestDeadlineDefinitionData>();
+        [SerializeField] private QuestFailureConditionDefinitionData[] failureConditions = Array.Empty<QuestFailureConditionDefinitionData>();
+        [SerializeField] private QuestRewardPackageDefinitionData[] rewardPackages = Array.Empty<QuestRewardPackageDefinitionData>();
+        [SerializeField] private QuestConsequenceDefinitionData[] consequenceDefinitions = Array.Empty<QuestConsequenceDefinitionData>();
         [SerializeField] private bool repeatable;
         [SerializeField] private bool hiddenUntilDiscovered;
         [SerializeField] private bool canAbandon = true;
@@ -108,6 +114,11 @@ namespace UnityIsekaiGame.Quests
         public IReadOnlyList<QuestEligibilityRequirementGroupData> EligibilityRequirementGroups => (eligibilityRequirementGroups ?? Array.Empty<QuestEligibilityRequirementGroupData>()).Where(value => value != null).Select(value => value.Clone()).ToArray();
         public IReadOnlyList<QuestObjectiveDefinitionData> ObjectiveDefinitions => (objectiveDefinitions ?? Array.Empty<QuestObjectiveDefinitionData>()).Where(value => value != null).Select(value => value.Clone()).OrderBy(value => value.sequenceOrder).ThenBy(value => value.objectiveDefinitionId, StringComparer.Ordinal).ToArray();
         public IReadOnlyList<QuestObjectiveGroupDefinitionData> ObjectiveGroups => (objectiveGroups ?? Array.Empty<QuestObjectiveGroupDefinitionData>()).Where(value => value != null).Select(value => value.Clone()).OrderBy(value => value.sequenceOrder).ThenBy(value => value.groupDefinitionId, StringComparer.Ordinal).ToArray();
+        public QuestCompletionPolicyData CompletionPolicy => completionPolicy?.Clone() ?? new QuestCompletionPolicyData();
+        public IReadOnlyList<QuestDeadlineDefinitionData> DeadlineDefinitions => (deadlineDefinitions ?? Array.Empty<QuestDeadlineDefinitionData>()).Where(value => value != null).Select(value => value.Clone()).OrderBy(value => value.deadlineDefinitionId, StringComparer.Ordinal).ToArray();
+        public IReadOnlyList<QuestFailureConditionDefinitionData> FailureConditions => (failureConditions ?? Array.Empty<QuestFailureConditionDefinitionData>()).Where(value => value != null).Select(value => value.Clone()).OrderBy(value => value.failureConditionId, StringComparer.Ordinal).ToArray();
+        public IReadOnlyList<QuestRewardPackageDefinitionData> RewardPackages => (rewardPackages ?? Array.Empty<QuestRewardPackageDefinitionData>()).Where(value => value != null).Select(value => value.Clone()).OrderBy(value => value.rewardPackageId, StringComparer.Ordinal).ToArray();
+        public IReadOnlyList<QuestConsequenceDefinitionData> ConsequenceDefinitions => (consequenceDefinitions ?? Array.Empty<QuestConsequenceDefinitionData>()).Where(value => value != null).Select(value => value.Clone()).OrderBy(value => value.consequenceDefinitionId, StringComparer.Ordinal).ToArray();
         public bool Repeatable => repeatable;
         public bool HiddenUntilDiscovered => hiddenUntilDiscovered;
         public bool CanAbandon => canAbandon;
@@ -122,6 +133,7 @@ namespace UnityIsekaiGame.Quests
             ValidateStageAndObjectiveIds(report);
             ValidateIdentityMetadata(report);
             ValidateObjectiveProgressDefinitions(report);
+            ValidateOutcomeDefinitions(report);
             ValidatePersonReference(questGiver, nameof(QuestGiver), definitionsById, report);
             ValidateFactionReference(questSourceFaction, nameof(QuestSourceFaction), definitionsById, report);
             ValidateFactionReference(relatedFaction, nameof(RelatedFaction), definitionsById, report);
@@ -205,6 +217,36 @@ namespace UnityIsekaiGame.Quests
                 .Select(value => value.Clone())
                 .OrderBy(value => value.sequenceOrder)
                 .ThenBy(value => value.groupDefinitionId, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        public void DevelopmentConfigureOutcomes(
+            QuestCompletionPolicyData completion = null,
+            IEnumerable<QuestDeadlineDefinitionData> deadlines = null,
+            IEnumerable<QuestFailureConditionDefinitionData> failures = null,
+            IEnumerable<QuestRewardPackageDefinitionData> rewards = null,
+            IEnumerable<QuestConsequenceDefinitionData> consequences = null)
+        {
+            completionPolicy = completion?.Clone() ?? new QuestCompletionPolicyData();
+            deadlineDefinitions = (deadlines ?? Array.Empty<QuestDeadlineDefinitionData>())
+                .Where(value => value != null)
+                .Select(value => value.Clone())
+                .OrderBy(value => value.deadlineDefinitionId, StringComparer.Ordinal)
+                .ToArray();
+            failureConditions = (failures ?? Array.Empty<QuestFailureConditionDefinitionData>())
+                .Where(value => value != null)
+                .Select(value => value.Clone())
+                .OrderBy(value => value.failureConditionId, StringComparer.Ordinal)
+                .ToArray();
+            rewardPackages = (rewards ?? Array.Empty<QuestRewardPackageDefinitionData>())
+                .Where(value => value != null)
+                .Select(value => value.Clone())
+                .OrderBy(value => value.rewardPackageId, StringComparer.Ordinal)
+                .ToArray();
+            consequenceDefinitions = (consequences ?? Array.Empty<QuestConsequenceDefinitionData>())
+                .Where(value => value != null)
+                .Select(value => value.Clone())
+                .OrderBy(value => value.consequenceDefinitionId, StringComparer.Ordinal)
                 .ToArray();
         }
 
@@ -460,6 +502,165 @@ namespace UnityIsekaiGame.Quests
             visiting.Remove(objectiveId);
             visited.Add(objectiveId);
             return false;
+        }
+
+        private void ValidateOutcomeDefinitions(DefinitionValidationReport report)
+        {
+            QuestCompletionPolicyData completion = CompletionPolicy;
+            if (completion.policy == QuestCompletionPolicy.Unknown)
+            {
+                report.AddError($"QuestDefinition '{Title}' must declare a concrete completion policy.");
+            }
+
+            if (completion.policy == QuestCompletionPolicy.RequireTurnIn && string.IsNullOrWhiteSpace(completion.requiredInteractionPointId))
+            {
+                report.AddError($"QuestDefinition '{Title}' turn-in completion policy must declare a required interaction point ID.");
+            }
+
+            if (completion.policy == QuestCompletionPolicy.RequireIssuerVerification && string.IsNullOrWhiteSpace(completion.requiredIssuerId))
+            {
+                report.AddError($"QuestDefinition '{Title}' issuer-verification completion policy must declare a required issuer ID.");
+            }
+
+            HashSet<string> deadlineIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (QuestDeadlineDefinitionData deadline in DeadlineDefinitions)
+            {
+                if (string.IsNullOrWhiteSpace(deadline.deadlineDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has a deadline without a stable deadline definition ID.");
+                    continue;
+                }
+
+                if (!deadlineIds.Add(deadline.deadlineDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has duplicate deadline definition ID '{deadline.deadlineDefinitionId}'.");
+                }
+
+                if (deadline.startKind == QuestDeadlineStartKind.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' deadline '{deadline.deadlineDefinitionId}' has unknown start kind.");
+                }
+
+                if (deadline.expirationPolicy == QuestDeadlineExpirationPolicy.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' deadline '{deadline.deadlineDefinitionId}' has unknown expiration policy.");
+                }
+
+                if (deadline.startKind == QuestDeadlineStartKind.AbsoluteWorldTime && deadline.absoluteWorldTime < 0d)
+                {
+                    report.AddError($"QuestDefinition '{Title}' deadline '{deadline.deadlineDefinitionId}' requires a non-negative absolute world time.");
+                }
+
+                if (deadline.startKind != QuestDeadlineStartKind.AbsoluteWorldTime && deadline.durationFromStart < 0d)
+                {
+                    report.AddError($"QuestDefinition '{Title}' deadline '{deadline.deadlineDefinitionId}' requires a non-negative relative duration.");
+                }
+            }
+
+            HashSet<string> failureIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (QuestFailureConditionDefinitionData failure in FailureConditions)
+            {
+                if (string.IsNullOrWhiteSpace(failure.failureConditionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has a failure condition without a stable failure condition ID.");
+                    continue;
+                }
+
+                if (!failureIds.Add(failure.failureConditionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has duplicate failure condition ID '{failure.failureConditionId}'.");
+                }
+
+                if (failure.reasonCode == QuestFailureReasonCode.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' failure condition '{failure.failureConditionId}' has unknown reason code.");
+                }
+
+                if (failure.triggerKind == QuestFailureTriggerKind.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' failure condition '{failure.failureConditionId}' has unknown trigger kind.");
+                }
+            }
+
+            HashSet<string> packageIds = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> rewardIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (QuestRewardPackageDefinitionData package in RewardPackages)
+            {
+                if (string.IsNullOrWhiteSpace(package.rewardPackageId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has a reward package without a stable package ID.");
+                    continue;
+                }
+
+                if (!packageIds.Add(package.rewardPackageId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has duplicate reward package ID '{package.rewardPackageId}'.");
+                }
+
+                if (package.deliveryPolicy == QuestRewardDeliveryPolicy.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' reward package '{package.rewardPackageId}' has unknown delivery policy.");
+                }
+
+                if (package.atomicityPolicy == QuestRewardPackageAtomicityPolicy.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' reward package '{package.rewardPackageId}' has unknown atomicity policy.");
+                }
+
+                foreach (QuestRewardDefinitionData rewardDefinition in package.rewards ?? Array.Empty<QuestRewardDefinitionData>())
+                {
+                    if (string.IsNullOrWhiteSpace(rewardDefinition.rewardDefinitionId))
+                    {
+                        report.AddError($"QuestDefinition '{Title}' reward package '{package.rewardPackageId}' has a reward without a stable reward definition ID.");
+                        continue;
+                    }
+
+                    if (!rewardIds.Add(rewardDefinition.rewardDefinitionId))
+                    {
+                        report.AddError($"QuestDefinition '{Title}' has duplicate reward definition ID '{rewardDefinition.rewardDefinitionId}'.");
+                    }
+
+                    if (rewardDefinition.category == QuestRewardCategory.Unknown)
+                    {
+                        report.AddError($"QuestDefinition '{Title}' reward '{rewardDefinition.rewardDefinitionId}' has unknown category.");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(rewardDefinition.targetDefinitionId))
+                    {
+                        report.AddError($"QuestDefinition '{Title}' reward '{rewardDefinition.rewardDefinitionId}' must declare a target definition ID.");
+                    }
+
+                    if (rewardDefinition.quantity <= 0)
+                    {
+                        report.AddError($"QuestDefinition '{Title}' reward '{rewardDefinition.rewardDefinitionId}' has invalid quantity.");
+                    }
+                }
+            }
+
+            HashSet<string> consequenceIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (QuestConsequenceDefinitionData consequence in ConsequenceDefinitions)
+            {
+                if (string.IsNullOrWhiteSpace(consequence.consequenceDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has a consequence without a stable consequence definition ID.");
+                    continue;
+                }
+
+                if (!consequenceIds.Add(consequence.consequenceDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has duplicate consequence definition ID '{consequence.consequenceDefinitionId}'.");
+                }
+
+                if (consequence.appliesTo == QuestTerminalOutcomeKind.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' consequence '{consequence.consequenceDefinitionId}' has unknown terminal outcome kind.");
+                }
+
+                if (consequence.category == QuestRewardCategory.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' consequence '{consequence.consequenceDefinitionId}' has unknown category.");
+                }
+            }
         }
 
         private void ValidatePersonReference(

@@ -81,6 +81,7 @@ namespace UnityIsekaiGame.Quests
             definition.DevelopmentConfigureIdentity(id, title, category, importance, repeatability, visibility, source, issuerTypes, recipientScopes, tags, dynamic, multiple, perWorldUnique, perRecipientUnique);
             ConfigureParticipation(definition, id);
             ConfigureObjectives(definition, id);
+            ConfigureOutcomes(definition, id);
             definitions.Add(definition);
             existingIds.Add(id);
         }
@@ -209,6 +210,50 @@ namespace UnityIsekaiGame.Quests
             }
         }
 
+        private static void ConfigureOutcomes(QuestDefinition definition, string id)
+        {
+            switch (id)
+            {
+                case GuildPostingDefinitionId:
+                    definition.DevelopmentConfigureOutcomes(
+                        completion: TurnIn("interaction-point.prototype.guild-counter"),
+                        deadlines: new[] { Deadline("quest-deadline-definition.prototype.guild.three-days", 3d) },
+                        failures: new[] { Failure("quest-failure-condition.prototype.guild.deadline", QuestFailureReasonCode.DeadlineExpired, QuestFailureTriggerKind.Deadline) },
+                        rewards: new[] { RewardPackage("quest-reward-package.prototype.guild.base", QuestRewardDeliveryPolicy.ClaimAfterCompletion, Reward("quest-reward.prototype.guild.gold", QuestRewardCategory.Currency, "currency.gold", 50), Reward("quest-reward.prototype.guild.reputation", QuestRewardCategory.Reputation, "reputation.prototype.adventurers-guild", 5)) },
+                        consequences: new[] { Consequence("quest-consequence.prototype.guild.missed", QuestTerminalOutcomeKind.Expired, QuestRewardCategory.Reputation, "reputation.prototype.adventurers-guild", -2) });
+                    break;
+                case MerchantDeliveryDefinitionId:
+                    definition.DevelopmentConfigureOutcomes(
+                        completion: TurnIn("interaction-point.prototype.merchant-counter"),
+                        deadlines: new[] { Deadline("quest-deadline-definition.prototype.delivery.one-day", 1d) },
+                        failures: new[] { Failure("quest-failure-condition.prototype.delivery.parcel-lost", QuestFailureReasonCode.RequiredItemLost, QuestFailureTriggerKind.StateEvaluation) },
+                        rewards: new[] { RewardPackage("quest-reward-package.prototype.delivery.base", QuestRewardDeliveryPolicy.ClaimAfterCompletion, Reward("quest-reward.prototype.delivery.gold", QuestRewardCategory.Currency, "currency.gold", 25), Reward("quest-reward.prototype.delivery.item", QuestRewardCategory.Item, "item.health-potion", 1)) });
+                    break;
+                case CivicInvestigationDefinitionId:
+                    definition.DevelopmentConfigureOutcomes(
+                        completion: new QuestCompletionPolicyData { policy = QuestCompletionPolicy.RequireIssuerVerification, requiredIssuerId = "office.prototype.mayor", allowOptionalBonusRewards = true },
+                        deadlines: new[] { Deadline("quest-deadline-definition.prototype.investigation.five-days", 5d) },
+                        failures: new[] { Failure("quest-failure-condition.prototype.investigation.protected-target", QuestFailureReasonCode.ProtectedTargetLost, QuestFailureTriggerKind.DomainEvent) },
+                        rewards: new[] { RewardPackage("quest-reward-package.prototype.investigation.base", QuestRewardDeliveryPolicy.ClaimAfterCompletion, Reward("quest-reward.prototype.investigation.legal-permit", QuestRewardCategory.LegalPermitStatus, "permit.prototype.city-investigator", 1), Reward("quest-reward.prototype.investigation.knowledge", QuestRewardCategory.Knowledge, "knowledge.prototype.civic-incident-resolution", 1)) });
+                    break;
+                case HiddenDungeonRumorDefinitionId:
+                    definition.DevelopmentConfigureOutcomes(
+                        completion: new QuestCompletionPolicyData { policy = QuestCompletionPolicy.AutoCompleteWhenRequiredObjectivesSatisfied, allowOptionalBonusRewards = true },
+                        rewards: new[] { RewardPackage("quest-reward-package.prototype.hidden.base", QuestRewardDeliveryPolicy.GrantOnCompletion, Reward("quest-reward.prototype.hidden.knowledge", QuestRewardCategory.Knowledge, "knowledge.prototype.hidden-dungeon-confirmed", 1, hidden: true)) });
+                    break;
+                case DynamicBountyDefinitionId:
+                    definition.DevelopmentConfigureOutcomes(
+                        completion: TurnIn("interaction-point.prototype.bounty-board"),
+                        deadlines: new[] { Deadline("quest-deadline-definition.prototype.bounty.two-days", 2d) },
+                        failures: new[] { Failure("quest-failure-condition.prototype.bounty.actor-died", QuestFailureReasonCode.ActorDied, QuestFailureTriggerKind.DomainEvent) },
+                        rewards: new[] { RewardPackage("quest-reward-package.prototype.bounty.base", QuestRewardDeliveryPolicy.ClaimAfterCompletion, Reward("quest-reward.prototype.bounty.gold", QuestRewardCategory.Currency, "currency.gold", 75), Reward("quest-reward.prototype.bounty.reputation", QuestRewardCategory.Reputation, "reputation.prototype.city-guard", 8)) });
+                    break;
+                default:
+                    definition.DevelopmentConfigureOutcomes();
+                    break;
+            }
+        }
+
         private static QuestEligibilityRequirementGroupData All(string id, params QuestEligibilityRequirementData[] requirements)
         {
             return Group(id, QuestEligibilityGroupPolicy.All, requirements);
@@ -310,6 +355,74 @@ namespace UnityIsekaiGame.Quests
                 subjectType = type,
                 subjectId = id,
                 tags = Array.Empty<string>()
+            };
+        }
+
+        private static QuestCompletionPolicyData TurnIn(string interactionPointId)
+        {
+            return new QuestCompletionPolicyData
+            {
+                policy = QuestCompletionPolicy.RequireTurnIn,
+                requiredInteractionPointId = interactionPointId,
+                allowOptionalBonusRewards = true
+            };
+        }
+
+        private static QuestDeadlineDefinitionData Deadline(string id, double duration)
+        {
+            return new QuestDeadlineDefinitionData
+            {
+                deadlineDefinitionId = id,
+                startKind = QuestDeadlineStartKind.AssignmentAccepted,
+                expirationPolicy = QuestDeadlineExpirationPolicy.FailAssignment,
+                durationFromStart = duration
+            };
+        }
+
+        private static QuestFailureConditionDefinitionData Failure(string id, QuestFailureReasonCode reason, QuestFailureTriggerKind trigger)
+        {
+            return new QuestFailureConditionDefinitionData
+            {
+                failureConditionId = id,
+                reasonCode = reason,
+                triggerKind = trigger,
+                subject = Target(InformationSubjectType.Custom, id)
+            };
+        }
+
+        private static QuestRewardPackageDefinitionData RewardPackage(string id, QuestRewardDeliveryPolicy delivery, params QuestRewardDefinitionData[] rewards)
+        {
+            return new QuestRewardPackageDefinitionData
+            {
+                rewardPackageId = id,
+                deliveryPolicy = delivery,
+                atomicityPolicy = QuestRewardPackageAtomicityPolicy.AllOrNothing,
+                rewards = rewards ?? Array.Empty<QuestRewardDefinitionData>()
+            };
+        }
+
+        private static QuestRewardDefinitionData Reward(string id, QuestRewardCategory category, string targetId, int quantity, bool optional = false, bool hidden = false)
+        {
+            return new QuestRewardDefinitionData
+            {
+                rewardDefinitionId = id,
+                category = category,
+                targetDefinitionId = targetId,
+                quantity = quantity,
+                optional = optional,
+                hidden = hidden
+            };
+        }
+
+        private static QuestConsequenceDefinitionData Consequence(string id, QuestTerminalOutcomeKind appliesTo, QuestRewardCategory category, string targetId, int magnitude)
+        {
+            return new QuestConsequenceDefinitionData
+            {
+                consequenceDefinitionId = id,
+                appliesTo = appliesTo,
+                category = category,
+                targetDefinitionId = targetId,
+                magnitude = magnitude
             };
         }
     }
