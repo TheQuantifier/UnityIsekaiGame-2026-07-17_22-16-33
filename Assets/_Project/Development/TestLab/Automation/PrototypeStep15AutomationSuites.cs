@@ -231,6 +231,23 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("100.3-timeline-visibility-pagination", "Unified narrative timeline redacts hidden entries and pages deterministically", 30, Step("step15-narrative-timeline", "Query Step 15 historical timeline", Step15NarrativeTimelineVisibility)),
                     Scenario("100.4-recovery-diagnostics", "Validation separates recoverable derived gaps from authoritative corruption", 40, Step("step15-narrative-recovery", "Validate Step 15 recovery diagnostics", Step15NarrativeRecoveryDiagnostics))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.12.quest-dialogue-narrative-event-integration-finalization",
+                "Step 15 Quest, Dialogue, Narrative, and Event Integration Finalization",
+                "15.12",
+                "Final Step 15 ownership, readiness, immutable context projection, validation hardening, scene-binding authority, and Step 16 authoring contract checks.",
+                15120,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "Step15NarrativeIntegrationService", "Step15NarrativeHistoricalService", "QuestRuntime", "DialogueFlowRuntime", "NarrativeArcRuntime" },
+                scenarios: new[]
+                {
+                    Scenario("101.1-readiness-ownership", "Aggregate Step 15 readiness and ownership are coherent", 10, Step("step15-integration-readiness", "Build final Step 15 readiness snapshot", Step15IntegrationReadinessOwnership)),
+                    Scenario("101.2-context-projection", "Unified narrative context is immutable and bounded", 20, Step("step15-integration-context", "Build player narrative context projection", Step15IntegrationContextProjection)),
+                    Scenario("101.3-validation-boundaries", "Final validator catches cross-runtime and scene-binding violations", 30, Step("step15-integration-validation", "Validate deliberate integration drift", Step15IntegrationValidationBoundaries)),
+                    Scenario("101.4-step16-contract", "Step 16 authoring contract is explicit", 40, Step("step15-integration-step16-contract", "Build Step 16 authoring contract", Step15IntegrationStep16Contract))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -330,6 +347,94 @@ namespace UnityIsekaiGame.Development.Automation
             bool valid = !report.Succeeded && recoverable && hardFailure;
 
             return TestLabAssertions.True("step15-narrative-recovery", "Step 15 validation distinguishes repairable projections from authoritative corruption", valid, $"Succeeded={report.Succeeded} Errors={report.Errors.Count} Recoverable={recoverable} Hard={hardFailure} Issues={report.RecoveryIssues.Count}");
+        }
+
+        private static TestLabAutomationStepResult Step15IntegrationReadinessOwnership(TestLabAutomationContext context)
+        {
+            Step15NarrativeIntegrationService service = new Step15NarrativeIntegrationService();
+            Step15NarrativePersistenceSnapshot snapshot = Step15NarrativeCoherentAutomationSnapshot();
+            Step15NarrativeReadinessSnapshot readiness = service.BuildReadiness(snapshot, new Step15NarrativeSceneBindingSummary
+            {
+                SceneId = "scene.prototype",
+                LocationBindingCount = 4,
+                InteractionPointBindingCount = 8,
+                QuestSourceBindingCount = 2,
+                PresentationOnlyBindingCount = 14
+            });
+
+            bool owners = readiness.Manifest.Ownership.Where(entry => !entry.Derived).Select(entry => entry.Category).Distinct(StringComparer.Ordinal).Count()
+                == readiness.Manifest.Ownership.Count(entry => !entry.Derived);
+            bool requiredReady = readiness.Runtimes.Where(item => item.Requirement == Step15NarrativeRuntimeRequirement.Required).All(item => item.State == Step15NarrativeReadinessState.Ready);
+            bool sceneOptional = readiness.Runtimes.Any(item => item.ComponentId == "SceneBindingState" && item.Requirement == Step15NarrativeRuntimeRequirement.Optional);
+            bool valid = readiness.Ready && readiness.Validation.Succeeded && owners && requiredReady && sceneOptional;
+
+            return TestLabAssertions.True("step15-integration-readiness", "Step 15 aggregate readiness uses owner runtimes and keeps scene binding optional", valid, $"Ready={readiness.State} Errors={readiness.Validation.ErrorCount} Warnings={readiness.Validation.WarningCount} Owners={owners} Required={requiredReady} SceneOptional={sceneOptional}");
+        }
+
+        private static TestLabAutomationStepResult Step15IntegrationContextProjection(TestLabAutomationContext context)
+        {
+            Step15NarrativeIntegrationService service = new Step15NarrativeIntegrationService();
+            Step15NarrativePersistenceSnapshot snapshot = Step15NarrativeActiveContextAutomationSnapshot();
+            Step15NarrativeContextSnapshot projection = service.BuildNarrativeContext(snapshot, new Step15NarrativeContextQuery
+            {
+                RequesterPersonId = "person.prototype.hero",
+                PersonId = "person.prototype.hero",
+                LocationId = "location.prototype.guild",
+                OrganizationId = "organization.prototype.guild",
+                WorldTime = 9d,
+                Limit = 25
+            });
+
+            snapshot.Participation.assignments[0].assignmentId = "assignment.prototype.mutated-after-projection";
+            snapshot.DialogueFlows.flows[0].currentNodeId = "node.mutated-after-projection";
+
+            bool active = projection.ActiveAssignments.Any(entry => entry.PrimaryId == "assignment.prototype.automation");
+            bool objective = projection.ActiveObjectives.Any(entry => entry.PrimaryId == "objective.prototype.automation");
+            bool turnIn = projection.TurnInReadyQuests.Any(entry => entry.RelatedId == "quest.prototype.automation");
+            bool source = projection.AvailableQuestSources.Any(entry => entry.PrimaryId == "quest-source.prototype.automation");
+            bool dialogue = projection.CurrentDialogueNodes.Any(entry => entry.PrimaryId == "node.report");
+            bool immutable = projection.ActiveAssignments.All(entry => entry.PrimaryId != "assignment.prototype.mutated-after-projection")
+                && projection.CurrentDialogueNodes.All(entry => entry.PrimaryId != "node.mutated-after-projection");
+            bool valid = active && objective && turnIn && source && dialogue && immutable;
+
+            return TestLabAssertions.True("step15-integration-context", "Step 15 narrative context projection is bounded, immutable, and owner-derived", valid, $"Active={active} Objective={objective} TurnIn={turnIn} Source={source} Dialogue={dialogue} Immutable={immutable} Entries={projection.TotalEntries}");
+        }
+
+        private static TestLabAutomationStepResult Step15IntegrationValidationBoundaries(TestLabAutomationContext context)
+        {
+            Step15NarrativeIntegrationService service = new Step15NarrativeIntegrationService();
+            Step15NarrativePersistenceSnapshot corrupt = Step15NarrativeAutomationSnapshot();
+            corrupt.Outcomes.rewardEntitlements.Add(corrupt.Outcomes.rewardEntitlements[0].Clone());
+            corrupt.NarrativeEvents.events[0].cascadeDepth = Step15NarrativeIntegrationService.DefaultCascadeBudget + 1;
+            corrupt.NarrativeEvents.events[0].actionExecutions[0].targetOwnerRuntime = "reflection:UnsafeInvoke";
+
+            Step15NarrativeIntegrationValidationReport report = service.ValidateFinalization(corrupt, new Step15NarrativeSceneBindingSummary
+            {
+                SceneId = "scene.prototype",
+                AuthoritativeMutationBindingCount = 1
+            });
+
+            bool participation = report.Issues.Any(issue => issue.Category == Step15NarrativeValidationCategory.QuestParticipation);
+            bool rewards = report.Issues.Any(issue => issue.Category == Step15NarrativeValidationCategory.Rewards);
+            bool cascade = report.Issues.Any(issue => issue.Category == Step15NarrativeValidationCategory.Performance);
+            bool security = report.Issues.Any(issue => issue.Category == Step15NarrativeValidationCategory.NarrativeEvents);
+            bool scene = report.Issues.Any(issue => issue.Category == Step15NarrativeValidationCategory.SceneBinding);
+            bool valid = !report.Succeeded && participation && rewards && cascade && security && scene;
+
+            return TestLabAssertions.True("step15-integration-validation", "Step 15 final validator catches coherence, duplicate reward, cascade, security, and scene authority violations", valid, $"Succeeded={report.Succeeded} Errors={report.ErrorCount} Participation={participation} Rewards={rewards} Cascade={cascade} Security={security} Scene={scene}");
+        }
+
+        private static TestLabAutomationStepResult Step15IntegrationStep16Contract(TestLabAutomationContext context)
+        {
+            Step15NarrativeIntegrationService service = new Step15NarrativeIntegrationService();
+            Step15NarrativeAuthoringContract contract = service.BuildStep16AuthoringContract();
+
+            string[] required = { "quests", "quest-sources", "objectives", "outcomes-rewards", "conversation-dialogue", "narrative-events", "narrative-state", "narrative-arcs", "history-persistence" };
+            bool sections = required.All(id => contract.Sections.Any(section => section.SectionId == id));
+            bool populated = contract.Sections.All(section => section.AuthorableConcepts.Count > 0 && section.ValidationGuarantees.Count > 0);
+            bool valid = sections && populated;
+
+            return TestLabAssertions.True("step15-integration-step16-contract", "Step 16 can rely on explicit Step 15 authoring contracts", valid, $"Sections={contract.Sections.Count} Required={sections} Populated={populated}");
         }
 
         private static TestLabAutomationStepResult ReadinessAndDefinitions(TestLabAutomationContext context)
@@ -2713,6 +2818,41 @@ namespace UnityIsekaiGame.Development.Automation
                     }
                 }
             }.Clone();
+        }
+
+        private static Step15NarrativePersistenceSnapshot Step15NarrativeCoherentAutomationSnapshot()
+        {
+            Step15NarrativePersistenceSnapshot snapshot = Step15NarrativeAutomationSnapshot();
+            snapshot.Participation.offers[0].lifecycleState = QuestOfferLifecycleState.Accepted;
+            snapshot.Participation.assignments[0].lifecycleState = QuestAssignmentLifecycleState.Historical;
+            snapshot.Participation.assignments[0].endedWorldTime = 10d;
+            snapshot.Objectives.objectives[0].lifecycleState = QuestObjectiveLifecycleState.Satisfied;
+            snapshot.Objectives.objectives[0].satisfied = true;
+            snapshot.Objectives.objectives[0].satisfiedWorldTime = 9d;
+            snapshot.Sources.sources[0].hostLocationId = "location.prototype.guild";
+            snapshot.Sources.sources[0].interactionPointId = "interaction-point.prototype.guild-board";
+            snapshot.Sources.sources[0].operatingOrganizationId = "organization.prototype.guild";
+            snapshot.Sources.listings[0].claimedAssignmentId = "assignment.prototype.automation";
+            snapshot.Conversations.conversations[0].hostLocationId = "location.prototype.guild";
+            snapshot.Conversations.conversations[0].hostInteractionPointId = "interaction-point.prototype.guild-counter";
+            snapshot.Conversations.conversations[0].operatingOrganizationId = "organization.prototype.guild";
+            return snapshot.Clone();
+        }
+
+        private static Step15NarrativePersistenceSnapshot Step15NarrativeActiveContextAutomationSnapshot()
+        {
+            Step15NarrativePersistenceSnapshot snapshot = Step15NarrativeCoherentAutomationSnapshot();
+            snapshot.Participation.offers[0].lifecycleState = QuestOfferLifecycleState.Active;
+            snapshot.Participation.assignments[0].lifecycleState = QuestAssignmentLifecycleState.Active;
+            snapshot.Participation.assignments[0].endedWorldTime = -1d;
+            snapshot.Outcomes.terminalOutcomes.Clear();
+            snapshot.Outcomes.rewardEntitlements.Clear();
+            snapshot.Outcomes.rewardGrants.Clear();
+            snapshot.Outcomes.events.Clear();
+            snapshot.Sources.listings[0].lifecycleState = QuestListingLifecycleState.Published;
+            snapshot.Sources.listings[0].endedWorldTime = -1d;
+            snapshot.Sources.listings[0].claimedAssignmentId = string.Empty;
+            return snapshot.Clone();
         }
 
         private sealed class AutomationRewardExecutor : IQuestRewardEffectExecutor
