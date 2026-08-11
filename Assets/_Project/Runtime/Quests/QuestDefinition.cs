@@ -54,6 +54,9 @@ namespace UnityIsekaiGame.Quests
         [SerializeField] private bool prevalidateEligibilityForOffers = true;
         [SerializeField] private string[] offeringAuthorityRequirementIds = Array.Empty<string>();
         [SerializeField] private QuestEligibilityRequirementGroupData[] eligibilityRequirementGroups = Array.Empty<QuestEligibilityRequirementGroupData>();
+        [Header("Objective Progress")]
+        [SerializeField] private QuestObjectiveDefinitionData[] objectiveDefinitions = Array.Empty<QuestObjectiveDefinitionData>();
+        [SerializeField] private QuestObjectiveGroupDefinitionData[] objectiveGroups = Array.Empty<QuestObjectiveGroupDefinitionData>();
         [SerializeField] private bool repeatable;
         [SerializeField] private bool hiddenUntilDiscovered;
         [SerializeField] private bool canAbandon = true;
@@ -103,6 +106,8 @@ namespace UnityIsekaiGame.Quests
         public bool PrevalidateEligibilityForOffers => prevalidateEligibilityForOffers;
         public IReadOnlyList<string> OfferingAuthorityRequirementIds => offeringAuthorityRequirementIds ?? Array.Empty<string>();
         public IReadOnlyList<QuestEligibilityRequirementGroupData> EligibilityRequirementGroups => (eligibilityRequirementGroups ?? Array.Empty<QuestEligibilityRequirementGroupData>()).Where(value => value != null).Select(value => value.Clone()).ToArray();
+        public IReadOnlyList<QuestObjectiveDefinitionData> ObjectiveDefinitions => (objectiveDefinitions ?? Array.Empty<QuestObjectiveDefinitionData>()).Where(value => value != null).Select(value => value.Clone()).OrderBy(value => value.sequenceOrder).ThenBy(value => value.objectiveDefinitionId, StringComparer.Ordinal).ToArray();
+        public IReadOnlyList<QuestObjectiveGroupDefinitionData> ObjectiveGroups => (objectiveGroups ?? Array.Empty<QuestObjectiveGroupDefinitionData>()).Where(value => value != null).Select(value => value.Clone()).OrderBy(value => value.sequenceOrder).ThenBy(value => value.groupDefinitionId, StringComparer.Ordinal).ToArray();
         public bool Repeatable => repeatable;
         public bool HiddenUntilDiscovered => hiddenUntilDiscovered;
         public bool CanAbandon => canAbandon;
@@ -116,6 +121,7 @@ namespace UnityIsekaiGame.Quests
 
             ValidateStageAndObjectiveIds(report);
             ValidateIdentityMetadata(report);
+            ValidateObjectiveProgressDefinitions(report);
             ValidatePersonReference(questGiver, nameof(QuestGiver), definitionsById, report);
             ValidateFactionReference(questSourceFaction, nameof(QuestSourceFaction), definitionsById, report);
             ValidateFactionReference(relatedFaction, nameof(RelatedFaction), definitionsById, report);
@@ -182,6 +188,24 @@ namespace UnityIsekaiGame.Quests
             offeringAuthorityRequirementIds = Clean(authorityRequirements);
             eligibilityRequirementGroups = (eligibilityGroups ?? Array.Empty<QuestEligibilityRequirementGroupData>()).Where(value => value != null).Select(value => value.Clone()).ToArray();
             canAbandon = AbandonmentPolicy != QuestAbandonmentPolicy.NotAllowed;
+        }
+
+        public void DevelopmentConfigureObjectives(
+            IEnumerable<QuestObjectiveDefinitionData> objectives,
+            IEnumerable<QuestObjectiveGroupDefinitionData> groups = null)
+        {
+            objectiveDefinitions = (objectives ?? Array.Empty<QuestObjectiveDefinitionData>())
+                .Where(value => value != null)
+                .Select(value => value.Clone())
+                .OrderBy(value => value.sequenceOrder)
+                .ThenBy(value => value.objectiveDefinitionId, StringComparer.Ordinal)
+                .ToArray();
+            objectiveGroups = (groups ?? Array.Empty<QuestObjectiveGroupDefinitionData>())
+                .Where(value => value != null)
+                .Select(value => value.Clone())
+                .OrderBy(value => value.sequenceOrder)
+                .ThenBy(value => value.groupDefinitionId, StringComparer.Ordinal)
+                .ToArray();
         }
 
         private void ValidateStageAndObjectiveIds(DefinitionValidationReport report)
@@ -289,6 +313,153 @@ namespace UnityIsekaiGame.Quests
                     }
                 }
             }
+        }
+
+        private void ValidateObjectiveProgressDefinitions(DefinitionValidationReport report)
+        {
+            QuestObjectiveDefinitionData[] objectives = ObjectiveDefinitions.ToArray();
+            HashSet<string> objectiveIds = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> groupIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (QuestObjectiveGroupDefinitionData group in ObjectiveGroups)
+            {
+                if (string.IsNullOrWhiteSpace(group.groupDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has an objective group without a stable ID.");
+                    continue;
+                }
+
+                if (!groupIds.Add(group.groupDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has duplicate objective group ID '{group.groupDefinitionId}'.");
+                }
+
+                if (group.policy == QuestObjectiveGroupPolicy.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective group '{group.groupDefinitionId}' has unknown policy.");
+                }
+
+                if (group.policy == QuestObjectiveGroupPolicy.AtLeast && group.thresholdCount <= 0)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective group '{group.groupDefinitionId}' threshold must be positive.");
+                }
+            }
+
+            foreach (QuestObjectiveDefinitionData objective in objectives)
+            {
+                if (string.IsNullOrWhiteSpace(objective.objectiveDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has an objective without a stable objective definition ID.");
+                    continue;
+                }
+
+                if (!objectiveIds.Add(objective.objectiveDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' has duplicate objective definition ID '{objective.objectiveDefinitionId}'.");
+                }
+
+                if (objective.category == QuestObjectiveCategory.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' has unknown category.");
+                }
+
+                if (objective.progressModel == QuestObjectiveProgressModel.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' has unknown progress model.");
+                }
+
+                if (objective.progressSource == QuestObjectiveProgressSource.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' has unknown progress source.");
+                }
+
+                if (objective.classification == QuestObjectiveRequirementClassification.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' has unknown requirement classification.");
+                }
+
+                if (objective.visibility == QuestObjectiveVisibility.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' has unknown visibility.");
+                }
+
+                if (objective.ownershipScope == QuestObjectiveOwnershipScope.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' has unknown ownership scope.");
+                }
+
+                if (objective.EffectiveTarget <= 0)
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' has invalid target amount.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(objective.groupDefinitionId) && !groupIds.Contains(objective.groupDefinitionId))
+                {
+                    report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' references missing objective group '{objective.groupDefinitionId}'.");
+                }
+            }
+
+            foreach (QuestObjectiveGroupDefinitionData group in ObjectiveGroups)
+            {
+                foreach (string objectiveId in group.objectiveDefinitionIds ?? Array.Empty<string>())
+                {
+                    if (!objectiveIds.Contains(objectiveId))
+                    {
+                        report.AddError($"QuestDefinition '{Title}' objective group '{group.groupDefinitionId}' references missing objective '{objectiveId}'.");
+                    }
+                }
+            }
+
+            foreach (QuestObjectiveDefinitionData objective in objectives)
+            {
+                foreach (string prerequisite in objective.prerequisiteObjectiveDefinitionIds ?? Array.Empty<string>())
+                {
+                    if (!objectiveIds.Contains(prerequisite))
+                    {
+                        report.AddError($"QuestDefinition '{Title}' objective '{objective.objectiveDefinitionId}' references missing prerequisite objective '{prerequisite}'.");
+                    }
+                }
+            }
+
+            ValidateObjectiveDependencyCycles(objectives, report);
+        }
+
+        private void ValidateObjectiveDependencyCycles(IReadOnlyList<QuestObjectiveDefinitionData> objectives, DefinitionValidationReport report)
+        {
+            Dictionary<string, string[]> edges = objectives
+                .Where(value => value != null && !string.IsNullOrWhiteSpace(value.objectiveDefinitionId))
+                .ToDictionary(value => value.objectiveDefinitionId, value => value.prerequisiteObjectiveDefinitionIds ?? Array.Empty<string>(), StringComparer.Ordinal);
+            HashSet<string> visiting = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> visited = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string objectiveId in edges.Keys.OrderBy(value => value, StringComparer.Ordinal))
+            {
+                Visit(objectiveId, edges, visiting, visited, report);
+            }
+        }
+
+        private bool Visit(string objectiveId, IReadOnlyDictionary<string, string[]> edges, ISet<string> visiting, ISet<string> visited, DefinitionValidationReport report)
+        {
+            if (visited.Contains(objectiveId)) return false;
+            if (visiting.Contains(objectiveId))
+            {
+                report.AddError($"QuestDefinition '{Title}' objective dependency graph has a cycle at '{objectiveId}'.");
+                return true;
+            }
+
+            visiting.Add(objectiveId);
+            if (edges.TryGetValue(objectiveId, out string[] prerequisites))
+            {
+                foreach (string prerequisite in prerequisites ?? Array.Empty<string>())
+                {
+                    if (edges.ContainsKey(prerequisite) && Visit(prerequisite, edges, visiting, visited, report))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            visiting.Remove(objectiveId);
+            visited.Add(objectiveId);
+            return false;
         }
 
         private void ValidatePersonReference(

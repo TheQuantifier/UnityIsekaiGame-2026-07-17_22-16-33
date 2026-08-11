@@ -52,6 +52,25 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("91.5-abandonment-release", "Abandonment releases capacity when configured", 50, Step("step15-participation-abandonment", "Abandon an active assignment", AbandonmentRelease)),
                     Scenario("91.6-visibility-and-persistence", "Hidden participation and persistence preserve boundaries", 60, Step("step15-participation-persistence", "Query and restore participation state", VisibilityAndPersistence))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.3.quest-objectives-conditions-progress-tracking",
+                "Quest Objectives, Conditions, and Progress Tracking",
+                "15.3",
+                "Assignment-owned objective progress with stable objective identities, state reconciliation, event-driven progress, visibility, idempotence, and persistence boundaries.",
+                15030,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "QuestRuntime", "QuestParticipationRuntime", "QuestObjectiveProgressRuntime", "QuestObjectiveProgressPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("92.1-objective-readiness", "Objective definitions register and validate", 10, Step("step15-objective-readiness", "Resolve objective definitions", ObjectiveReadiness)),
+                    Scenario("92.2-assignment-instantiation", "Accepted assignments instantiate objective records", 20, Step("step15-objective-instantiate", "Create assignment objectives", ObjectiveInstantiation)),
+                    Scenario("92.3-event-sequence-idempotence", "Event progress unlocks sequence and deduplicates source events", 30, Step("step15-objective-events", "Apply committed objective signals", ObjectiveEventSequence)),
+                    Scenario("92.4-current-state-reconciliation", "Current quantity objectives reconcile without fake events", 40, Step("step15-objective-state", "Reconcile current item state", ObjectiveCurrentState)),
+                    Scenario("92.5-hidden-progress-visibility", "Hidden objectives progress without public leakage", 50, Step("step15-objective-hidden", "Apply hidden objective progress", ObjectiveHiddenVisibility)),
+                    Scenario("92.6-persistence-and-rejection", "Objective progress persists and rejects invalid payloads safely", 60, Step("step15-objective-persistence", "Save, restore, and reject objective progress", ObjectivePersistence))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -346,6 +365,153 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step15-participation-persistence", "Hidden offers do not leak and persistence validates before restore", valid, $"Offer={offer.Status} Public={publicOffers} Privileged={privilegedOffers} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Restored={restored.OfferCount}");
         }
 
+        private static TestLabAutomationStepResult ObjectiveReadiness(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            bool guild = registry.TryGet(PrototypeQuestDefinitionFactory.GuildPostingDefinitionId, out QuestDefinition guildDefinition)
+                && guildDefinition.ObjectiveDefinitions.Count == 4
+                && guildDefinition.ObjectiveDefinitions.Any(objective => objective.progressModel == QuestObjectiveProgressModel.Counter);
+            bool delivery = registry.TryGet(PrototypeQuestDefinitionFactory.MerchantDeliveryDefinitionId, out QuestDefinition deliveryDefinition)
+                && deliveryDefinition.ObjectiveDefinitions.Any(objective => objective.progressModel == QuestObjectiveProgressModel.QuantityCurrent)
+                && deliveryDefinition.ObjectiveGroups.Count == 1;
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (QuestDefinition definition in PrototypeQuestDefinitionFactory.CreateMissingQuestDefinitions(Array.Empty<string>()))
+            {
+                definition.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                UnityEngine.Object.DestroyImmediate(definition);
+            }
+
+            bool valid = guild && delivery && report.ErrorCount == 0;
+            return TestLabAssertions.True("step15-objective-readiness", "Quest objective definitions register and validate", valid, $"Guild={guild} Delivery={delivery} Errors={report.ErrorCount} Warnings={report.WarningCount}");
+        }
+
+        private static TestLabAutomationStepResult ObjectiveInstantiation(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestObjectiveProgressRuntime objectives = Objectives(quests, participation, registry);
+            QuestAssignmentSnapshot assignment = AcceptedGuildAssignment(quests, participation, "objective-instantiate");
+
+            QuestObjectiveOperationResult preview = objectives.InstantiateForAssignment(assignment, transactionId: "tx.quest.objective.preview", preview: true);
+            QuestObjectiveOperationResult instantiate = objectives.InstantiateForAssignment(assignment, transactionId: "tx.quest.objective.instantiate");
+            QuestObjectiveOperationResult duplicate = objectives.InstantiateForAssignment(assignment, transactionId: "tx.quest.objective.instantiate-again");
+            QuestAssignmentObjectiveSummary summary = objectives.SummarizeAssignment(assignment.AssignmentId, QuestVisibilityAccess.PrivilegedDiagnostic);
+
+            bool valid = preview.Status == QuestObjectiveOperationStatus.Preview
+                && instantiate.Succeeded
+                && duplicate.Duplicate
+                && instantiate.Objectives.Count == 4
+                && summary.CompletionCandidate == false
+                && objectives.ObjectiveCount == 4;
+            return TestLabAssertions.True("step15-objective-instantiate", "Accepted assignments instantiate stable objective runtime records without completing quests", valid, $"Preview={preview.Status} Instantiate={instantiate.Status} Duplicate={duplicate.Status} Count={objectives.ObjectiveCount} Candidate={summary.CompletionCandidate}");
+        }
+
+        private static TestLabAutomationStepResult ObjectiveEventSequence(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestObjectiveProgressRuntime objectives = Objectives(quests, participation, registry);
+            QuestAssignmentSnapshot assignment = AcceptedGuildAssignment(quests, participation, "objective-events");
+            objectives.InstantiateForAssignment(assignment, transactionId: "tx.quest.objective.events.instantiate");
+
+            QuestObjectiveOperationResult early = objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.DefeatCount, "enemy-family.prototype.monster", "source.quest.objective.early"));
+            QuestObjectiveOperationResult counter = objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.UseInteractionPoint, "interaction-point.prototype.guild-counter", "source.quest.objective.counter"));
+            QuestObjectiveOperationResult duplicate = objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.UseInteractionPoint, "interaction-point.prototype.guild-counter", "source.quest.objective.counter"));
+            QuestObjectiveOperationResult dungeon = objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.VisitLocation, "location.prototype.dungeon-entry", "source.quest.objective.dungeon", InformationSubjectType.Location));
+            objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.DefeatCount, "enemy-family.prototype.monster", "source.quest.objective.defeat1"));
+            objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.DefeatCount, "enemy-family.prototype.monster", "source.quest.objective.defeat2"));
+            QuestObjectiveOperationResult defeat3 = objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.DefeatCount, "enemy-family.prototype.monster", "source.quest.objective.defeat3"));
+            QuestObjectiveSnapshot defeat = objectives.QueryObjectives(new QuestObjectiveQuery { assignmentId = assignment.AssignmentId, category = QuestObjectiveCategory.DefeatCount, access = QuestVisibilityAccess.PrivilegedDiagnostic }).Single();
+
+            bool valid = early.Succeeded == false
+                && counter.Succeeded
+                && duplicate.Status == QuestObjectiveOperationStatus.AlreadyCounted
+                && dungeon.Succeeded
+                && defeat3.Succeeded
+                && defeat.CurrentValue == 3
+                && defeat.Satisfied;
+            return TestLabAssertions.True("step15-objective-events", "Committed objective signals unlock prerequisites and deduplicate source events", valid, $"Early={early.Status} Counter={counter.Status} Duplicate={duplicate.Status} Dungeon={dungeon.Status} Defeat={defeat.CurrentValue}/{defeat.TargetValue} Satisfied={defeat.Satisfied}");
+        }
+
+        private static TestLabAutomationStepResult ObjectiveCurrentState(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestObjectiveProgressRuntime objectives = Objectives(quests, participation, registry);
+            QuestAssignmentSnapshot assignment = AcceptedDeliveryAssignment(quests, participation, "objective-state");
+            objectives.InstantiateForAssignment(assignment, transactionId: "tx.quest.objective.state.instantiate");
+
+            QuestObjectiveOperationResult state = objectives.ReconcileState(new QuestObjectiveStateContext
+            {
+                assignmentId = assignment.AssignmentId,
+                personId = assignment.AssigneePersonId,
+                worldTime = 3d,
+                facts = new QuestObjectiveStateFactSet(new[] { ObjectiveFact(QuestObjectiveCategory.PossessItem, "item.prototype.merchant-parcel", 1) })
+            });
+            QuestObjectiveOperationResult collect = objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.ObtainItem, "item.prototype.merchant-parcel", "source.quest.objective.collect"));
+            QuestObjectiveSnapshot possess = objectives.QueryObjectives(new QuestObjectiveQuery { assignmentId = assignment.AssignmentId, objectiveDefinitionId = "quest-objective-definition.prototype.delivery.possess-parcel", access = QuestVisibilityAccess.PrivilegedDiagnostic }).Single();
+            QuestObjectiveSnapshot collected = objectives.QueryObjectives(new QuestObjectiveQuery { assignmentId = assignment.AssignmentId, objectiveDefinitionId = "quest-objective-definition.prototype.delivery.collect-parcel", access = QuestVisibilityAccess.PrivilegedDiagnostic }).Single();
+
+            bool valid = state.Succeeded
+                && collect.Succeeded
+                && possess.Satisfied
+                && collected.Satisfied
+                && collected.CountedSourceEventIds.Contains("source.quest.objective.collect");
+            return TestLabAssertions.True("step15-objective-state", "Current-state and cumulative event objectives remain distinct", valid, $"State={state.Status} Collect={collect.Status} Possess={possess.CurrentValue}/{possess.TargetValue} Collected={collected.Satisfied}");
+        }
+
+        private static TestLabAutomationStepResult ObjectiveHiddenVisibility(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestObjectiveProgressRuntime objectives = Objectives(quests, participation, registry);
+            QuestAssignmentSnapshot assignment = AcceptedHiddenAssignment(quests, participation, "objective-hidden");
+            objectives.InstantiateForAssignment(assignment, transactionId: "tx.quest.objective.hidden.instantiate");
+
+            QuestObjectiveOperationResult discover = objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.DiscoverLocation, "location.prototype.secret-dungeon-entry", "source.quest.objective.hidden", InformationSubjectType.Location));
+            int publicCount = objectives.QueryObjectives(new QuestObjectiveQuery { assignmentId = assignment.AssignmentId, access = QuestVisibilityAccess.PublicOnly }).Count;
+            int privilegedCount = objectives.QueryObjectives(new QuestObjectiveQuery { assignmentId = assignment.AssignmentId, access = QuestVisibilityAccess.PrivilegedDiagnostic }).Count;
+            QuestAssignmentObjectiveSummary summary = objectives.SummarizeAssignment(assignment.AssignmentId, QuestVisibilityAccess.PublicOnly);
+
+            bool valid = discover.Succeeded
+                && publicCount == 0
+                && privilegedCount == 2
+                && summary.HiddenCountsRedacted
+                && summary.RequiredRemaining == -1;
+            return TestLabAssertions.True("step15-objective-hidden", "Hidden objective progress does not leak through ordinary views", valid, $"Discover={discover.Status} Public={publicCount} Privileged={privilegedCount} Redacted={summary.HiddenCountsRedacted}");
+        }
+
+        private static TestLabAutomationStepResult ObjectivePersistence(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestObjectiveProgressRuntime objectives = Objectives(quests, participation, registry);
+            QuestAssignmentSnapshot assignment = AcceptedGuildAssignment(quests, participation, "objective-persist");
+            objectives.InstantiateForAssignment(assignment, transactionId: "tx.quest.objective.persist.instantiate");
+            objectives.ApplySignal(ObjectiveSignal(assignment, QuestObjectiveCategory.UseInteractionPoint, "interaction-point.prototype.guild-counter", "source.quest.objective.persist"));
+            QuestObjectiveProgressPersistenceParticipant participant = new QuestObjectiveProgressPersistenceParticipant(objectives, () => quests, () => participation, () => registry, PersistenceService.LocalWorldId);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            QuestObjectiveProgressRuntime restored = Objectives(quests, participation, registry);
+            QuestObjectiveProgressPersistenceParticipant restoredParticipant = new QuestObjectiveProgressPersistenceParticipant(restored, () => quests, () => participation, () => registry, PersistenceService.LocalWorldId);
+            PersistenceParticipantPrepareResult prepare = restoredParticipant.PreparePayload(save.PayloadJson, QuestObjectiveProgressPersistenceParticipant.CurrentParticipantSchemaVersion);
+            PersistenceParticipantCommitResult commit = restoredParticipant.CommitPreparedPayload(prepare.PreparedPayload);
+            QuestObjectiveProgressRuntimeSaveData corrupt = restored.CreateSaveData();
+            corrupt.objectives[0].assignmentId = "quest-assignment.missing";
+            PersistenceParticipantPrepareResult rejected = restoredParticipant.PreparePayload(JsonUtility.ToJson(corrupt), QuestObjectiveProgressPersistenceParticipant.CurrentParticipantSchemaVersion);
+
+            bool valid = save.Succeeded
+                && prepare.Succeeded
+                && commit.Succeeded
+                && rejected.Succeeded == false
+                && restored.ObjectiveCount == 4;
+            return TestLabAssertions.True("step15-objective-persistence", "Quest objective progress persists and rejects invalid payloads before mutation", valid, $"Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Count={restored.ObjectiveCount}");
+        }
+
         private static DefinitionRegistry Registry(TestLabAutomationContext context)
         {
             DefinitionRegistry baseRegistry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
@@ -360,6 +526,140 @@ namespace UnityIsekaiGame.Development.Automation
         private static QuestParticipationRuntime Participation(QuestRuntime quests, DefinitionRegistry registry)
         {
             return new QuestParticipationRuntime(quests, registry, PersistenceService.LocalWorldId);
+        }
+
+        private static QuestObjectiveProgressRuntime Objectives(QuestRuntime quests, QuestParticipationRuntime participation, DefinitionRegistry registry)
+        {
+            return new QuestObjectiveProgressRuntime(quests, participation, registry, PersistenceService.LocalWorldId);
+        }
+
+        private static QuestAssignmentSnapshot AcceptedGuildAssignment(QuestRuntime quests, QuestParticipationRuntime participation, string key)
+        {
+            string questId = $"quest.prototype.guild.{key}";
+            string personId = $"person.prototype.{key}";
+            CreateGuildPosting(quests, key, questId);
+            QuestParticipationOperationResult offer = participation.CreateOffer(OfferRequest(questId, personId, EligibleContext(personId), $"tx.quest.offer.{key}"));
+            QuestParticipationOperationResult accept = participation.AcceptOffer(new QuestAcceptOfferRequest
+            {
+                transactionId = $"tx.quest.accept.{key}",
+                offerId = offer.Offer?.OfferId,
+                personId = personId,
+                explicitConsent = true,
+                consentRecordId = $"consent.prototype.{key}",
+                eligibilityContext = EligibleContext(personId),
+                worldTime = 2d
+            });
+            return accept.Assignment;
+        }
+
+        private static QuestAssignmentSnapshot AcceptedDeliveryAssignment(QuestRuntime quests, QuestParticipationRuntime participation, string key)
+        {
+            string questId = $"quest.prototype.delivery.{key}";
+            string personId = $"person.prototype.{key}";
+            quests.CreateQuest(new QuestCreateRequest
+            {
+                transactionId = $"tx.quest.delivery.create.{key}",
+                questId = questId,
+                questDefinitionId = PrototypeQuestDefinitionFactory.MerchantDeliveryDefinitionId,
+                issuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Organization, issuerId = "organization.prototype.merchant-guild" },
+                intendedRecipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Person, recipientId = personId },
+                origin = new QuestOriginReferenceData { sourceChannel = QuestSourceChannel.Dialogue, locationId = "location.prototype.market-stall", interactionPointId = "interaction-point.prototype.merchant-counter" },
+                subjectLinks = new[] { Subject("item.prototype.merchant-parcel", QuestSubjectRole.Item, InformationSubjectType.Custom) },
+                createdWorldTime = 1d
+            });
+            QuestParticipationOperationResult offer = participation.CreateOffer(new QuestOfferRequest
+            {
+                transactionId = $"tx.quest.delivery.offer.{key}",
+                questId = questId,
+                recipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Person, recipientId = personId },
+                institutionalIssuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Organization, issuerId = "organization.prototype.merchant-guild" },
+                offeringProvider = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Person, issuerId = "person.prototype.merchant" },
+                channel = QuestOfferChannel.DirectPerson,
+                sourceInteractionPointId = "interaction-point.prototype.merchant-counter",
+                sourceLocationId = "location.prototype.market-stall",
+                eligibilityContext = new QuestEligibilityContext { personId = personId, privilegedDiagnostics = true, worldTime = 1d },
+                worldTime = 1d
+            });
+            QuestParticipationOperationResult accept = participation.AcceptOffer(new QuestAcceptOfferRequest
+            {
+                transactionId = $"tx.quest.delivery.accept.{key}",
+                offerId = offer.Offer?.OfferId,
+                personId = personId,
+                explicitConsent = true,
+                consentRecordId = $"consent.prototype.{key}",
+                eligibilityContext = new QuestEligibilityContext { personId = personId, privilegedDiagnostics = true, worldTime = 2d },
+                worldTime = 2d
+            });
+            return accept.Assignment;
+        }
+
+        private static QuestAssignmentSnapshot AcceptedHiddenAssignment(QuestRuntime quests, QuestParticipationRuntime participation, string key)
+        {
+            string questId = $"quest.prototype.hidden.{key}";
+            string personId = $"person.prototype.{key}";
+            quests.CreateQuest(new QuestCreateRequest
+            {
+                transactionId = $"tx.quest.hidden.create.{key}",
+                questId = questId,
+                questDefinitionId = PrototypeQuestDefinitionFactory.HiddenDungeonRumorDefinitionId,
+                issuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.System, issuerId = "system.quest" },
+                intendedRecipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Open },
+                origin = new QuestOriginReferenceData { sourceChannel = QuestSourceChannel.WorldEvent, locationId = "location.prototype.tavern" },
+                subjectLinks = new[] { Subject("location.prototype.secret-dungeon-entry", QuestSubjectRole.Location, InformationSubjectType.Location) },
+                createdWorldTime = 1d
+            });
+            QuestParticipationOperationResult offer = participation.CreateOffer(new QuestOfferRequest
+            {
+                transactionId = $"tx.quest.hidden.offer.{key}",
+                questId = questId,
+                recipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Person, recipientId = personId },
+                institutionalIssuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Person, issuerId = "person.prototype.rumor-source" },
+                offeringProvider = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Person, issuerId = "person.prototype.rumor-source" },
+                channel = QuestOfferChannel.NarrativeEventPlaceholder,
+                sourceLocationId = "location.prototype.tavern",
+                eligibilityContext = new QuestEligibilityContext { personId = personId, privilegedDiagnostics = true, worldTime = 1d },
+                worldTime = 1d
+            });
+            QuestParticipationOperationResult accept = participation.AcceptOffer(new QuestAcceptOfferRequest
+            {
+                transactionId = $"tx.quest.hidden.accept.{key}",
+                offerId = offer.Offer?.OfferId,
+                personId = personId,
+                explicitConsent = true,
+                consentRecordId = $"consent.prototype.{key}",
+                eligibilityContext = new QuestEligibilityContext { personId = personId, privilegedDiagnostics = true, worldTime = 2d },
+                worldTime = 2d
+            });
+            return accept.Assignment;
+        }
+
+        private static QuestObjectiveSignal ObjectiveSignal(QuestAssignmentSnapshot assignment, QuestObjectiveCategory category, string targetId, string sourceEventId, InformationSubjectType targetType = InformationSubjectType.Custom)
+        {
+            return new QuestObjectiveSignal
+            {
+                transactionId = $"tx.{sourceEventId}",
+                assignmentId = assignment.AssignmentId,
+                questId = assignment.QuestId,
+                participantPersonId = assignment.AssigneePersonId,
+                actorPersonId = assignment.AssigneePersonId,
+                category = category,
+                target = new InformationSubjectReferenceData { subjectType = targetType, subjectId = targetId },
+                amount = 1,
+                sourceEventId = sourceEventId,
+                sourceRuntimeId = "testlab.objective-signal",
+                worldTime = 5d,
+                committed = true
+            };
+        }
+
+        private static QuestObjectiveStateFactData ObjectiveFact(QuestObjectiveCategory category, string targetId, int value)
+        {
+            return new QuestObjectiveStateFactData
+            {
+                category = category,
+                target = new InformationSubjectReferenceData { subjectType = InformationSubjectType.Custom, subjectId = targetId },
+                value = value
+            };
         }
 
         private static QuestOfferRequest OfferRequest(string questId, string personId, QuestEligibilityContext context, string transactionId, bool preview = false)
