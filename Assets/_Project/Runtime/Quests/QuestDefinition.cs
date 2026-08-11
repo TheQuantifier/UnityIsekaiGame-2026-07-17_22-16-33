@@ -41,6 +41,19 @@ namespace UnityIsekaiGame.Quests
         [SerializeField] private bool uniquePerWorld = true;
         [SerializeField] private bool uniquePerRecipient;
         [SerializeField] private string identityNotes;
+        [Header("Participation Policy")]
+        [SerializeField] private QuestAssignmentPolicy assignmentPolicy = QuestAssignmentPolicy.Exclusive;
+        [SerializeField] private QuestConsentPolicy consentPolicy = QuestConsentPolicy.ExplicitRecipientConsentRequired;
+        [SerializeField] private QuestRefusalPolicy refusalPolicy = QuestRefusalPolicy.MayReoffer;
+        [SerializeField] private QuestAbandonmentPolicy abandonmentPolicy = QuestAbandonmentPolicy.AllowedReleasesCapacity;
+        [SerializeField] private int assignmentCapacity = 1;
+        [SerializeField] private double availabilityStartWorldTime = -1d;
+        [SerializeField] private double availabilityEndWorldTime = -1d;
+        [SerializeField] private double defaultOfferDuration = -1d;
+        [SerializeField] private bool issuerWithdrawalAllowed = true;
+        [SerializeField] private bool prevalidateEligibilityForOffers = true;
+        [SerializeField] private string[] offeringAuthorityRequirementIds = Array.Empty<string>();
+        [SerializeField] private QuestEligibilityRequirementGroupData[] eligibilityRequirementGroups = Array.Empty<QuestEligibilityRequirementGroupData>();
         [SerializeField] private bool repeatable;
         [SerializeField] private bool hiddenUntilDiscovered;
         [SerializeField] private bool canAbandon = true;
@@ -78,6 +91,18 @@ namespace UnityIsekaiGame.Quests
         public bool UniquePerWorld => uniquePerWorld && !AllowMultipleSimultaneousInstances;
         public bool UniquePerRecipient => uniquePerRecipient;
         public string IdentityNotes => identityNotes ?? string.Empty;
+        public QuestAssignmentPolicy AssignmentPolicy => assignmentPolicy == QuestAssignmentPolicy.Unknown ? QuestAssignmentPolicy.Exclusive : assignmentPolicy;
+        public QuestConsentPolicy ConsentPolicy => consentPolicy == QuestConsentPolicy.Unknown ? QuestConsentPolicy.ExplicitRecipientConsentRequired : consentPolicy;
+        public QuestRefusalPolicy RefusalPolicy => refusalPolicy == QuestRefusalPolicy.Unknown ? QuestRefusalPolicy.MayReoffer : refusalPolicy;
+        public QuestAbandonmentPolicy AbandonmentPolicy => abandonmentPolicy == QuestAbandonmentPolicy.Unknown ? canAbandon ? QuestAbandonmentPolicy.AllowedReleasesCapacity : QuestAbandonmentPolicy.NotAllowed : abandonmentPolicy;
+        public int AssignmentCapacity => AssignmentPolicy == QuestAssignmentPolicy.Nonexclusive ? Math.Max(assignmentCapacity, 0) : Math.Max(1, assignmentCapacity);
+        public double AvailabilityStartWorldTime => availabilityStartWorldTime;
+        public double AvailabilityEndWorldTime => availabilityEndWorldTime;
+        public double DefaultOfferDuration => defaultOfferDuration;
+        public bool IssuerWithdrawalAllowed => issuerWithdrawalAllowed;
+        public bool PrevalidateEligibilityForOffers => prevalidateEligibilityForOffers;
+        public IReadOnlyList<string> OfferingAuthorityRequirementIds => offeringAuthorityRequirementIds ?? Array.Empty<string>();
+        public IReadOnlyList<QuestEligibilityRequirementGroupData> EligibilityRequirementGroups => (eligibilityRequirementGroups ?? Array.Empty<QuestEligibilityRequirementGroupData>()).Where(value => value != null).Select(value => value.Clone()).ToArray();
         public bool Repeatable => repeatable;
         public bool HiddenUntilDiscovered => hiddenUntilDiscovered;
         public bool CanAbandon => canAbandon;
@@ -128,6 +153,35 @@ namespace UnityIsekaiGame.Quests
             uniquePerRecipient = perRecipientUnique;
             repeatable = repeatPolicy == QuestDefinitionRepeatabilityPolicy.Reusable || repeatPolicy == QuestDefinitionRepeatabilityPolicy.RepeatablePerIssuer || repeatPolicy == QuestDefinitionRepeatabilityPolicy.RepeatablePerRecipient || repeatPolicy == QuestDefinitionRepeatabilityPolicy.DynamicTemplate;
             hiddenUntilDiscovered = visibility == QuestVisibility.Hidden || visibility == QuestVisibility.Secret;
+        }
+
+        public void DevelopmentConfigureParticipation(
+            QuestAssignmentPolicy assignment = QuestAssignmentPolicy.Exclusive,
+            QuestConsentPolicy consent = QuestConsentPolicy.ExplicitRecipientConsentRequired,
+            QuestRefusalPolicy refusal = QuestRefusalPolicy.MayReoffer,
+            QuestAbandonmentPolicy abandonment = QuestAbandonmentPolicy.AllowedReleasesCapacity,
+            int capacity = 1,
+            double availableFrom = -1d,
+            double availableUntil = -1d,
+            double offerDuration = -1d,
+            bool withdrawalAllowed = true,
+            bool prevalidateOffers = true,
+            IEnumerable<string> authorityRequirements = null,
+            IEnumerable<QuestEligibilityRequirementGroupData> eligibilityGroups = null)
+        {
+            assignmentPolicy = assignment == QuestAssignmentPolicy.Unknown ? QuestAssignmentPolicy.Exclusive : assignment;
+            consentPolicy = consent == QuestConsentPolicy.Unknown ? QuestConsentPolicy.ExplicitRecipientConsentRequired : consent;
+            refusalPolicy = refusal == QuestRefusalPolicy.Unknown ? QuestRefusalPolicy.MayReoffer : refusal;
+            abandonmentPolicy = abandonment == QuestAbandonmentPolicy.Unknown ? QuestAbandonmentPolicy.AllowedReleasesCapacity : abandonment;
+            assignmentCapacity = Math.Max(assignmentPolicy == QuestAssignmentPolicy.Nonexclusive ? 0 : 1, capacity);
+            availabilityStartWorldTime = availableFrom;
+            availabilityEndWorldTime = availableUntil;
+            defaultOfferDuration = offerDuration;
+            issuerWithdrawalAllowed = withdrawalAllowed;
+            prevalidateEligibilityForOffers = prevalidateOffers;
+            offeringAuthorityRequirementIds = Clean(authorityRequirements);
+            eligibilityRequirementGroups = (eligibilityGroups ?? Array.Empty<QuestEligibilityRequirementGroupData>()).Where(value => value != null).Select(value => value.Clone()).ToArray();
+            canAbandon = AbandonmentPolicy != QuestAbandonmentPolicy.NotAllowed;
         }
 
         private void ValidateStageAndObjectiveIds(DefinitionValidationReport report)
@@ -198,6 +252,42 @@ namespace UnityIsekaiGame.Quests
             if (defaultSourceChannel == QuestSourceChannel.Unknown)
             {
                 report.AddError($"QuestDefinition '{Title}' must declare a concrete source channel.");
+            }
+
+            if (AssignmentPolicy == QuestAssignmentPolicy.Unknown)
+            {
+                report.AddError($"QuestDefinition '{Title}' must declare a concrete assignment policy.");
+            }
+
+            if (ConsentPolicy == QuestConsentPolicy.Unknown)
+            {
+                report.AddError($"QuestDefinition '{Title}' must declare a concrete consent policy.");
+            }
+
+            if (AssignmentPolicy != QuestAssignmentPolicy.Nonexclusive && AssignmentCapacity <= 0)
+            {
+                report.AddError($"QuestDefinition '{Title}' assignment capacity must be positive for limited or exclusive assignment.");
+            }
+
+            if (AvailabilityEndWorldTime >= 0d && AvailabilityStartWorldTime >= 0d && AvailabilityEndWorldTime < AvailabilityStartWorldTime)
+            {
+                report.AddError($"QuestDefinition '{Title}' availability end cannot be before availability start.");
+            }
+
+            foreach (QuestEligibilityRequirementGroupData group in EligibilityRequirementGroups)
+            {
+                if (group.policy == QuestEligibilityGroupPolicy.Unknown)
+                {
+                    report.AddError($"QuestDefinition '{Title}' has an eligibility group with an unknown policy.");
+                }
+
+                foreach (QuestEligibilityRequirementData requirement in group.requirements ?? Array.Empty<QuestEligibilityRequirementData>())
+                {
+                    if (requirement.kind == QuestEligibilityRequirementKind.Unknown)
+                    {
+                        report.AddError($"QuestDefinition '{Title}' has an eligibility requirement with unknown kind.");
+                    }
+                }
             }
         }
 
