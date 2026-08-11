@@ -29,6 +29,7 @@ using UnityIsekaiGame.Combat.OngoingEffects;
 using UnityIsekaiGame.Combat.Reactions;
 using UnityIsekaiGame.Contracts;
 using UnityIsekaiGame.Crimes;
+using UnityIsekaiGame.Dialogue;
 using UnityIsekaiGame.Equipment;
 using UnityIsekaiGame.Diplomacy;
 using UnityIsekaiGame.Factions;
@@ -14537,6 +14538,7 @@ namespace UnityIsekaiGame.Development
             registry = PrototypeLocationRouteDefinitionFactory.AddMissingPrototypeRouteDefinitions(registry);
             registry = PrototypeTravelConditionDefinitionFactory.AddMissingPrototypeTravelConditionDefinitions(registry);
             registry = PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(registry);
+            registry = PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(registry);
             return registry;
         }
 
