@@ -14536,6 +14536,7 @@ namespace UnityIsekaiGame.Development
             registry = PrototypeLocationConnectionDefinitionFactory.AddMissingPrototypeConnectionDefinitions(registry);
             registry = PrototypeLocationRouteDefinitionFactory.AddMissingPrototypeRouteDefinitions(registry);
             registry = PrototypeTravelConditionDefinitionFactory.AddMissingPrototypeTravelConditionDefinitions(registry);
+            registry = PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(registry);
             return registry;
         }
 
