@@ -48,6 +48,7 @@ using UnityIsekaiGame.Knowledge.Observation;
 using UnityIsekaiGame.Knowledge.Records;
 using UnityIsekaiGame.Knowledge.Sharing;
 using UnityIsekaiGame.Knowledge.Sources;
+using UnityIsekaiGame.Narrative;
 using UnityIsekaiGame.Organizations;
 using UnityIsekaiGame.Professions;
 using UnityIsekaiGame.Magic;
@@ -14540,6 +14541,7 @@ namespace UnityIsekaiGame.Development
             registry = PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(registry);
             registry = PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(registry);
             registry = PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(registry);
+            registry = PrototypeNarrativeEventDefinitionFactory.AddMissingPrototypeNarrativeEventDefinitions(registry);
             return registry;
         }
 

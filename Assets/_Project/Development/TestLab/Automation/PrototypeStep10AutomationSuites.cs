@@ -2052,11 +2052,7 @@ namespace UnityIsekaiGame.Development.Automation
         private static TestLabAutomationStepResult LifePathDefinitionsAndRecords(TestLabAutomationContext context)
         {
             TestLabRuntimeBundle runtimes = context.ScenarioContext.Runtimes;
-            DefinitionValidationReport report = new DefinitionValidationReport();
-            foreach (IDefinitionCatalogValidationParticipant participant in runtimes.DefinitionRegistry.DefinitionsById.Values.OfType<IDefinitionCatalogValidationParticipant>())
-            {
-                participant.ValidateCatalogDefinition(runtimes.DefinitionRegistry.DefinitionsById, report);
-            }
+            DefinitionValidationReport report = ValidatePrototypeProfessionDefinitions(runtimes.DefinitionRegistry);
 
             LifePathOperationResult path = EnsureLifePathRecord(context);
             LifePathOperationResult aspiration = runtimes.LifePaths.AddAspiration(LifeAspiration(context, "definitions", PrototypeProfessionDefinitionFactory.AspirationEnterBlacksmithProfessionId, PrototypeProfessionDefinitionFactory.BlacksmithProfessionId), context.ScenarioContext.ScopedId("life-tx", "definitions-aspiration"));
@@ -2073,6 +2069,20 @@ namespace UnityIsekaiGame.Development.Automation
                 && runtimes.DefinitionRegistry.TryGet(PrototypeProfessionDefinitionFactory.GoalCompleteBlacksmithApprenticeshipId, out LifeGoalDefinition trainingGoal)
                 && trainingGoal.RequiredTrainingProgramIds.Contains(PrototypeProfessionDefinitionFactory.BlacksmithApprenticeshipProgramId);
             return TestLabAssertions.True("step10-life-definitions", "Life-path definitions and records validate without grants", valid, $"Errors={report.ErrorCount} Warnings={report.WarningCount} Path={path.Status} Aspiration={aspiration.Status} Goal={goal.Status} Snapshot={snapshot?.LifePaths.Count}/{snapshot?.Aspirations.Count}/{snapshot?.Goals.Count}");
+        }
+
+        private static DefinitionValidationReport ValidatePrototypeProfessionDefinitions(DefinitionRegistry registry)
+        {
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (IGameDefinition definition in PrototypeProfessionDefinitionFactory.CreateDefinitions().OfType<IGameDefinition>())
+            {
+                if (definition is IDefinitionCatalogValidationParticipant participant)
+                {
+                    participant.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                }
+            }
+
+            return report;
         }
 
         private static TestLabAutomationStepResult LifePathGoalProgressBoundaries(TestLabAutomationContext context)
