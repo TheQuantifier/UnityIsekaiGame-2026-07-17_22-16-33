@@ -14,6 +14,10 @@ namespace UnityIsekaiGame.Development.Automation
     [PrototypeTestLabAutomationProvider(15, "Quests", 1500)]
     public static class PrototypeStep15AutomationSuites
     {
+        private static readonly string[] RequiredQuestDefinitionIds = PrototypeQuestDefinitionFactory.PrototypeDefinitionIds
+            .Concat(PrototypeQuestSourceDefinitionFactory.PrototypeDefinitionIds)
+            .ToArray();
+
         public static void RegisterDefaults(TestLabAutomationRegistry registry)
         {
             registry?.TryRegister(new TestLabAutomationSuite(
@@ -90,6 +94,24 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("93.4-reward-claim", "Reward claims delegate to owner runtimes and remain idempotent", 40, Step("step15-outcome-reward", "Claim a reward entitlement", OutcomeRewardClaim)),
                     Scenario("93.5-persistence-and-redaction", "Outcomes and hidden rewards persist with redacted ordinary projections", 50, Step("step15-outcome-persistence", "Save, restore, and query redacted outcome state", OutcomePersistenceAndRedaction))
                 }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.5.quest-sources-boards-discovery-availability-presentation",
+                "Quest Sources, Quest Boards, Discovery, and Availability Presentation",
+                "15.5",
+                "Runtime-owned quest sources and listings with publication authority, source filtering, discovery-safe browse and inspect projections, delegated acceptance, expiration, and persistence boundaries.",
+                15050,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "QuestRuntime", "QuestParticipationRuntime", "QuestSourceRuntime", "QuestSourcePersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("94.1-source-readiness", "Quest source definitions register and validate", 10, Step("step15-source-readiness", "Resolve quest source definitions", QuestSourceReadiness)),
+                    Scenario("94.2-empty-source", "Quest source can exist without listings", 20, Step("step15-source-empty", "Create an empty source with scene binding", QuestSourceEmpty)),
+                    Scenario("94.3-publish-browse-discovery", "Publication and browse produce visibility-safe discovery", 30, Step("step15-source-publish-browse", "Publish and browse a source listing", QuestSourcePublishBrowseDiscovery)),
+                    Scenario("94.4-acceptance-claims-listing", "Source acceptance delegates to participation and marks listing taken", 40, Step("step15-source-acceptance", "Accept a quest through its listing", QuestSourceAcceptanceClaimsListing)),
+                    Scenario("94.5-expiration-persistence", "Expiration and persistence preserve source graph deterministically", 50, Step("step15-source-persistence", "Expire, save, restore, and reject corrupt source payload", QuestSourceExpirationPersistence))
+                }), out _);
         }
 
         private static ITestLabAutomationScenario Scenario(string scenarioId, string displayName, int order, params ITestLabScenarioStep[] steps)
@@ -105,7 +127,7 @@ namespace UnityIsekaiGame.Development.Automation
                 isolationMode: TestLabScenarioIsolationMode.FreshRuntime,
                 requiredRuntimeAreas: TestLabRuntimeArea.Quests | TestLabRuntimeArea.WorldLocations | TestLabRuntimeArea.KnowledgeHistory,
                 requiredHostFeatures: TestLabHostFeature.AutomatedExecution,
-                requiredDefinitionIds: PrototypeQuestDefinitionFactory.PrototypeDefinitionIds);
+                requiredDefinitionIds: RequiredQuestDefinitionIds);
         }
 
         private static ITestLabScenarioStep Step(string id, string displayName, Func<TestLabAutomationContext, TestLabAutomationStepResult> action)
@@ -669,6 +691,157 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step15-outcome-persistence", "Hidden outcome rewards redact and persistence rejects invalid graphs before mutation", valid, $"Complete={complete.Status} PublicRedacted={publicReward?.Redacted} PrivilegedRedacted={privilegedReward?.Redacted} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Restored={restored.TerminalOutcomeCount}/{restored.RewardEntitlementCount}");
         }
 
+        private static TestLabAutomationStepResult QuestSourceReadiness(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            bool hasAll = PrototypeQuestSourceDefinitionFactory.PrototypeDefinitionIds.All(id => registry.TryGet(id, out QuestSourceDefinition _));
+            bool metadata = registry.TryGet(PrototypeQuestSourceDefinitionFactory.AdventurerGuildCounterDefinitionId, out QuestSourceDefinition counter)
+                && counter.Category == QuestSourceCategory.GuildCounter
+                && counter.PublicationPolicy.maxActiveListings == 6
+                && counter.SourceRoleIds.Contains("quest-source-role.acceptance");
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (QuestSourceDefinition definition in PrototypeQuestSourceDefinitionFactory.CreateMissingQuestSourceDefinitions(Array.Empty<string>()))
+            {
+                definition.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                UnityEngine.Object.DestroyImmediate(definition);
+            }
+
+            bool valid = hasAll && metadata && report.ErrorCount == 0;
+            return TestLabAssertions.True("step15-source-readiness", "Quest source definitions register and validate", valid, $"Definitions={hasAll} Metadata={metadata} Errors={report.ErrorCount} Warnings={report.WarningCount}");
+        }
+
+        private static TestLabAutomationStepResult QuestSourceEmpty(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestSourceRuntime sources = Sources(quests, participation, registry);
+            QuestSourceOperationResult create = sources.CreateSource(new QuestSourceCreateRequest
+            {
+                transactionId = "tx.quest-source.empty.create",
+                questSourceId = "quest-source.prototype.empty-archive.automation",
+                questSourceDefinitionId = PrototypeQuestSourceDefinitionFactory.EmptyArchiveDefinitionId,
+                hostLocationId = "location.prototype.guild-archive",
+                interactionPointId = "interaction-point.prototype.archive",
+                sceneBindingKey = "scene.prototype.guild.archive",
+                visibility = QuestSourceVisibility.Restricted,
+                worldTime = 1d
+            });
+            QuestSourceBrowseResult publicBrowse = sources.BrowseSource(new QuestSourceBrowseRequest { questSourceId = create.Source?.QuestSourceId, access = QuestVisibilityAccess.PublicOnly });
+            QuestSourceBrowseResult privilegedBrowse = sources.BrowseSource(new QuestSourceBrowseRequest { questSourceId = create.Source?.QuestSourceId, access = QuestVisibilityAccess.PrivilegedDiagnostic });
+            bool valid = create.Succeeded
+                && sources.SourceCount == 1
+                && sources.ListingCount == 0
+                && create.Source.SceneBindingKey == "scene.prototype.guild.archive"
+                && publicBrowse.Status == QuestSourceOperationStatus.VisibilityDenied
+                && privilegedBrowse.Succeeded
+                && privilegedBrowse.VisibleCount == 0;
+            return TestLabAssertions.True("step15-source-empty", "Quest sources can exist without listings and preserve scene binding", valid, $"Create={create.Status} Public={publicBrowse.Status} Privileged={privilegedBrowse.Status} Sources={sources.SourceCount} Listings={sources.ListingCount}");
+        }
+
+        private static TestLabAutomationStepResult QuestSourcePublishBrowseDiscovery(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestSourceRuntime sources = Sources(quests, participation, registry);
+            QuestRuntimeOperationResult quest = CreateGuildPosting(quests, "source-publish", "quest.prototype.guild.source-publish");
+            QuestSourceOperationResult source = CreateGuildCounter(sources, "quest-source.prototype.guild-counter.source-publish");
+            QuestSourceOperationResult unauthorized = sources.PublishListing(new QuestListingPublishRequest { transactionId = "tx.quest-source.publish.unauthorized", questSourceId = source.Source?.QuestSourceId, questId = quest.Snapshot?.QuestId, worldTime = 2d });
+            QuestSourceOperationResult publish = sources.PublishListing(new QuestListingPublishRequest { transactionId = "tx.quest-source.publish", questSourceId = source.Source?.QuestSourceId, questId = quest.Snapshot?.QuestId, publisherAuthorityId = "authority.prototype.guild.quest-offer", publisherPersonId = "person.prototype.guild-clerk", worldTime = 2d });
+            QuestSourceBrowseResult browse = sources.BrowseSource(new QuestSourceBrowseRequest { transactionId = "tx.quest-source.browse", questSourceId = source.Source?.QuestSourceId, requesterPersonId = "person.prototype.player", access = QuestVisibilityAccess.LocalKnowledge, eligibilityContext = EligibleContext("person.prototype.player"), recordDiscovery = true, worldTime = 3d });
+            QuestListingInspectionResult inspect = sources.InspectListing(new QuestListingInspectRequest { transactionId = "tx.quest-source.inspect", questSourceId = source.Source?.QuestSourceId, questListingId = publish.Listing?.QuestListingId, requesterPersonId = "person.prototype.player", access = QuestVisibilityAccess.LocalKnowledge, eligibilityContext = EligibleContext("person.prototype.player"), recordDiscovery = true, worldTime = 4d });
+            bool valid = quest.Succeeded
+                && source.Succeeded
+                && unauthorized.Status == QuestSourceOperationStatus.UnauthorizedPublisher
+                && publish.Succeeded
+                && browse.Succeeded
+                && browse.VisibleCount == 1
+                && inspect.Succeeded
+                && sources.DiscoveryCount == 2
+                && participation.OfferCount == 0
+                && participation.AssignmentCount == 0;
+            return TestLabAssertions.True("step15-source-publish-browse", "Publication, browse, inspect, and discovery stay separate from offer creation", valid, $"Quest={quest.Status} Source={source.Status} Unauthorized={unauthorized.Status} Publish={publish.Status} Browse={browse.Status}/{browse.VisibleCount} Inspect={inspect.Status} Discoveries={sources.DiscoveryCount} Offers={participation.OfferCount} Assignments={participation.AssignmentCount}");
+        }
+
+        private static TestLabAutomationStepResult QuestSourceAcceptanceClaimsListing(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestSourceRuntime sources = Sources(quests, participation, registry);
+            QuestRuntimeOperationResult quest = CreateGuildPosting(quests, "source-accept", "quest.prototype.guild.source-accept");
+            QuestSourceOperationResult source = CreateGuildCounter(sources, "quest-source.prototype.guild-counter.source-accept");
+            QuestSourceOperationResult publish = sources.PublishListing(new QuestListingPublishRequest { transactionId = "tx.quest-source.accept.publish", questSourceId = source.Source?.QuestSourceId, questId = quest.Snapshot?.QuestId, publisherAuthorityId = "authority.prototype.guild.quest-offer", publisherPersonId = "person.prototype.guild-clerk", worldTime = 2d });
+            QuestSourceOperationResult preview = sources.AcceptFromSource(new QuestSourceAcceptRequest { transactionId = "tx.quest-source.accept.preview", questListingId = publish.Listing?.QuestListingId, personId = "person.prototype.player", authorityBasisId = "authority.prototype.guild.quest-offer", eligibilityContext = EligibleContext("person.prototype.player"), worldTime = 3d, preview = true });
+            QuestSourceOperationResult accept = sources.AcceptFromSource(new QuestSourceAcceptRequest { transactionId = "tx.quest-source.accept", questListingId = publish.Listing?.QuestListingId, personId = "person.prototype.player", authorityBasisId = "authority.prototype.guild.quest-offer", eligibilityContext = EligibleContext("person.prototype.player"), worldTime = 3d });
+            QuestSourceBrowseResult after = sources.BrowseSource(new QuestSourceBrowseRequest { questSourceId = source.Source?.QuestSourceId, access = QuestVisibilityAccess.LocalKnowledge, eligibilityContext = EligibleContext("person.prototype.player"), worldTime = 4d });
+            QuestVisibleListingSnapshot visible = after.Listings.FirstOrDefault();
+            bool valid = quest.Succeeded
+                && source.Succeeded
+                && publish.Succeeded
+                && preview.Status == QuestSourceOperationStatus.Preview
+                && accept.Succeeded
+                && accept.Assignment != null
+                && accept.Listing.LifecycleState == QuestListingLifecycleState.Claimed
+                && participation.OfferCount == 1
+                && participation.AssignmentCount == 1
+                && after.VisibleCount == 1
+                && visible != null
+                && visible.Taken;
+            return TestLabAssertions.True("step15-source-acceptance", "Quest source acceptance delegates to participation and marks listings taken", valid, $"Quest={quest.Status} Source={source.Status} Publish={publish.Status} Preview={preview.Status} Accept={accept.Status} Listing={accept.Listing?.LifecycleState} Browse={after.VisibleCount} Taken={visible?.Taken} Offers={participation.OfferCount} Assignments={participation.AssignmentCount}");
+        }
+
+        private static TestLabAutomationStepResult QuestSourceExpirationPersistence(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestSourceRuntime sources = Sources(quests, participation, registry);
+            QuestRuntimeOperationResult quest = quests.CreateQuest(new QuestCreateRequest
+            {
+                transactionId = "tx.quest-source.persistence.quest",
+                questId = "quest.prototype.delivery.source-persist",
+                questDefinitionId = PrototypeQuestDefinitionFactory.MerchantDeliveryDefinitionId,
+                issuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Organization, issuerId = "organization.prototype.merchant-guild" },
+                intendedRecipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Person, recipientId = "person.prototype.player" },
+                origin = new QuestOriginReferenceData { sourceChannel = QuestSourceChannel.Contract, locationId = "location.prototype.market-stall", interactionPointId = "interaction-point.prototype.merchant-counter" },
+                subjectLinks = new[] { Subject("item.prototype.merchant-parcel", QuestSubjectRole.Item, InformationSubjectType.Custom) },
+                createdWorldTime = 1d
+            });
+            QuestSourceOperationResult source = CreateMerchantCounter(sources, "quest-source.prototype.merchant-counter.source-persist");
+            QuestSourceOperationResult publish = sources.PublishListing(new QuestListingPublishRequest { transactionId = "tx.quest-source.persistence.publish", questSourceId = source.Source?.QuestSourceId, questId = quest.Snapshot?.QuestId, publisherAuthorityId = "authority.prototype.merchant.quest-offer", expirationWorldTime = 5d, worldTime = 2d });
+            QuestSourceOperationResult firstExpire = sources.EvaluateExpirations(5d, "tx.quest-source.persistence.expire").FirstOrDefault();
+            QuestSourceOperationResult secondExpire = sources.EvaluateExpirations(5d, "tx.quest-source.persistence.expire").FirstOrDefault();
+            QuestSourcePersistenceParticipant participant = new QuestSourcePersistenceParticipant(sources, () => quests, () => participation, () => registry);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            QuestSourceRuntime restored = Sources(quests, participation, registry);
+            QuestSourcePersistenceParticipant restoredParticipant = new QuestSourcePersistenceParticipant(restored, () => quests, () => participation, () => registry);
+            PersistenceParticipantPrepareResult prepare = restoredParticipant.PreparePayload(save.PayloadJson, QuestSourcePersistenceParticipant.CurrentParticipantSchemaVersion);
+            PersistenceParticipantCommitResult commit = restoredParticipant.CommitPreparedPayload(prepare.PreparedPayload);
+            int restoredListings = restored.ListingCount;
+            QuestSourceRuntimeSaveData corrupt = restored.CreateSaveData();
+            if (corrupt.listings.Count > 0)
+            {
+                corrupt.listings[0].questId = "quest.prototype.missing";
+            }
+            PersistenceParticipantPrepareResult rejected = restoredParticipant.PreparePayload(JsonUtility.ToJson(corrupt), QuestSourcePersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = quest.Succeeded
+                && source.Succeeded
+                && publish.Succeeded
+                && firstExpire != null
+                && firstExpire.Succeeded
+                && firstExpire.Listing.LifecycleState == QuestListingLifecycleState.Expired
+                && secondExpire == null
+                && save.Succeeded
+                && prepare.Succeeded
+                && commit.Succeeded
+                && rejected.Succeeded == false
+                && restored.ListingCount == restoredListings
+                && restoredListings == 1;
+            return TestLabAssertions.True("step15-source-persistence", "Quest source expiration and persistence are deterministic and reject invalid graphs", valid, $"Quest={quest.Status} Source={source.Status} Publish={publish.Status} Expire={firstExpire?.Status}/{firstExpire?.Listing?.LifecycleState} DuplicateExpire={secondExpire?.Status.ToString() ?? "None"} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Restored={restored.ListingCount}");
+        }
+
         private static DefinitionRegistry Registry(TestLabAutomationContext context)
         {
             DefinitionRegistry baseRegistry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
@@ -693,6 +866,41 @@ namespace UnityIsekaiGame.Development.Automation
         private static QuestOutcomeRuntime Outcomes(QuestRuntime quests, QuestParticipationRuntime participation, QuestObjectiveProgressRuntime objectives, DefinitionRegistry registry, IQuestRewardEffectExecutor executor)
         {
             return new QuestOutcomeRuntime(quests, participation, objectives, registry, executor, PersistenceService.LocalWorldId);
+        }
+
+        private static QuestSourceRuntime Sources(QuestRuntime quests, QuestParticipationRuntime participation, DefinitionRegistry registry)
+        {
+            return new QuestSourceRuntime(quests, participation, registry, PersistenceService.LocalWorldId);
+        }
+
+        private static QuestSourceOperationResult CreateGuildCounter(QuestSourceRuntime sources, string sourceId)
+        {
+            return sources.CreateSource(new QuestSourceCreateRequest
+            {
+                transactionId = $"tx.{sourceId}.create",
+                questSourceId = sourceId,
+                questSourceDefinitionId = PrototypeQuestSourceDefinitionFactory.AdventurerGuildCounterDefinitionId,
+                hostLocationId = "location.prototype.adventurers-guild",
+                interactionPointId = "interaction-point.prototype.guild-counter",
+                operatingOrganizationId = "organization.prototype.guild",
+                sceneBindingKey = "scene.prototype.guild.counter",
+                worldTime = 1d
+            });
+        }
+
+        private static QuestSourceOperationResult CreateMerchantCounter(QuestSourceRuntime sources, string sourceId)
+        {
+            return sources.CreateSource(new QuestSourceCreateRequest
+            {
+                transactionId = $"tx.{sourceId}.create",
+                questSourceId = sourceId,
+                questSourceDefinitionId = PrototypeQuestSourceDefinitionFactory.MerchantGuildCounterDefinitionId,
+                hostLocationId = "location.prototype.market-stall",
+                interactionPointId = "interaction-point.prototype.merchant-counter",
+                operatingOrganizationId = "organization.prototype.merchant-guild",
+                sceneBindingKey = "scene.prototype.guild.merchant-counter",
+                worldTime = 1d
+            });
         }
 
         private static QuestAssignmentSnapshot AcceptedGuildAssignment(QuestRuntime quests, QuestParticipationRuntime participation, string key)
@@ -723,23 +931,32 @@ namespace UnityIsekaiGame.Development.Automation
                 transactionId = $"tx.quest.delivery.create.{key}",
                 questId = questId,
                 questDefinitionId = PrototypeQuestDefinitionFactory.MerchantDeliveryDefinitionId,
-                issuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Organization, issuerId = "organization.prototype.merchant-guild" },
+                issuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Business, issuerId = "business.prototype.merchant" },
                 intendedRecipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Person, recipientId = personId },
-                origin = new QuestOriginReferenceData { sourceChannel = QuestSourceChannel.Dialogue, locationId = "location.prototype.market-stall", interactionPointId = "interaction-point.prototype.merchant-counter" },
+                origin = new QuestOriginReferenceData { sourceChannel = QuestSourceChannel.Contract, locationId = "location.prototype.market", interactionPointId = "interaction-point.prototype.merchant-counter" },
                 subjectLinks = new[] { Subject("item.prototype.merchant-parcel", QuestSubjectRole.Item, InformationSubjectType.Custom) },
                 createdWorldTime = 1d
             });
+            QuestEligibilityContext context = new QuestEligibilityContext
+            {
+                personId = personId,
+                interactionPointId = "interaction-point.prototype.merchant-counter",
+                privilegedDiagnostics = true,
+                worldTime = 1d,
+                facts = new QuestEligibilityFactSet(authorityGrants: new[] { "authority.prototype.merchant.quest-offer" })
+            };
             QuestParticipationOperationResult offer = participation.CreateOffer(new QuestOfferRequest
             {
                 transactionId = $"tx.quest.delivery.offer.{key}",
                 questId = questId,
                 recipient = new QuestRecipientReferenceData { recipientScope = QuestRecipientScope.Person, recipientId = personId },
-                institutionalIssuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Organization, issuerId = "organization.prototype.merchant-guild" },
-                offeringProvider = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Person, issuerId = "person.prototype.merchant" },
-                channel = QuestOfferChannel.DirectPerson,
+                institutionalIssuer = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Business, issuerId = "business.prototype.merchant" },
+                offeringProvider = new QuestIssuerReferenceData { issuerType = QuestIssuerType.Business, issuerId = "business.prototype.merchant", actingPersonId = "person.prototype.merchant" },
+                channel = QuestOfferChannel.InteractionPoint,
                 sourceInteractionPointId = "interaction-point.prototype.merchant-counter",
-                sourceLocationId = "location.prototype.market-stall",
-                eligibilityContext = new QuestEligibilityContext { personId = personId, privilegedDiagnostics = true, worldTime = 1d },
+                sourceLocationId = "location.prototype.market",
+                authorityBasisId = "authority.prototype.merchant.quest-offer",
+                eligibilityContext = context,
                 worldTime = 1d
             });
             QuestParticipationOperationResult accept = participation.AcceptOffer(new QuestAcceptOfferRequest
@@ -749,7 +966,7 @@ namespace UnityIsekaiGame.Development.Automation
                 personId = personId,
                 explicitConsent = true,
                 consentRecordId = $"consent.prototype.{key}",
-                eligibilityContext = new QuestEligibilityContext { personId = personId, privilegedDiagnostics = true, worldTime = 2d },
+                eligibilityContext = context,
                 worldTime = 2d
             });
             return accept.Assignment;

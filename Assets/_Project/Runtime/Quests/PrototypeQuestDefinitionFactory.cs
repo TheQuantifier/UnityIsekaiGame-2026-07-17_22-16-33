@@ -38,7 +38,7 @@ namespace UnityIsekaiGame.Quests
                 definitions.Add(definition);
             }
 
-            return new DefinitionRegistry(definitions);
+            return PrototypeQuestSourceDefinitionFactory.AddMissingPrototypeQuestSourceDefinitions(new DefinitionRegistry(definitions));
         }
 
         public static IReadOnlyList<QuestDefinition> CreateMissingQuestDefinitions(IEnumerable<string> existingDefinitionIds)
