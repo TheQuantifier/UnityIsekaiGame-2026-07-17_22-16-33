@@ -19,6 +19,7 @@ namespace UnityIsekaiGame.Dialogue
         private DefinitionRegistry registry;
         private ConversationRuntime conversationRuntime;
         private IDialogueEffectExecutor effectExecutor;
+        private Func<DialogueConditionData, DialogueConditionContext, bool> narrativeStateConditionEvaluator;
         private string worldId;
         private long revision;
         private bool disposed;
@@ -34,6 +35,11 @@ namespace UnityIsekaiGame.Dialogue
         public string WorldId => worldId ?? string.Empty;
         public int Count => flowsById.Count;
         public IReadOnlyList<DialogueFlowEventData> Events => events.Select(value => value.Clone()).ToArray();
+        public Func<DialogueConditionData, DialogueConditionContext, bool> NarrativeStateConditionEvaluator
+        {
+            get => narrativeStateConditionEvaluator;
+            set => narrativeStateConditionEvaluator = value;
+        }
 
         public void Configure(DefinitionRegistry definitionRegistry, ConversationRuntime conversations, IDialogueEffectExecutor executor = null, string runtimeWorldId = PersistenceService.LocalWorldId)
         {
@@ -481,6 +487,7 @@ namespace UnityIsekaiGame.Dialogue
                 DialogueConditionKind.InteractionPoint => string.Equals(N(context.interactionPointId), N(condition.requiredId), StringComparison.Ordinal),
                 DialogueConditionKind.Permit => context.facts.Contains(QuestEligibilityRequirementKind.Permit, condition.requiredId),
                 DialogueConditionKind.LegalStatus => context.facts.Contains(QuestEligibilityRequirementKind.LegalStatus, condition.requiredId),
+                DialogueConditionKind.NarrativeState => narrativeStateConditionEvaluator?.Invoke(condition.Clone(), context.Clone()) ?? context.facts.Contains(QuestEligibilityRequirementKind.NarrativeState, condition.requiredId),
                 DialogueConditionKind.LocalFlag => LocalFlag(flow, condition.requiredId),
                 DialogueConditionKind.LocalCounter => Compare(LocalCounter(flow, condition.requiredId), condition),
                 DialogueConditionKind.Custom => context.facts.Contains(QuestEligibilityRequirementKind.Custom, condition.requiredId),

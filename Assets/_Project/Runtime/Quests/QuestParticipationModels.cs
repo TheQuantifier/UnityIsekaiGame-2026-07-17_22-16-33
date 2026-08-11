@@ -87,6 +87,7 @@ namespace UnityIsekaiGame.Quests
         private readonly HashSet<string> knownSubjects;
         private readonly HashSet<string> priorQuestStates;
         private readonly HashSet<string> historyFacts;
+        private readonly HashSet<string> narrativeStates;
 
         public QuestEligibilityFactSet(
             IEnumerable<string> activePersons = null,
@@ -112,7 +113,8 @@ namespace UnityIsekaiGame.Quests
             IEnumerable<string> permits = null,
             IEnumerable<string> knownSubjects = null,
             IEnumerable<string> priorQuestStates = null,
-            IEnumerable<string> historyFacts = null)
+            IEnumerable<string> historyFacts = null,
+            IEnumerable<string> narrativeStates = null)
         {
             this.activePersons = Set(activePersons);
             this.capabilities = Set(capabilities);
@@ -138,6 +140,7 @@ namespace UnityIsekaiGame.Quests
             this.knownSubjects = Set(knownSubjects);
             this.priorQuestStates = Set(priorQuestStates);
             this.historyFacts = Set(historyFacts);
+            this.narrativeStates = Set(narrativeStates);
         }
 
         public static QuestEligibilityFactSet Empty { get; } = new QuestEligibilityFactSet();
@@ -168,6 +171,7 @@ namespace UnityIsekaiGame.Quests
                 QuestEligibilityRequirementKind.Knowledge => knownSubjects.Contains(id),
                 QuestEligibilityRequirementKind.PriorQuestState => priorQuestStates.Contains(id),
                 QuestEligibilityRequirementKind.WorldHistoryFact => historyFacts.Contains(id),
+                QuestEligibilityRequirementKind.NarrativeState => narrativeStates.Contains(id),
                 QuestEligibilityRequirementKind.Custom => capabilities.Contains(id) || credentials.Contains(id) || authorityGrants.Contains(id),
                 _ => false
             };

@@ -76,7 +76,7 @@ namespace UnityIsekaiGame.Narrative
             if ((data.triggers == null || data.triggers.Length == 0) && data.armingPolicy != NarrativeArmingPolicy.Explicit) errors.Add("at least one trigger is required unless the event is explicitly-only armed.");
 
             ValidateTriggers(data, errors);
-            ValidateConditions(data, errors);
+            ValidateConditions(data, errors, warnings);
             ValidateActions(data, definitionsById, errors, warnings);
             ValidateStaticCascade(data, errors);
             return new NarrativeEventValidationReport(errors, warnings);
@@ -96,7 +96,7 @@ namespace UnityIsekaiGame.Narrative
             }
         }
 
-        private static void ValidateConditions(NarrativeEventDefinitionData data, ICollection<string> errors)
+        private static void ValidateConditions(NarrativeEventDefinitionData data, ICollection<string> errors, ICollection<string> warnings)
         {
             HashSet<string> ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (NarrativeConditionDefinitionData condition in data.conditions ?? Array.Empty<NarrativeConditionDefinitionData>())
@@ -106,7 +106,7 @@ namespace UnityIsekaiGame.Narrative
                 else if (!ids.Add(condition.conditionDefinitionId)) errors.Add($"duplicate condition definition '{condition.conditionDefinitionId}'.");
                 if (condition.category == NarrativeConditionCategory.Unknown) errors.Add($"condition '{condition.conditionDefinitionId}' has Unknown category.");
                 if (condition.category != NarrativeConditionCategory.Always && condition.category != NarrativeConditionCategory.TimeState && string.IsNullOrWhiteSpace(condition.requiredId)) errors.Add($"condition '{condition.conditionDefinitionId}' requires a target ID.");
-                if (condition.category == NarrativeConditionCategory.NarrativeStatePlaceholder) errors.Add($"condition '{condition.conditionDefinitionId}' uses deferred Feature 15.9 narrative state.");
+                if (condition.category == NarrativeConditionCategory.NarrativeState && string.IsNullOrWhiteSpace(condition.secondaryId)) warnings.Add($"condition '{condition.conditionDefinitionId}' should document the NarrativeVariableDefinitionId in secondaryId when it is not encoded in requiredId.");
             }
 
             if (data.conditionGroupPolicy == NarrativeConditionGroupPolicy.AtLeastN && data.atLeastConditionCount <= 0) errors.Add("AtLeastN condition group requires a positive count.");
@@ -127,6 +127,7 @@ namespace UnityIsekaiGame.Narrative
                 if (action.category == NarrativeActionCategory.InstantiateQuest && !string.IsNullOrWhiteSpace(action.targetId) && !definitionsById.ContainsKey(action.targetId)) warnings.Add($"action '{action.actionDefinitionId}' references missing Quest definition '{action.targetId}'.");
                 if (action.category == NarrativeActionCategory.PublishQuestListing && !string.IsNullOrWhiteSpace(action.targetId) && !definitionsById.ContainsKey(action.targetId) && !action.targetId.StartsWith("quest-source.", StringComparison.Ordinal)) warnings.Add($"action '{action.actionDefinitionId}' target '{action.targetId}' is not a known Quest Source definition or runtime source ID.");
                 if (action.category == NarrativeActionCategory.StartConversation && !string.IsNullOrWhiteSpace(action.targetId) && !definitionsById.ContainsKey(action.targetId)) warnings.Add($"action '{action.actionDefinitionId}' references missing Conversation definition '{action.targetId}'.");
+                if (action.category == NarrativeActionCategory.RequestNarrativeStateTransition && !string.IsNullOrWhiteSpace(action.targetId) && !definitionsById.Values.OfType<NarrativeStateDefinition>().Any(definition => definition.ToRecordData().transitions.Any(transition => transition.transitionDefinitionId == action.targetId))) warnings.Add($"action '{action.actionDefinitionId}' references missing Narrative State transition '{action.targetId}'.");
             }
         }
 
