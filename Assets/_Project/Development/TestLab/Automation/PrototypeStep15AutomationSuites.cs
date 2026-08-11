@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEngine;
 using UnityIsekaiGame.GameData;
 using UnityIsekaiGame.GameData.Persistence;
+using UnityIsekaiGame.Dialogue;
 using UnityIsekaiGame.Knowledge.Access;
 using UnityIsekaiGame.Persistence;
 using UnityIsekaiGame.Quests;
@@ -16,6 +17,7 @@ namespace UnityIsekaiGame.Development.Automation
     {
         private static readonly string[] RequiredQuestDefinitionIds = PrototypeQuestDefinitionFactory.PrototypeDefinitionIds
             .Concat(PrototypeQuestSourceDefinitionFactory.PrototypeDefinitionIds)
+            .Concat(PrototypeConversationDefinitionFactory.PrototypeDefinitionIds)
             .ToArray();
 
         public static void RegisterDefaults(TestLabAutomationRegistry registry)
@@ -111,6 +113,25 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("94.3-publish-browse-discovery", "Publication and browse produce visibility-safe discovery", 30, Step("step15-source-publish-browse", "Publish and browse a source listing", QuestSourcePublishBrowseDiscovery)),
                     Scenario("94.4-acceptance-claims-listing", "Source acceptance delegates to participation and marks listing taken", 40, Step("step15-source-acceptance", "Accept a quest through its listing", QuestSourceAcceptanceClaimsListing)),
                     Scenario("94.5-expiration-persistence", "Expiration and persistence preserve source graph deterministically", 50, Step("step15-source-persistence", "Expire, save, restore, and reject corrupt source payload", QuestSourceExpirationPersistence))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.6.dialogue-conversation-identity-foundation",
+                "Dialogue and Conversation Identity Foundation",
+                "15.6",
+                "Runtime-owned conversation identity and records with participant roles, quest/source/location context, provider boundaries, visibility-safe projections, idempotence, and persistence.",
+                15060,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "ConversationRuntime", "ConversationDefinition", "ConversationPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("95.1-conversation-readiness", "Conversation definitions register and validate", 10, Step("step15-conversation-readiness", "Resolve conversation definitions", ConversationReadiness)),
+                    Scenario("95.2-guild-counter-context", "Guild counter conversation records quest source, listing, location, and provider context", 20, Step("step15-conversation-context", "Start guild counter conversation", ConversationGuildCounterContext)),
+                    Scenario("95.3-private-projection", "Private conversations redact hidden participant and subject details", 30, Step("step15-conversation-private", "Query private conversation projections", ConversationPrivateProjection)),
+                    Scenario("95.4-provider-and-location", "Provider and co-location requirements reject invalid starts without mutation", 40, Step("step15-conversation-provider-location", "Reject missing provider and wrong location", ConversationProviderLocationValidation)),
+                    Scenario("95.5-idempotence-lifecycle", "Conversation transactions and lifecycle transitions are deterministic", 50, Step("step15-conversation-lifecycle", "Deduplicate start and transition lifecycle", ConversationIdempotenceLifecycle)),
+                    Scenario("95.6-persistence", "Conversation save and restore preserve records without replaying events", 60, Step("step15-conversation-persistence", "Save, restore, and reject corrupt conversation payload", ConversationPersistence))
                 }), out _);
         }
 
@@ -842,10 +863,214 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step15-source-persistence", "Quest source expiration and persistence are deterministic and reject invalid graphs", valid, $"Quest={quest.Status} Source={source.Status} Publish={publish.Status} Expire={firstExpire?.Status}/{firstExpire?.Listing?.LifecycleState} DuplicateExpire={secondExpire?.Status.ToString() ?? "None"} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Restored={restored.ListingCount}");
         }
 
+        private static TestLabAutomationStepResult ConversationReadiness(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            bool hasAll = PrototypeConversationDefinitionFactory.PrototypeDefinitionIds.All(id => registry.TryGet(id, out ConversationDefinition _));
+            bool metadata = registry.TryGet(PrototypeConversationDefinitionFactory.AdventurerGuildCounterDefinitionId, out ConversationDefinition counter)
+                && counter.Category == ConversationCategory.QuestOffer
+                && counter.CoLocationPolicy == ConversationCoLocationPolicy.SameInteractionPoint
+                && counter.RequiredRoles.Contains(ConversationParticipantRole.Provider);
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (ConversationDefinition definition in PrototypeConversationDefinitionFactory.CreateMissingConversationDefinitions(Array.Empty<string>()))
+            {
+                definition.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                UnityEngine.Object.DestroyImmediate(definition);
+            }
+
+            bool valid = hasAll && metadata && report.ErrorCount == 0;
+            return TestLabAssertions.True("step15-conversation-readiness", "Conversation definitions register and validate", valid, $"Definitions={hasAll} Metadata={metadata} Errors={report.ErrorCount} Warnings={report.WarningCount}");
+        }
+
+        private static TestLabAutomationStepResult ConversationGuildCounterContext(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            QuestRuntime quests = Runtime(context);
+            QuestParticipationRuntime participation = Participation(quests, registry);
+            QuestSourceRuntime sources = Sources(quests, participation, registry);
+            QuestRuntimeOperationResult quest = CreateGuildPosting(quests, "conversation-context", "quest.prototype.guild.conversation-context");
+            QuestSourceOperationResult source = CreateGuildCounter(sources, "quest-source.prototype.guild-counter.conversation-context");
+            QuestSourceOperationResult publish = sources.PublishListing(new QuestListingPublishRequest { transactionId = "tx.conversation.context.publish", questSourceId = source.Source?.QuestSourceId, questId = quest.Snapshot?.QuestId, publisherAuthorityId = "authority.prototype.guild.quest-offer", worldTime = 2d });
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult start = conversations.StartConversation(new ConversationStartRequest
+            {
+                transactionId = "tx.conversation.context.start",
+                conversationId = "conversation.prototype.guild-counter.context",
+                conversationDefinitionId = PrototypeConversationDefinitionFactory.AdventurerGuildCounterDefinitionId,
+                participants = GuildCounterParticipants("interaction-point.prototype.guild-counter"),
+                hostLocationId = "location.prototype.adventurers-guild",
+                hostInteractionPointId = "interaction-point.prototype.guild-counter",
+                questSourceId = source.Source?.QuestSourceId,
+                questListingId = publish.Listing?.QuestListingId,
+                questId = quest.Snapshot?.QuestId,
+                operatingOrganizationId = "organization.prototype.adventurers-guild",
+                sceneBindingKey = "scene.prototype.guild.counter",
+                worldTime = 3d
+            });
+
+            ConversationSnapshot snapshot = start.Snapshot;
+            bool valid = quest.Succeeded
+                && source.Succeeded
+                && publish.Succeeded
+                && start.Succeeded
+                && snapshot != null
+                && snapshot.Participants.Count == 3
+                && snapshot.SubjectLinks.Any(link => link.role == ConversationSubjectRole.Quest)
+                && snapshot.SubjectLinks.Any(link => link.role == ConversationSubjectRole.QuestSource)
+                && snapshot.SubjectLinks.Any(link => link.role == ConversationSubjectRole.QuestListing)
+                && snapshot.CreateInformationSubject().tags.Contains(ConversationInformationSubject.ConversationTag)
+                && conversations.Query(new ConversationQuery { questId = quest.Snapshot?.QuestId, access = ConversationAccessLevel.PrivilegedDiagnostic }).Count == 1;
+            return TestLabAssertions.True("step15-conversation-context", "Conversation stores quest, source, location, and provider references without owning them", valid, $"Quest={quest.Status} Source={source.Status} Publish={publish.Status} Conversation={start.Status} Participants={snapshot?.Participants.Count} Subjects={snapshot?.SubjectLinks.Count}");
+        }
+
+        private static TestLabAutomationStepResult ConversationPrivateProjection(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult start = conversations.StartConversation(new ConversationStartRequest
+            {
+                transactionId = "tx.conversation.private.start",
+                conversationId = "conversation.prototype.private-audience",
+                conversationDefinitionId = PrototypeConversationDefinitionFactory.PrivateAudienceDefinitionId,
+                participants = new[]
+                {
+                    Participant("person.prototype.player", ConversationParticipantRole.Initiator, "location.prototype.guild-head-office", "interaction-point.prototype.guild-head-desk"),
+                    Participant("person.prototype.guild-head", ConversationParticipantRole.Addressee, "location.prototype.guild-head-office", "interaction-point.prototype.guild-head-desk", hidden: true)
+                },
+                subjectLinks = new[] { HiddenSubject("knowledge.prototype.private-recommendation") },
+                hostLocationId = "location.prototype.guild-head-office",
+                hostInteractionPointId = "interaction-point.prototype.guild-head-desk",
+                worldTime = 4d
+            });
+            ConversationProjection publicProjection = conversations.Query(new ConversationQuery { conversationId = start.Snapshot?.ConversationId, access = ConversationAccessLevel.Public, requesterPersonId = "person.prototype.visitor" }).SingleOrDefault();
+            ConversationProjection participantProjection = conversations.Query(new ConversationQuery { conversationId = start.Snapshot?.ConversationId, access = ConversationAccessLevel.Participant, requesterPersonId = "person.prototype.player" }).SingleOrDefault();
+            ConversationProjection privilegedProjection = conversations.Query(new ConversationQuery { conversationId = start.Snapshot?.ConversationId, access = ConversationAccessLevel.PrivilegedDiagnostic }).SingleOrDefault();
+            bool valid = start.Succeeded
+                && publicProjection == null
+                && participantProjection != null
+                && participantProjection.Redacted
+                && participantProjection.Snapshot.Participants.All(value => !value.hidden)
+                && participantProjection.Snapshot.SubjectLinks.All(value => !value.hidden)
+                && privilegedProjection != null
+                && privilegedProjection.Redacted == false
+                && privilegedProjection.Snapshot.Participants.Any(value => value.hidden);
+            return TestLabAssertions.True("step15-conversation-private", "Private conversation projection redacts hidden participants and subjects", valid, $"Start={start.Status} Public={(publicProjection == null ? "Denied" : "Visible")} ParticipantRedacted={participantProjection?.Redacted} Privileged={privilegedProjection != null}");
+        }
+
+        private static TestLabAutomationStepResult ConversationProviderLocationValidation(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult missingProvider = conversations.StartConversation(new ConversationStartRequest
+            {
+                transactionId = "tx.conversation.provider.missing",
+                conversationDefinitionId = PrototypeConversationDefinitionFactory.AdventurerGuildCounterDefinitionId,
+                participants = new[] { Participant("person.prototype.player", ConversationParticipantRole.Initiator, "location.prototype.adventurers-guild", "interaction-point.prototype.guild-counter") },
+                hostLocationId = "location.prototype.adventurers-guild",
+                hostInteractionPointId = "interaction-point.prototype.guild-counter"
+            });
+            ConversationOperationResult wrongLocation = conversations.StartConversation(new ConversationStartRequest
+            {
+                transactionId = "tx.conversation.location.wrong",
+                conversationDefinitionId = PrototypeConversationDefinitionFactory.PrisonerInterviewDefinitionId,
+                participants = new[]
+                {
+                    Participant("person.prototype.player", ConversationParticipantRole.Initiator, "location.prototype.guild-hall", string.Empty),
+                    Participant("person.prototype.prisoner", ConversationParticipantRole.Prisoner, "location.prototype.basement-prison", string.Empty),
+                    Participant("person.prototype.guard", ConversationParticipantRole.Guard, "location.prototype.basement-prison", string.Empty, provenanceId: "authority.prototype.prison.interview")
+                },
+                hostLocationId = "location.prototype.basement-prison",
+                tagIds = new[] { "authority.prototype.prison.interview" }
+            });
+            bool valid = missingProvider.Status == ConversationOperationStatus.MissingParticipant
+                && wrongLocation.Status == ConversationOperationStatus.CoLocationRejected
+                && conversations.Count == 0
+                && conversations.Revision == 0;
+            return TestLabAssertions.True("step15-conversation-provider-location", "Invalid provider and location requests do not mutate conversation runtime", valid, $"Provider={missingProvider.Status} Location={wrongLocation.Status} Count={conversations.Count} Revision={conversations.Revision}");
+        }
+
+        private static TestLabAutomationStepResult ConversationIdempotenceLifecycle(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult start = conversations.StartConversation(new ConversationStartRequest
+            {
+                transactionId = "tx.conversation.lifecycle.start",
+                conversationId = "conversation.prototype.group-briefing.lifecycle",
+                conversationDefinitionId = PrototypeConversationDefinitionFactory.GroupBriefingDefinitionId,
+                participants = new[]
+                {
+                    Participant("person.prototype.player", ConversationParticipantRole.Initiator, "location.prototype.guild-hall", string.Empty),
+                    Participant("person.prototype.guild-head", ConversationParticipantRole.Speaker, "location.prototype.guild-hall", string.Empty),
+                    Participant("person.prototype.adventurer", ConversationParticipantRole.Listener, "location.prototype.guild-hall", string.Empty),
+                    Participant("person.prototype.scribe", ConversationParticipantRole.Witness, "location.prototype.guild-hall", string.Empty)
+                },
+                hostLocationId = "location.prototype.guild-hall",
+                worldTime = 1d
+            });
+            ConversationOperationResult duplicate = conversations.StartConversation(new ConversationStartRequest { transactionId = "tx.conversation.lifecycle.start" });
+            long createdRevision = conversations.Revision;
+            ConversationOperationResult stale = conversations.TransitionLifecycle(new ConversationLifecycleRequest { transactionId = "tx.conversation.lifecycle.stale", conversationId = start.Snapshot?.ConversationId, targetState = ConversationLifecycleState.Completed, expectedRevision = createdRevision - 1L });
+            ConversationOperationResult complete = conversations.TransitionLifecycle(new ConversationLifecycleRequest { transactionId = "tx.conversation.lifecycle.complete", conversationId = start.Snapshot?.ConversationId, targetState = ConversationLifecycleState.Completed, expectedRevision = createdRevision, worldTime = 6d });
+            ConversationOperationResult duplicateComplete = conversations.TransitionLifecycle(new ConversationLifecycleRequest { transactionId = "tx.conversation.lifecycle.complete", conversationId = start.Snapshot?.ConversationId, targetState = ConversationLifecycleState.Completed, worldTime = 6d });
+            bool valid = start.Succeeded
+                && duplicate.Duplicate
+                && stale.Status == ConversationOperationStatus.RevisionConflict
+                && complete.Succeeded
+                && complete.Snapshot.LifecycleState == ConversationLifecycleState.Completed
+                && duplicateComplete.Duplicate
+                && conversations.Events.Count == 2;
+            return TestLabAssertions.True("step15-conversation-lifecycle", "Conversation start and lifecycle transitions are idempotent and revision guarded", valid, $"Start={start.Status} Duplicate={duplicate.Status} Stale={stale.Status} Complete={complete.Status}/{complete.Snapshot?.LifecycleState} Events={conversations.Events.Count}");
+        }
+
+        private static TestLabAutomationStepResult ConversationPersistence(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult start = conversations.StartConversation(new ConversationStartRequest
+            {
+                transactionId = "tx.conversation.persistence.start",
+                conversationId = "conversation.prototype.records.persist",
+                conversationDefinitionId = PrototypeConversationDefinitionFactory.RecordsDeskDefinitionId,
+                participants = new[]
+                {
+                    Participant("person.prototype.player", ConversationParticipantRole.Initiator, "location.prototype.records-room", "interaction-point.prototype.records-desk"),
+                    Participant("person.prototype.records-clerk", ConversationParticipantRole.Provider, "location.prototype.records-room", "interaction-point.prototype.records-desk", provenanceId: "authority.prototype.records.read"),
+                    Participant("person.prototype.player", ConversationParticipantRole.Listener, "location.prototype.records-room", "interaction-point.prototype.records-desk")
+                },
+                hostLocationId = "location.prototype.records-room",
+                hostInteractionPointId = "interaction-point.prototype.records-desk",
+                operatingOfficeId = "office.prototype.records",
+                tagIds = new[] { "authority.prototype.records.read" },
+                worldTime = 2d
+            });
+            ConversationPersistenceParticipant participant = new ConversationPersistenceParticipant(conversations, () => registry);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+            ConversationRuntime restored = Conversations(registry);
+            ConversationPersistenceParticipant restoredParticipant = new ConversationPersistenceParticipant(restored, () => registry);
+            PersistenceParticipantPrepareResult prepare = restoredParticipant.PreparePayload(save.PayloadJson, ConversationPersistenceParticipant.CurrentParticipantSchemaVersion);
+            PersistenceParticipantCommitResult commit = restoredParticipant.CommitPreparedPayload(prepare.PreparedPayload);
+            ConversationRuntimeSaveData corrupt = restored.CreateSaveData();
+            if (corrupt.conversations.Count > 0)
+            {
+                corrupt.conversations[0].conversationDefinitionId = "conversation-definition.prototype.missing";
+            }
+            PersistenceParticipantPrepareResult rejected = restoredParticipant.PreparePayload(JsonUtility.ToJson(corrupt), ConversationPersistenceParticipant.CurrentParticipantSchemaVersion);
+            bool valid = start.Succeeded
+                && save.Succeeded
+                && prepare.Succeeded
+                && commit.Succeeded
+                && restored.Count == 1
+                && restored.Events.Count == 1
+                && rejected.Succeeded == false
+                && restored.Count == 1;
+            return TestLabAssertions.True("step15-conversation-persistence", "Conversation persistence restores records and rejects corrupt payloads safely", valid, $"Start={start.Status} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Count={restored.Count} Events={restored.Events.Count}");
+        }
+
         private static DefinitionRegistry Registry(TestLabAutomationContext context)
         {
             DefinitionRegistry baseRegistry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
-            return PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry);
+            return PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry));
         }
 
         private static QuestRuntime Runtime(TestLabAutomationContext context)
@@ -871,6 +1096,46 @@ namespace UnityIsekaiGame.Development.Automation
         private static QuestSourceRuntime Sources(QuestRuntime quests, QuestParticipationRuntime participation, DefinitionRegistry registry)
         {
             return new QuestSourceRuntime(quests, participation, registry, PersistenceService.LocalWorldId);
+        }
+
+        private static ConversationRuntime Conversations(DefinitionRegistry registry)
+        {
+            return new ConversationRuntime(registry, PersistenceService.LocalWorldId);
+        }
+
+        private static ConversationParticipantRecordData[] GuildCounterParticipants(string interactionPointId)
+        {
+            return new[]
+            {
+                Participant("person.prototype.player", ConversationParticipantRole.Initiator, "location.prototype.adventurers-guild", interactionPointId),
+                Participant("person.prototype.guild-clerk", ConversationParticipantRole.Provider, "location.prototype.adventurers-guild", interactionPointId, organizationId: "organization.prototype.adventurers-guild"),
+                Participant("person.prototype.player", ConversationParticipantRole.QuestRecipient, "location.prototype.adventurers-guild", interactionPointId)
+            };
+        }
+
+        private static ConversationParticipantRecordData Participant(string personId, ConversationParticipantRole role, string locationId, string interactionPointId, string organizationId = "", string officeId = "", bool hidden = false, string provenanceId = "")
+        {
+            return new ConversationParticipantRecordData
+            {
+                personId = personId,
+                role = role,
+                currentLocationId = locationId,
+                currentInteractionPointId = interactionPointId,
+                representedOrganizationId = organizationId,
+                representedOfficeId = officeId,
+                hidden = hidden,
+                provenanceId = provenanceId
+            };
+        }
+
+        private static ConversationSubjectLinkData HiddenSubject(string subjectId)
+        {
+            return new ConversationSubjectLinkData
+            {
+                role = ConversationSubjectRole.Information,
+                subject = new InformationSubjectReferenceData { subjectType = InformationSubjectType.KnowledgeRecord, subjectId = subjectId, tags = new[] { "private" } },
+                hidden = true
+            };
         }
 
         private static QuestSourceOperationResult CreateGuildCounter(QuestSourceRuntime sources, string sourceId)
