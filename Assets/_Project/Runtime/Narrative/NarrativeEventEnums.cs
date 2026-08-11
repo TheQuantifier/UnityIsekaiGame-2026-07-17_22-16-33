@@ -127,6 +127,7 @@ namespace UnityIsekaiGame.Narrative
         TimeState,
         HistoricalState,
         NarrativeState,
+        NarrativeArc,
         Custom
     }
 
@@ -184,6 +185,7 @@ namespace UnityIsekaiGame.Narrative
         CreateIncidentReport,
         HistoricalEventRequest,
         RequestNarrativeStateTransition,
+        RequestNarrativeArcProgression,
         ScheduleNarrativeEvent,
         ArmNarrativeEvent,
         DisarmNarrativeEvent,
@@ -269,6 +271,7 @@ namespace UnityIsekaiGame.Narrative
         DialogueEffect,
         QuestOutcome,
         NarrativeStateTransition,
+        NarrativeArcProgression,
         Development,
         ScriptedAuthoritative,
         Custom
