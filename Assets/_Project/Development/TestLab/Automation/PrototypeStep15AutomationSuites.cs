@@ -18,6 +18,7 @@ namespace UnityIsekaiGame.Development.Automation
         private static readonly string[] RequiredQuestDefinitionIds = PrototypeQuestDefinitionFactory.PrototypeDefinitionIds
             .Concat(PrototypeQuestSourceDefinitionFactory.PrototypeDefinitionIds)
             .Concat(PrototypeConversationDefinitionFactory.PrototypeDefinitionIds)
+            .Concat(PrototypeDialogueGraphDefinitionFactory.PrototypeDefinitionIds)
             .ToArray();
 
         public static void RegisterDefaults(TestLabAutomationRegistry registry)
@@ -132,6 +133,25 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("95.4-provider-and-location", "Provider and co-location requirements reject invalid starts without mutation", 40, Step("step15-conversation-provider-location", "Reject missing provider and wrong location", ConversationProviderLocationValidation)),
                     Scenario("95.5-idempotence-lifecycle", "Conversation transactions and lifecycle transitions are deterministic", 50, Step("step15-conversation-lifecycle", "Deduplicate start and transition lifecycle", ConversationIdempotenceLifecycle)),
                     Scenario("95.6-persistence", "Conversation save and restore preserve records without replaying events", 60, Step("step15-conversation-persistence", "Save, restore, and reject corrupt conversation payload", ConversationPersistence))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.7.dialogue-nodes-conditions-choices-conversation-flow",
+                "Dialogue Nodes, Conditions, Choices, and Conversation Flow",
+                "15.7",
+                "Authored dialogue graphs and runtime-owned conversation flow with stable node and choice identities, condition-gated choices, delegated effects, deterministic transitions, and persistence.",
+                15070,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "ConversationRuntime", "DialogueGraphDefinition", "DialogueFlowRuntime", "DialogueFlowPersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("96.1-graph-readiness", "Dialogue graphs register and validate", 10, Step("step15-dialogue-flow-readiness", "Resolve prototype dialogue graphs", DialogueFlowReadiness)),
+                    Scenario("96.2-start-and-visible-choices", "Starting a graph enters the canonical node with deterministic choices", 20, Step("step15-dialogue-flow-start", "Start guild counter dialogue flow", DialogueFlowStartAndChoices)),
+                    Scenario("96.3-conditions-and-hidden-choices", "Hidden and unavailable choices respect condition context", 30, Step("step15-dialogue-flow-conditions", "Evaluate visible and hidden choices", DialogueFlowConditions)),
+                    Scenario("96.4-choice-history-and-idempotence", "Choice selection records history and idempotence without owner mutation", 40, Step("step15-dialogue-flow-choice", "Select a dialogue choice", DialogueFlowChoiceHistory)),
+                    Scenario("96.5-required-effect-failure", "Required owner-runtime effects fail atomically when no executor is available", 50, Step("step15-dialogue-flow-effect-failure", "Reject required dialogue effect without executor", DialogueFlowRequiredEffectFailure)),
+                    Scenario("96.6-persistence", "Dialogue flow save and restore preserve current node without replay", 60, Step("step15-dialogue-flow-persistence", "Save, restore, and reject corrupt flow payload", DialogueFlowPersistence))
                 }), out _);
         }
 
@@ -1067,10 +1087,146 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step15-conversation-persistence", "Conversation persistence restores records and rejects corrupt payloads safely", valid, $"Start={start.Status} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Count={restored.Count} Events={restored.Events.Count}");
         }
 
+        private static TestLabAutomationStepResult DialogueFlowReadiness(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            bool hasAll = PrototypeDialogueGraphDefinitionFactory.PrototypeDefinitionIds.All(id => registry.TryGet(id, out DialogueGraphDefinition _));
+            bool metadata = registry.TryGet(PrototypeDialogueGraphDefinitionFactory.AdventurerGuildCounterGraphId, out DialogueGraphDefinition graph)
+                && graph.ConversationDefinitionId == PrototypeConversationDefinitionFactory.AdventurerGuildCounterDefinitionId
+                && graph.Nodes.Any(node => node.choices.Any(choice => choice.choiceId == "guild.choice.accept-posting"));
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (DialogueGraphDefinition definition in PrototypeDialogueGraphDefinitionFactory.CreateMissingDialogueGraphDefinitions(Array.Empty<string>()))
+            {
+                definition.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                UnityEngine.Object.DestroyImmediate(definition);
+            }
+
+            bool valid = hasAll && metadata && report.ErrorCount == 0;
+            return TestLabAssertions.True("step15-dialogue-flow-readiness", "Dialogue graph definitions register and validate", valid, $"Definitions={hasAll} Metadata={metadata} Errors={report.ErrorCount} Warnings={report.WarningCount}");
+        }
+
+        private static TestLabAutomationStepResult DialogueFlowStartAndChoices(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult conversation = StartGuildConversation(conversations, "flow-start");
+            DialogueFlowRuntime flows = new DialogueFlowRuntime(registry, conversations, null, PersistenceService.LocalWorldId);
+            DialogueFlowOperationResult start = flows.StartFlow(new DialogueFlowStartRequest
+            {
+                transactionId = "tx.dialogue.flow.start",
+                conversationId = conversation.Snapshot?.ConversationId,
+                conditionContext = GuildDialogueContext(),
+                worldTime = 10d
+            });
+
+            bool valid = conversation.Succeeded
+                && start.Succeeded
+                && start.Snapshot.CurrentNodeId == "guild.entry"
+                && start.Snapshot.State == DialogueFlowState.AwaitingChoice
+                && start.Snapshot.VisibleChoices.Select(choice => choice.ChoiceId).SequenceEqual(new[] { "guild.choice.accept-posting", "guild.choice.ask-work", "guild.choice.leave" });
+            return TestLabAssertions.True("step15-dialogue-flow-start", "Dialogue flow starts at the canonical node with deterministic visible choices", valid, $"Conversation={conversation.Status} Flow={start.Status} Node={start.Snapshot?.CurrentNodeId} Choices={string.Join(",", start.Snapshot?.VisibleChoices.Select(choice => choice.ChoiceId) ?? Array.Empty<string>())}");
+        }
+
+        private static TestLabAutomationStepResult DialogueFlowConditions(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult conversation = StartGuildConversation(conversations, "flow-conditions");
+            DialogueFlowRuntime flows = new DialogueFlowRuntime(registry, conversations, null, PersistenceService.LocalWorldId);
+            DialogueFlowOperationResult start = flows.StartFlow(new DialogueFlowStartRequest { transactionId = "tx.dialogue.conditions.start", conversationId = conversation.Snapshot?.ConversationId, conditionContext = GuildDialogueContext(), worldTime = 1d });
+            DialogueFlowSnapshot ordinary = start.Snapshot;
+            DialogueFlowSnapshot ranked;
+            bool rankedSnapshot = flows.TryGetSnapshot(start.Snapshot?.FlowId, GuildDialogueContext(rank: true), out ranked);
+
+            bool valid = start.Succeeded
+                && ordinary.VisibleChoices.All(choice => choice.ChoiceId != "guild.choice.silver-rank")
+                && rankedSnapshot
+                && ranked.VisibleChoices.Any(choice => choice.ChoiceId == "guild.choice.silver-rank")
+                && ranked.VisibleChoices.First(choice => choice.ChoiceId == "guild.choice.silver-rank").Evaluation.Selectable;
+            return TestLabAssertions.True("step15-dialogue-flow-conditions", "Dialogue flow conditions hide restricted choices until context satisfies them", valid, $"Start={start.Status} Ordinary={string.Join(",", ordinary?.VisibleChoices.Select(choice => choice.ChoiceId) ?? Array.Empty<string>())} Ranked={rankedSnapshot}:{string.Join(",", ranked?.VisibleChoices.Select(choice => choice.ChoiceId) ?? Array.Empty<string>())}");
+        }
+
+        private static TestLabAutomationStepResult DialogueFlowChoiceHistory(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult conversation = StartGuildConversation(conversations, "flow-choice");
+            DialogueFlowRuntime flows = new DialogueFlowRuntime(registry, conversations, null, PersistenceService.LocalWorldId);
+            DialogueFlowOperationResult start = flows.StartFlow(new DialogueFlowStartRequest { transactionId = "tx.dialogue.choice.start", conversationId = conversation.Snapshot?.ConversationId, conditionContext = GuildDialogueContext(), worldTime = 1d });
+            long beforeConversationRevision = conversations.Revision;
+            DialogueFlowOperationResult select = flows.SelectChoice(new DialogueChoiceSelectionRequest { transactionId = "tx.dialogue.choice.select", flowId = start.Snapshot?.FlowId, choiceId = "guild.choice.ask-work", actorPersonId = "person.prototype.player", conditionContext = GuildDialogueContext(), worldTime = 2d });
+            DialogueFlowOperationResult duplicate = flows.SelectChoice(new DialogueChoiceSelectionRequest { transactionId = "tx.dialogue.choice.select", flowId = start.Snapshot?.FlowId, choiceId = "guild.choice.ask-work", actorPersonId = "person.prototype.player", conditionContext = GuildDialogueContext(), worldTime = 2d });
+
+            bool valid = start.Succeeded
+                && select.Succeeded
+                && duplicate.Duplicate
+                && select.Snapshot.CurrentNodeId == "guild.entry"
+                && select.Snapshot.Visits.Count == 3
+                && select.Snapshot.Selections.Count == 1
+                && select.Snapshot.LocalVariables.Any(value => value.variableId == "flag.guild.asked-work" && value.boolValue)
+                && conversations.Revision == beforeConversationRevision;
+            return TestLabAssertions.True("step15-dialogue-flow-choice", "Dialogue choice selection records deterministic history without mutating conversation ownership", valid, $"Start={start.Status} Select={select.Status} Duplicate={duplicate.Status} Node={select.Snapshot?.CurrentNodeId} Visits={select.Snapshot?.Visits.Count} Selections={select.Snapshot?.Selections.Count} ConversationRevision={conversations.Revision}->{beforeConversationRevision}");
+        }
+
+        private static TestLabAutomationStepResult DialogueFlowRequiredEffectFailure(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = RegistryWithRequiredEffectGraph(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult conversation = StartGuildConversation(conversations, "flow-effect-failure");
+            DialogueFlowRuntime flows = new DialogueFlowRuntime(registry, conversations, null, PersistenceService.LocalWorldId);
+            DialogueFlowOperationResult start = flows.StartFlow(new DialogueFlowStartRequest { transactionId = "tx.dialogue.effect.start", graphId = "dialogue-graph.prototype.required-effect-test", conversationId = conversation.Snapshot?.ConversationId, conditionContext = GuildDialogueContext(), worldTime = 1d });
+            DialogueFlowOperationResult select = flows.SelectChoice(new DialogueChoiceSelectionRequest { transactionId = "tx.dialogue.effect.select", flowId = start.Snapshot?.FlowId, choiceId = "required.choice", actorPersonId = "person.prototype.player", conditionContext = GuildDialogueContext(), worldTime = 2d });
+            DialogueFlowSnapshot after;
+            bool snapshot = flows.TryGetSnapshot(start.Snapshot?.FlowId, GuildDialogueContext(), out after);
+
+            bool valid = start.Succeeded
+                && select.Status == DialogueFlowOperationStatus.EffectFailed
+                && snapshot
+                && after.CurrentNodeId == "required.entry"
+                && after.Selections.Count == 0
+                && flows.Revision == 1;
+            return TestLabAssertions.True("step15-dialogue-flow-effect-failure", "Required delegated dialogue effects fail atomically without an executor", valid, $"Start={start.Status} Select={select.Status} Snapshot={snapshot} Node={after?.CurrentNodeId} Selections={after?.Selections.Count} Revision={flows.Revision}");
+        }
+
+        private static TestLabAutomationStepResult DialogueFlowPersistence(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            ConversationRuntime conversations = Conversations(registry);
+            ConversationOperationResult conversation = StartGuildConversation(conversations, "flow-persistence");
+            DialogueFlowRuntime flows = new DialogueFlowRuntime(registry, conversations, null, PersistenceService.LocalWorldId);
+            DialogueFlowOperationResult start = flows.StartFlow(new DialogueFlowStartRequest { transactionId = "tx.dialogue.persistence.start", conversationId = conversation.Snapshot?.ConversationId, conditionContext = GuildDialogueContext(), worldTime = 1d });
+            DialogueFlowOperationResult select = flows.SelectChoice(new DialogueChoiceSelectionRequest { transactionId = "tx.dialogue.persistence.select", flowId = start.Snapshot?.FlowId, choiceId = "guild.choice.ask-work", actorPersonId = "person.prototype.player", conditionContext = GuildDialogueContext(), worldTime = 2d });
+            DialogueFlowPersistenceParticipant participant = new DialogueFlowPersistenceParticipant(flows, () => registry, () => conversations);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+
+            DialogueFlowRuntime restored = new DialogueFlowRuntime(registry, conversations, null, PersistenceService.LocalWorldId);
+            DialogueFlowPersistenceParticipant restoredParticipant = new DialogueFlowPersistenceParticipant(restored, () => registry, () => conversations);
+            PersistenceParticipantPrepareResult prepare = restoredParticipant.PreparePayload(save.PayloadJson, DialogueFlowPersistenceParticipant.CurrentParticipantSchemaVersion);
+            PersistenceParticipantCommitResult commit = restoredParticipant.CommitPreparedPayload(prepare.PreparedPayload);
+            DialogueFlowRuntimeSaveData corrupt = restored.CreateSaveData();
+            if (corrupt.flows.Count > 0)
+            {
+                corrupt.flows[0].graphId = "dialogue-graph.prototype.missing";
+            }
+            PersistenceParticipantPrepareResult rejected = restoredParticipant.PreparePayload(JsonUtility.ToJson(corrupt), DialogueFlowPersistenceParticipant.CurrentParticipantSchemaVersion);
+
+            bool valid = conversation.Succeeded
+                && start.Succeeded
+                && select.Succeeded
+                && save.Succeeded
+                && prepare.Succeeded
+                && commit.Succeeded
+                && restored.Count == 1
+                && restored.Events.Count == flows.Events.Count
+                && rejected.Succeeded == false
+                && restored.Count == 1;
+            return TestLabAssertions.True("step15-dialogue-flow-persistence", "Dialogue flow persistence restores current state and rejects corrupt graph references safely", valid, $"Conversation={conversation.Status} Start={start.Status} Select={select.Status} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Restored={restored.Count} Events={restored.Events.Count}");
+        }
+
         private static DefinitionRegistry Registry(TestLabAutomationContext context)
         {
             DefinitionRegistry baseRegistry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
-            return PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry));
+            return PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry)));
         }
 
         private static QuestRuntime Runtime(TestLabAutomationContext context)
@@ -1101,6 +1257,95 @@ namespace UnityIsekaiGame.Development.Automation
         private static ConversationRuntime Conversations(DefinitionRegistry registry)
         {
             return new ConversationRuntime(registry, PersistenceService.LocalWorldId);
+        }
+
+        private static ConversationOperationResult StartGuildConversation(ConversationRuntime conversations, string key)
+        {
+            return conversations.StartConversation(new ConversationStartRequest
+            {
+                transactionId = $"tx.dialogue.{key}.conversation",
+                conversationId = $"conversation.prototype.dialogue.{key}",
+                conversationDefinitionId = PrototypeConversationDefinitionFactory.AdventurerGuildCounterDefinitionId,
+                participants = GuildCounterParticipants("interaction-point.prototype.guild-counter"),
+                hostLocationId = "location.prototype.adventurers-guild",
+                hostInteractionPointId = "interaction-point.prototype.guild-counter",
+                questId = "quest.prototype.guild.counter",
+                questSourceId = "quest-source.prototype.guild-counter",
+                questListingId = "quest-listing.prototype.guild-counter",
+                operatingOrganizationId = "organization.prototype.adventurers-guild",
+                sceneBindingKey = "scene.prototype.guild.counter",
+                worldTime = 1d
+            });
+        }
+
+        private static DialogueConditionContext GuildDialogueContext(bool rank = false)
+        {
+            return new DialogueConditionContext
+            {
+                actorPersonId = "person.prototype.player",
+                listenerPersonId = "person.prototype.player",
+                locationId = "location.prototype.adventurers-guild",
+                interactionPointId = "interaction-point.prototype.guild-counter",
+                worldTime = 1d,
+                facts = new QuestEligibilityFactSet(
+                    organizationMemberships: new[] { "organization.prototype.adventurers-guild" },
+                    organizationRanks: rank ? new[] { "rank.prototype.adventurers.silver" } : Array.Empty<string>(),
+                    authorityGrants: new[] { "authority.prototype.guild.quest-offer", "authority.prototype.records.read", "authority.prototype.city.quest-assign" },
+                    knownSubjects: new[] { "subject.prototype.hidden-dungeon" }),
+                activeQuestIds = new[] { "quest.prototype.guild.counter" },
+                activeOfferIds = new[] { "offer.prototype.guild.counter" },
+                activeAssignmentQuestIds = Array.Empty<string>(),
+                completedQuestIds = Array.Empty<string>(),
+                claimableRewardIds = Array.Empty<string>()
+            };
+        }
+
+        private static DefinitionRegistry RegistryWithRequiredEffectGraph(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            List<IGameDefinition> definitions = registry.DefinitionsById.Values.Where(definition => definition != null).ToList();
+            DialogueGraphDefinition graph = ScriptableObject.CreateInstance<DialogueGraphDefinition>();
+            graph.name = "Required Effect Test Dialogue";
+            graph.DevelopmentConfigure(
+                "dialogue-graph.prototype.required-effect-test",
+                "Required Effect Test Dialogue",
+                PrototypeConversationDefinitionFactory.AdventurerGuildCounterDefinitionId,
+                "required.entry",
+                "required.end",
+                new[]
+                {
+                    new DialogueNodeDefinitionData
+                    {
+                        nodeId = "required.entry",
+                        category = DialogueNodeCategory.ChoicePrompt,
+                        authoredText = "Required effect test.",
+                        speaker = new DialogueSpeakerSelectorData { kind = DialogueSpeakerSelectorKind.Provider },
+                        listener = new DialogueListenerSelectorData { kind = DialogueListenerSelectorKind.AllParticipants },
+                        choices = new[]
+                        {
+                            new DialogueChoiceDefinitionData
+                            {
+                                choiceId = "required.choice",
+                                displayText = "Run required owner effect",
+                                category = DialogueChoiceCategory.ServiceRequest,
+                                effects = new[]
+                                {
+                                    new DialogueEffectData
+                                    {
+                                        effectId = "effect.required.owner",
+                                        kind = DialogueEffectKind.CreateQuestOffer,
+                                        requirement = DialogueEffectRequirement.Required,
+                                        targetId = "quest.prototype.guild.counter"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    new DialogueNodeDefinitionData { nodeId = "required.end", category = DialogueNodeCategory.End, authoredText = "End.", speaker = new DialogueSpeakerSelectorData { kind = DialogueSpeakerSelectorKind.None } }
+                },
+                tags: new[] { "prototype", "test", "required-effect" });
+            definitions.Add(graph);
+            return new DefinitionRegistry(definitions);
         }
 
         private static ConversationParticipantRecordData[] GuildCounterParticipants(string interactionPointId)
