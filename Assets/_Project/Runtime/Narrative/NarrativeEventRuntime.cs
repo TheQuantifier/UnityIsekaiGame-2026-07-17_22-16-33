@@ -598,6 +598,31 @@ namespace UnityIsekaiGame.Narrative
                     externalId = $"historical-request.{NarrativeModelUtility.SanitizeForId(record.narrativeEventId)}.{NarrativeModelUtility.SanitizeForId(action.actionDefinitionId)}";
                     message = "Explicit Step 8 historical event request recorded for owner processing.";
                     return true;
+                case NarrativeActionCategory.RequestNarrativeStateTransition:
+                    if (integrations?.NarrativeStateTransitionExecutor == null)
+                    {
+                        message = "NarrativeStateRuntime integration is missing.";
+                        return false;
+                    }
+
+                    NarrativeStateTransitionResult transition = integrations.NarrativeStateTransitionExecutor(new NarrativeStateTransitionRequest
+                    {
+                        transactionId = $"{transactionId}.{action.actionDefinitionId}.narrative-state",
+                        transitionDefinitionId = target,
+                        scopeKey = action.secondaryTargetId,
+                        sourceKind = NarrativeTransitionSourceKind.NarrativeEvent,
+                        sourceId = record.narrativeEventId,
+                        actorPersonId = record.actorPersonId,
+                        questId = record.questId,
+                        conversationId = record.conversationId,
+                        narrativeEventId = record.narrativeEventId,
+                        conditionContext = context?.Clone(),
+                        worldTime = record.triggerTime,
+                        cascadeDepth = cascadeDepth + 1
+                    });
+                    externalId = transition.Transition?.TransitionId ?? target;
+                    message = transition.Message;
+                    return transition.Succeeded;
                 case NarrativeActionCategory.ArmNarrativeEvent:
                 case NarrativeActionCategory.DisarmNarrativeEvent:
                     externalId = target;
@@ -632,7 +657,7 @@ namespace UnityIsekaiGame.Narrative
             return definition.conditions.Select(condition => EvaluateCondition(condition, data)).ToArray();
         }
 
-        private static NarrativeConditionResultData EvaluateCondition(NarrativeConditionDefinitionData condition, NarrativeConditionContextData context)
+        private NarrativeConditionResultData EvaluateCondition(NarrativeConditionDefinitionData condition, NarrativeConditionContextData context)
         {
             bool matched = condition.category switch
             {
@@ -652,6 +677,7 @@ namespace UnityIsekaiGame.Narrative
                 NarrativeConditionCategory.EconomicState => Contains(context.economicStateIds, condition.requiredId),
                 NarrativeConditionCategory.LegalState => Contains(context.legalStateIds, condition.requiredId),
                 NarrativeConditionCategory.HistoricalState => Contains(context.historicalStateIds, condition.requiredId),
+                NarrativeConditionCategory.NarrativeState => Contains(context.narrativeStateIds, condition.requiredId) || (integrations?.NarrativeStateConditionEvaluator?.Invoke(condition.Clone(), context.Clone()) ?? false),
                 NarrativeConditionCategory.TimeState => context.worldTime >= condition.minimumValue,
                 NarrativeConditionCategory.Custom => Contains(context.customStateIds, condition.requiredId),
                 _ => false

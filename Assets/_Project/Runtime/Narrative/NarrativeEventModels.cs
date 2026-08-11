@@ -224,6 +224,7 @@ namespace UnityIsekaiGame.Narrative
         public string[] economicStateIds = Array.Empty<string>();
         public string[] legalStateIds = Array.Empty<string>();
         public string[] historicalStateIds = Array.Empty<string>();
+        public string[] narrativeStateIds = Array.Empty<string>();
         public string[] customStateIds = Array.Empty<string>();
 
         public NarrativeConditionContextData Clone()
@@ -252,6 +253,7 @@ namespace UnityIsekaiGame.Narrative
                 economicStateIds = NarrativeModelUtility.Clean(economicStateIds),
                 legalStateIds = NarrativeModelUtility.Clean(legalStateIds),
                 historicalStateIds = NarrativeModelUtility.Clean(historicalStateIds),
+                narrativeStateIds = NarrativeModelUtility.Clean(narrativeStateIds),
                 customStateIds = NarrativeModelUtility.Clean(customStateIds)
             };
         }
@@ -585,6 +587,8 @@ namespace UnityIsekaiGame.Narrative
         public Func<string, bool> SocialActionExecutor { get; set; }
         public Func<string, bool> OrganizationActionExecutor { get; set; }
         public Func<string, bool> LegalActionExecutor { get; set; }
+        public Func<NarrativeStateTransitionRequest, NarrativeStateTransitionResult> NarrativeStateTransitionExecutor { get; set; }
+        public Func<NarrativeConditionDefinitionData, NarrativeConditionContextData, bool> NarrativeStateConditionEvaluator { get; set; }
     }
 
     public static class NarrativeModelUtility

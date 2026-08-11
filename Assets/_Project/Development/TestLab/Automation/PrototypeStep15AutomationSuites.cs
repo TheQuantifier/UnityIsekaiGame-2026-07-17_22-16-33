@@ -21,6 +21,7 @@ namespace UnityIsekaiGame.Development.Automation
             .Concat(PrototypeConversationDefinitionFactory.PrototypeDefinitionIds)
             .Concat(PrototypeDialogueGraphDefinitionFactory.PrototypeDefinitionIds)
             .Concat(PrototypeNarrativeEventDefinitionFactory.PrototypeDefinitionIds)
+            .Concat(PrototypeNarrativeStateDefinitionFactory.PrototypeDefinitionIds)
             .ToArray();
 
         public static void RegisterDefaults(TestLabAutomationRegistry registry)
@@ -173,6 +174,25 @@ namespace UnityIsekaiGame.Development.Automation
                     Scenario("97.4-hidden-projection-boundaries", "Hidden narrative events redact ordinary projections", 40, Step("step15-narrative-hidden", "Query hidden narrative projections", NarrativeHiddenProjectionBoundaries)),
                     Scenario("97.5-required-action-failure", "Required owner action failures stop execution without fake owner mutation", 50, Step("step15-narrative-required-action", "Reject missing required owner runtime action", NarrativeRequiredActionFailure)),
                     Scenario("97.6-cascade-and-persistence", "Cascades and persistence remain deterministic and restore-safe", 60, Step("step15-narrative-persistence", "Cascade, save, restore, and reject corrupt narrative payload", NarrativeCascadePersistence))
+                }), out _);
+
+            registry?.TryRegister(new TestLabAutomationSuite(
+                "feature.15.9.branching-narrative-state-persistent-variables-consequences",
+                "Branching Narrative State, Persistent Variables, and Consequences",
+                "15.9",
+                "Runtime-owned branching narrative state with typed persistent variables, exclusive branches, historical queries, dialogue/event/quest adapters, visibility-safe projections, and persistence-safe restore.",
+                15090,
+                TestLabAutomationCategory.Standard,
+                includeInRunAll: true,
+                requiredServices: new[] { "NarrativeStateRuntime", "NarrativeStateDefinition", "NarrativeStatePersistenceParticipant" },
+                scenarios: new[]
+                {
+                    Scenario("98.1-readiness-and-validation", "Narrative state definitions register and validate", 10, Step("step15-narrative-state-readiness", "Resolve prototype narrative state definitions", NarrativeStateReadiness)),
+                    Scenario("98.2-exclusive-branch-transitions", "Person-scoped exclusive branches are deterministic", 20, Step("step15-narrative-state-exclusive", "Preview, commit, duplicate, and reject stale branches", NarrativeStateExclusiveBranches)),
+                    Scenario("98.3-merge-terminal-history", "Merged and terminal branches preserve historical values", 30, Step("step15-narrative-state-history", "Merge, terminate, and query historical values", NarrativeStateMergeTerminalHistory)),
+                    Scenario("98.4-access-dialogue-quest-adapters", "Hidden projections and adapter conditions do not leak state", 40, Step("step15-narrative-state-adapters", "Evaluate hidden state, dialogue, and quest adapters", NarrativeStateAccessAndAdapters)),
+                    Scenario("98.5-narrative-event-transition-cascade", "Narrative events request state transitions through the owner runtime", 50, Step("step15-narrative-state-event", "Execute event-driven state transition", NarrativeStateEventTransitionCascade)),
+                    Scenario("98.6-persistence-no-replay", "Narrative state persists without replaying consequences", 60, Step("step15-narrative-state-persistence", "Save, restore, and reject corrupt state payload", NarrativeStatePersistenceNoReplay))
                 }), out _);
         }
 
@@ -1402,10 +1422,185 @@ namespace UnityIsekaiGame.Development.Automation
             return TestLabAssertions.True("step15-narrative-persistence", "Narrative cascades persist and corrupt restore payloads are rejected before live mutation", valid, $"Cascade={cascade.Status} Signals={runtime.Signals.Count} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Reject={rejected.Succeeded} Restored={restored.Count}");
         }
 
+        private static TestLabAutomationStepResult NarrativeStateReadiness(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            bool hasAll = PrototypeNarrativeStateDefinitionFactory.PrototypeDefinitionIds.All(id => registry.TryGet(id, out NarrativeStateDefinition _));
+            DefinitionValidationReport report = new DefinitionValidationReport();
+            foreach (NarrativeStateDefinition definition in PrototypeNarrativeStateDefinitionFactory.CreateMissingNarrativeStateDefinitions(Array.Empty<string>()))
+            {
+                definition.ValidateCatalogDefinition(registry.DefinitionsById, report);
+                UnityEngine.Object.DestroyImmediate(definition);
+            }
+
+            NarrativeStateRuntime runtime = StateRuntime(registry);
+            bool valid = hasAll && report.ErrorCount == 0 && report.WarningCount == 0 && runtime.MaterializedStateCount == 0 && runtime.TransitionCount == 0;
+            return TestLabAssertions.True("step15-narrative-state-readiness", "Narrative state definitions register and validate without materializing defaults", valid, $"Definitions={hasAll} Errors={report.ErrorCount} Warnings={report.WarningCount} States={runtime.MaterializedStateCount} Transitions={runtime.TransitionCount}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeStateExclusiveBranches(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeStateRuntime runtime = StateRuntime(registry);
+
+            NarrativeStateTransitionResult preview = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.ChooseGuildTransitionId, Tx(context, "narrative-state-guild-preview"), "person.prototype.player", preview: true));
+            NarrativeStateTransitionRequest request = StateRequest(PrototypeNarrativeStateDefinitionFactory.ChooseGuildTransitionId, Tx(context, "narrative-state-guild"), "person.prototype.player");
+            NarrativeStateTransitionResult execute = runtime.RequestTransition(request);
+            NarrativeStateTransitionResult duplicate = runtime.RequestTransition(request);
+            NarrativeStateTransitionResult blocked = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.ChooseMerchantTransitionId, Tx(context, "narrative-state-merchant-blocked"), "person.prototype.player"));
+            NarrativeStateTransitionResult otherPerson = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.ChooseMerchantTransitionId, Tx(context, "narrative-state-merchant-other"), "person.prototype.merchant"));
+            bool snapshot = runtime.TryGetSnapshot(PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyDefinitionId, NarrativeStateScope.Person, "person.prototype.player", out NarrativeStateSnapshot player)
+                && player.TryGetValue(PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyVariableId, out NarrativeVariableValueData value)
+                && value.tokenValue == PrototypeNarrativeStateDefinitionFactory.GuildLoyalValueId;
+
+            bool valid = preview.Preview
+                && execute.Succeeded
+                && duplicate.Duplicate
+                && blocked.Status == NarrativeStateTransitionStatus.SourceValueMismatch
+                && otherPerson.Succeeded
+                && snapshot
+                && runtime.MaterializedStateCount == 2
+                && runtime.TransitionCount == 2;
+            return TestLabAssertions.True("step15-narrative-state-exclusive", "Exclusive person branches preview, commit, deduplicate, and reject stale source values deterministically", valid, $"Preview={preview.Status} Execute={execute.Status} Duplicate={duplicate.Status}/{duplicate.Duplicate} Blocked={blocked.Status} Other={otherPerson.Status} States={runtime.MaterializedStateCount} Transitions={runtime.TransitionCount}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeStateMergeTerminalHistory(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeStateRuntime runtime = StateRuntime(registry);
+            NarrativeStateTransitionResult heir = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.SupportHeirTransitionId, Tx(context, "narrative-state-heir"), string.Empty, NarrativeStateScope.World, worldTime: 1d));
+            NarrativeStateTransitionResult merge = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.ReconcileSuccessionTransitionId, Tx(context, "narrative-state-merge"), string.Empty, NarrativeStateScope.World, worldTime: 2d));
+            NarrativeStateTransitionResult terminal = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.CrownHeirTransitionId, Tx(context, "narrative-state-crown"), string.Empty, NarrativeStateScope.World, worldTime: 3d));
+            NarrativeStateTransitionResult afterTerminal = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.SupportRivalTransitionId, Tx(context, "narrative-state-rival-after-terminal"), string.Empty, NarrativeStateScope.World, worldTime: 4d));
+
+            string scopeKey = PersistenceService.LocalWorldId;
+            string atHeir = runtime.ValueAt(PrototypeNarrativeStateDefinitionFactory.RoyalSuccessionDefinitionId, PrototypeNarrativeStateDefinitionFactory.RoyalBranchVariableId, NarrativeStateScope.World, scopeKey, 1d)?.tokenValue;
+            string atMerge = runtime.ValueAt(PrototypeNarrativeStateDefinitionFactory.RoyalSuccessionDefinitionId, PrototypeNarrativeStateDefinitionFactory.RoyalBranchVariableId, NarrativeStateScope.World, scopeKey, 2d)?.tokenValue;
+            string atTerminal = runtime.ValueAt(PrototypeNarrativeStateDefinitionFactory.RoyalSuccessionDefinitionId, PrototypeNarrativeStateDefinitionFactory.RoyalBranchVariableId, NarrativeStateScope.World, scopeKey, 3d)?.tokenValue;
+
+            bool valid = heir.Succeeded
+                && merge.Succeeded
+                && terminal.Succeeded
+                && (afterTerminal.Status == NarrativeStateTransitionStatus.TerminalState || afterTerminal.Status == NarrativeStateTransitionStatus.SourceValueMismatch)
+                && atHeir == PrototypeNarrativeStateDefinitionFactory.RoyalSupportHeirValueId
+                && atMerge == PrototypeNarrativeStateDefinitionFactory.RoyalReconciledValueId
+                && atTerminal == PrototypeNarrativeStateDefinitionFactory.RoyalTerminalValueId
+                && runtime.QueryTransitions(PrototypeNarrativeStateDefinitionFactory.RoyalSuccessionDefinitionId).Count == 3;
+            return TestLabAssertions.True("step15-narrative-state-history", "Merged and terminal world branches preserve deterministic historical values", valid, $"Heir={heir.Status} Merge={merge.Status} Terminal={terminal.Status} After={afterTerminal.Status} Values={atHeir}/{atMerge}/{atTerminal} Transitions={runtime.TransitionCount}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeStateAccessAndAdapters(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeStateRuntime runtime = StateRuntime(registry);
+            NarrativeStateTransitionResult opened = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.OpenInvestigationTransitionId, Tx(context, "narrative-state-open-investigation"), string.Empty, NarrativeStateScope.World, worldTime: 5d));
+            bool development = runtime.TryGetSnapshot(PrototypeNarrativeStateDefinitionFactory.MayorInvestigationDefinitionId, NarrativeStateScope.World, PersistenceService.LocalWorldId, out NarrativeStateSnapshot dev, developmentView: true);
+            bool publicView = runtime.TryGetSnapshot(PrototypeNarrativeStateDefinitionFactory.MayorInvestigationDefinitionId, NarrativeStateScope.World, PersistenceService.LocalWorldId, out NarrativeStateSnapshot redacted, developmentView: false);
+            bool condition = runtime.EvaluateCondition(new NarrativeStateConditionQuery
+            {
+                stateDefinitionId = PrototypeNarrativeStateDefinitionFactory.MayorInvestigationDefinitionId,
+                variableDefinitionId = PrototypeNarrativeStateDefinitionFactory.MayorStageVariableId,
+                scope = NarrativeStateScope.World,
+                scopeKey = PersistenceService.LocalWorldId,
+                expectedValue = NarrativeVariableValueData.Token(PrototypeNarrativeStateDefinitionFactory.InvestigationOpenedValueId)
+            });
+            bool narrativeCondition = runtime.EvaluateCondition(new NarrativeStateConditionQuery
+            {
+                stateDefinitionId = PrototypeNarrativeStateDefinitionFactory.MayorInvestigationDefinitionId,
+                variableDefinitionId = PrototypeNarrativeStateDefinitionFactory.MayorStageVariableId,
+                scope = NarrativeStateScope.World,
+                scopeKey = PersistenceService.LocalWorldId,
+                expectedValue = NarrativeVariableValueData.Token(PrototypeNarrativeStateDefinitionFactory.InvestigationOpenedValueId)
+            });
+            bool questAdapter = new QuestEligibilityFactSet(narrativeStates: new[] { "narrative-state.prototype.mayor-investigation.opened" })
+                .Contains(QuestEligibilityRequirementKind.NarrativeState, "narrative-state.prototype.mayor-investigation.opened");
+            bool dialogueAdapter = new QuestEligibilityFactSet(narrativeStates: new[] { "narrative-state.prototype.dialogue.guild-loyal" })
+                .Contains(QuestEligibilityRequirementKind.NarrativeState, "narrative-state.prototype.dialogue.guild-loyal");
+
+            bool valid = opened.Succeeded
+                && development
+                && publicView
+                && dev.IsHidden
+                && dev.Variables.Count > 0
+                && redacted.IsHidden
+                && redacted.Variables.Count == 0
+                && condition
+                && narrativeCondition
+                && questAdapter
+                && dialogueAdapter;
+            return TestLabAssertions.True("step15-narrative-state-adapters", "Hidden state projections redact values while dialogue, quest, and narrative conditions use access-safe state signals", valid, $"Open={opened.Status} Dev={development}/{dev?.Variables.Count ?? 0} Public={publicView}/{redacted?.Variables.Count ?? 0} Condition={condition} Narrative={narrativeCondition} Quest={questAdapter} Dialogue={dialogueAdapter}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeStateEventTransitionCascade(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = RegistryWithNarrativeStateActionProbe(context);
+            NarrativeStateRuntime states = StateRuntime(registry);
+            NarrativeEventRuntime events = NarrativeRuntime(registry, integrations: new NarrativeEventRuntimeIntegrations
+            {
+                NarrativeStateTransitionExecutor = states.RequestTransition,
+                NarrativeStateConditionEvaluator = (condition, conditionContext) => EvaluateNarrativeStateCondition(states, condition, conditionContext)
+            });
+            states.Configure(registry, StateIntegrations(events));
+
+            NarrativeEventOperationResult result = events.EmitSignal(new NarrativeSignalRequest
+            {
+                transactionId = Tx(context, "narrative-state-event-signal"),
+                signalDefinitionId = "narrative-signal-definition.prototype.15-9.state-action",
+                actorPersonId = "person.prototype.player",
+                subjectIds = new[] { "person.prototype.player" },
+                conditionContext = NarrativeContext("person.prototype.player", narrativeStateIds: new[] { "narrative-state.prototype.guild.uncommitted" }),
+                worldTime = 6d
+            });
+            bool state = states.TryGetSnapshot(PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyDefinitionId, NarrativeStateScope.Person, "person.prototype.player", out NarrativeStateSnapshot snapshot)
+                && snapshot.TryGetValue(PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyVariableId, out NarrativeVariableValueData value)
+                && value.tokenValue == PrototypeNarrativeStateDefinitionFactory.GuildLoyalValueId;
+            bool action = events.Query(new NarrativeEventQuery { definitionId = "narrative-event-definition.prototype.15-9.state-action", developmentView = true })
+                .SelectMany(item => item.ActionExecutions)
+                .Any(item => item.category == NarrativeActionCategory.RequestNarrativeStateTransition && item.lifecycle == NarrativeActionLifecycle.Committed);
+
+            bool valid = result.Succeeded && state && action && states.TransitionCount == 1 && events.Count == 1;
+            return TestLabAssertions.True("step15-narrative-state-event", "Narrative events request state transitions through NarrativeStateRuntime instead of mutating state directly", valid, $"Event={result.Status} Events={events.Count} State={state} Actions={action} Transitions={states.TransitionCount}");
+        }
+
+        private static TestLabAutomationStepResult NarrativeStatePersistenceNoReplay(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            NarrativeEventRuntime sourceEvents = NarrativeRuntime(registry);
+            NarrativeStateRuntime runtime = StateRuntime(registry, sourceEvents);
+            NarrativeStateTransitionResult transition = runtime.RequestTransition(StateRequest(PrototypeNarrativeStateDefinitionFactory.ChooseGuildTransitionId, Tx(context, "narrative-state-persist-guild"), "person.prototype.player", worldTime: 7d));
+            NarrativeStatePersistenceParticipant participant = new NarrativeStatePersistenceParticipant(runtime, () => registry);
+            PersistenceParticipantSaveResult save = participant.CapturePayload();
+
+            NarrativeEventRuntime restoredEvents = NarrativeRuntime(registry);
+            NarrativeStateRuntime restored = StateRuntime(registry, restoredEvents);
+            NarrativeStatePersistenceParticipant restoredParticipant = new NarrativeStatePersistenceParticipant(restored, () => registry);
+            PersistenceParticipantPrepareResult prepare = restoredParticipant.PreparePayload(save.PayloadJson, NarrativeStatePersistenceParticipant.CurrentParticipantSchemaVersion);
+            PersistenceParticipantCommitResult commit = restoredParticipant.CommitPreparedPayload(prepare.PreparedPayload);
+            bool restoredState = restored.TryGetSnapshot(PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyDefinitionId, NarrativeStateScope.Person, "person.prototype.player", out NarrativeStateSnapshot snapshot)
+                && snapshot.TryGetValue(PrototypeNarrativeStateDefinitionFactory.GuildLoyaltyVariableId, out NarrativeVariableValueData value)
+                && value.tokenValue == PrototypeNarrativeStateDefinitionFactory.GuildLoyalValueId;
+
+            NarrativeStateRuntimeSaveData corrupt = runtime.CreateSaveData();
+            if (corrupt.states.Length > 0) corrupt.states[0].stateDefinitionId = "narrative-state-definition.prototype.missing";
+            int beforeReject = restored.MaterializedStateCount;
+            PersistenceParticipantPrepareResult rejected = restoredParticipant.PreparePayload(JsonUtility.ToJson(corrupt), NarrativeStatePersistenceParticipant.CurrentParticipantSchemaVersion);
+
+            bool valid = transition.Succeeded
+                && save.Succeeded
+                && prepare.Succeeded
+                && commit.Succeeded
+                && restoredState
+                && restored.TransitionCount == runtime.TransitionCount
+                && restoredEvents.Count == 0
+                && rejected.Succeeded == false
+                && restored.MaterializedStateCount == beforeReject;
+            return TestLabAssertions.True("step15-narrative-state-persistence", "Narrative state restore preserves state and history without replaying consequences, and corrupt payloads fail before mutation", valid, $"Transition={transition.Status} Save={save.Succeeded} Prepare={prepare.Succeeded} Commit={commit.Succeeded} Restored={restoredState} ReplayEvents={restoredEvents.Count} Reject={rejected.Succeeded} States={restored.MaterializedStateCount}");
+        }
+
         private static DefinitionRegistry Registry(TestLabAutomationContext context)
         {
             DefinitionRegistry baseRegistry = context?.ScenarioContext?.Runtimes?.DefinitionRegistry;
-            return PrototypeNarrativeEventDefinitionFactory.AddMissingPrototypeNarrativeEventDefinitions(PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestSourceDefinitionFactory.AddMissingPrototypeQuestSourceDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry)))));
+            return PrototypeNarrativeStateDefinitionFactory.AddMissingPrototypeNarrativeStateDefinitions(PrototypeNarrativeEventDefinitionFactory.AddMissingPrototypeNarrativeEventDefinitions(PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(PrototypeQuestSourceDefinitionFactory.AddMissingPrototypeQuestSourceDefinitions(PrototypeQuestDefinitionFactory.AddMissingPrototypeQuestDefinitions(baseRegistry))))));
         }
 
         private static QuestRuntime Runtime(TestLabAutomationContext context)
@@ -1459,6 +1654,58 @@ namespace UnityIsekaiGame.Development.Automation
             };
         }
 
+        private static NarrativeStateRuntime StateRuntime(DefinitionRegistry registry, NarrativeEventRuntime narrativeEvents = null)
+        {
+            return new NarrativeStateRuntime(registry, StateIntegrations(narrativeEvents), PersistenceService.LocalWorldId);
+        }
+
+        private static NarrativeStateRuntimeIntegrations StateIntegrations(NarrativeEventRuntime narrativeEvents = null)
+        {
+            return new NarrativeStateRuntimeIntegrations
+            {
+                NarrativeEventRuntime = narrativeEvents,
+                ConsequenceValidator = (action, request) => action.category == NarrativeActionCategory.None || !string.IsNullOrWhiteSpace(action.targetId),
+                ConsequenceExecutor = (action, request) => !string.IsNullOrWhiteSpace(action.targetId) ? action.targetId : string.Empty
+            };
+        }
+
+        private static NarrativeStateTransitionRequest StateRequest(string transitionId, string transactionId, string actorPersonId, NarrativeStateScope scope = NarrativeStateScope.Person, bool preview = false, double worldTime = 1d)
+        {
+            return new NarrativeStateTransitionRequest
+            {
+                transactionId = transactionId,
+                transitionDefinitionId = transitionId,
+                scope = scope,
+                scopeKey = scope == NarrativeStateScope.World ? PersistenceService.LocalWorldId : actorPersonId,
+                actorPersonId = actorPersonId,
+                sourceKind = NarrativeTransitionSourceKind.Development,
+                sourceId = "testlab.feature.15.9",
+                conditionContext = NarrativeContext(actorPersonId),
+                preview = preview,
+                worldTime = worldTime
+            };
+        }
+
+        private static bool EvaluateNarrativeStateCondition(NarrativeStateRuntime runtime, NarrativeConditionDefinitionData condition, NarrativeConditionContextData context)
+        {
+            if (runtime == null || condition == null) return false;
+            string[] parts = (condition.requiredId ?? string.Empty).Split('|');
+            NarrativeStateScope scope = NarrativeStateScope.World;
+            if (parts.Length > 3 && Enum.TryParse(parts[3], ignoreCase: true, out NarrativeStateScope parsedScope)) scope = parsedScope;
+            string scopeKey = parts.Length > 4 ? parts[4] : string.Empty;
+            if (string.IsNullOrWhiteSpace(scopeKey)) scopeKey = scope == NarrativeStateScope.Person ? context?.actorPersonId : PersistenceService.LocalWorldId;
+            bool matched = runtime.EvaluateCondition(new NarrativeStateConditionQuery
+            {
+                stateDefinitionId = parts.Length > 0 ? parts[0] : string.Empty,
+                variableDefinitionId = parts.Length > 1 ? parts[1] : string.Empty,
+                scope = scope,
+                scopeKey = scopeKey,
+                expectedValue = parts.Length > 2 ? NarrativeVariableValueData.Token(parts[2]) : null,
+                minimumValue = condition.minimumValue
+            });
+            return condition.negate ? !matched : matched;
+        }
+
         private static NarrativeTriggerSourceData Source(NarrativeTriggerCategory category, string sourceId, string subjectId, string actorId, double worldTime)
         {
             return new NarrativeTriggerSourceData
@@ -1482,6 +1729,7 @@ namespace UnityIsekaiGame.Development.Automation
             string subjectId = "",
             string[] knownIds = null,
             string[] dialogueIds = null,
+            string[] narrativeStateIds = null,
             string[] organizationIds = null,
             string[] socialIds = null)
         {
@@ -1494,9 +1742,51 @@ namespace UnityIsekaiGame.Development.Automation
                 worldTime = 10d,
                 knownSubjectIds = knownIds ?? Array.Empty<string>(),
                 dialogueStateIds = dialogueIds ?? Array.Empty<string>(),
+                narrativeStateIds = narrativeStateIds ?? Array.Empty<string>(),
                 organizationStateIds = organizationIds ?? Array.Empty<string>(),
                 socialStateIds = socialIds ?? Array.Empty<string>()
             };
+        }
+
+        private static DefinitionRegistry RegistryWithNarrativeStateActionProbe(TestLabAutomationContext context)
+        {
+            DefinitionRegistry registry = Registry(context);
+            List<IGameDefinition> definitions = registry.DefinitionsById.Values.Where(definition => definition != null).ToList();
+            NarrativeEventDefinition definition = ScriptableObject.CreateInstance<NarrativeEventDefinition>();
+            definition.name = "Narrative State Transition Probe";
+            definition.DevelopmentConfigure(new NarrativeEventDefinitionData
+            {
+                eventDefinitionId = "narrative-event-definition.prototype.15-9.state-action",
+                displayName = "Narrative State Transition Probe",
+                category = NarrativeEventCategory.Scripted,
+                scope = NarrativeEventScope.OncePerPerson,
+                repeatPolicy = NarrativeRepeatPolicy.OncePerScope,
+                armingPolicy = NarrativeArmingPolicy.OnWorldInitialization,
+                triggerMode = NarrativeTriggerMode.TriggerImmediatelyWhenMatched,
+                scopeSelectorId = "actor",
+                triggers = new[]
+                {
+                    new NarrativeTriggerDefinitionData
+                    {
+                        triggerDefinitionId = "narrative-trigger-definition.prototype.15-9.state-action",
+                        category = NarrativeTriggerCategory.ExplicitSignal,
+                        requiredSourceId = "narrative-signal-definition.prototype.15-9.state-action"
+                    }
+                },
+                actions = new[]
+                {
+                    new NarrativeActionDefinitionData
+                    {
+                        actionDefinitionId = "narrative-action-definition.prototype.15-9.choose-guild",
+                        category = NarrativeActionCategory.RequestNarrativeStateTransition,
+                        requirement = NarrativeActionRequirement.Required,
+                        targetId = PrototypeNarrativeStateDefinitionFactory.ChooseGuildTransitionId
+                    }
+                },
+                tagIds = new[] { "prototype", "testlab", "narrative-state" }
+            });
+            definitions.Add(definition);
+            return new DefinitionRegistry(definitions);
         }
 
         private static string Tx(TestLabAutomationContext context, string operation)

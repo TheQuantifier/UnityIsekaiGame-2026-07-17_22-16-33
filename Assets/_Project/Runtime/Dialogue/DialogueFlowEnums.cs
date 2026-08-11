@@ -84,6 +84,7 @@ namespace UnityIsekaiGame.Dialogue
         InteractionPoint,
         Permit,
         LegalStatus,
+        NarrativeState,
         LocalFlag,
         LocalCounter,
         Custom
@@ -146,6 +147,7 @@ namespace UnityIsekaiGame.Dialogue
         SocialInteraction,
         ReputationChange,
         RelationshipChange,
+        RequestNarrativeStateTransition,
         GrantMembership,
         GrantRank,
         GrantPermit,

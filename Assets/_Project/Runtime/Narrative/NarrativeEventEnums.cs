@@ -126,7 +126,7 @@ namespace UnityIsekaiGame.Narrative
         LegalState,
         TimeState,
         HistoricalState,
-        NarrativeStatePlaceholder,
+        NarrativeState,
         Custom
     }
 
@@ -183,6 +183,7 @@ namespace UnityIsekaiGame.Narrative
         RequestPermit,
         CreateIncidentReport,
         HistoricalEventRequest,
+        RequestNarrativeStateTransition,
         ScheduleNarrativeEvent,
         ArmNarrativeEvent,
         DisarmNarrativeEvent,
@@ -267,6 +268,7 @@ namespace UnityIsekaiGame.Narrative
         NarrativeSystem,
         DialogueEffect,
         QuestOutcome,
+        NarrativeStateTransition,
         Development,
         ScriptedAuthoritative,
         Custom

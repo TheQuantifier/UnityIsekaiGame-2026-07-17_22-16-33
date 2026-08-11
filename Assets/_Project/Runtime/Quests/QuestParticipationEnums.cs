@@ -43,6 +43,7 @@ namespace UnityIsekaiGame.Quests
         Knowledge,
         PriorQuestState,
         WorldHistoryFact,
+        NarrativeState,
         TimeWindow,
         Custom
     }

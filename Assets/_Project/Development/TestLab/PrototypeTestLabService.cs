@@ -14542,6 +14542,7 @@ namespace UnityIsekaiGame.Development
             registry = PrototypeConversationDefinitionFactory.AddMissingPrototypeConversationDefinitions(registry);
             registry = PrototypeDialogueGraphDefinitionFactory.AddMissingPrototypeDialogueGraphDefinitions(registry);
             registry = PrototypeNarrativeEventDefinitionFactory.AddMissingPrototypeNarrativeEventDefinitions(registry);
+            registry = PrototypeNarrativeStateDefinitionFactory.AddMissingPrototypeNarrativeStateDefinitions(registry);
             return registry;
         }
 
