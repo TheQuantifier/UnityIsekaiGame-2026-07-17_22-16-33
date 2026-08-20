@@ -19,13 +19,9 @@ namespace UnityIsekaiGame.WorldLocations.SceneBinding
                 return false;
             }
 
-            if (requirePhysicalRange && context.Origin != null)
+            if (requirePhysicalRange && !IsWithinPhysicalRange(context))
             {
-                float distance = Vector3.Distance(context.Origin.position, BindingTransform.position);
-                if (distance > Mathf.Max(0.01f, interactionRange))
-                {
-                    return false;
-                }
+                return false;
             }
 
             return Runtime.TryGetInteractionPoint(LogicalId, out InteractionPointSnapshot point) && point.IsActive;
@@ -41,6 +37,23 @@ namespace UnityIsekaiGame.WorldLocations.SceneBinding
 
             LastPoint = point;
             Debug.Log($"Scene interaction routed to logical interaction point '{point.InteractionPointId}'.");
+        }
+
+        private bool IsWithinPhysicalRange(in InteractionContext context)
+        {
+            if (context.Origin == null)
+            {
+                return true;
+            }
+
+            Vector3 target = BindingTransform.position;
+            if (context.Hit.collider != null)
+            {
+                target = context.Hit.point;
+            }
+
+            float distance = Vector3.Distance(context.Origin.position, target);
+            return distance <= Mathf.Max(0.01f, interactionRange);
         }
     }
 }
